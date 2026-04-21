@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="003_create_trade_config_table" author="moneymaker">
+        <createTable tableName="trade_config">
+            <column name="id" type="INT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="trading_side" type="VARCHAR(255)"/>
+            <column name="trading_date" type="DATE"/>
+            <column name="target" type="DECIMAL(19,2)"/>
+            <column name="stop_loss" type="DECIMAL(19,2)"/>
+            <column name="p_instrument" type="INT"/>
+            <column name="max_loss" type="DECIMAL(19,2)"/>
+            <column name="option_depth" type="INT"/>
+            <column name="transaction_type" type="VARCHAR(255)"/>
+            <column name="lot_quantity" type="INT"/>
+            <column name="stratergy_id" type="INT"/>
+            <column name="no_of_trades" type="INT"/>
+            <column name="no_of_parrellel_trades" type="INT"/>
+            <column name="itm_depth" type="INT"/>
+            <column name="otm_depth" type="INT"/>
+            <column name="atm_depth" type="INT"/>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="trade_config"
+                                 baseColumnNames="p_instrument"
+                                 referencedTableName="instrument"
+                                 referencedColumnNames="id"
+                                 constraintName="fk_trade_config_instrument"/>
+    </changeSet>
+
+</databaseChangeLog>
+

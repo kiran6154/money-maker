@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="002_create_instrument_details_table" author="moneymaker">
+        <createTable tableName="instrument_details">
+            <column name="instrument_token" type="INT">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="exchange_token" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="tradingsymbol" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_price" type="DECIMAL(19,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="expiry" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="strike" type="DECIMAL(19,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="tick_size" type="DECIMAL(19,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="lot_size" type="DECIMAL(19,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="instrument_type" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="segment" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="exchange" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+</databaseChangeLog>
+

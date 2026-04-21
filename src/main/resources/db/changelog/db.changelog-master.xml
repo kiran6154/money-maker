@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <include file="db/changelog/001_create_instrument_table.xml"/>
+    <include file="db/changelog/002_create_instrument_details_table.xml"/>
+    <include file="db/changelog/003_create_trade_config_table.xml"/>
+    <include file="db/changelog/004_create_sma_timeframe_table.xml"/>
+
+</databaseChangeLog>
+

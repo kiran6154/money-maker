@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="004_create_sma_timeframe_table" author="moneymaker">
+        <createTable tableName="sma_timeframe">
+            <column name="id" type="INT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="time_period" type="INT"/>
+            <column name="sma" type="INT"/>
+            <column name="tc_id" type="INT"/>
+            <column name="slope" type="DOUBLE"/>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="sma_timeframe"
+                                 baseColumnNames="tc_id"
+                                 referencedTableName="trade_config"
+                                 referencedColumnNames="id"
+                                 constraintName="fk_sma_timeframe_trade_config"/>
+    </changeSet>
+
+</databaseChangeLog>
+
