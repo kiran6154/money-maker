@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Money Maker — Dashboard</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}" />
+</head>
+<body>
+<div th:replace="~{fragments/nav :: nav}"></div>
+
+<main class="page">
+    <h1 class="page-title">Broker Dashboard</h1>
+    <p class="page-subtitle">Live status of the active brokerage connection.</p>
+
+    <div th:if="${alert}" th:classappend="${alert.success} ? 'alert alert-success' : 'alert alert-error'">
+        <span th:text="${alert.message}"></span>
+    </div>
+
+    <!-- Stat tiles -->
+    <div class="grid-4" style="margin-bottom: 24px;">
+        <div class="stat-card">
+            <div class="stat-value" th:text="${activeBroker}">ZERODHA</div>
+            <div class="stat-label">Active Broker</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">
+                <span th:classappend="${sessionValid} ? 'status-dot online' : 'status-dot offline'"></span>
+                <span th:text="${sessionValid} ? 'Connected' : 'Not Connected'">Status</span>
+            </div>
+            <div class="stat-label">Session</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" th:text="${session != null and session.userId != null} ? ${session.userId} : '—'">—</div>
+            <div class="stat-label">User ID</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" th:text="${availableBrokers != null} ? ${#lists.size(availableBrokers)} : 0">0</div>
+            <div class="stat-label">Adapters Loaded</div>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <!-- Session details -->
+        <div class="glass-card">
+            <div class="card-header">
+                <h3>Session Details</h3>
+                <span th:if="${sessionValid}" class="badge badge-success">VALID</span>
+                <span th:unless="${sessionValid}" class="badge badge-danger">INACTIVE</span>
+            </div>
+            <table class="kv-table" th:if="${session != null}">
+                <tr><td>Broker</td>      <td th:text="${session.broker}">ZERODHA</td></tr>
+                <tr><td>User ID</td>     <td th:text="${session.userId} ?: '—'">—</td></tr>
+                <tr><td>Login At</td>    <td th:text="${session.loginAt} ?: '—'">—</td></tr>
+                <tr><td>Expires At</td>  <td th:text="${session.expiresAt} ?: '—'">—</td></tr>
+                <tr><td>Access Token</td><td><code th:text="${session.accessToken != null} ? ${#strings.abbreviate(session.accessToken, 24)} : '—'">—</code></td></tr>
+                <tr th:if="${session.publicToken != null}"><td>Public Token</td>
+                    <td><code th:text="${#strings.abbreviate(session.publicToken, 24)}">—</code></td></tr>
+            </table>
+            <div th:if="${session == null}" style="text-align:center; padding: 30px 0; color: var(--text-muted);">
+                <p>No active broker session.</p>
+                <a th:href="@{/login}" class="btn btn-primary">🔑 Login Now</a>
+            </div>
+            <form th:if="${session != null}" th:action="@{/logout}" method="post" style="margin-top:16px;">
+                <button type="submit" class="btn btn-danger">Logout</button>
+            </form>
+        </div>
+
+        <!-- Available brokers -->
+        <div class="glass-card">
+            <div class="card-header"><h3>Available Brokers</h3></div>
+            <table class="kv-table">
+                <tr th:each="b : ${availableBrokers}">
+                    <td th:text="${b}">ZERODHA</td>
+                    <td>
+                        <span th:if="${b == activeBroker}" class="badge badge-info">ACTIVE</span>
+                        <span th:unless="${b == activeBroker}" class="badge badge-warn">standby</span>
+                    </td>
+                </tr>
+            </table>
+            <p style="color: var(--text-muted); font-size: 12px; margin-top: 14px;">
+                Switch the active broker via the <code>broker.active</code> property.
+            </p>
+        </div>
+    </div>
+</main>
+
+<script>
+    // Decorative background bubbles, mirrors ui-java look
+    (function () {
+        const root = document.querySelector('.page');
+        if (!root) return;
+        const bubbles = [
+            { top: '8%',  left: '4%',  size: 200, color: 'rgba(0,122,255,0.10)' },
+            { top: '70%', left: '85%', size: 240, color: 'rgba(41,194,106,0.10)' },
+            { top: '38%', left: '78%', size: 160, color: 'rgba(214,75,101,0.08)' },
+            { top: '82%', left: '12%', size: 220, color: 'rgba(0,122,255,0.07)' }
+        ];
+        bubbles.forEach(b => {
+            const d = document.createElement('div');
+            d.className = 'glass-bubble';
+            d.style.cssText = `width:${b.size}px;height:${b.size}px;left:${b.left};top:${b.top};background:${b.color};`;
+            root.appendChild(d);
+        });
+    })();
+
+    // Live status poll
+    setInterval(async () => {
+        try {
+            const r = await fetch('/api/session');
+            const j = await r.json();
+            const dots = document.querySelectorAll('.status-dot');
+            dots.forEach(d => { d.className = 'status-dot ' + (j.valid ? 'online' : 'offline'); });
+        } catch (e) { /* ignore */ }
+    }, 30000);
+</script>
+</body>
+</html>
+

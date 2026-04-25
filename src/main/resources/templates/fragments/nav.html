@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<nav th:fragment="nav" class="glass-nav">
+    <a th:href="@{/}" class="nav-brand">💰 Money Maker</a>
+    <div class="nav-links">
+        <a th:href="@{/}"      class="nav-link" th:classappend="${activePage == 'dashboard'} ? ' active'">Dashboard</a>
+        <a th:href="@{/login}" class="nav-link" th:classappend="${activePage == 'login'}     ? ' active'">🔑 Broker Login</a>
+        <span class="nav-separator"></span>
+        <span class="nav-link" style="cursor:default;">
+            <span th:classappend="${sessionValid} ? 'status-dot online' : 'status-dot offline'"></span>
+            <span th:text="${sessionValid} ? 'Connected' : 'Disconnected'">Status</span>
+        </span>
+    </div>
+</nav>
+</body>
+</html>
+

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Money Maker — Manual Login</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}" />
+</head>
+<body>
+<div th:replace="~{fragments/nav :: nav}"></div>
+
+<main class="page">
+    <h1 class="page-title">Manual Login</h1>
+    <p class="page-subtitle">
+        Submit credentials for <strong th:text="${targetBroker}">GROWW</strong>.
+    </p>
+
+    <div th:if="${alert}" th:classappend="${alert.success} ? 'alert alert-success' : 'alert alert-error'">
+        <span th:text="${alert.message}"></span>
+    </div>
+
+    <div class="glass-card" style="max-width:520px;">
+        <div class="card-header">
+            <h3>Authenticate</h3>
+            <span class="badge badge-info" th:text="${targetBroker}">GROWW</span>
+        </div>
+        <form th:action="@{/login/manual}" method="post">
+            <input type="hidden" name="broker" th:value="${targetBroker}" />
+
+            <div class="form-row" th:if="${targetBroker == 'GROWW'}">
+                <label for="totp">TOTP (leave blank to use server secret)</label>
+                <input class="form-control" type="text" id="totp" name="totp"
+                       inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+                       placeholder="6-digit code" autocomplete="one-time-code" />
+            </div>
+
+            <div class="form-row" th:if="${targetBroker == 'ANGEL_ONE'}">
+                <label for="totpAngel">Angel One TOTP (leave blank to use server secret)</label>
+                <input class="form-control" type="text" id="totpAngel" name="totp"
+                       inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+                       placeholder="6-digit code" autocomplete="one-time-code" />
+                <p style="font-size:12px; color:var(--text-muted); margin:4px 0 0;">
+                    Client code &amp; password are loaded from
+                    <code>broker.angel-one.*</code> properties.
+                </p>
+            </div>
+
+            <div class="form-row" th:if="${targetBroker == 'ZERODHA'}">
+                <label for="requestToken">Zerodha request_token</label>
+                <input class="form-control" type="text" id="requestToken" name="requestToken"
+                       placeholder="Paste request_token from callback URL" />
+            </div>
+
+            <div style="display:flex; gap:12px; margin-top:8px;">
+                <button type="submit" class="btn btn-primary">Submit</button>
+                <a th:href="@{/login}" class="btn btn-ghost">Cancel</a>
+            </div>
+        </form>
+    </div>
+</main>
+</body>
+</html>
+

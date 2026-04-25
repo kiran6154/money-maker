@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Money Maker — Broker Login</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}" />
+</head>
+<body>
+<div th:replace="~{fragments/nav :: nav}"></div>
+
+<main class="page">
+    <h1 class="page-title">Broker Login</h1>
+    <p class="page-subtitle">Authenticate with the configured broker to start trading.</p>
+
+    <div th:if="${alert}" th:classappend="${alert.success} ? 'alert alert-success' : 'alert alert-error'">
+        <span th:text="${alert.message}"></span>
+    </div>
+
+    <div class="grid-2">
+        <!-- Active broker card -->
+        <div class="glass-card">
+            <div class="card-header">
+                <h3>Active Broker</h3>
+                <span class="badge badge-info" th:text="${activeBroker}">ZERODHA</span>
+            </div>
+
+            <p style="color: var(--text-muted); margin: 0 0 18px;">
+                The active broker is selected via <code>broker.active</code>.
+                You will be redirected to the broker's secure login page.
+            </p>
+
+            <div th:switch="${activeBroker.name()}">
+                <div th:case="'ZERODHA'">
+                    <a th:href="@{/login/start}" class="btn btn-primary">🔑 Login with Zerodha (Kite)</a>
+                    <p style="margin-top:14px; font-size:12px; color: var(--text-muted);">
+                        Redirects to <code>kite.zerodha.com</code>. After 2FA you will return to
+                        <code>/login/callback</code> automatically.
+                    </p>
+                </div>
+                <div th:case="'GROWW'">
+                    <a th:href="@{/login/manual(broker='GROWW')}" class="btn btn-primary">🔑 Login with Groww</a>
+                    <p style="margin-top:14px; font-size:12px; color: var(--text-muted);">
+                        Uses your stored TOTP secret to mint a daily access token.
+                    </p>
+                </div>
+                <div th:case="'ANGEL_ONE'">
+                    <a th:href="@{/login/manual(broker='ANGEL_ONE')}" class="btn btn-primary">🔑 Login with Angel One</a>
+                    <p style="margin-top:14px; font-size:12px; color: var(--text-muted);">
+                        SmartAPI <code>loginByPassword</code> with TOTP. Tokens valid ~24h.
+                    </p>
+                </div>
+                <div th:case="*">
+                    <a th:href="@{/login/start}" class="btn btn-primary">Continue</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- All brokers list -->
+        <div class="glass-card">
+            <div class="card-header"><h3>All Configured Brokers</h3></div>
+            <table class="kv-table">
+                <tr th:each="b : ${availableBrokers}">
+                    <td>
+                        <strong th:text="${b}">ZERODHA</strong>
+                    </td>
+                    <td>
+                        <a th:if="${b.name() == 'ZERODHA'}"   th:href="@{/login/start}"                       class="btn btn-ghost">Login</a>
+                        <a th:if="${b.name() == 'GROWW'}"     th:href="@{/login/manual(broker='GROWW')}"      class="btn btn-ghost">Login</a>
+                        <a th:if="${b.name() == 'ANGEL_ONE'}" th:href="@{/login/manual(broker='ANGEL_ONE')}"  class="btn btn-ghost">Login</a>
+                    </td>
+                </tr>
+            </table>
+            <p style="color: var(--text-muted); font-size: 12px; margin-top: 14px;">
+                Want another broker? Add a class implementing
+                <code>BrokerLoginService</code> in <code>com.moneymaker.broker.&lt;name&gt;</code>.
+            </p>
+        </div>
+    </div>
+</main>
+
+<script>
+    (function () {
+        const root = document.querySelector('.page');
+        if (!root) return;
+        [
+            { top:'12%', left:'6%',  size:200, color:'rgba(0,122,255,0.10)' },
+            { top:'68%', left:'82%', size:240, color:'rgba(41,194,106,0.10)' }
+        ].forEach(b => {
+            const d = document.createElement('div');
+            d.className = 'glass-bubble';
+            d.style.cssText = `width:${b.size}px;height:${b.size}px;left:${b.left};top:${b.top};background:${b.color};`;
+            root.appendChild(d);
+        });
+    })();
+</script>
+</body>
+</html>
+
