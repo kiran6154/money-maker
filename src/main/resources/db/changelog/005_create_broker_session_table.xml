@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="005_create_broker_session_table" author="moneymaker">
+        <createTable tableName="broker_session">
+            <column name="id" type="INT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="broker" type="VARCHAR(32)">
+                <constraints nullable="false" unique="true"
+                             uniqueConstraintName="uk_broker_session_broker"/>
+            </column>
+            <column name="user_id" type="VARCHAR(64)"/>
+            <column name="access_token" type="VARCHAR(2048)"/>
+            <column name="refresh_token" type="VARCHAR(2048)"/>
+            <column name="public_token" type="VARCHAR(2048)"/>
+            <column name="login_at" type="DATETIME"/>
+            <column name="expires_at" type="DATETIME"/>
+            <column name="last_heartbeat_at" type="DATETIME"/>
+            <column name="last_heartbeat_status" type="VARCHAR(32)"/>
+            <column name="last_data_at" type="DATETIME"/>
+            <column name="logged_in" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="data_healthy" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="raw_json" type="TEXT"/>
+        </createTable>
+    </changeSet>
+
+</databaseChangeLog>
+

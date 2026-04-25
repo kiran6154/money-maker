@@ -109,8 +109,12 @@
         try {
             const r = await fetch('/api/session');
             const j = await r.json();
-            const dots = document.querySelectorAll('.status-dot');
-            dots.forEach(d => { d.className = 'status-dot ' + (j.valid ? 'online' : 'offline'); });
+            const cls = j.lastHeartbeatStatus === 'OK' ? 'online'
+                      : j.lastHeartbeatStatus === 'NO_DATA' ? 'warn'
+                      : 'offline';
+            document.querySelectorAll('.status-dot').forEach(d => {
+                d.className = 'status-dot ' + cls;
+            });
         } catch (e) { /* ignore */ }
     }, 30000);
 </script>

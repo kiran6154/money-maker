@@ -6,6 +6,8 @@ import com.moneymaker.login.model.Broker;
 import com.moneymaker.login.model.BrokerLoginRequest;
 import com.moneymaker.login.model.BrokerLoginResponse;
 import com.moneymaker.login.model.BrokerSession;
+import com.moneymaker.login.model.HeartbeatResult;
+import com.moneymaker.login.model.HeartbeatStatus;
 import com.moneymaker.login.service.BrokerLoginService;
 import com.moneymaker.login.util.TotpGenerator;
 import lombok.extern.slf4j.Slf4j;
@@ -144,6 +146,37 @@ public class AngelOneLoginService implements BrokerLoginService {
                     String.class);
         } catch (Exception e) {
             log.warn("Angel One logout failed (ignored): {}", e.getMessage());
+        }
+    }
+
+    /** SmartAPI LTP probe for NIFTY 50. */
+    @Override
+    public HeartbeatResult fetchHeartbeatQuote(BrokerSession session) {
+        if (session == null || session.getAccessToken() == null) {
+            return HeartbeatResult.of(HeartbeatStatus.NO_SESSION, "no session");
+        }
+        BrokerProperties.AngelOne cfg = properties.getAngelOne();
+        HttpHeaders headers = smartApiHeaders(cfg.getApiKey());
+        headers.setBearerAuth(session.getAccessToken());
+
+        Map<String, String> body = new LinkedHashMap<>();
+        body.put("exchange",        "NSE");
+        body.put("tradingsymbol",   "NIFTY");
+        body.put("symboltoken",     "99926000"); // NIFTY 50 index token
+
+        try {
+            ResponseEntity<String> resp = http.exchange(
+                    cfg.getApiBaseUrl() + "/rest/secure/angelbroking/order/v1/getLtpData",
+                    HttpMethod.POST,
+                    new HttpEntity<>(body, headers),
+                    String.class);
+            if (!resp.getStatusCode().is2xxSuccessful() || resp.getBody() == null) {
+                return HeartbeatResult.of(HeartbeatStatus.NO_DATA, "http " + resp.getStatusCode());
+            }
+            return HeartbeatResult.ok(Instant.now());
+        } catch (Exception e) {
+            log.warn("Angel One LTP probe failed: {}", e.getMessage());
+            return HeartbeatResult.of(HeartbeatStatus.HTTP_ERROR, e.getMessage());
         }
     }
 

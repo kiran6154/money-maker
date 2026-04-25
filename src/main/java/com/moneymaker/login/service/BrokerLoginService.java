@@ -4,6 +4,8 @@ import com.moneymaker.login.model.Broker;
 import com.moneymaker.login.model.BrokerLoginRequest;
 import com.moneymaker.login.model.BrokerLoginResponse;
 import com.moneymaker.login.model.BrokerSession;
+import com.moneymaker.login.model.HeartbeatResult;
+import com.moneymaker.login.model.HeartbeatStatus;
 
 /**
  * Contract every broker-specific login adapter must implement. Each adapter
@@ -33,5 +35,14 @@ public interface BrokerLoginService {
 
     /** Best-effort logout (invalidates the broker-side session). */
     void logout(BrokerSession session);
-}
 
+    /**
+     * Heartbeat data probe – fetch a lightweight market-data quote (e.g.
+     * NIFTY 50 LTP) and verify the response carries a non-stale tick. The
+     * default implementation reports OK; override in market-data capable
+     * brokers.
+     */
+    default HeartbeatResult fetchHeartbeatQuote(BrokerSession session) {
+        return HeartbeatResult.of(HeartbeatStatus.OK, "no-op");
+    }
+}

@@ -3,16 +3,29 @@
 <body>
 <nav th:fragment="nav" class="glass-nav">
     <a th:href="@{/}" class="nav-brand">💰 Money Maker</a>
-    <div class="nav-links">
-        <a th:href="@{/}"      class="nav-link" th:classappend="${activePage == 'dashboard'} ? ' active'">Dashboard</a>
-        <a th:href="@{/login}" class="nav-link" th:classappend="${activePage == 'login'}     ? ' active'">🔑 Broker Login</a>
+    <button type="button"
+            class="nav-toggle"
+            aria-label="Toggle navigation"
+            aria-expanded="false"
+            aria-controls="primaryNavLinks"
+            onclick="(function(b){var n=document.getElementById('primaryNavLinks');var open=n.classList.toggle('open');b.setAttribute('aria-expanded',open);})(this)">
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+    </button>
+    <div id="primaryNavLinks" class="nav-links">
+        <a th:href="@{/}"         class="nav-link" th:classappend="${activePage == 'dashboard'} ? ' active'">Dashboard</a>
+        <a th:href="@{/login}"    class="nav-link" th:classappend="${activePage == 'login'}     ? ' active'">🔑 Broker Login</a>
+        <a th:href="@{/backtest}" class="nav-link" th:classappend="${activePage == 'backtest'}  ? ' active'">🧪 Backtest</a>
+        <a th:href="@{/docs}"     class="nav-link" th:classappend="${activePage == 'docs'}      ? ' active'">📚 Documents</a>
         <span class="nav-separator"></span>
-        <span class="nav-link" style="cursor:default;">
-            <span th:classappend="${sessionValid} ? 'status-dot online' : 'status-dot offline'"></span>
-            <span th:text="${sessionValid} ? 'Connected' : 'Disconnected'">Status</span>
+        <span class="nav-link" style="cursor:default;" id="navStatus">
+            <span class="status-dot"
+                  th:classappend="${lastHeartbeatStatus != null and lastHeartbeatStatus.name() == 'OK'} ? 'online' :
+                                  (${lastHeartbeatStatus != null and lastHeartbeatStatus.name() == 'NO_DATA'} ? 'warn' : 'offline')"></span>
+            <span th:text="${lastHeartbeatStatus} ?: 'UNKNOWN'">Status</span>
         </span>
     </div>
 </nav>
 </body>
 </html>
-

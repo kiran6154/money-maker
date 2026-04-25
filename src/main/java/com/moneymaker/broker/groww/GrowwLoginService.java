@@ -6,6 +6,8 @@ import com.moneymaker.login.model.Broker;
 import com.moneymaker.login.model.BrokerLoginRequest;
 import com.moneymaker.login.model.BrokerLoginResponse;
 import com.moneymaker.login.model.BrokerSession;
+import com.moneymaker.login.model.HeartbeatResult;
+import com.moneymaker.login.model.HeartbeatStatus;
 import com.moneymaker.login.service.BrokerLoginService;
 import com.moneymaker.login.util.TotpGenerator;
 import lombok.extern.slf4j.Slf4j;
@@ -118,6 +120,32 @@ public class GrowwLoginService implements BrokerLoginService {
     public void logout(BrokerSession session) {
         // Groww access tokens are short-lived; nothing to invalidate server-side.
         log.debug("Groww logout is a no-op (token will expire naturally).");
+    }
+
+    /** NIFTY 50 LTP probe via Groww live-data endpoint. */
+    @Override
+    public HeartbeatResult fetchHeartbeatQuote(BrokerSession session) {
+        if (session == null || session.getAccessToken() == null) {
+            return HeartbeatResult.of(HeartbeatStatus.NO_SESSION, "no session");
+        }
+        BrokerProperties.Groww cfg = properties.getGroww();
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer " + session.getAccessToken());
+        headers.set("X-API-KEY", cfg.getApiKey());
+        try {
+            ResponseEntity<String> resp = http.exchange(
+                    cfg.getApiBaseUrl() + "/v1/live-data/ltp?exchange=NSE&symbol=NIFTY",
+                    HttpMethod.GET,
+                    new HttpEntity<>(headers),
+                    String.class);
+            if (!resp.getStatusCode().is2xxSuccessful() || resp.getBody() == null) {
+                return HeartbeatResult.of(HeartbeatStatus.NO_DATA, "http " + resp.getStatusCode());
+            }
+            return HeartbeatResult.ok(Instant.now());
+        } catch (Exception e) {
+            log.warn("Groww LTP probe failed: {}", e.getMessage());
+            return HeartbeatResult.of(HeartbeatStatus.HTTP_ERROR, e.getMessage());
+        }
     }
 
     /* ---------- mapping ---------- */

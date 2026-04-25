@@ -1,0 +1,113 @@
+﻿<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Money Maker — Backtest</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}" />
+</head>
+<body>
+<div th:replace="~{fragments/nav :: nav}"></div>
+<main class="page">
+    <h1 class="page-title">🧪 Backtest</h1>
+    <p class="page-subtitle">
+        Backtest mode lets you drive the <b>same</b> <code>LoginOrchestrator</code> the live scheduler uses,
+        but on demand instead of on a cron. There is intentionally no parallel "test login" code path.
+    </p>
+    <div class="glass-card" style="margin-bottom: 24px;">
+        <div class="card-header">
+            <h3>Run mode</h3>
+            <span class="badge"
+                  th:classappend="${backtestEnabled} ? ' badge-success' : ' badge-warn'"
+                  th:text="${appMode}">LIVE</span>
+        </div>
+        <p style="color: var(--text-muted); margin: 0;">
+            <span th:if="${backtestEnabled}">
+                <code>app.mode=backtest</code> — the live scheduler is <b>disabled</b> and you can drive
+                <code>LoginOrchestrator.ensureLoggedIn()</code> from the button below.
+            </span>
+            <span th:unless="${backtestEnabled}">
+                <code>app.mode=live</code> — the live scheduler runs (08:00 cron + 1-min heartbeat) and the
+                manual login endpoint is <b>not registered</b>. Set <code>app.mode=backtest</code> in
+                <code>application.properties</code> and restart to enable manual runs.
+            </span>
+        </p>
+    </div>
+    <div class="glass-card" style="margin-bottom: 24px;">
+        <div class="card-header">
+            <h3>Manual login</h3>
+            <span class="badge badge-info" id="bt-status">idle</span>
+        </div>
+        <p style="color: var(--text-muted); margin-bottom: 14px;">
+            Active broker: <b th:text="${activeBroker}">ZERODHA</b>.
+            Calls <code>POST /api/backtest/login</code>, which delegates to
+            <code>LoginOrchestrator.ensureLoggedIn()</code> — same code path the 08:00 cron uses.
+        </p>
+        <button id="bt-run" class="btn btn-primary"
+                th:disabled="${!backtestEnabled}">▶ Run login</button>
+    </div>
+    <div class="glass-card">
+        <div class="card-header">
+            <h3>Latest result</h3>
+            <span id="bt-summary" class="badge badge-warn">no run yet</span>
+        </div>
+        <table class="kv-table" id="bt-table" style="display:none;">
+            <tbody id="bt-rows"></tbody>
+        </table>
+        <div id="bt-empty" style="text-align:center; padding: 30px 0; color: var(--text-muted);">
+            Click <b>Run login</b> above to invoke the orchestrator.
+        </div>
+    </div>
+</main>
+<script th:inline="javascript">
+    const backtestEnabled = /*[[${backtestEnabled}]]*/ false;
+    const runBtn   = document.getElementById('bt-run');
+    const status   = document.getElementById('bt-status');
+    const summary  = document.getElementById('bt-summary');
+    const table    = document.getElementById('bt-table');
+    const rows     = document.getElementById('bt-rows');
+    const empty    = document.getElementById('bt-empty');
+    function setStatus(text, cls) { status.textContent = text; status.className = 'badge ' + cls; }
+    function setSummary(text, cls) { summary.textContent = text; summary.className = 'badge ' + cls; }
+    function row(k, v) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + k + '</td><td>' + (v === null || v === undefined ? '—' : v) + '</td>';
+        return tr;
+    }
+    runBtn.addEventListener('click', async () => {
+        if (!backtestEnabled) return;
+        runBtn.disabled = true;
+        setStatus('running…', 'badge-info');
+        try {
+            const r = await fetch('/api/backtest/login', { method: 'POST' });
+            if (r.status === 404) {
+                setStatus('disabled', 'badge-warn');
+                setSummary('endpoint not registered (app.mode=live)', 'badge-warn');
+                return;
+            }
+            const j = await r.json();
+            renderResult(j);
+            setStatus('done', j.success ? 'badge-success' : 'badge-danger');
+        } catch (e) {
+            setStatus('error', 'badge-danger');
+            setSummary(e.message || 'request failed', 'badge-danger');
+        } finally { runBtn.disabled = false; }
+    });
+
+    function renderResult(j) {
+        rows.innerHTML = '';
+        rows.appendChild(row('Outcome', j.outcome));
+        rows.appendChild(row('Active broker', j.activeBroker));
+        rows.appendChild(row('Logged in', j.loggedIn));
+        rows.appendChild(row('Duration', j.durationMs + ' ms'));
+        rows.appendChild(row('Message', j.message));
+        table.style.display = '';
+        empty.style.display = 'none';
+        setSummary(
+            (j.success ? 'PASSED' : 'FAILED') + ' · ' + j.durationMs + ' ms',
+            j.success ? 'badge-success' : 'badge-danger'
+        );
+    }
+</script>
+</body>
+</html>

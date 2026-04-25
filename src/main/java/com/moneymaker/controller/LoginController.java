@@ -8,7 +8,8 @@ import com.moneymaker.login.model.BrokerLoginResponse;
 import com.moneymaker.login.model.BrokerSession;
 import com.moneymaker.login.service.BrokerLoginManager;
 import com.moneymaker.login.service.BrokerLoginService;
-import com.moneymaker.login.service.BrokerSessionStore;
+import com.moneymaker.state.AppState;
+import com.moneymaker.telegram.NotificationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -39,15 +41,18 @@ import java.util.Map;
 public class LoginController {
 
     private final BrokerLoginManager manager;
-    private final BrokerSessionStore store;
+    private final AppState appState;
     private final BrokerProperties properties;
+    private final NotificationService notifier;
 
     public LoginController(BrokerLoginManager manager,
-                           BrokerSessionStore store,
-                           BrokerProperties properties) {
+                           AppState appState,
+                           BrokerProperties properties,
+                           NotificationService notifier) {
         this.manager = manager;
-        this.store = store;
+        this.appState = appState;
         this.properties = properties;
+        this.notifier = notifier;
     }
 
     @GetMapping("/")
@@ -84,9 +89,10 @@ public class LoginController {
         try {
             BrokerLoginResponse resp = manager.forBroker(Broker.ZERODHA)
                     .completeLogin(BrokerLoginRequest.builder().requestToken(requestToken).build());
-            return handleResponse(resp, ra);
+            return handleResponse(Broker.ZERODHA, resp, ra);
         } catch (BrokerLoginException e) {
             log.error("Zerodha callback failed", e);
+            notifier.alertLoginFailed(Broker.ZERODHA, e.getMessage());
             ra.addFlashAttribute("alert", flash(false, e.getMessage()));
             return "redirect:/login";
         }
@@ -107,16 +113,18 @@ public class LoginController {
                                @RequestParam(value = "totp", required = false) String totp,
                                @RequestParam(value = "requestToken", required = false) String requestToken,
                                RedirectAttributes ra) {
+        Broker broker = null;
         try {
-            Broker broker = Broker.fromString(brokerName);
+            broker = Broker.fromString(brokerName);
             BrokerLoginRequest req = BrokerLoginRequest.builder()
                     .totp(totp)
                     .requestToken(requestToken)
                     .build();
             BrokerLoginResponse resp = manager.forBroker(broker).completeLogin(req);
-            return handleResponse(resp, ra);
+            return handleResponse(broker, resp, ra);
         } catch (Exception e) {
             log.error("Manual login failed", e);
+            if (broker != null) notifier.alertLoginFailed(broker, e.getMessage());
             ra.addFlashAttribute("alert", flash(false, e.getMessage()));
             return "redirect:/login";
         }
@@ -124,10 +132,10 @@ public class LoginController {
 
     @PostMapping("/logout")
     public String logout(RedirectAttributes ra) {
-        store.current().ifPresent(s -> {
+        appState.currentSession().ifPresent(s -> {
             try { manager.forBroker(s.getBroker()).logout(s); } catch (Exception ignored) {}
         });
-        store.clear();
+        appState.onLogout();
         ra.addFlashAttribute("alert", flash(true, "Logged out."));
         return "redirect:/";
     }
@@ -135,29 +143,39 @@ public class LoginController {
     @GetMapping("/api/session")
     @ResponseBody
     public Map<String, Object> sessionJson() {
-        BrokerSession s = store.current().orElse(null);
-        return Map.of(
-                "activeBroker", manager.activeBroker().name(),
-                "available", manager.availableBrokers().stream().map(Enum::name).toList(),
-                "valid", store.isValid(),
-                "session", s == null ? Map.of() : Map.of(
-                        "broker", s.getBroker(),
-                        "userId", s.getUserId() == null ? "" : s.getUserId(),
-                        "loginAt", s.getLoginAt(),
-                        "expiresAt", s.getExpiresAt(),
-                        "expired", s.isExpired()
-                )
-        );
+        BrokerSession s = appState.currentSession().orElse(null);
+        Map<String, Object> out = new HashMap<>();
+        out.put("activeBroker", manager.activeBroker().name());
+        out.put("available", manager.availableBrokers().stream().map(Enum::name).toList());
+        out.put("loggedIn", appState.isLoggedIn());
+        out.put("dataHealthy", appState.isDataHealthy());
+        out.put("lastHeartbeatStatus", appState.getLastHeartbeatStatus());
+        out.put("lastHeartbeatAt", appState.getLastHeartbeatAt());
+        out.put("lastDataAt", appState.getLastDataAt());
+        if (s == null) {
+            out.put("session", Map.of());
+        } else {
+            Map<String, Object> sm = new HashMap<>();
+            sm.put("broker", s.getBroker());
+            sm.put("userId", s.getUserId() == null ? "" : s.getUserId());
+            sm.put("loginAt", s.getLoginAt());
+            sm.put("expiresAt", s.getExpiresAt());
+            sm.put("expired", s.isExpired());
+            out.put("session", sm);
+        }
+        return out;
     }
 
     /* ---------- helpers ---------- */
 
-    private String handleResponse(BrokerLoginResponse resp, RedirectAttributes ra) {
+    private String handleResponse(Broker broker, BrokerLoginResponse resp, RedirectAttributes ra) {
         if (resp.isSuccess() && resp.getSession() != null) {
-            store.save(resp.getSession());
+            appState.onLoginSuccess(resp.getSession());
+            notifier.alertLoginSuccess(broker, resp.getSession().getUserId());
             ra.addFlashAttribute("alert", flash(true, "Login successful for " + resp.getSession().getBroker()));
             return "redirect:/";
         }
+        notifier.alertLoginFailed(broker, resp.getMessage());
         ra.addFlashAttribute("alert", flash(false, "Login failed: " + resp.getMessage()));
         return "redirect:/login";
     }
@@ -165,8 +183,12 @@ public class LoginController {
     private void populateCommon(Model model) {
         model.addAttribute("activeBroker", manager.activeBroker());
         model.addAttribute("availableBrokers", manager.availableBrokers());
-        model.addAttribute("session", store.current().orElse(null));
-        model.addAttribute("sessionValid", store.isValid());
+        model.addAttribute("session", appState.currentSession().orElse(null));
+        model.addAttribute("sessionValid", appState.isLoggedIn());
+        model.addAttribute("loggedIn", appState.isLoggedIn());
+        model.addAttribute("lastHeartbeatStatus", appState.getLastHeartbeatStatus());
+        model.addAttribute("lastHeartbeatAt", appState.getLastHeartbeatAt());
+        model.addAttribute("dataHealthy", appState.isDataHealthy());
         model.addAttribute("brokerProps", properties);
     }
 

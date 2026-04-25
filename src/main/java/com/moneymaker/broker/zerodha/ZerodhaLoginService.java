@@ -6,6 +6,8 @@ import com.moneymaker.login.model.Broker;
 import com.moneymaker.login.model.BrokerLoginRequest;
 import com.moneymaker.login.model.BrokerLoginResponse;
 import com.moneymaker.login.model.BrokerSession;
+import com.moneymaker.login.model.HeartbeatResult;
+import com.moneymaker.login.model.HeartbeatStatus;
 import com.moneymaker.login.service.BrokerLoginService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -104,13 +106,26 @@ public class ZerodhaLoginService implements BrokerLoginService {
             ZerodhaTokenResponse payload = resp.getBody();
             if (payload == null || payload.getData() == null
                     || payload.getData().getAccessToken() == null) {
-                return BrokerLoginResponse.fail("EMPTY_RESPONSE",
-                        payload != null ? payload.getMessage() : "Empty response from Zerodha");
+                String diag;
+                if (payload == null) {
+                    diag = "Empty response body from Zerodha";
+                } else if (payload.getMessage() != null && !payload.getMessage().isBlank()) {
+                    diag = payload.getMessage();
+                } else {
+                    diag = "Zerodha responded with status=" + payload.getStatus()
+                            + " but access_token was missing (data="
+                            + (payload.getData() == null ? "null" : "present") + ")";
+                }
+                log.error("Zerodha session/token unexpected payload: {}", payload);
+                return BrokerLoginResponse.fail(
+                        payload != null && payload.getErrorType() != null ? payload.getErrorType() : "EMPTY_RESPONSE",
+                        diag);
             }
             return BrokerLoginResponse.ok(toSession(payload));
         } catch (RestClientException e) {
             log.error("Zerodha session/token call failed", e);
-            return BrokerLoginResponse.fail("HTTP_ERROR", e.getMessage());
+            String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            return BrokerLoginResponse.fail("HTTP_ERROR", msg);
         }
     }
 
@@ -146,6 +161,33 @@ public class ZerodhaLoginService implements BrokerLoginService {
             http.exchange(url, HttpMethod.DELETE, HttpEntity.EMPTY, String.class);
         } catch (Exception e) {
             log.warn("Zerodha logout failed (ignored): {}", e.getMessage());
+        }
+    }
+
+    /** NIFTY 50 LTP probe – fast, always tradable, requires the same auth headers as live trading calls. */
+    @Override
+    public HeartbeatResult fetchHeartbeatQuote(BrokerSession session) {
+        if (session == null || session.getAccessToken() == null) {
+            return HeartbeatResult.of(HeartbeatStatus.NO_SESSION, "no session");
+        }
+        BrokerProperties.Zerodha cfg = properties.getZerodha();
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "token " + cfg.getApiKey() + ":" + session.getAccessToken());
+        headers.set("X-Kite-Version", "3");
+        try {
+            String url = UriComponentsBuilder.fromHttpUrl(cfg.getApiBaseUrl() + "/quote/ltp")
+                    .queryParam("i", "NSE:NIFTY 50")
+                    .toUriString();
+            ResponseEntity<String> resp = http.exchange(url, HttpMethod.GET,
+                    new HttpEntity<>(headers), String.class);
+            if (!resp.getStatusCode().is2xxSuccessful() || resp.getBody() == null) {
+                return HeartbeatResult.of(HeartbeatStatus.NO_DATA, "http " + resp.getStatusCode());
+            }
+            // Kite LTP response doesn't include a tick timestamp; treat HTTP 200 + non-empty body as fresh.
+            return HeartbeatResult.ok(Instant.now());
+        } catch (Exception e) {
+            log.warn("Zerodha LTP probe failed: {}", e.getMessage());
+            return HeartbeatResult.of(HeartbeatStatus.HTTP_ERROR, e.getMessage());
         }
     }
 

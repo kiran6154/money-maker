@@ -1,16 +1,23 @@
 package com.moneymaker.broker.zerodha;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
 
 import java.util.Map;
 
 /**
  * Raw payload returned by {@code POST https://api.kite.trade/session/token}.
- * Mapped to the standard {@code BrokerSession} by {@link ZerodhaLoginService}.
+ * Kite uses snake_case JSON ({@code access_token}, {@code public_token},
+ * {@code user_id}, {@code error_type}) so we apply
+ * {@link PropertyNamingStrategies.SnakeCaseStrategy} on both the outer and
+ * inner DTOs – without this Jackson silently leaves every token field null
+ * and login appears to "succeed with empty body".
  */
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class ZerodhaTokenResponse {
 
     private String status;
@@ -20,6 +27,7 @@ public class ZerodhaTokenResponse {
 
     @lombok.Data
     @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class Data {
         private String userId;
         private String userName;
@@ -34,4 +42,3 @@ public class ZerodhaTokenResponse {
         private Map<String, Object> meta;
     }
 }
-
