@@ -1,0 +1,65 @@
+INSERT INTO trade_config (
+	id,
+    trading_side,
+    trading_date,
+    target,
+    stop_loss,
+    p_instrument,
+    max_loss,
+    option_depth,
+    transaction_type,
+    lot_quantity,
+    stratergy_id,
+    no_of_trades,
+    no_of_parrellel_trades,
+	itm_depth,
+	otm_depth,
+	atm_depth
+) VALUES (
+1,
+    'CE',                -- trading_side
+    '2026-04-27',          -- trading_date
+    10.00,                -- target
+    30.00,                -- stop_loss
+    1,                     -- p_instrument (Instrument ID)
+    1000.00,               -- max_loss
+    2,                     -- option_depth
+    'SELL',                -- transaction_type
+    75,                    -- lot_quantity
+    1,                   -- stratergy_id
+    1,                     -- no_of_trades
+    1 ,                     -- no_of_parrellel_trades
+	1,
+	-1,
+	-1
+
+);
+
+
+
+INSERT INTO sma_timeframe (
+    id,
+    time_period,
+    sma,
+    tc_id,
+    slope
+) VALUES (
+    1,      -- id
+    5,     -- time_period
+    50,     -- sma
+    1,      -- tc_id (TradeConfig id)
+    0.75    -- slope
+);
+INSERT INTO instrument (
+    id,
+    ins_name,
+    ins_id,
+    lot_qty,
+    strike_points
+) VALUES (
+    1,              -- id
+    'NIFTY50',        -- ins_name
+    '256265',   -- ins_id (unique)
+    75,             -- lot_qty
+    100           -- strike_points
+);

@@ -5,6 +5,7 @@ import com.moneymaker.entity.Instrument;
 import com.moneymaker.entity.InstrumentDetails;
 import com.moneymaker.entity.TradeConfig;
 import com.moneymaker.repository.TradeConfigRepository;
+import com.moneymaker.shared.data.SharedData;
 import com.moneymaker.util.ConverterUtility;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,6 +40,9 @@ public class TradeConfigScheduler {
 
         if (now.getDayOfWeek() != DayOfWeek.SATURDAY && now.getDayOfWeek() != DayOfWeek.SUNDAY) {
             log.info("Is any trade-config available for today? Checking at 9:16 AM on {}", now);
+            List<TradeConfigCombinedDTO> combinedDto=   fetchTradeConfigsByDate(LocalDate.now());
+            SharedData.combinedDto = combinedDto;
+
         }
     }
 
@@ -82,7 +86,7 @@ return tradeConfigCombinedDTOList;
 
     private Instrument mapToInstrument(Object[] row, TradeConfig tc) {
         // Instrument starts after TradeConfig fields (0-11)
-        int i = 17;  // Starting index for Instrument fields
+        int i = 16;  // Starting index for Instrument fields
         Instrument ins = new Instrument();
         ins.setId(toInteger(row[i++])); // id
         ins.setInsName(ConverterUtility.toString(row[i++])); // ins_name
@@ -96,7 +100,7 @@ return tradeConfigCombinedDTOList;
 
     private InstrumentDetails mapToInstrumentDetails(Object[] row, TradeConfig tc, Instrument ins) {
         // InstrumentDetails starts after TradeConfig (12) and Instrument (5) fields
-        int i = 22;  // Starting index for InstrumentDetails fields
+        int i = 21;  // Starting index for InstrumentDetails fields
         InstrumentDetails id = new InstrumentDetails();
         id.setInstrumentToken(toInteger(row[i++])); // instrument_token
         id.setExchangeToken(toInteger(row[i++])); // exchange_token

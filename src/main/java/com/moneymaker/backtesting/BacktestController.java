@@ -3,9 +3,11 @@ package com.moneymaker.backtesting;
 import com.moneymaker.login.service.BrokerLoginManager;
 import com.moneymaker.login.service.LoginOrchestrator;
 import com.moneymaker.login.service.LoginOrchestrator.Outcome;
+import com.moneymaker.scheduler.TradeConfigScheduler;
 import com.moneymaker.state.AppState;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -41,10 +44,13 @@ public class BacktestController {
     private final LoginOrchestrator loginOrchestrator;
     private final BrokerLoginManager manager;
     private final AppState appState;
-
+    @Autowired
+    private TradeConfigScheduler tradeConfigScheduler;;
     /** Manually invoke the login orchestrator for the active broker. */
     @PostMapping("/login")
     public ResponseEntity<Map<String, Object>> login() {
+        tradeConfigScheduler.fetchTradeConfigsByDate(LocalDate.now());
+
         Instant start = Instant.now();
         Outcome outcome = loginOrchestrator.ensureLoggedIn();
         long durationMs = Duration.between(start, Instant.now()).toMillis();
@@ -66,4 +72,6 @@ public class BacktestController {
         log.info("[Backtest] /login -> {} (success={})", outcome, success);
         return ResponseEntity.status(success ? HttpStatus.OK : HttpStatus.CONFLICT).body(body);
     }
+
+
 }
