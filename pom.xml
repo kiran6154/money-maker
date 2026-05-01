@@ -102,6 +102,22 @@
             <artifactId>commonmark-ext-heading-anchor</artifactId>
             <version>0.21.0</version>
         </dependency>
+
+        <!-- Source: https://mvnrepository.com/artifact/com.zerodhatech.kiteconnect/kiteconnect -->
+        <dependency>
+            <groupId>com.zerodhatech.kiteconnect</groupId>
+            <artifactId>kiteconnect</artifactId>
+            <version>4.0.0</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- Source: https://mvnrepository.com/artifact/org.ta4j/ta4j-core -->
+        <dependency>
+            <groupId>org.ta4j</groupId>
+            <artifactId>ta4j-core</artifactId>
+            <version>0.22.6</version>
+            <scope>compile</scope>
+        </dependency>
     </dependencies>
 
     <build>

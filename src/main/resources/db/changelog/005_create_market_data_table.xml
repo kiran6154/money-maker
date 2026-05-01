@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.0.xsd">
+
+    <changeSet id="005_create_market_data_table" author="moneymaker">
+        <createTable tableName="market_data">
+            <column name="id" type="INT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="timestamp" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="open" type="DECIMAL(10,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="high" type="DECIMAL(10,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="low" type="DECIMAL(10,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="close" type="DECIMAL(10,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="instrumenttoken" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+</databaseChangeLog>
+

@@ -3,6 +3,7 @@ package com.moneymaker.scheduler;
 import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.entity.Instrument;
 import com.moneymaker.entity.InstrumentDetails;
+import com.moneymaker.entity.SmaTimeframe;
 import com.moneymaker.entity.TradeConfig;
 import com.moneymaker.repository.TradeConfigRepository;
 import com.moneymaker.shared.data.SharedData;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.DayOfWeek;
+import java.util.ArrayList;
 import java.util.List;
 
 import static com.moneymaker.util.ConverterUtility.toBigDecimal;
@@ -54,7 +56,8 @@ public class TradeConfigScheduler {
             TradeConfig tradeConfig = mapToTradeConfig(row);
             Instrument instrument = mapToInstrument(row, tradeConfig);
             InstrumentDetails instrumentDetails = mapToInstrumentDetails(row, tradeConfig, instrument);
-            return new TradeConfigCombinedDTO(tradeConfig, instrument, instrumentDetails);
+            List<SmaTimeframe> timeFrameList=new ArrayList<>();
+            return new TradeConfigCombinedDTO(tradeConfig, instrument, instrumentDetails,timeFrameList);
         }).toList();
 return tradeConfigCombinedDTOList;
     }
