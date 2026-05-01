@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="006_create_options_data_table" author="moneymaker">
+        <createTable tableName="options_data">
+            <column name="id" type="INT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="symbol" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="strike" type="DECIMAL(10,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="expiry" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="type" type="VARCHAR(2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="data_date" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_price" type="DECIMAL(10,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="oi" type="INT" defaultValue="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="volume" type="INT" defaultValue="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="DATETIME" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex indexName="idx_options_data_symbol_date_strike" tableName="options_data">
+            <column name="symbol"/>
+            <column name="data_date"/>
+            <column name="strike"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>
