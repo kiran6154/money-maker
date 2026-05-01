@@ -11,6 +11,6 @@
     <include file="db/changelog/003_create_trade_config_table.xml"/>
     <include file="db/changelog/004_create_sma_timeframe_table.xml"/>
     <include file="db/changelog/005_create_broker_session_table.xml"/>
+    <include file="db/changelog/006_create_options_data_table.xml"/>
 
 </databaseChangeLog>
-

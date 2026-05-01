@@ -2,6 +2,7 @@ package com.moneymaker.scheduler;
 
 import com.moneymaker.broker.angelone.AngelOneLoginService;
 import com.moneymaker.broker.groww.GrowwLoginService;
+import com.moneymaker.data.download.ZerodhaMarketDataService;
 import com.moneymaker.login.model.Broker;
 import com.moneymaker.login.model.BrokerSession;
 import com.moneymaker.login.model.HeartbeatResult;
@@ -42,6 +43,7 @@ public class LoginScheduler {
     private final AppState appState;
     private final NotificationService notifier;
     private final LoginOrchestrator loginOrchestrator;
+    private final ZerodhaMarketDataService marketDataService;
 
     /** 08:00 IST Mon-Fri: first login of the day. */
     @Scheduled(cron = "0 0 8 * * MON-FRI", zone = "Asia/Kolkata")
@@ -106,6 +108,26 @@ public class LoginScheduler {
             case HTTP_ERROR -> transitionAndNotify(HeartbeatStatus.HTTP_ERROR, null, dataResult.getMessage());
             default -> transitionAndNotify(dataResult.getStatus(), dataResult.getLastTickAt(), dataResult.getMessage());
         }
+    }
+
+    /** Fetch and save NIFTY and BANKNIFTY options data daily at 09:15 IST Mon-Fri. */
+    @Scheduled(cron = "0 15 9 * * MON-FRI", zone = "Asia/Kolkata")
+    public void fetchOptionsData() {
+        LocalDateTime now = LocalDateTime.now();
+        if (now.getDayOfWeek() == DayOfWeek.SATURDAY || now.getDayOfWeek() == DayOfWeek.SUNDAY) {
+            return;
+        }
+
+        BrokerSession session = appState.currentSession().orElse(null);
+        if (session == null || session.getBroker() != Broker.ZERODHA) {
+            log.debug("[OptionsData] Skipping - no active Zerodha session");
+            return;
+        }
+
+        log.info("[OptionsData] Starting fetch at {}", now);
+        marketDataService.fetchAndSaveOptionsData("NIFTY", session.getAccessToken());
+        marketDataService.fetchAndSaveOptionsData("BANKNIFTY", session.getAccessToken());
+        log.info("[OptionsData] Completed fetch");
     }
 
     /* ---------- helpers ---------- */
