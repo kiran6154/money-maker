@@ -5,6 +5,7 @@ import com.moneymaker.entity.Instrument;
 import com.moneymaker.entity.InstrumentDetails;
 import com.moneymaker.entity.SmaTimeframe;
 import com.moneymaker.entity.TradeConfig;
+import com.moneymaker.repository.SmaTimeframeRepository;
 import com.moneymaker.repository.TradeConfigRepository;
 import com.moneymaker.shared.data.SharedData;
 import com.moneymaker.util.ConverterUtility;
@@ -27,6 +28,9 @@ import static com.moneymaker.util.ConverterUtility.toInteger;
 public class TradeConfigScheduler {
     @Autowired
     private TradeConfigRepository tradeConfigRepository;
+    @Autowired
+    private SmaTimeframeRepository smaTimeframeRepository;
+
     @Scheduled(cron = "0 12 9 * * MON-FRI")
     public void dailyTaskAt912AM() {
         LocalDateTime now = LocalDateTime.now();
@@ -56,7 +60,9 @@ public class TradeConfigScheduler {
             TradeConfig tradeConfig = mapToTradeConfig(row);
             Instrument instrument = mapToInstrument(row, tradeConfig);
             InstrumentDetails instrumentDetails = mapToInstrumentDetails(row, tradeConfig, instrument);
-            List<SmaTimeframe> timeFrameList=new ArrayList<>();
+            List<SmaTimeframe> timeFrameList = tradeConfig.getId() == null
+                    ? new ArrayList<>()
+                    : smaTimeframeRepository.findByTradeConfigId(tradeConfig.getId());
             return new TradeConfigCombinedDTO(tradeConfig, instrument, instrumentDetails,timeFrameList);
         }).toList();
 return tradeConfigCombinedDTOList;
@@ -122,4 +128,3 @@ return tradeConfigCombinedDTOList;
     }
 
 }
-

@@ -9,10 +9,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Duration;
@@ -44,6 +46,7 @@ public class BacktestController {
     private final LoginOrchestrator loginOrchestrator;
     private final BrokerLoginManager manager;
     private final AppState appState;
+    private final BacktestAnalysisService backtestAnalysisService;
     @Autowired
     private TradeConfigScheduler tradeConfigScheduler;;
     /** Manually invoke the login orchestrator for the active broker. */
@@ -73,5 +76,13 @@ public class BacktestController {
         return ResponseEntity.status(success ? HttpStatus.OK : HttpStatus.CONFLICT).body(body);
     }
 
+    @PostMapping("/analysis")
+    public ResponseEntity<BacktestAnalysisService.BacktestRunResult> runAnalysis(
+            @RequestParam("fromDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam("toDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+        BacktestAnalysisService.BacktestRunResult result = backtestAnalysisService.run(fromDate, toDate);
+        log.info("[Backtest] /analysis {} -> {} completed in {}ms", fromDate, toDate, result.durationMs());
+        return ResponseEntity.ok(result);
+    }
 
 }

@@ -9,8 +9,10 @@ import com.moneymaker.login.model.BrokerSession;
 import com.moneymaker.login.model.HeartbeatResult;
 import com.moneymaker.login.model.HeartbeatStatus;
 import com.moneymaker.login.service.BrokerLoginService;
+import com.zerodhatech.kiteconnect.KiteConnect;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -53,10 +55,14 @@ public class ZerodhaLoginService implements BrokerLoginService {
 
     private final BrokerProperties properties;
     private final RestTemplate http;
+    private final KiteConnect sharedKiteConnect;
 
-    public ZerodhaLoginService(BrokerProperties properties, RestTemplate brokerRestTemplate) {
+    public ZerodhaLoginService(BrokerProperties properties,
+                               RestTemplate brokerRestTemplate,
+                               @Qualifier("sharedKiteConnect") KiteConnect sharedKiteConnect) {
         this.properties = properties;
         this.http = brokerRestTemplate;
+        this.sharedKiteConnect = sharedKiteConnect;
     }
 
     @Override
@@ -121,7 +127,9 @@ public class ZerodhaLoginService implements BrokerLoginService {
                         payload != null && payload.getErrorType() != null ? payload.getErrorType() : "EMPTY_RESPONSE",
                         diag);
             }
-            return BrokerLoginResponse.ok(toSession(payload));
+            BrokerSession session = toSession(payload);
+            applyKiteSession(session);
+            return BrokerLoginResponse.ok(session);
         } catch (RestClientException e) {
             log.error("Zerodha session/token call failed", e);
             String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
@@ -210,6 +218,13 @@ public class ZerodhaLoginService implements BrokerLoginService {
                 .valid(true)
                 .raw(raw)
                 .build();
+    }
+
+    private void applyKiteSession(BrokerSession session) {
+        sharedKiteConnect.setAccessToken(session.getAccessToken());
+        if (session.getPublicToken() != null && !session.getPublicToken().isBlank()) {
+            sharedKiteConnect.setPublicToken(session.getPublicToken());
+        }
     }
 
     /** Zerodha access tokens expire daily at ~06:00 IST. */

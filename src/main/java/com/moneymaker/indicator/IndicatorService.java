@@ -1,9 +1,12 @@
 package com.moneymaker.indicator;
 
 import com.moneymaker.entity.MarketData;
+import org.springframework.stereotype.Service;
+
 import java.util.List;
 import java.util.Objects;
 
+@Service
 public final class IndicatorService {
 
     public List<Double> calculate(String indicatorName, List<MarketData> marketData, IndicatorConfig config) {
