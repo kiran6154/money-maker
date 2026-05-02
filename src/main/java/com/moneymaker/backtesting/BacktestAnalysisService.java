@@ -173,7 +173,13 @@ public class BacktestAnalysisService {
                 return new BacktestDayResult(date, true, 0, durationMs, "No trade config found.");
             }
 
-            analysisScheduler.calculateIndicator(date);
+            try {
+                analysisScheduler.calculateIndicator(date);
+            }
+            catch(Exception e){
+                e.printStackTrace();
+            }
+            analysisScheduler.runStrategies();
             long durationMs = Duration.between(startedAt, Instant.now()).toMillis();
             return new BacktestDayResult(date, true, combinedDto.size(), durationMs, "Analysis completed.");
         } catch (Exception ex) {

@@ -12,6 +12,7 @@ import com.moneymaker.market.service.MarketDataService;
 import com.moneymaker.repository.ExpiryDatesRepository;
 import com.moneymaker.repository.InstrumentDetailsRepository;
 import com.moneymaker.shared.data.SharedData;
+import com.moneymaker.strategy.StrategyFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -35,15 +36,18 @@ public class AnalysisScheduler {
     private final IndicatorService indicatorService;
     private final InstrumentDetailsRepository instrumentDetailsRepository;
     private final ExpiryDatesRepository expiryDatesRepository;
+    private final StrategyFactory strategyFactory;
 
     public AnalysisScheduler(MarketDataService marketDataService,
                              IndicatorService indicatorService,
                              InstrumentDetailsRepository instrumentDetailsRepository,
-                             ExpiryDatesRepository expiryDatesRepository) {
+                             ExpiryDatesRepository expiryDatesRepository,
+                             StrategyFactory strategyFactory) {
         this.marketDataService = Objects.requireNonNull(marketDataService, "marketDataService must not be null");
         this.indicatorService = Objects.requireNonNull(indicatorService, "indicatorService must not be null");
         this.instrumentDetailsRepository = Objects.requireNonNull(instrumentDetailsRepository, "instrumentDetailsRepository must not be null");
         this.expiryDatesRepository = Objects.requireNonNull(expiryDatesRepository, "expiryDatesRepository must not be null");
+        this.strategyFactory = Objects.requireNonNull(strategyFactory, "strategyFactory must not be null");
     }
 
     @Scheduled(cron = "0 0/5 9-16 * * MON-FRI")
@@ -371,5 +375,24 @@ public class AnalysisScheduler {
             return 14;
         }
         return timeframe.getSma();
+    }
+
+    public void runStrategies() {
+        List<TradeConfigCombinedDTO> combinedDtoList = SharedData.combinedDto;
+        if (combinedDtoList == null || combinedDtoList.isEmpty()) {
+            logger.warn("No shared trade config data available; skipping strategy dispatch");
+            return;
+        }
+        for (TradeConfigCombinedDTO dto : combinedDtoList) {
+            if (dto == null || dto.getTradeConfig() == null) {
+                continue;
+            }
+            try {
+                strategyFactory.execute(dto);
+            } catch (Exception ex) {
+                logger.error("Strategy execution failed for tradeConfigId={}",
+                        dto.getTradeConfig().getId(), ex);
+            }
+        }
     }
 }
