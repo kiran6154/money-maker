@@ -56,6 +56,8 @@ public class Strategy1 implements Strategy {
                     dataList, primarySma, config);
             TradeAction tradeStart = RuleEngine.decide(ctx, sellRules, buyRules);
 
+            log.info("Strategy1 Trade Decision - Key: {}, Time: {}, TradeStart: {}",
+                    key, lastCandle.getTimestamp(), tradeStart);
         });
     }
 
