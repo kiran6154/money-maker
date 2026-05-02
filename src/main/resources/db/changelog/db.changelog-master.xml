@@ -12,5 +12,6 @@
     <include file="db/changelog/004_create_sma_timeframe_table.xml"/>
     <include file="db/changelog/005_create_broker_session_table.xml"/>
     <include file="db/changelog/006_create_options_data_table.xml"/>
+    <include file="db/changelog/007_add_sma_value_to_market_data.xml"/>
 
 </databaseChangeLog>

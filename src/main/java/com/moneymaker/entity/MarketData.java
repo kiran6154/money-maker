@@ -35,4 +35,7 @@ public class MarketData {
 
     @Column(name = "instrumenttoken", nullable = false, length = 100)
     private String instrumenttoken;
+
+    @Column(name = "sma_value", precision = 10, scale = 4)
+    private Double smaValue;
 }

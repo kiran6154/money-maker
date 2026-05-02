@@ -2,6 +2,7 @@ package com.moneymaker.shared.data;
 
 import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.entity.MarketData;
+import com.zerodhatech.kiteconnect.KiteConnect;
 
 import java.util.List;
 import java.util.Map;
@@ -17,4 +18,5 @@ public class SharedData {
    public static Map<String, List<MarketData>> strikeMarketDataByInstrumentAndInterval = new ConcurrentHashMap<>();
    public static Map<String, List<Double>> strikeIndicatorValues;
    public static Map<String, Map<String, List<Double>>> strikeIndicatorsByInstrumentAndInterval = new ConcurrentHashMap<>();
+   public static KiteConnect sharedKiteconnect;
 }

@@ -17,9 +17,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -50,25 +50,25 @@ public class AnalysisScheduler {
     public void analyzeMarketData() {
         logger.info("Starting market analysis scheduler");
         try {
-            calculateIndicator(LocalDate.now());
+            calculateIndicator(LocalDateTime.now());
         } catch (Exception ex) {
             logger.error("Error in market analysis scheduler", ex);
         }
     }
 
-    public void calculateIndicator(LocalDate analysisDate) {
-        Objects.requireNonNull(analysisDate, "analysisDate must not be null");
-        logger.info("Calculating indicators for date: {}", analysisDate);
+    public void calculateIndicator(LocalDateTime analysisDateTime) {
+        Objects.requireNonNull(analysisDateTime, "analysisDateTime must not be null");
+        logger.info("Calculating indicators for date-time: {}", analysisDateTime);
 
         try {
-            LocalDateTime startOfDay = analysisDate.atTime(LocalTime.of(9, 15));
-            LocalDateTime endOfDay = analysisDate.atTime(LocalTime.of(15, 30));
+            // Calculate startOfDay: 500 candles of 15 minutes = 7500 minutes lookback
+            LocalDateTime startOfDay = analysisDateTime.minusMinutes(500 * 15);
 
-            logger.debug("Fetching market data from {} to {}", startOfDay, endOfDay);
+            logger.debug("Fetching market data from {} to {}", startOfDay, analysisDateTime);
 
             List<TradeConfigCombinedDTO> combinedDtoList = SharedData.combinedDto;
             if (combinedDtoList == null || combinedDtoList.isEmpty()) {
-                logger.warn("No shared trade config data available for date: {}", analysisDate);
+                logger.warn("No shared trade config data available for date: {}", analysisDateTime);
                 return;
             }
 
@@ -95,12 +95,12 @@ public class AnalysisScheduler {
                     List<MarketData> marketDataList = marketDataService.fetchHistoricalData(
                             symbol,
                             startOfDay,
-                            endOfDay,
+                            analysisDateTime,
                             interval
                     );
 
                     if (marketDataList == null || marketDataList.isEmpty()) {
-                        logger.warn("No market data available for instrument token: {}, interval: {}, date: {}", symbol, interval, analysisDate);
+                        logger.warn("No market data available for instrument token: {}, interval: {}, date-time: {}", symbol, interval, analysisDateTime);
                         continue;
                     }
 
@@ -110,16 +110,16 @@ public class AnalysisScheduler {
 
                     List<List<Integer>> strikeList = calculateStrikesForCandles(marketDataList, dto.getInstrument(), dto.getTradeConfig());
                     SharedData.strikeList = strikeList;
-                    shareStrikesByStrikeKey(strikeList, dto.getInstrument(), dto.getTradeConfig(), analysisDate, interval);
-                    fetchAndShareStrikeMarketData(strikeList, dto.getInstrument(), dto.getTradeConfig(), timeframe, analysisDate, interval, startOfDay, endOfDay, marketDataKey);
+                    shareStrikesByStrikeKey(strikeList, dto.getInstrument(), dto.getTradeConfig(), analysisDateTime.toLocalDate(), interval);
+                    fetchAndShareStrikeMarketData(strikeList, dto.getInstrument(), dto.getTradeConfig(), timeframe, analysisDateTime.toLocalDate(), interval, startOfDay, analysisDateTime, marketDataKey);
                 }
             }
 
-            logger.info("Indicator analysis completed for date: {}", analysisDate);
+            logger.info("Indicator analysis completed for date-time: {}", analysisDateTime);
 
         } catch (Exception ex) {
-            logger.error("Error calculating indicators for date: {}", analysisDate, ex);
-            throw new RuntimeException("Indicator calculation failed for date: " + analysisDate, ex);
+            logger.error("Error calculating indicators for date-time: {}", analysisDateTime, ex);
+            throw new RuntimeException("Indicator calculation failed for date-time: " + analysisDateTime, ex);
         }
     }
 
@@ -147,13 +147,8 @@ public class AnalysisScheduler {
         boolean isCall = tradeConfig.getTradingSide() != null
                 && tradeConfig.getTradingSide().toUpperCase().contains("C");
         List<List<Integer>> allStrikes = new ArrayList<>();
-
-        for (MarketData candle : marketDataList) {
-            if (candle.getClose() == null) {
-                continue;
-            }
-
-            double closePrice = candle.getClose().doubleValue();
+        MarketData candle = marketDataList.get(marketDataList.size()-1);
+             double closePrice = candle.getClose().doubleValue();
             int baseStrike = (int) (Math.floor(closePrice / strikeStep) * strikeStep);
 
             if (tradeConfig.getItmDepth() != null && tradeConfig.getItmDepth() > 0) {
@@ -171,7 +166,7 @@ public class AnalysisScheduler {
                 }
                 allStrikes.add(otmStrikes);
             }
-        }
+
 
         return allStrikes;
     }
@@ -286,7 +281,16 @@ public class AnalysisScheduler {
         }
 
         String tradingSymbol = buildOptionTradingSymbol(instrument, expiryDate, strike, optionType);
-        return instrumentDetailsRepository.findByTradingSymbol(tradingSymbol).orElseGet(() -> {
+        // Convert LocalDate to String format (YYYY-MM-DD) and Integer to BigDecimal for repository query
+        String expiryString = expiryDate.toString();
+        BigDecimal strikeBigDecimal = new BigDecimal(strike);
+
+        return instrumentDetailsRepository.findByCriteria(
+                instrument.getInsName(),
+                expiryString,
+                strikeBigDecimal,
+                optionType
+        ).orElseGet(() -> {
             logger.warn("No instrument details found for trading symbol: {}", tradingSymbol);
             return null;
         });

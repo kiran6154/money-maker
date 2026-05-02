@@ -1,26 +1,45 @@
 package com.moneymaker.backtesting;
 
 import com.moneymaker.dto.TradeConfigCombinedDTO;
+import com.moneymaker.entity.SmaTimeframe;
+import com.moneymaker.login.service.BrokerSessionStore;
 import com.moneymaker.scheduler.AnalysisScheduler;
 import com.moneymaker.scheduler.TradeConfigScheduler;
 import com.moneymaker.shared.data.SharedData;
-import lombok.RequiredArgsConstructor;
+import com.zerodhatech.kiteconnect.KiteConnect;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class BacktestAnalysisService {
 
     private final TradeConfigScheduler tradeConfigScheduler;
     private final AnalysisScheduler analysisScheduler;
+    private final BrokerSessionStore brokerSessionStore;
+    private final KiteConnect sharedKiteConnect;
+
+    public BacktestAnalysisService(
+            TradeConfigScheduler tradeConfigScheduler,
+            AnalysisScheduler analysisScheduler,
+            BrokerSessionStore brokerSessionStore,
+            @Qualifier("sharedKiteConnect") KiteConnect sharedKiteConnect) {
+        this.tradeConfigScheduler = tradeConfigScheduler;
+        this.analysisScheduler = analysisScheduler;
+        this.brokerSessionStore = brokerSessionStore;
+        this.sharedKiteConnect = sharedKiteConnect;
+    }
 
     public BacktestRunResult run(LocalDate fromDate, LocalDate toDate) {
         if (fromDate == null) {
@@ -34,22 +53,119 @@ public class BacktestAnalysisService {
         }
 
         Instant startedAt = Instant.now();
-        List<BacktestDayResult> days = new ArrayList<>();
-        LocalDate cursor = fromDate;
-        while (!cursor.isAfter(toDate)) {
-            days.add(runForDate(cursor));
-            cursor = cursor.plusDays(1);
+        List<BacktestDayResult> results = new ArrayList<>();
+
+        // Get unique time periods from trade configs across the date range
+        Set<Integer> timePeriodsMinutes = getUniqueTimePeriods(fromDate, toDate);
+
+        if (timePeriodsMinutes.isEmpty()) {
+            log.warn("[Backtest] No time periods configured in SMA timeframes");
+            return new BacktestRunResult(fromDate, toDate, 0, 0, 0, results);
+        }
+
+        log.info("[Backtest] Running analysis with time periods (minutes): {}", timePeriodsMinutes);
+
+        // Market hours: 9:15 AM to 3:30 PM
+        LocalTime marketStart = LocalTime.of(9, 15);
+        LocalTime marketEnd = LocalTime.of(15, 30);
+
+        // Loop through each date
+        LocalDate currentDate = fromDate;
+        while (!currentDate.isAfter(toDate)) {
+            // Loop through each time interval for this date
+            LocalDateTime currentDateTime = LocalDateTime.of(currentDate, marketStart);
+            LocalDateTime dateEnd = LocalDateTime.of(currentDate, marketEnd);
+
+            while (!currentDateTime.isAfter(dateEnd)) {
+                BacktestDayResult result = runForDateTime(currentDateTime);
+                results.add(result);
+                currentDateTime = currentDateTime.plusMinutes(getSmallestTimePeriod(timePeriodsMinutes));
+            }
+
+            currentDate = currentDate.plusDays(1);
         }
 
         long durationMs = Duration.between(startedAt, Instant.now()).toMillis();
-        long successCount = days.stream().filter(BacktestDayResult::success).count();
-        return new BacktestRunResult(fromDate, toDate, days.size(), successCount, durationMs, days);
+        long successCount = results.stream().filter(BacktestDayResult::success).count();
+        return new BacktestRunResult(fromDate, toDate, results.size(), successCount, durationMs, results);
     }
 
-    private BacktestDayResult runForDate(LocalDate date) {
+    /**
+     * Get unique time periods (in minutes) from all trade configs in the date range
+     */
+    private Set<Integer> getUniqueTimePeriods(LocalDate fromDate, LocalDate toDate) {
+        Set<Integer> periods = new HashSet<>();
+        LocalDate currentDate = fromDate;
+
+        while (!currentDate.isAfter(toDate)) {
+            List<TradeConfigCombinedDTO> configs = tradeConfigScheduler.fetchTradeConfigsByDate(currentDate);
+            for (TradeConfigCombinedDTO config : configs) {
+                List<SmaTimeframe> timeframes = config.getTimeframes();
+                if (timeframes != null) {
+                    for (SmaTimeframe timeframe : timeframes) {
+                        if (timeframe.getTimePeriod() != null) {
+                            periods.add(timeframe.getTimePeriod());
+                        }
+                    }
+                }
+            }
+            currentDate = currentDate.plusDays(1);
+        }
+
+        return periods;
+    }
+
+    /**
+     * Get the smallest time period to use as the base increment
+     */
+    private int getSmallestTimePeriod(Set<Integer> timePeriodsMinutes) {
+        return timePeriodsMinutes.stream()
+                .mapToInt(Integer::intValue)
+                .min()
+                .orElse(5); // Default to 5 minutes if no periods found
+    }
+
+    private BacktestDayResult runForDateTime(LocalDateTime dateTime) {
+        return runForDate(dateTime);
+    }
+
+    private BacktestDayResult runForDate(LocalDateTime date) {
         Instant startedAt = Instant.now();
+
         try {
-            List<TradeConfigCombinedDTO> combinedDto = tradeConfigScheduler.fetchTradeConfigsByDate(date);
+            // Fetch broker session details from the database
+            var sessionEntity = brokerSessionStore.currentEntity();
+            if (sessionEntity.isEmpty()) {
+                log.warn("[Backtest] No active broker session found for date {}", date);
+                long durationMs = Duration.between(startedAt, Instant.now()).toMillis();
+                return new BacktestDayResult(date, false, 0, durationMs, "No active broker session found.");
+            }
+
+            var session = sessionEntity.get();
+            String userId = session.getUserId();
+
+            // Initialize KiteConnect with fetched details
+            String accessToken = session.getAccessToken();
+            String publicToken = session.getPublicToken();
+
+            if (accessToken == null || accessToken.isEmpty()) {
+                log.warn("[Backtest] Access token is missing for date {}", date);
+                long durationMs = Duration.between(startedAt, Instant.now()).toMillis();
+                return new BacktestDayResult(date, false, 0, durationMs, "Access token is missing.");
+            }
+
+            // Set access token on the shared KiteConnect bean
+            sharedKiteConnect.setAccessToken(accessToken);
+            if (publicToken != null && !publicToken.isEmpty()) {
+                sharedKiteConnect.setPublicToken(publicToken);
+            }
+
+            // Also set in SharedData for backward compatibility
+            SharedData.sharedKiteconnect = sharedKiteConnect;
+
+            log.info("[Backtest] KiteConnect initialized for user: {} on date: {}", userId, date);
+
+            List<TradeConfigCombinedDTO> combinedDto = tradeConfigScheduler.fetchTradeConfigsByDate(date.toLocalDate());
             SharedData.combinedDto = combinedDto;
 
             if (combinedDto == null || combinedDto.isEmpty()) {
@@ -78,7 +194,7 @@ public class BacktestAnalysisService {
     }
 
     public record BacktestDayResult(
-            LocalDate date,
+            LocalDateTime date,
             boolean success,
             int tradeConfigCount,
             long durationMs,
