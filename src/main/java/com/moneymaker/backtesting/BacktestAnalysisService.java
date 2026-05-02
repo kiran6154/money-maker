@@ -66,7 +66,7 @@ public class BacktestAnalysisService {
         log.info("[Backtest] Running analysis with time periods (minutes): {}", timePeriodsMinutes);
 
         // Market hours: 9:15 AM to 3:30 PM
-        LocalTime marketStart = LocalTime.of(9, 15);
+        LocalTime marketStart = LocalTime.of(9, 20);
         LocalTime marketEnd = LocalTime.of(15, 30);
 
         // Loop through each date
