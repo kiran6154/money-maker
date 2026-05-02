@@ -17,13 +17,11 @@ public final class CommonRules {
 
     // ----- Predicates -------------------------------------------------
 
-    /** True when {@code ctx.candle} is the last candle of its trading day. */
-    public static boolean isEndOfDay(RuleContext ctx) {
-        int next = ctx.index + 1;
-        if (next >= ctx.allCandles.size()) return true;
-        LocalDate today = ctx.candle.getTimestamp().toLocalDate();
-        LocalDate nextDay = ctx.allCandles.get(next).getTimestamp().toLocalDate();
-        return !today.equals(nextDay);
+    /** True when the candle time is at or after 15:15 (typical market close time). */
+    public static boolean isMarketCloseTime(RuleContext ctx) {
+        if (ctx.candle == null || ctx.candle.getTimestamp() == null) return false;
+        java.time.LocalTime time = ctx.candle.getTimestamp().toLocalTime();
+        return time.compareTo(java.time.LocalTime.of(15, 15)) >= 0;
     }
 
     /**

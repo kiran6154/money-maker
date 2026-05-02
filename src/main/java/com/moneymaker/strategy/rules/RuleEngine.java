@@ -51,8 +51,9 @@ public final class RuleEngine {
         boolean sellGate = open > primarySma && close < primarySma;
         if (sellGate && evaluate(ctx, sellRules)) return TradeAction.SELL;
 
-        boolean buyGate = open < primarySma && close > primarySma;
-        if (buyGate && evaluate(ctx, buyRules)) return TradeAction.BUY;
+//        boolean buyGate = open < primarySma && close > primarySma;
+        boolean buyGate = false;
+        if (evaluate(ctx, buyRules)) return TradeAction.BUY;
 
         return TradeAction.NONE;
     }

@@ -56,8 +56,12 @@ public class Strategy1 implements Strategy {
                     dataList, primarySma, config);
             TradeAction tradeStart = RuleEngine.decide(ctx, sellRules, buyRules);
 
-            log.info("Strategy1 Trade Decision - Key: {}, Time: {}, TradeStart: {}",
-                    key, lastCandle.getTimestamp(), tradeStart);
+            if(!tradeStart.name().equals("NONE")){
+                log.debug("Strategy1 Trade Decision - Key: {}, Time: {}, TradeStart: {}",
+                        key, lastCandle.getTimestamp(), tradeStart);
+            }
+
+
         });
     }
 
@@ -120,7 +124,7 @@ public class Strategy1 implements Strategy {
         List<TradeRule> required = new ArrayList<>();
         List<TradeRule> anyOf = new ArrayList<>();
 
-        anyOf.add(CommonRules::isEndOfDay);
+        anyOf.add(CommonRules::isMarketCloseTime);
         return new TradeRules(required, anyOf);
     }
 
@@ -132,7 +136,7 @@ public class Strategy1 implements Strategy {
         List<TradeRule> required = new ArrayList<>();
         List<TradeRule> anyOf = new ArrayList<>();
 
-        anyOf.add(CommonRules::isEndOfDay);
+        anyOf.add(CommonRules::isMarketCloseTime);
         return new TradeRules(required, anyOf);
     }
 
@@ -142,7 +146,7 @@ public class Strategy1 implements Strategy {
         List<TradeRule> required = new ArrayList<>();
         List<TradeRule> anyOf = new ArrayList<>();
 
-        anyOf.add(CommonRules::isEndOfDay);
+        anyOf.add(CommonRules::isMarketCloseTime);
         return new TradeRules(required, anyOf);
     }
 
@@ -153,7 +157,7 @@ public class Strategy1 implements Strategy {
         List<TradeRule> required = new ArrayList<>();
         List<TradeRule> anyOf = new ArrayList<>();
 
-        anyOf.add(CommonRules::isEndOfDay);
+        anyOf.add(CommonRules::isMarketCloseTime);
         return new TradeRules(required, anyOf);
     }
 }
