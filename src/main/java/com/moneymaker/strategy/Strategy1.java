@@ -33,11 +33,9 @@ public class Strategy1 implements Strategy {
         Integer tradeConfigId = (config != null && config.getTradeConfig() != null)
                 ? config.getTradeConfig().getId()
                 : null;
-        System.out.println("Executing Strategy1 for tradeConfigId=" + tradeConfigId);
 
         Map<String, List<MarketData>> strikeMarketData = SharedData.strikeMarketDataByInstrumentAndInterval;
         if (strikeMarketData == null || strikeMarketData.isEmpty()) {
-            System.out.println("Strategy1: No strike market data available");
             return;
         }
 
@@ -47,7 +45,6 @@ public class Strategy1 implements Strategy {
 
         strikeMarketData.forEach((key, dataList) -> {
             if (dataList == null || dataList.isEmpty()) {
-                System.out.println("Strategy1: " + key + " — empty");
                 return;
             }
 
@@ -59,18 +56,6 @@ public class Strategy1 implements Strategy {
                     dataList, primarySma, config);
             TradeAction tradeStart = RuleEngine.decide(ctx, sellRules, buyRules);
 
-            System.out.println("Strategy1: " + key
-                    + " | SMA50 down=" + lastCandle.isSma50DownTrending()
-                    + " up=" + lastCandle.isSma50UpTrending()
-                    + " | SMA100 down=" + lastCandle.isSma100DownTrending()
-                    + " up=" + lastCandle.isSma100UpTrending()
-                    + " | SMA200 down=" + lastCandle.isSma200DownTrending()
-                    + " up=" + lastCandle.isSma200UpTrending()
-                    + " | SMA500 down=" + lastCandle.isSma500DownTrending()
-                    + " up=" + lastCandle.isSma500UpTrending()
-                    + " | last O=" + lastCandle.getOpen() + " C=" + lastCandle.getClose()
-                    + " SMA" + primarySma + "=" + CommonRules.smaValue(lastCandle, primarySma)
-                    + " | TradeStart=" + tradeStart);
         });
     }
 
