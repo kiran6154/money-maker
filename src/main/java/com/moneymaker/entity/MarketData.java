@@ -47,4 +47,23 @@ public class MarketData {
 
     @Column(name = "sma_value500")
     private Double smaValue500;
+
+    // ---- Runtime-computed trend flags (not persisted) ----
+    @Transient
+    private boolean sma50DownTrending;
+    @Transient
+    private boolean sma100DownTrending;
+    @Transient
+    private boolean sma200DownTrending;
+    @Transient
+    private boolean sma500DownTrending;
+
+    @Transient
+    private boolean sma50UpTrending;
+    @Transient
+    private boolean sma100UpTrending;
+    @Transient
+    private boolean sma200UpTrending;
+    @Transient
+    private boolean sma500UpTrending;
 }

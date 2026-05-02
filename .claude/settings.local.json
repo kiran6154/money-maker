@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(mvn -q -DskipTests compile)"
+    ]
+  }
+}
