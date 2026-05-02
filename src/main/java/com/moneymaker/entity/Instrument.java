@@ -29,6 +29,7 @@ public class Instrument {
     @Column(name = "strike_points")
     private BigDecimal strikePoints;
 
+
     // Getters and setters
     // (Omitted for brevity)
 }
