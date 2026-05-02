@@ -50,7 +50,9 @@ public class Strategy1 implements Strategy {
                 ? config.getInstrumentDetails().getInstrumentToken().toString()
                 : null;
 
-        // Run rules only for keys matching each configured (timePeriod, sma) pair.
+        // Run rules independently for each configured (timePeriod, sma) pair. Each
+        // iteration's inner forEach is filtered to its own interval, so a 5-minute
+        // timeframe never touches 15-minute keys and vice versa.
         for (SmaTimeframe tf : timeframes) {
             if (tf == null || tf.getTimePeriod() == null || tf.getSma() == null) continue;
 
