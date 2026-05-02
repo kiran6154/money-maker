@@ -25,17 +25,14 @@ public class Strategy1 implements Strategy {
         Integer tradeConfigId = (config != null && config.getTradeConfig() != null)
                 ? config.getTradeConfig().getId()
                 : null;
-        System.out.println("Executing Strategy1 for tradeConfigId=" + tradeConfigId);
 
         Map<String, List<MarketData>> strikeMarketData = SharedData.strikeMarketDataByInstrumentAndInterval;
         if (strikeMarketData == null || strikeMarketData.isEmpty()) {
-            System.out.println("  Strategy1: No strike market data available");
             return;
         }
 
         strikeMarketData.forEach((key, marketDataList) -> {
-            System.out.println("  Strategy1: Processing strike key=" + key
-                    + ", dataPoints=" + (marketDataList != null ? marketDataList.size() : 0));
+
 
             // Create variables for analysis (dummy values for Nifty options 150-200 range)
             double open = 178.0;  // Dummy open price
@@ -49,9 +46,6 @@ public class Strategy1 implements Strategy {
             if (open > smaValue && close < smaValue) {
                 tradeStart = true;
             }
-
-            System.out.println("    Open: " + open + ", High: " + high + ", Low: " + low + 
-                             ", Close: " + close + ", SMA: " + smaValue + ", TradeStart: " + tradeStart);
         });
     }
 }

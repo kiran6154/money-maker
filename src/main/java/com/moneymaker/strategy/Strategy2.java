@@ -25,17 +25,15 @@ public class Strategy2 implements Strategy {
         Integer tradeConfigId = (config != null && config.getTradeConfig() != null)
                 ? config.getTradeConfig().getId()
                 : null;
-        System.out.println("Executing Strategy2 for tradeConfigId=" + tradeConfigId);
 
         Map<String, List<MarketData>> strikeMarketData = SharedData.strikeMarketDataByInstrumentAndInterval;
         if (strikeMarketData == null || strikeMarketData.isEmpty()) {
-            System.out.println("  Strategy2: No strike market data available");
+
             return;
         }
 
         strikeMarketData.forEach((key, marketDataList) -> {
-            System.out.println("  Strategy2: Processing strike key=" + key
-                    + ", dataPoints=" + (marketDataList != null ? marketDataList.size() : 0));
+
         });
     }
 }

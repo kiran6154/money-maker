@@ -10,10 +10,10 @@ import java.time.LocalDateTime;
 @Component
 public class PositionScheduler {
 
-    @Scheduled(fixedDelay = 30000)
+/*    @Scheduled(fixedDelay = 30000)
     public void positionSchedulerEvery30Seconds() {
         LocalDateTime now = LocalDateTime.now();
         log.info("Position scheduler has run at {}", now);
-    }
+    }*/
 }
 

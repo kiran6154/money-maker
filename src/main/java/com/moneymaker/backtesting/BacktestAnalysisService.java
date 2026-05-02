@@ -75,9 +75,10 @@ public class BacktestAnalysisService {
             // Loop through each time interval for this date
             LocalDateTime currentDateTime = LocalDateTime.of(currentDate, marketStart);
             LocalDateTime dateEnd = LocalDateTime.of(currentDate, marketEnd);
+            List<TradeConfigCombinedDTO> combinedDto = tradeConfigScheduler.fetchTradeConfigsByDate(toDate);
 
             while (!currentDateTime.isAfter(dateEnd)) {
-                BacktestDayResult result = runForDateTime(currentDateTime);
+                BacktestDayResult result = runForDateTime(currentDateTime,combinedDto);
                 results.add(result);
                 currentDateTime = currentDateTime.plusMinutes(getSmallestTimePeriod(timePeriodsMinutes));
             }
@@ -125,11 +126,11 @@ public class BacktestAnalysisService {
                 .orElse(5); // Default to 5 minutes if no periods found
     }
 
-    private BacktestDayResult runForDateTime(LocalDateTime dateTime) {
-        return runForDate(dateTime);
+    private BacktestDayResult runForDateTime(LocalDateTime dateTime, List<TradeConfigCombinedDTO> combinedDto) {
+        return runForDate(dateTime,combinedDto);
     }
 
-    private BacktestDayResult runForDate(LocalDateTime date) {
+    private BacktestDayResult runForDate(LocalDateTime date, List<TradeConfigCombinedDTO> combinedDto) {
         Instant startedAt = Instant.now();
 
         try {
@@ -165,7 +166,6 @@ public class BacktestAnalysisService {
 
             log.info("[Backtest] KiteConnect initialized for user: {} on date: {}", userId, date);
 
-            List<TradeConfigCombinedDTO> combinedDto = tradeConfigScheduler.fetchTradeConfigsByDate(date.toLocalDate());
             SharedData.combinedDto = combinedDto;
 
             if (combinedDto == null || combinedDto.isEmpty()) {

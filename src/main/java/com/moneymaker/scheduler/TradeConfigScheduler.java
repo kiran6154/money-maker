@@ -85,10 +85,10 @@ return tradeConfigCombinedDTOList;
         tc.setStratergyId(toInteger(row[i++])); // stratergy_id
         tc.setNumberOfTradesPerDay(toInteger(row[i++])); // no_of_trades
         tc.setNumberOfParallelTrades(toInteger(row[i++])); // no_of_parrellel_trades
-        i++;
+        tc.setItmDepth(toInteger(row[i++]));
         tc.setOtmDepth(toInteger(row[i++]));
         tc.setAtmDepth(toInteger(row[i++]));
-        tc.setItmDepth(toInteger(row[i++]));
+
 
         // Instrument will be set separately by mapToInstrument
         return tc;

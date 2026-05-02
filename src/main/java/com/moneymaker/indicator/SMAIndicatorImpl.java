@@ -1,6 +1,7 @@
 package com.moneymaker.indicator;
 
 import com.moneymaker.entity.MarketData;
+import lombok.extern.slf4j.Slf4j;
 import org.ta4j.core.BarSeries;
 import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.indicators.SMAIndicator;
@@ -14,6 +15,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Objects;
+@Slf4j
 
 public class SMAIndicatorImpl implements Indicator {
     private static final String NAME = "SMA";
@@ -35,7 +37,7 @@ public class SMAIndicatorImpl implements Indicator {
         int period = config.getPeriod();
         if (period <= 0 || period > marketData.size()) {
          //   throw new IllegalArgumentException("period must be valid " + period +" and less than or equal to marketData size " + marketData.size());
-        System.out.println("period must be valid " + period +" and less than or equal to marketData size " + marketData.size());
+        log.error("period must be valid " + period +" and less than or equal to marketData size " + marketData.size());
         return null;
         }
         BarSeries series = new BaseBarSeries();

@@ -24,5 +24,8 @@ public class SharedData {
    public static Map<String, List<MarketData>> strikeMarketDataByInstrumentAndInterval = new ConcurrentHashMap<>();
      public static KiteConnect sharedKiteconnect;
     public static Map<Integer, List<Integer>> allTimeFrameMap;
+    public static Map<Integer, String> optionTokenMap = new ConcurrentHashMap<>();
+
+
 
 }
