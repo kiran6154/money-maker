@@ -3,6 +3,7 @@ package com.moneymaker.strategy;
 import com.moneymaker.dto.TradeAction;
 import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.entity.MarketData;
+import com.moneymaker.entity.SmaTimeframe;
 import com.moneymaker.shared.data.SharedData;
 import com.moneymaker.strategy.rules.CommonRules;
 import com.moneymaker.strategy.rules.RuleContext;
@@ -39,30 +40,58 @@ public class Strategy1 implements Strategy {
             return;
         }
 
-        Integer primarySma = RuleEngine.resolvePrimarySmaPeriod(config);
-        TradeRules sellRules = sellRulesFor(primarySma);
-        TradeRules buyRules  = buyRulesFor(primarySma);
+        List<SmaTimeframe> timeframes = config != null ? config.getTimeframes() : null;
+        if (timeframes == null || timeframes.isEmpty()) {
+            return;
+        }
 
-        strikeMarketData.forEach((key, dataList) -> {
-            if (dataList == null || dataList.isEmpty()) {
-                return;
-            }
+        String instrumentToken = (config.getInstrumentDetails() != null
+                && config.getInstrumentDetails().getInstrumentToken() != null)
+                ? config.getInstrumentDetails().getInstrumentToken().toString()
+                : null;
 
-            // Compute intra-day trend flags on the real-data list
-            SmaTrendCalculator.compute(dataList, 0);
+        // Run rules only for keys matching each configured (timePeriod, sma) pair.
+        for (SmaTimeframe tf : timeframes) {
+            if (tf == null || tf.getTimePeriod() == null || tf.getSma() == null) continue;
 
-            MarketData lastCandle = dataList.get(dataList.size() - 1);
-            RuleContext ctx = new RuleContext(lastCandle, dataList.size() - 1,
-                    dataList, primarySma, config);
-            TradeAction tradeStart = RuleEngine.decide(ctx, sellRules, buyRules);
+            final Integer primarySma = tf.getSma();
+            final String interval = tf.getTimePeriod() + "minute";
+            final TradeRules sellRules = sellRulesFor(primarySma);
+            final TradeRules buyRules  = buyRulesFor(primarySma);
 
-            if(!tradeStart.name().equals("NONE")){
-                log.debug("Strategy1 Trade Decision - Key: {}, Time: {}, TradeStart: {}",
-                        key, lastCandle.getTimestamp(), tradeStart);
-            }
+            strikeMarketData.forEach((key, dataList) -> {
+                if (!keyMatches(key, instrumentToken, interval)) return;
+                if (dataList == null || dataList.isEmpty()) return;
 
+                // Compute intra-day trend flags on the real-data list
+                SmaTrendCalculator.compute(dataList, 0);
 
-        });
+                MarketData lastCandle = dataList.get(dataList.size() - 1);
+                RuleContext ctx = new RuleContext(lastCandle, dataList.size() - 1,
+                        dataList, primarySma, config);
+                TradeAction tradeStart = RuleEngine.decide(ctx, sellRules, buyRules);
+
+                if (!tradeStart.name().equals("NONE")) {
+                    log.debug("Strategy1 Trade Decision - Key: {}, Time: {}, primarySma: {}, interval: {}, TradeStart: {}",
+                            key, lastCandle.getTimestamp(), primarySma, interval, tradeStart);
+                }
+            });
+        }
+    }
+
+    /**
+     * A {@code strikeMarketData} key has the form
+     * {@code <instrumentToken>|<interval>|<optionType>|<strike>|<optionToken>|<itmDepth>|<otmDepth>}
+     * (see AnalysisScheduler.toStrikeMarketDataKey). We match by the
+     * {@code instrumentToken|interval|} prefix so a strategy invocation only
+     * touches the strikes that belong to its config + configured timeframe.
+     */
+    private boolean keyMatches(String key, String instrumentToken, String interval) {
+        if (key == null || interval == null) return false;
+        if (instrumentToken != null) {
+            return key.startsWith(instrumentToken + "|" + interval + "|");
+        }
+        return key.contains("|" + interval + "|");
     }
 
     // ------------------------------------------------------------------
