@@ -36,6 +36,15 @@ public class MarketData {
     @Column(name = "instrumenttoken", nullable = false, length = 100)
     private String instrumenttoken;
 
-    @Column(name = "sma_value", precision = 10, scale = 4)
-    private Double smaValue;
+    @Column(name = "sma_value50")
+    private Double smaValue50;
+
+    @Column(name = "sma_value100")
+    private Double smaValue100;
+
+    @Column(name = "sma_value200")
+    private Double smaValue200;
+
+    @Column(name = "sma_value500")
+    private Double smaValue500;
 }

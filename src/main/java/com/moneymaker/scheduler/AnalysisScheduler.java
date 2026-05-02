@@ -1,10 +1,10 @@
 package com.moneymaker.scheduler;
 
+import com.moneymaker.dto.AllTimeFramedto;
 import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.entity.Instrument;
 import com.moneymaker.entity.InstrumentDetails;
 import com.moneymaker.entity.MarketData;
-import com.moneymaker.entity.SmaTimeframe;
 import com.moneymaker.entity.TradeConfig;
 import com.moneymaker.indicator.IndicatorConfig;
 import com.moneymaker.indicator.IndicatorService;
@@ -62,7 +62,7 @@ public class AnalysisScheduler {
 
         try {
             // Calculate startOfDay: 500 candles of 15 minutes = 7500 minutes lookback
-            LocalDateTime startOfDay = analysisDateTime.minusMinutes(500 * 15);
+            LocalDateTime startOfDay = analysisDateTime.minusMinutes(1000 * 10);
 
             logger.debug("Fetching market data from {} to {}", startOfDay, analysisDateTime);
 
@@ -78,14 +78,14 @@ public class AnalysisScheduler {
                     continue;
                 }
 
-                List<SmaTimeframe> timeframes = dto.getTimeframes();
+                Map<Integer, List<Integer>>  timeframes = SharedData.allTimeFrameMap;
                 if (timeframes == null || timeframes.isEmpty()) {
                     logger.warn("No timeframes configured for instrument token: {}", dto.getInstrumentDetails().getInstrumentToken());
                     continue;
                 }
 
                 String symbol = dto.getInstrumentDetails().getInstrumentToken().toString();
-                for (SmaTimeframe timeframe : timeframes) {
+                for (Integer timeframe : timeframes.keySet()) {
                     String interval = toMarketDataInterval(timeframe);
                     if (interval == null) {
                         logger.warn("Skipping instrument token {} because timeframe has no time period", symbol);
@@ -96,22 +96,22 @@ public class AnalysisScheduler {
                             symbol,
                             startOfDay,
                             analysisDateTime,
-                            interval
-                    );
+                            interval  );
 
                     if (marketDataList == null || marketDataList.isEmpty()) {
                         logger.warn("No market data available for instrument token: {}, interval: {}, date-time: {}", symbol, interval, analysisDateTime);
                         continue;
                     }
 
-                    SharedData.marketDataList = marketDataList;
                     String marketDataKey = toMarketDataKey(symbol, interval);
                     SharedData.marketDataByInstrumentAndInterval.put(marketDataKey, marketDataList);
 
                     List<List<Integer>> strikeList = calculateStrikesForCandles(marketDataList, dto.getInstrument(), dto.getTradeConfig());
                     SharedData.strikeList = strikeList;
                     shareStrikesByStrikeKey(strikeList, dto.getInstrument(), dto.getTradeConfig(), analysisDateTime.toLocalDate(), interval);
+
                     fetchAndShareStrikeMarketData(strikeList, dto.getInstrument(), dto.getTradeConfig(), timeframe, analysisDateTime.toLocalDate(), interval, startOfDay, analysisDateTime, marketDataKey);
+
                 }
             }
 
@@ -123,11 +123,9 @@ public class AnalysisScheduler {
         }
     }
 
-    private String toMarketDataInterval(SmaTimeframe timeframe) {
-        if (timeframe == null || timeframe.getTimePeriod() == null) {
-            return null;
-        }
-        return timeframe.getTimePeriod() + "minute";
+    private String toMarketDataInterval(Integer timeframe) {
+
+        return timeframe + "minute";
     }
 
     private String toMarketDataKey(String instrumentToken, String interval) {
@@ -174,7 +172,7 @@ public class AnalysisScheduler {
     private void fetchAndShareStrikeMarketData(List<List<Integer>> strikeList,
                                                Instrument instrument,
                                                TradeConfig tradeConfig,
-                                               SmaTimeframe timeframe,
+                                               Integer timeframe,
                                                LocalDate analysisDate,
                                                String interval,
                                                LocalDateTime startOfDay,
@@ -218,17 +216,16 @@ public class AnalysisScheduler {
                 continue;
             }
 
-            String strikeMarketDataKey = toStrikeMarketDataKey(parentMarketDataKey, strike, optionType, optionToken);
+
+            List<Integer> smaPeriodList = SharedData.allTimeFrameMap.get(timeframe);
+            for (Integer period : smaPeriodList) {
+                Map<String, Double> strikeIndicators = calculateIndicators(strikeMarketDataList, period);
+        }
+            String strikeMarketDataKey = toStrikeMarketDataKey(parentMarketDataKey, strike, optionType, optionToken, tradeConfig, interval);
             SharedData.strikeMarketDataList = strikeMarketDataList;
             SharedData.strikeMarketDataByInstrumentAndInterval.put(
                     strikeMarketDataKey,
-                    strikeMarketDataList
-            );
-
-            Map<String, List<Double>> strikeIndicators = calculateIndicators(strikeMarketDataList, resolveSmaPeriod(timeframe));
-            SharedData.strikeIndicatorValues = strikeIndicators;
-            SharedData.strikeIndicatorsByInstrumentAndInterval.put(strikeMarketDataKey, strikeIndicators);
-            logger.info("Strike indicators calculated for key: {}, interval: {}", strikeMarketDataKey, interval);
+                    strikeMarketDataList);
         }
     }
 
@@ -359,17 +356,17 @@ public class AnalysisScheduler {
         return toOptionSymbolPrefix(instrument) + "|" + expiryDate + "|" + optionType + "|" + strike + "|" + interval;
     }
 
-    private String toStrikeMarketDataKey(String parentMarketDataKey, Integer strike, String optionType, String optionToken) {
-        return parentMarketDataKey + "|" + optionType + "|" + strike + "|" + optionToken;
+    private String toStrikeMarketDataKey(String parentMarketDataKey, Integer strike, String optionType, String optionToken, TradeConfig tradeConfig, String interval) {
+        return parentMarketDataKey + "|" + optionType + "|" + strike + "|" + optionToken+ "|" + tradeConfig.getItmDepth()+ "|" + tradeConfig.getOtmDepth()+ "|" + interval;
     }
 
-    private Map<String, List<Double>> calculateIndicators(List<MarketData> marketDataList, int smaPeriod) {
-        Map<String, List<Double>> indicators = new HashMap<>();
+    private Map<String, Double> calculateIndicators(List<MarketData> marketDataList, int smaPeriod) {
+        Map<String, Double> indicators = new HashMap<>();
         indicators.put("SMA", indicatorService.calculate("SMA", marketDataList, IndicatorConfig.of(smaPeriod, "SMA")));
         return indicators;
     }
 
-    private int resolveSmaPeriod(SmaTimeframe timeframe) {
+    private int resolveSmaPeriod(AllTimeFramedto timeframe) {
         if (timeframe == null || timeframe.getSma() == null || timeframe.getSma() <= 0) {
             return 14;
         }

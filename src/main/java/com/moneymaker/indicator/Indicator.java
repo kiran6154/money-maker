@@ -5,6 +5,6 @@ import java.util.List;
 
 public interface Indicator {
     String getName();
-    List<Double> calculate(List<MarketData> marketData, IndicatorConfig config);
+    Double calculate(List<MarketData> marketData, IndicatorConfig config);
 }
 

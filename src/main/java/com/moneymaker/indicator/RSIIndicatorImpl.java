@@ -1,12 +1,12 @@
 package com.moneymaker.indicator;
 
 import com.moneymaker.entity.MarketData;
-import java.util.ArrayList;
+
 import java.util.List;
 import java.util.Objects;
 
-public class SMAIndicator implements Indicator {
-    private static final String NAME = "SMA";
+public class RSIIndicatorImpl implements Indicator {
+    private static final String NAME = "RSI";
 
     @Override
     public String getName() {
@@ -14,7 +14,7 @@ public class SMAIndicator implements Indicator {
     }
 
     @Override
-    public List<Double> calculate(List<MarketData> marketData, IndicatorConfig config) {
+    public Double calculate(List<MarketData> marketData, IndicatorConfig config) {
         Objects.requireNonNull(marketData, "marketData must not be null");
         Objects.requireNonNull(config, "config must not be null");
 
@@ -27,7 +27,7 @@ public class SMAIndicator implements Indicator {
             throw new IllegalArgumentException("period must be valid");
         }
 
-        return new ArrayList<>();
+        return 0.0;
     }
 }
 

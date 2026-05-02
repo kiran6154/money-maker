@@ -9,9 +9,9 @@ public final class IndicatorFactory {
     private static final Map<String, Supplier<Indicator>> registry = new HashMap<>();
 
     static {
-        registry.put("SMA", SMAIndicator::new);
-        registry.put("EMA", EMAIndicator::new);
-        registry.put("RSI", RSIIndicator::new);
+        registry.put("SMA", SMAIndicatorImpl::new);
+        registry.put("EMA", EMAIndicatorImpl::new);
+        registry.put("RSI", RSIIndicatorImpl::new);
     }
 
     private IndicatorFactory() {

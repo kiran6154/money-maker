@@ -9,7 +9,7 @@ import java.util.Objects;
 @Service
 public final class IndicatorService {
 
-    public List<Double> calculate(String indicatorName, List<MarketData> marketData, IndicatorConfig config) {
+    public Double calculate(String indicatorName, List<MarketData> marketData, IndicatorConfig config) {
         Objects.requireNonNull(indicatorName, "indicatorName must not be null");
         Objects.requireNonNull(marketData, "marketData must not be null");
         Objects.requireNonNull(config, "config must not be null");
@@ -21,7 +21,7 @@ public final class IndicatorService {
         return indicator.calculate(marketData, config);
     }
 
-    public static List<Double> calculate(String indicatorName, List<MarketData> marketData, int period) {
+    public static Double calculate(String indicatorName, List<MarketData> marketData, int period) {
         IndicatorConfig config = IndicatorConfig.of(period);
         return new IndicatorService().calculate(indicatorName, marketData, config);
     }
