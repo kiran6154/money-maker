@@ -69,6 +69,7 @@ public class Strategy1 implements Strategy {
                 SmaTrendCalculator.compute(dataList, 0);
 
                 MarketData lastCandle = dataList.get(dataList.size() - 1);
+
                 RuleContext ctx = new RuleContext(lastCandle, dataList.size() - 1,
                         dataList, primarySma, config);
                 TradeAction tradeStart = RuleEngine.decide(ctx, sellRules, buyRules);
@@ -141,12 +142,10 @@ public class Strategy1 implements Strategy {
 
     private TradeRules sellRulesFor50() {
         List<TradeRule> required = new ArrayList<>();
-        //required.add(CommonRules::isEndOfDay);                              // sell only at end-of-day
-        required.add(CommonRules::isDistanceToNextHigherSmaAboveTarget);    // SMA gap covers profit target
-        required.add(ctx -> !ctx.candle.isSma100DownTrending());            // sma100 NOT sloping down
+        //required.add(CommonRules::isDistanceToNextHigherSmaAboveTarget);    // SMA gap covers profit target
+        required.add(ctx -> ctx.candle.isSma50DownTrending());            // sma50 sloping down
 
         List<TradeRule> anyOf = new ArrayList<>();
-        anyOf.add(ctx -> !ctx.candle.isSma50DownTrending());                // sma50 NOT sloping down
 
         return new TradeRules(required, anyOf);
     }
