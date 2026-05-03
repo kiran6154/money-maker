@@ -1,19 +1,30 @@
 package com.moneymaker.scheduler;
 
+import com.moneymaker.position.service.PositionService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
+import java.util.Objects;
 
 @Slf4j
 @Component
 public class PositionScheduler {
 
-/*    @Scheduled(fixedDelay = 30000)
-    public void positionSchedulerEvery30Seconds() {
-        LocalDateTime now = LocalDateTime.now();
-        log.info("Position scheduler has run at {}", now);
-    }*/
-}
+    private final PositionService positionService;
 
+    public PositionScheduler(PositionService positionService) {
+        this.positionService = Objects.requireNonNull(positionService, "positionService must not be null");
+    }
+
+    /** Every 5 minutes during NSE trading hours (Mon-Fri, 09:00-16:55 IST). */
+    @Scheduled(cron = "0 0/5 9-16 * * MON-FRI")
+    public void processPositions() {
+        log.info("PositionScheduler tick");
+        try {
+            positionService.processPositions();
+        } catch (Exception ex) {
+            log.error("PositionScheduler failed", ex);
+        }
+    }
+}

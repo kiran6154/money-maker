@@ -4,6 +4,8 @@ import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.entity.SmaTimeframe;
 import com.moneymaker.login.service.BrokerSessionStore;
 import com.moneymaker.scheduler.AnalysisScheduler;
+import com.moneymaker.scheduler.OrderScheduler;
+import com.moneymaker.scheduler.PositionScheduler;
 import com.moneymaker.scheduler.TradeConfigScheduler;
 import com.moneymaker.shared.data.SharedData;
 import com.zerodhatech.kiteconnect.KiteConnect;
@@ -27,16 +29,22 @@ public class BacktestAnalysisService {
 
     private final TradeConfigScheduler tradeConfigScheduler;
     private final AnalysisScheduler analysisScheduler;
+    private final OrderScheduler orderScheduler;
+    private final PositionScheduler positionScheduler;
     private final BrokerSessionStore brokerSessionStore;
     private final KiteConnect sharedKiteConnect;
 
     public BacktestAnalysisService(
             TradeConfigScheduler tradeConfigScheduler,
             AnalysisScheduler analysisScheduler,
+            OrderScheduler orderScheduler,
+            PositionScheduler positionScheduler,
             BrokerSessionStore brokerSessionStore,
             @Qualifier("sharedKiteConnect") KiteConnect sharedKiteConnect) {
         this.tradeConfigScheduler = tradeConfigScheduler;
         this.analysisScheduler = analysisScheduler;
+        this.orderScheduler = orderScheduler;
+        this.positionScheduler = positionScheduler;
         this.brokerSessionStore = brokerSessionStore;
         this.sharedKiteConnect = sharedKiteConnect;
     }
@@ -180,6 +188,8 @@ public class BacktestAnalysisService {
                 e.printStackTrace();
             }
             analysisScheduler.runStrategies();
+            orderScheduler.processOrders();
+            positionScheduler.processPositions();
             long durationMs = Duration.between(startedAt, Instant.now()).toMillis();
             return new BacktestDayResult(date, true, combinedDto.size(), durationMs, "Analysis completed.");
         } catch (Exception ex) {
