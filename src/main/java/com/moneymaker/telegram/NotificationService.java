@@ -108,6 +108,22 @@ public class NotificationService {
                 broker, TS.format(Instant.now())));
     }
 
+    /* -------------------- session health -------------------- */
+
+    /**
+     * Throttled alert for "no active broker session" surfaces from non-heartbeat
+     * paths (e.g. the backtest tick loop). Heartbeat itself already alerts via
+     * {@link #alertSessionLost(Broker, HeartbeatStatus, String)} on the
+     * {@code OK → NO_SESSION} transition; this method exists so a per-tick
+     * code path can emit at most one message per {@code cooldown} window
+     * without inventing its own state machine.
+     */
+    public void alertNoActiveSession(String reason) {
+        sendThrottled("no-session", Duration.ofMinutes(5),
+                String.format("[ALERT] No active broker session at %s IST\nReason: `%s`",
+                        TS.format(Instant.now()), safe(reason)));
+    }
+
     /* -------------------- market data API health -------------------- */
 
     public void alertMarketDataDown(String reason) {
@@ -141,11 +157,12 @@ public class NotificationService {
     public void alertOrderClosed(TradeOrder o) {
         if (o == null) return;
         telegram.send(String.format(
-                "[ORDER CLOSE] id=%d %s %s %s entry=%s exit=%s P/L=%s",
+                "[ORDER CLOSE] id=%d %s %s %s reason=%s entry=%s exit=%s P/L=%s",
                 o.getId(),
                 safe(o.getInstrumentName()),
                 String.valueOf(o.getOptionStrike()),
                 safe(o.getOptionType()),
+                safe(o.getExitReason()),
                 o.getEntryPrice(),
                 o.getExitPrice(),
                 o.getProfit()));

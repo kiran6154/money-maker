@@ -78,4 +78,41 @@ public class TradeOrder {
      */
     @Column(name = "fill_status", length = 16)
     private String fillStatus;
+
+    // -------- Position-monitor fields (updated each PositionScheduler tick while OPEN) --------
+
+    /** Highest unrealised per-share profit observed during the trade's lifetime. */
+    @Column(name = "peak_profit", precision = 12, scale = 4)
+    private BigDecimal peakProfit;
+
+    /** Lowest (most-negative) unrealised per-share P&L observed during the trade. */
+    @Column(name = "peak_loss", precision = 12, scale = 4)
+    private BigDecimal peakLoss;
+
+    /** Most recent quoted price seen by the monitor. */
+    @Column(name = "last_monitored_price", precision = 12, scale = 4)
+    private BigDecimal lastMonitoredPrice;
+
+    /** When the monitor last touched this row. */
+    @Column(name = "last_monitored_at")
+    private LocalDateTime lastMonitoredAt;
+
+    /** Why the trade was closed: SIGNAL / TARGET / STOP_LOSS / FORCE_CLOSE. */
+    @Column(name = "exit_reason", length = 32)
+    private String exitReason;
+
+    /**
+     * Per-share profit target snapshotted from {@code TradeConfig.target} at the
+     * moment this trade was opened. Used by {@code PositionService} so a config
+     * edit mid-trade can't retroactively close already-open positions.
+     */
+    @Column(name = "target_at_entry", precision = 12, scale = 4)
+    private BigDecimal targetAtEntry;
+
+    /**
+     * Per-share stop-loss snapshotted from {@code TradeConfig.stopLoss} at order
+     * open. Stored as a positive number; threshold breach = {@code pnl <= -stopLossAtEntry}.
+     */
+    @Column(name = "stop_loss_at_entry", precision = 12, scale = 4)
+    private BigDecimal stopLossAtEntry;
 }

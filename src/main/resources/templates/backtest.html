@@ -5,17 +5,73 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Money Maker — Backtest</title>
     <link rel="stylesheet" th:href="@{/css/app.css}" />
+    <style>
+        /* Page-local refinements for the backtest form */
+        .bt-form-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 14px;
+            align-items: end;
+            margin-bottom: 14px;
+        }
+        .bt-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+        .bt-form-grid .form-row { margin-bottom: 0; }
+        @media (max-width: 640px) {
+            .bt-form-grid { grid-template-columns: 1fr; }
+        }
+        .orders-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .orders-table th,
+        .orders-table td {
+            padding: 8px 10px;
+            text-align: left;
+            border-bottom: 1px dashed rgba(0,0,0,0.08);
+            white-space: nowrap;
+        }
+        .orders-table thead th {
+            background: rgba(255,255,255,0.6);
+            font-weight: 600;
+            color: var(--text);
+            border-bottom: 1px solid rgba(0,0,0,0.12);
+            position: sticky;
+            top: 0;
+        }
+        .orders-table tbody tr:hover { background: rgba(0, 122, 255, 0.04); }
+        .orders-table .num   { text-align: right; font-variant-numeric: tabular-nums; }
+        .orders-table .pl-pos { color: var(--success); font-weight: 600; }
+        .orders-table .pl-neg { color: var(--danger);  font-weight: 600; }
+        .orders-table .pill {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 600;
+            background: rgba(0,0,0,0.06);
+        }
+        .orders-table .pill.open    { background: rgba(0, 122, 255, 0.12); color: var(--primary-strong); }
+        .orders-table .pill.closed  { background: rgba(41, 194, 106, 0.15); color: #1a9a4f; }
+        .orders-scroll { max-height: 480px; overflow: auto; border-radius: 12px; border: 1px solid rgba(0,0,0,0.06); }
+    </style>
 </head>
 <body>
 <div th:replace="~{fragments/nav :: nav}"></div>
 <main class="page">
     <h1 class="page-title">🧪 Backtest</h1>
     <p class="page-subtitle">
-        Drive <code>LoginOrchestrator</code> + <code>BacktestAnalysisService</code> on demand.
-        The same code paths the live scheduler uses, just triggered manually.
+        Drive <code>LoginOrchestrator</code> and <code>BacktestAnalysisService</code> on demand.
+        Same code paths the live scheduler uses — just triggered manually.
     </p>
 
-    <div class="glass-card" style="margin-bottom: 24px;">
+    <!-- Run mode banner -->
+    <div class="glass-card" style="margin-bottom: 20px;">
         <div class="card-header">
             <h3>Run mode</h3>
             <span class="badge"
@@ -34,72 +90,83 @@
         </p>
     </div>
 
-    <!-- Login -->
-    <div class="glass-card" style="margin-bottom: 24px;">
-        <div class="card-header">
-            <h3>Manual login</h3>
-            <span class="badge badge-info" id="bt-status">idle</span>
+    <div class="grid-2" style="margin-bottom: 20px;">
+        <!-- Manual login -->
+        <div class="glass-card">
+            <div class="card-header">
+                <h3>Manual login</h3>
+                <span class="badge badge-info" id="bt-status">idle</span>
+            </div>
+            <p style="color: var(--text-muted); margin: 0 0 14px;">
+                Active broker: <b th:text="${activeBroker}">ZERODHA</b>.
+                Calls <code>LoginOrchestrator.ensureLoggedIn()</code>.
+            </p>
+            <button id="bt-run" class="btn btn-primary"
+                    th:disabled="${!backtestEnabled}">▶ Run login</button>
+            <table class="kv-table" id="bt-table" style="display:none; margin-top:14px;">
+                <tbody id="bt-rows"></tbody>
+            </table>
         </div>
-        <p style="color: var(--text-muted); margin-bottom: 14px;">
-            Active broker: <b th:text="${activeBroker}">ZERODHA</b>.
-        </p>
-        <button id="bt-run" class="btn btn-primary"
-                th:disabled="${!backtestEnabled}">▶ Run login</button>
-        <table class="kv-table" id="bt-table" style="display:none; margin-top:14px;">
-            <tbody id="bt-rows"></tbody>
-        </table>
+
+        <!-- Run analysis -->
+        <div class="glass-card">
+            <div class="card-header">
+                <h3>Run analysis</h3>
+                <span class="badge badge-info" id="an-status">idle</span>
+            </div>
+            <p style="color: var(--text-muted); margin: 0 0 14px;">
+                Replays the live pipeline (analysis → orders → positions) for the chosen date range.
+                Persists trades into <code>trade_order</code>; the ledger below reads from that table.
+            </p>
+            <div class="bt-form-grid">
+                <div class="form-row">
+                    <label for="an-from">From</label>
+                    <input id="an-from" type="date" class="form-control" />
+                </div>
+                <div class="form-row">
+                    <label for="an-to">To</label>
+                    <input id="an-to" type="date" class="form-control" />
+                </div>
+            </div>
+            <div class="bt-actions">
+                <button id="an-run" class="btn btn-primary"
+                        th:disabled="${!backtestEnabled}">▶ Run analysis</button>
+                <button id="an-refresh" class="btn btn-ghost">↻ Refresh orders</button>
+            </div>
+            <table class="kv-table" id="an-summary-table" style="display:none; margin-top:14px;">
+                <tbody id="an-summary-rows"></tbody>
+            </table>
+        </div>
     </div>
 
-    <!-- Analysis -->
-    <div class="glass-card" style="margin-bottom: 24px;">
-        <div class="card-header">
-            <h3>Run analysis</h3>
-            <span class="badge badge-info" id="an-status">idle</span>
-        </div>
-        <p style="color: var(--text-muted); margin-bottom: 14px;">
-            Calls <code>POST /api/backtest/analysis</code> and persists resulting trades into
-            <code>trade_order</code>. Results below come straight from that table.
-        </p>
-        <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
-            <label style="display:flex; flex-direction:column; gap:4px;">
-                <span style="font-size:12px; color: var(--text-muted);">From</span>
-                <input type="date" id="an-from" />
-            </label>
-            <label style="display:flex; flex-direction:column; gap:4px;">
-                <span style="font-size:12px; color: var(--text-muted);">To</span>
-                <input type="date" id="an-to" />
-            </label>
-            <button id="an-run" class="btn btn-primary"
-                    th:disabled="${!backtestEnabled}">▶ Run analysis</button>
-            <button id="an-refresh" class="btn btn-ghost">↻ Refresh orders</button>
-        </div>
-        <table class="kv-table" id="an-summary-table" style="display:none; margin-top:14px;">
-            <tbody id="an-summary-rows"></tbody>
-        </table>
-    </div>
-
-    <!-- Orders -->
+    <!-- Orders ledger -->
     <div class="glass-card">
         <div class="card-header">
             <h3>Orders ledger</h3>
             <span class="badge badge-info" id="orders-count">0 rows</span>
         </div>
-        <div style="overflow-x:auto;">
-            <table class="kv-table" id="orders-table">
+        <p style="color: var(--text-muted); margin: 0 0 12px;">
+            Filtered by the date range above. Click <b>↻ Sync</b> to resolve the broker fill price for live rows.
+        </p>
+        <div class="orders-scroll">
+            <table class="orders-table" id="orders-table">
                 <thead>
                     <tr>
                         <th>ID</th>
-                        <th>ConfigId</th>
+                        <th>Cfg</th>
                         <th>Instrument</th>
                         <th>Strike</th>
                         <th>Type</th>
                         <th>Dir</th>
-                        <th>Entry</th>
-                        <th>Entry @</th>
-                        <th>Exit</th>
-                        <th>Exit @</th>
-                        <th>P/L</th>
+                        <th class="num">Entry @</th>
+                        <th>Entry time</th>
+                        <th class="num">Exit @</th>
+                        <th>Exit time</th>
+                        <th class="num">P/L</th>
+                        <th class="num" title="Highest unrealised P&L observed during the trade (≥ 0)">Peak +</th>
+                        <th class="num" title="Lowest unrealised P&L observed during the trade (≤ 0)">Peak −</th>
                         <th>Status</th>
+                        <th>Reason</th>
                         <th>Fill</th>
                         <th>Broker IDs</th>
                         <th></th>
@@ -108,8 +175,8 @@
                 <tbody id="orders-rows"></tbody>
             </table>
         </div>
-        <div id="orders-empty" style="text-align:center; padding: 24px 0; color: var(--text-muted);">
-            No orders yet. Run an analysis to populate.
+        <div id="orders-empty" style="text-align:center; padding: 20px 0; color: var(--text-muted);">
+            No orders yet. Run an analysis above to populate the ledger.
         </div>
     </div>
 </main>
@@ -159,12 +226,29 @@
     const anSumRows = document.getElementById('an-summary-rows');
     function setAn(text, cls) { anStatus.textContent = text; anStatus.className = 'badge ' + cls; }
 
-    // Default to today / today
+    // Hydrate from localStorage on first paint, fall back to today / today.
+    // Keys are namespaced to this page so other tools using localStorage don't collide.
+    const LS_KEY_FROM = 'mm.backtest.fromDate';
+    const LS_KEY_TO   = 'mm.backtest.toDate';
     (function () {
         const today = new Date().toISOString().slice(0, 10);
-        anFrom.value = today;
-        anTo.value = today;
+        let storedFrom = null, storedTo = null;
+        try {
+            storedFrom = localStorage.getItem(LS_KEY_FROM);
+            storedTo   = localStorage.getItem(LS_KEY_TO);
+        } catch (e) { /* localStorage may be disabled in private mode */ }
+        anFrom.value = storedFrom || today;
+        anTo.value   = storedTo   || today;
     })();
+    // Persist whenever the user picks a new date.
+    function persistDates() {
+        try {
+            if (anFrom.value) localStorage.setItem(LS_KEY_FROM, anFrom.value);
+            if (anTo.value)   localStorage.setItem(LS_KEY_TO,   anTo.value);
+        } catch (e) { /* swallow — dates persist for the session at minimum */ }
+    }
+    anFrom.addEventListener('change', persistDates);
+    anTo.addEventListener('change',   persistDates);
 
     anRun.addEventListener('click', async () => {
         if (!backtestEnabled) return;
@@ -198,6 +282,16 @@
     const ordersCount = document.getElementById('orders-count');
     const ordersEmpty = document.getElementById('orders-empty');
     function fmt(v) { return v === null || v === undefined ? '—' : v; }
+    function fmtNum(v) {
+        if (v === null || v === undefined) return '—';
+        const n = Number(v);
+        if (Number.isNaN(n)) return v;
+        return n.toFixed(2);
+    }
+    function fmtTime(v) {
+        if (!v) return '—';
+        return String(v).replace('T', ' ');
+    }
 
     async function loadOrders() {
         const params = new URLSearchParams();
@@ -215,6 +309,15 @@
                 ].filter(Boolean).join(' ') || '—';
                 const canSync = (o.fillStatus && o.fillStatus !== 'BACKTEST')
                     && (o.entryBrokerOrderId || o.exitBrokerOrderId);
+                const plClass = (o.profit === null || o.profit === undefined) ? ''
+                    : (Number(o.profit) >= 0 ? 'pl-pos' : 'pl-neg');
+                const statusPill = o.status === 'OPEN' ? 'open' : (o.status === 'CLOSED' ? 'closed' : '');
+
+                const peakProfitClass = (o.peakProfit !== null && o.peakProfit !== undefined && Number(o.peakProfit) > 0)
+                    ? 'pl-pos' : '';
+                const peakLossClass = (o.peakLoss !== null && o.peakLoss !== undefined && Number(o.peakLoss) < 0)
+                    ? 'pl-neg' : '';
+
                 tr.innerHTML =
                     '<td>' + o.id + '</td>' +
                     '<td>' + fmt(o.tradeConfigId) + '</td>' +
@@ -222,12 +325,15 @@
                     '<td>' + fmt(o.optionStrike) + '</td>' +
                     '<td>' + fmt(o.optionType) + '</td>' +
                     '<td>' + fmt(o.entryDirection) + '</td>' +
-                    '<td>' + fmt(o.entryPrice) + '</td>' +
-                    '<td>' + fmt(o.entryTime) + '</td>' +
-                    '<td>' + fmt(o.exitPrice) + '</td>' +
-                    '<td>' + fmt(o.exitTime) + '</td>' +
-                    '<td>' + fmt(o.profit) + '</td>' +
-                    '<td>' + fmt(o.status) + '</td>' +
+                    '<td class="num">' + fmtNum(o.entryPrice) + '</td>' +
+                    '<td>' + fmtTime(o.entryTime) + '</td>' +
+                    '<td class="num">' + fmtNum(o.exitPrice) + '</td>' +
+                    '<td>' + fmtTime(o.exitTime) + '</td>' +
+                    '<td class="num ' + plClass + '">' + fmtNum(o.profit) + '</td>' +
+                    '<td class="num ' + peakProfitClass + '">' + fmtNum(o.peakProfit) + '</td>' +
+                    '<td class="num ' + peakLossClass + '">' + fmtNum(o.peakLoss) + '</td>' +
+                    '<td><span class="pill ' + statusPill + '">' + fmt(o.status) + '</span></td>' +
+                    '<td>' + fmt(o.exitReason) + '</td>' +
                     '<td>' + fmt(o.fillStatus) + '</td>' +
                     '<td><code style="font-size:11px;">' + brokerIds + '</code></td>' +
                     '<td>' + (canSync

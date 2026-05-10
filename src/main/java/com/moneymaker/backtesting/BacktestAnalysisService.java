@@ -9,6 +9,7 @@ import com.moneymaker.scheduler.OrderScheduler;
 import com.moneymaker.scheduler.PositionScheduler;
 import com.moneymaker.scheduler.TradeConfigScheduler;
 import com.moneymaker.shared.data.SharedData;
+import com.moneymaker.telegram.NotificationService;
 import com.zerodhatech.kiteconnect.KiteConnect;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -35,6 +36,7 @@ public class BacktestAnalysisService {
     private final OrderService orderService;
     private final BrokerSessionStore brokerSessionStore;
     private final KiteConnect sharedKiteConnect;
+    private final NotificationService notifier;
 
     public BacktestAnalysisService(
             TradeConfigScheduler tradeConfigScheduler,
@@ -43,7 +45,8 @@ public class BacktestAnalysisService {
             PositionScheduler positionScheduler,
             OrderService orderService,
             BrokerSessionStore brokerSessionStore,
-            @Qualifier("sharedKiteConnect") KiteConnect sharedKiteConnect) {
+            @Qualifier("sharedKiteConnect") KiteConnect sharedKiteConnect,
+            NotificationService notifier) {
         this.tradeConfigScheduler = tradeConfigScheduler;
         this.analysisScheduler = analysisScheduler;
         this.orderScheduler = orderScheduler;
@@ -51,6 +54,7 @@ public class BacktestAnalysisService {
         this.orderService = orderService;
         this.brokerSessionStore = brokerSessionStore;
         this.sharedKiteConnect = sharedKiteConnect;
+        this.notifier = notifier;
     }
 
     public BacktestRunResult run(LocalDate fromDate, LocalDate toDate) {
@@ -167,6 +171,7 @@ public class BacktestAnalysisService {
             var sessionEntity = brokerSessionStore.currentEntity();
             if (sessionEntity.isEmpty()) {
                 log.warn("[Backtest] No active broker session found for date {}", date);
+                notifier.alertNoActiveSession("backtest tick at " + date);
                 long durationMs = Duration.between(startedAt, Instant.now()).toMillis();
                 return new BacktestDayResult(date, false, 0, durationMs, "No active broker session found.");
             }

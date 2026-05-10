@@ -20,12 +20,14 @@ public interface TradeOrderRepository extends JpaRepository<TradeOrder, Long> {
             Integer tradeConfigId, String optionToken, String status);
 
     /**
-     * True when a trade for this {@code (config, optionToken, status)} combination
-     * has an entry timestamp inside the given window. Used to prevent re-entering
-     * an already-closed intraday trade in the same day.
+     * Counts all trades for a given trade config whose entry timestamp falls in
+     * the window — used by {@code OrderService} to enforce the
+     * {@code TradeConfig.numberOfTradesPerDay} cap. Counts across all option
+     * tokens (strikes), all statuses (OPEN + CLOSED) — i.e. "how many entries
+     * has this config produced today, total".
      */
-    boolean existsByTradeConfigIdAndOptionTokenAndStatusAndEntryTimeBetween(
-            Integer tradeConfigId, String optionToken, String status,
+    long countByTradeConfigIdAndEntryTimeBetween(
+            Integer tradeConfigId,
             LocalDateTime fromInclusive, LocalDateTime toInclusive);
 
     /**
@@ -36,4 +38,32 @@ public interface TradeOrderRepository extends JpaRepository<TradeOrder, Long> {
      */
     List<TradeOrder> findByStatusAndEntryTimeBetween(
             String status, LocalDateTime fromInclusive, LocalDateTime toInclusive);
+
+    /**
+     * Returns every trade in the given status. Used by {@code PositionService}
+     * to walk OPEN trades each monitor tick and update peak P&L / detect SL or
+     * target breaches.
+     */
+    List<TradeOrder> findByStatus(String status);
+
+    /**
+     * Counts trades in {@code status} for a given config and entry direction.
+     * Used by {@code OrderService} to enforce the
+     * {@code TradeConfig.numberOfParallelTrades} cap — i.e. "max simultaneous
+     * OPEN trades in the same direction for this config".
+     */
+    long countByTradeConfigIdAndEntryDirectionAndStatus(
+            Integer tradeConfigId, String entryDirection, String status);
+
+    /**
+     * True when a row already exists with this exact
+     * {@code (configId, optionToken, entryDirection, entryTime)} key —
+     * regardless of {@code status}. Used by {@code OrderService} to suppress
+     * duplicate inserts when the same backtest is re-run, or when the same
+     * tick somehow queues the same signal twice. Legitimate re-entries on the
+     * same strike later in the day fire at a different {@code entryTime} and
+     * are unaffected.
+     */
+    boolean existsByTradeConfigIdAndOptionTokenAndEntryDirectionAndEntryTime(
+            Integer tradeConfigId, String optionToken, String entryDirection, LocalDateTime entryTime);
 }

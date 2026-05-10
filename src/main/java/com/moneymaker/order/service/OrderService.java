@@ -118,16 +118,58 @@ public class OrderService {
             return;
         }
 
-        // Intraday guard: if this (config, optionToken) already has a CLOSED
-        // trade today, do not re-enter on the same instrument the same day.
-        LocalDateTime startOfDay = signal.getSignalTime().toLocalDate().atStartOfDay();
-        LocalDateTime endOfDay   = startOfDay.plusDays(1).minusNanos(1);
-        boolean alreadyClosedToday = tradeOrderRepository
-                .existsByTradeConfigIdAndOptionTokenAndStatusAndEntryTimeBetween(
-                        signal.getTradeConfigId(), key.optionToken, STATUS_CLOSED, startOfDay, endOfDay);
-        if (alreadyClosedToday) {
-            log.debug("Skipping signal — already exited a trade today on {}|{}|{}",
-                    key.instrumentToken, key.strike, key.optionType);
+        // Per-day cap: respect TradeConfig.numberOfTradesPerDay if set. Counts
+        // all entries for this config today (across all strikes, OPEN + CLOSED).
+        // Null / non-positive means no cap — re-entries are allowed by default,
+        // including on the same strike after a CLOSED trade earlier in the day.
+        Integer maxPerDay = config.getTradeConfig() != null
+                ? config.getTradeConfig().getNumberOfTradesPerDay()
+                : null;
+        if (maxPerDay != null && maxPerDay > 0) {
+            LocalDateTime startOfDay = signal.getSignalTime().toLocalDate().atStartOfDay();
+            LocalDateTime endOfDay   = startOfDay.plusDays(1).minusNanos(1);
+            long todayCount = tradeOrderRepository
+                    .countByTradeConfigIdAndEntryTimeBetween(
+                            signal.getTradeConfigId(), startOfDay, endOfDay);
+            if (todayCount >= maxPerDay) {
+                log.debug("Skipping signal — numberOfTradesPerDay={} reached for tradeConfigId={} (todayCount={})",
+                        maxPerDay, signal.getTradeConfigId(), todayCount);
+                return;
+            }
+        }
+
+        // Concurrent-direction cap: TradeConfig.numberOfParallelTrades caps how
+        // many OPEN trades in the same direction this config can hold at any
+        // moment. Counts only OPEN rows for this config + this signal's
+        // direction (BUY / SELL). Null / non-positive means no cap.
+        Integer maxParallel = config.getTradeConfig() != null
+                ? config.getTradeConfig().getNumberOfParallelTrades()
+                : null;
+        if (maxParallel != null && maxParallel > 0) {
+            long openSameDir = tradeOrderRepository
+                    .countByTradeConfigIdAndEntryDirectionAndStatus(
+                            signal.getTradeConfigId(),
+                            signal.getAction().name(),
+                            STATUS_OPEN);
+            if (openSameDir >= maxParallel) {
+                log.debug("Skipping signal — numberOfParallelTrades={} reached for tradeConfigId={} dir={} (openSameDir={})",
+                        maxParallel, signal.getTradeConfigId(), signal.getAction(), openSameDir);
+                return;
+            }
+        }
+
+        // Exact-duplicate guard: re-runs of the backtest replay identical signals
+        // and would otherwise create a fresh row each run. Skip when an existing
+        // row has the same (config, optionToken, direction, entryTime) — that's
+        // the same trade. Legitimate re-entries on the same strike later in the
+        // day fire at a different entryTime and are unaffected.
+        boolean exactDuplicate = tradeOrderRepository
+                .existsByTradeConfigIdAndOptionTokenAndEntryDirectionAndEntryTime(
+                        signal.getTradeConfigId(), key.optionToken,
+                        signal.getAction().name(), signal.getSignalTime());
+        if (exactDuplicate) {
+            log.debug("Skipping signal — exact duplicate exists: tradeConfigId={} optionToken={} dir={} entryTime={}",
+                    signal.getTradeConfigId(), key.optionToken, signal.getAction(), signal.getSignalTime());
             return;
         }
 
@@ -153,6 +195,19 @@ public class OrderService {
         order.setEntryPrice(signal.getPrice());
         order.setStatus(STATUS_OPEN);
         order.setFillStatus(initialFillStatus(placement));
+        // Snapshot SL / target so PositionService doesn't depend on SharedData
+        // staying populated and so mid-trade config edits don't retroactively
+        // close already-open trades.
+        if (config != null && config.getTradeConfig() != null) {
+            order.setTargetAtEntry(config.getTradeConfig().getTarget());
+            order.setStopLossAtEntry(config.getTradeConfig().getStopLoss());
+        }
+        // Seed peak P&L tracking at the entry baseline (0). The position monitor
+        // then reports max(0, observed P&L) and min(0, observed P&L) — which
+        // means peak_profit ≥ 0 and peak_loss ≤ 0 always, and they're meaningful
+        // even on a trade that closes after a single monitor tick.
+        order.setPeakProfit(BigDecimal.ZERO);
+        order.setPeakLoss(BigDecimal.ZERO);
 
         order = tradeOrderRepository.save(order);
 
@@ -181,6 +236,7 @@ public class OrderService {
         open.setExitPrice(signal.getPrice());
         open.setProfit(perShareProfit(open.getEntryDirection(), open.getEntryPrice(), signal.getPrice()));
         open.setStatus(STATUS_CLOSED);
+        open.setExitReason("SIGNAL");
         open.setFillStatus(initialFillStatus(placement));
 
         open = tradeOrderRepository.save(open);
@@ -257,6 +313,54 @@ public class OrderService {
     }
 
     /**
+     * Closes an OPEN trade outside the strategy-signal flow — used by the
+     * position monitor when a target / stop-loss is hit. Persists the exit
+     * leg, recomputes profit, calls the active placement service for the
+     * exit broker call, and emits the closed-order alert.
+     *
+     * <p>{@code reason} is stored on the row ({@code TARGET}, {@code STOP_LOSS},
+     * {@code FORCE_CLOSE}, etc.) so the ledger explains why the trade ended.
+     */
+    public TradeOrder closeManually(Long orderId, BigDecimal exitPrice, LocalDateTime exitTime, String reason) {
+        TradeOrder order = tradeOrderRepository.findById(orderId)
+                .orElseThrow(() -> new IllegalArgumentException("No order with id " + orderId));
+        if (!STATUS_OPEN.equalsIgnoreCase(order.getStatus())) {
+            log.debug("closeManually skipped — orderId={} already in status {}", orderId, order.getStatus());
+            return order;
+        }
+        if (exitPrice == null) {
+            log.warn("closeManually skipped — no exit price for orderId={}", orderId);
+            return order;
+        }
+
+        OrderPlacementService placement = placementFactory.active();
+        TradeConfigCombinedDTO config = findConfig(order.getTradeConfigId());
+
+        order.setExitTime(exitTime != null ? exitTime : LocalDateTime.now());
+        order.setExitPrice(exitPrice);
+        order.setProfit(perShareProfit(order.getEntryDirection(), order.getEntryPrice(), exitPrice));
+        order.setStatus(STATUS_CLOSED);
+        order.setExitReason(reason);
+        order.setFillStatus(initialFillStatus(placement));
+
+        order = tradeOrderRepository.save(order);
+
+        if (config != null) {
+            String brokerOrderId = placement.place(order, config);
+            if (brokerOrderId != null) {
+                order.setExitBrokerOrderId(brokerOrderId);
+                order.setFillStatus(FILL_PENDING);
+                order = tradeOrderRepository.save(order);
+            }
+        }
+
+        log.info("Closed order manually id={} reason={} entry={} → exit={} profit/share={}",
+                order.getId(), reason, order.getEntryPrice(), exitPrice, order.getProfit());
+        notifier.alertOrderClosed(order);
+        return order;
+    }
+
+    /**
      * Force-closes every {@link #STATUS_OPEN} trade entered on {@code tradingDate}
      * at {@code closeAt}. Used by {@code BacktestAnalysisService} at end-of-day so
      * intraday strategies don't carry positions overnight when the close-signal
@@ -287,6 +391,7 @@ public class OrderService {
             order.setExitPrice(exitPrice);
             order.setProfit(perShareProfit(order.getEntryDirection(), order.getEntryPrice(), exitPrice));
             order.setStatus(STATUS_CLOSED);
+            order.setExitReason("FORCE_CLOSE");
             // The fill state stays whatever it was (BACKTEST in backtest, PENDING
             // for live — live force-closes need a real broker exit, which is a
             // bigger change; for now we just mark the row CLOSED locally).

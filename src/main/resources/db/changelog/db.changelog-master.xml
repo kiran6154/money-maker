@@ -15,5 +15,7 @@
     <include file="db/changelog/007_add_sma_value_to_market_data.xml"/>
     <include file="db/changelog/008_create_trade_order_table.xml"/>
     <include file="db/changelog/009_add_broker_order_id_to_trade_order.xml"/>
+    <include file="db/changelog/010_add_position_monitor_columns.xml"/>
+    <include file="db/changelog/011_snapshot_target_stoploss_on_trade_order.xml"/>
 
 </databaseChangeLog>

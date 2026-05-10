@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+    <changeSet id="010_add_position_monitor_columns" author="moneymaker">
+        <addColumn tableName="trade_order">
+            <!-- Highest unrealised per-share profit observed during the lifetime of the trade. -->
+            <column name="peak_profit" type="DECIMAL(12,4)"/>
+            <!-- Lowest (most-negative) unrealised per-share P&amp;L observed. -->
+            <column name="peak_loss"   type="DECIMAL(12,4)"/>
+            <!-- Most recent quote captured by the position monitor. -->
+            <column name="last_monitored_price" type="DECIMAL(12,4)"/>
+            <column name="last_monitored_at"    type="DATETIME"/>
+            <!-- Why the trade closed: SIGNAL / TARGET / STOP_LOSS / FORCE_CLOSE. -->
+            <column name="exit_reason" type="VARCHAR(32)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>
