@@ -9,6 +9,7 @@ import com.moneymaker.entity.MarketData;
 import com.moneymaker.entity.TradeOrder;
 import com.moneymaker.repository.TradeOrderRepository;
 import com.moneymaker.shared.data.SharedData;
+import com.moneymaker.telegram.NotificationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -46,11 +47,14 @@ public class OrderService {
 
     private final OrderPlacementFactory placementFactory;
     private final TradeOrderRepository tradeOrderRepository;
+    private final NotificationService notifier;
 
     public OrderService(OrderPlacementFactory placementFactory,
-                        TradeOrderRepository tradeOrderRepository) {
+                        TradeOrderRepository tradeOrderRepository,
+                        NotificationService notifier) {
         this.placementFactory = Objects.requireNonNull(placementFactory, "placementFactory must not be null");
         this.tradeOrderRepository = Objects.requireNonNull(tradeOrderRepository, "tradeOrderRepository must not be null");
+        this.notifier = Objects.requireNonNull(notifier, "notifier must not be null");
     }
 
     public void processOrders() {
@@ -163,6 +167,7 @@ public class OrderService {
                 order.getId(), placement.getName(), order.getTradeConfigId(), order.getEntryDirection(),
                 order.getInstrumentName(), order.getOptionStrike(), order.getOptionType(), order.getEntryPrice(),
                 order.getEntryBrokerOrderId(), order.getFillStatus());
+        notifier.alertOrderOpened(order);
     }
 
     private void closeOrder(TradeOrder open, TradeSignal signal, TradeConfigCombinedDTO config,
@@ -191,6 +196,7 @@ public class OrderService {
                 open.getId(), placement.getName(), open.getEntryDirection(),
                 open.getInstrumentName(), open.getEntryPrice(), open.getExitPrice(), open.getProfit(),
                 open.getExitBrokerOrderId(), open.getFillStatus());
+        notifier.alertOrderClosed(open);
     }
 
     private String initialFillStatus(OrderPlacementService placement) {
@@ -284,10 +290,11 @@ public class OrderService {
             // The fill state stays whatever it was (BACKTEST in backtest, PENDING
             // for live — live force-closes need a real broker exit, which is a
             // bigger change; for now we just mark the row CLOSED locally).
-            tradeOrderRepository.save(order);
+            order = tradeOrderRepository.save(order);
             log.info("Force-closed end-of-day order id={} dir={} entry={} → exit={} profit/share={}",
                     order.getId(), order.getEntryDirection(),
                     order.getEntryPrice(), exitPrice, order.getProfit());
+            notifier.alertOrderForceClosed(order);
             closed++;
         }
         return closed;

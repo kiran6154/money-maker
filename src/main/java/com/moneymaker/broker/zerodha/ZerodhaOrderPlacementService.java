@@ -5,6 +5,7 @@ import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.entity.TradeOrder;
 import com.moneymaker.order.service.OrderPlacementService;
 import com.moneymaker.state.AppState;
+import com.moneymaker.telegram.NotificationService;
 import com.zerodhatech.kiteconnect.KiteConnect;
 import com.zerodhatech.kiteconnect.kitehttp.exceptions.KiteException;
 import com.zerodhatech.models.Order;
@@ -48,11 +49,14 @@ public class ZerodhaOrderPlacementService implements OrderPlacementService {
 
     private final KiteConnect kiteConnect;
     private final AppState appState;
+    private final NotificationService notifier;
 
     public ZerodhaOrderPlacementService(@Qualifier("sharedKiteConnect") KiteConnect kiteConnect,
-                                        AppState appState) {
+                                        AppState appState,
+                                        NotificationService notifier) {
         this.kiteConnect = Objects.requireNonNull(kiteConnect, "kiteConnect must not be null");
         this.appState = Objects.requireNonNull(appState, "appState must not be null");
+        this.notifier = Objects.requireNonNull(notifier, "notifier must not be null");
     }
 
     @Override
@@ -91,6 +95,8 @@ public class ZerodhaOrderPlacementService implements OrderPlacementService {
         } catch (KiteException | IOException ex) {
             log.error("Zerodha placeOrder FAILED: orderId={} symbol={} txn={} qty={}",
                     order.getId(), params.tradingsymbol, params.transactionType, params.quantity, ex);
+            notifier.alertOrderRejected(NAME, order.getId(),
+                    ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage());
             return null;
         }
     }

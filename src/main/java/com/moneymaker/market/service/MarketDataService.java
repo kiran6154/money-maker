@@ -3,6 +3,7 @@ package com.moneymaker.market.service;
 import com.moneymaker.entity.MarketData;
 import com.moneymaker.market.exception.KiteRateLimitException;
 import com.moneymaker.market.provider.MarketDataProvider;
+import com.moneymaker.telegram.NotificationService;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;
@@ -23,9 +24,12 @@ public class MarketDataService {
     private static final String LIMITER_NAME = "kiteHistorical";
 
     private final MarketDataProvider marketDataProvider;
+    private final NotificationService notifier;
 
-    public MarketDataService(MarketDataProvider marketDataProvider) {
+    public MarketDataService(MarketDataProvider marketDataProvider,
+                             NotificationService notifier) {
         this.marketDataProvider = Objects.requireNonNull(marketDataProvider, "marketDataProvider must not be null");
+        this.notifier = Objects.requireNonNull(notifier, "notifier must not be null");
         logger.info("MarketDataService initialized with provider: {}", marketDataProvider.getName());
     }
 
@@ -44,12 +48,20 @@ public class MarketDataService {
         Objects.requireNonNull(interval, "interval must not be null");
 
         try {
-            return marketDataProvider.fetchHistoricalData(symbol, from, to, interval);
+            List<MarketData> result = marketDataProvider.fetchHistoricalData(symbol, from, to, interval);
+            // Successful fetch — clear any previous "down" alert so the next
+            // failure (potentially with a different reason) gets reported.
+            notifier.alertMarketDataUp();
+            return result;
         } catch (Exception ex) {
             if (isRateLimit(ex)) {
                 logger.warn("Provider rate-limit hit for symbol={}, interval={} — will retry", symbol, interval);
                 throw new KiteRateLimitException("Rate limited: " + ex.getMessage(), ex);
             }
+            // After-retry / non-rate-limit failure — alert (deduped at the
+            // notification layer, so identical reasons fire once until recovery).
+            String reason = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
+            notifier.alertMarketDataDown(reason);
             logger.error("Error fetching historical data for symbol: {} using provider: {}", symbol, marketDataProvider.getName(), ex);
             throw new RuntimeException("Failed to fetch market data: " + ex.getMessage(), ex);
         }
