@@ -4,7 +4,6 @@ import com.moneymaker.entity.TradeOrder;
 import com.moneymaker.login.model.Broker;
 import com.moneymaker.login.model.HeartbeatStatus;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -24,21 +23,20 @@ import java.util.concurrent.ConcurrentHashMap;
  * Two general-purpose helpers prevent message storms:
  * <ul>
  *   <li>{@link #sendIfChanged(String, String)} — fire only when the message
- *       for this dedupe key differs from the last one sent. The pair
- *       {@code alertMarketDataDown / alertMarketDataUp} demonstrates the
- *       "transition" pattern: down is sent once, then suppressed until the
- *       message text would change (or up is reported).</li>
+ *       for this dedupe key differs from the last one sent. Pair with a
+ *       recovery method that checks the dedupe state to fire an "all-clear".</li>
  *   <li>{@link #sendThrottled(String, Duration, String)} — fire only if the
  *       last send for this key was more than {@code cooldown} ago. Use for
- *       events that vary slightly each call (e.g. timestamps in the message)
+ *       events that vary slightly each call (timestamp embedded in message)
  *       but should still respect a quiet period.</li>
  * </ul>
  *
- * <h3>Backtest suppression</h3>
- * When {@code app.mode=backtest}, market-data and per-order alerts are
- * suppressed to avoid drowning the channel during a multi-day replay. Login
- * and heartbeat alerts still fire — they are rare and informative in both
- * modes.
+ * <h3>Backtest-mode suppression</h3>
+ * The master gate lives in {@link TelegramNotifier}: when
+ * {@code app.mode=backtest} and {@code telegram.backtest-enabled=false} (default),
+ * every {@code telegram.send(...)} below becomes a no-op. So this class doesn't
+ * need its own per-method check anymore — the alerts compose normally and the
+ * single configuration property decides whether they actually go out.
  */
 @Slf4j
 @Service
@@ -51,15 +49,12 @@ public class NotificationService {
     private static final String KEY_REJECT_PREFIX = "order-rejected:";
 
     private final TelegramNotifier telegram;
-    private final boolean liveMode;
 
     private final Map<String, String> dedupeState = new ConcurrentHashMap<>();
     private final Map<String, Instant> throttleState = new ConcurrentHashMap<>();
 
-    public NotificationService(TelegramNotifier telegram,
-                               @Value("${app.mode:live}") String appMode) {
+    public NotificationService(TelegramNotifier telegram) {
         this.telegram = telegram;
-        this.liveMode = !"backtest".equalsIgnoreCase(appMode == null ? "" : appMode.trim());
     }
 
     /* -------------------- general-purpose helpers -------------------- */
@@ -86,7 +81,7 @@ public class NotificationService {
         telegram.send(message);
     }
 
-    /* -------------------- login / heartbeat (existing) -------------------- */
+    /* -------------------- login / heartbeat -------------------- */
 
     public void alertLoginSuccess(Broker broker, String userId) {
         telegram.send(String.format("[OK] *%s* login successful (%s) at %s IST",
@@ -115,21 +110,13 @@ public class NotificationService {
 
     /* -------------------- market data API health -------------------- */
 
-    /**
-     * Fires once when the historical-data API starts failing; subsequent
-     * identical reasons are suppressed until {@link #alertMarketDataUp()}
-     * resets the dedupe state.
-     */
     public void alertMarketDataDown(String reason) {
-        if (!liveMode) return;
         sendIfChanged(KEY_MARKET_DATA,
                 String.format("[ALERT] Market-data API failing at %s IST\nReason: `%s`",
                         TS.format(Instant.now()), safe(reason)));
     }
 
-    /** Fires once on recovery — but only if we previously sent a down alert. */
     public void alertMarketDataUp() {
-        if (!liveMode) return;
         if (!dedupeState.containsKey(KEY_MARKET_DATA)) return;
         dedupeState.remove(KEY_MARKET_DATA);
         telegram.send(String.format("[RECOVERED] Market-data API back online at %s IST",
@@ -139,7 +126,7 @@ public class NotificationService {
     /* -------------------- orders -------------------- */
 
     public void alertOrderOpened(TradeOrder o) {
-        if (!liveMode || o == null) return;
+        if (o == null) return;
         telegram.send(String.format(
                 "[ORDER OPEN] id=%d %s %s %s %s @ %s (cfg=%s)",
                 o.getId(),
@@ -152,7 +139,7 @@ public class NotificationService {
     }
 
     public void alertOrderClosed(TradeOrder o) {
-        if (!liveMode || o == null) return;
+        if (o == null) return;
         telegram.send(String.format(
                 "[ORDER CLOSE] id=%d %s %s %s entry=%s exit=%s P/L=%s",
                 o.getId(),
@@ -165,7 +152,7 @@ public class NotificationService {
     }
 
     public void alertOrderForceClosed(TradeOrder o) {
-        if (!liveMode || o == null) return;
+        if (o == null) return;
         telegram.send(String.format(
                 "[ORDER FORCE-CLOSE] id=%d %s %s %s entry=%s exit=%s P/L=%s",
                 o.getId(),
@@ -177,14 +164,7 @@ public class NotificationService {
                 o.getProfit()));
     }
 
-    /**
-     * Broker-side rejection. Throttled per broker so a stuck-failure loop
-     * doesn't spam — first failure fires, identical follow-ups inside the
-     * cooldown stay quiet until either the message text changes or the
-     * cooldown elapses.
-     */
     public void alertOrderRejected(String brokerName, Long orderId, String reason) {
-        if (!liveMode) return;
         String key = KEY_REJECT_PREFIX + (brokerName == null ? "?" : brokerName.toUpperCase(Locale.ROOT));
         sendIfChanged(key, String.format(
                 "[REJECT] %s rejected order id=%s at %s IST\nReason: `%s`",

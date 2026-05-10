@@ -1,6 +1,7 @@
 package com.moneymaker.telegram;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -12,7 +13,14 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Thin Telegram bot client. No-op when disabled or when token/chat-id are blank.
+ * Thin Telegram bot client. No-op when:
+ * <ul>
+ *   <li>{@code telegram.enabled=false} (master switch).</li>
+ *   <li>Bot token / chat-id are blank.</li>
+ *   <li>{@code app.mode=backtest} AND {@code telegram.backtest-enabled=false}
+ *       — the dedicated backtest gate prevents replay runs from flooding
+ *       the channel.</li>
+ * </ul>
  */
 @Slf4j
 @Component
@@ -20,15 +28,23 @@ public class TelegramNotifier {
 
     private final TelegramProperties properties;
     private final RestTemplate http;
+    private final boolean backtestMode;
 
-    public TelegramNotifier(TelegramProperties properties, RestTemplate brokerRestTemplate) {
+    public TelegramNotifier(TelegramProperties properties,
+                            RestTemplate brokerRestTemplate,
+                            @Value("${app.mode:live}") String appMode) {
         this.properties = properties;
         this.http = brokerRestTemplate;
+        this.backtestMode = "backtest".equalsIgnoreCase(appMode == null ? "" : appMode.trim());
     }
 
     public void send(String message) {
         if (!properties.isEnabled()) {
             log.debug("[Telegram] disabled - skipping: {}", message);
+            return;
+        }
+        if (backtestMode && !properties.isBacktestEnabled()) {
+            log.debug("[Telegram] suppressed in backtest (telegram.backtest-enabled=false): {}", message);
             return;
         }
         if (isBlank(properties.getBotToken()) || isBlank(properties.getChatId())) {
@@ -56,4 +72,3 @@ public class TelegramNotifier {
         return s == null || s.isBlank();
     }
 }
-

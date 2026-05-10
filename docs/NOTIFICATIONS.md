@@ -96,26 +96,34 @@ Both maps are `ConcurrentHashMap` and live on the singleton `NotificationService
 
 ## Backtest-mode suppression
 
-`NotificationService` reads `app.mode` once at construction:
+A single master gate lives inside `TelegramNotifier.send()`:
 
 ```java
-public NotificationService(TelegramNotifier telegram,
-                           @Value("${app.mode:live}") String appMode) {
-    this.telegram = telegram;
-    this.liveMode = !"backtest".equalsIgnoreCase(appMode == null ? "" : appMode.trim());
+public TelegramNotifier(TelegramProperties properties,
+                        RestTemplate brokerRestTemplate,
+                        @Value("${app.mode:live}") String appMode) {
+    this.backtestMode = "backtest".equalsIgnoreCase(...);
+    ...
+}
+
+public void send(String message) {
+    if (!properties.isEnabled()) return;                                  // master switch
+    if (backtestMode && !properties.isBacktestEnabled()) return;          // backtest gate
+    ...
 }
 ```
 
-The suppression is per-method — login/heartbeat methods don't check `liveMode`, the noisy ones do:
+So when `app.mode=backtest` and `telegram.backtest-enabled=false` (the default), **every** alert in `NotificationService` becomes a no-op — including login and heartbeat. Set `telegram.backtest-enabled=true` to let alerts through during a backtest run (useful when validating the bot setup or stepping through a single day).
 
-```java
-public void alertOrderOpened(TradeOrder o) {
-    if (!liveMode || o == null) return;
-    telegram.send(...);
-}
-```
+This means feature code calls alert methods unconditionally. The decision of whether the message actually goes out is made at the chokepoint, controlled by configuration.
 
-If you add a new alert and want the same suppression, copy the `if (!liveMode) return;` line. The decision lives at the alert helper, not at the call site, so feature code can call alert methods unconditionally and the right thing happens.
+| `app.mode` | `telegram.enabled` | `telegram.backtest-enabled` | Alerts fire? |
+|---|---|---|---|
+| live | true | (any) | Yes |
+| live | false | (any) | No |
+| backtest | true | true | Yes |
+| backtest | true | false | No (default) |
+| backtest | false | (any) | No |
 
 ---
 
