@@ -48,20 +48,25 @@
                 <span th:if="${sessionValid}" class="badge badge-success">VALID</span>
                 <span th:unless="${sessionValid}" class="badge badge-danger">INACTIVE</span>
             </div>
-            <table class="kv-table" th:if="${session != null}">
-                <tr><td>Broker</td>      <td th:text="${session.broker}">ZERODHA</td></tr>
-                <tr><td>User ID</td>     <td th:text="${session.userId} ?: '—'">—</td></tr>
-                <tr><td>Login At</td>    <td th:text="${session.loginAt} ?: '—'">—</td></tr>
-                <tr><td>Expires At</td>  <td th:text="${session.expiresAt} ?: '—'">—</td></tr>
-                <tr><td>Access Token</td><td><code th:text="${session.accessToken != null} ? ${#strings.abbreviate(session.accessToken, 24)} : '—'">—</code></td></tr>
-                <tr th:if="${session.publicToken != null}"><td>Public Token</td>
+            <!-- Show details whenever a session is cached OR appState reports loggedIn.
+                 Earlier this only checked session != null, so a freshly rehydrated state
+                 where the session reference hadn't been pulled yet rendered "no session". -->
+            <table class="kv-table" th:if="${session != null or loggedIn}">
+                <tr><td>Broker</td>      <td th:text="${session != null ? session.broker : activeBroker}">ZERODHA</td></tr>
+                <tr><td>User ID</td>     <td th:text="${session != null and session.userId != null} ? ${session.userId} : '—'">—</td></tr>
+                <tr><td>Login At</td>    <td th:text="${session != null and session.loginAt != null} ? ${session.loginAt} : '—'">—</td></tr>
+                <tr><td>Expires At</td>  <td th:text="${session != null and session.expiresAt != null} ? ${session.expiresAt} : '—'">—</td></tr>
+                <tr><td>Access Token</td><td><code th:text="${session != null and session.accessToken != null} ? ${#strings.abbreviate(session.accessToken, 24)} : '—'">—</code></td></tr>
+                <tr th:if="${session != null and session.publicToken != null}"><td>Public Token</td>
                     <td><code th:text="${#strings.abbreviate(session.publicToken, 24)}">—</code></td></tr>
+                <tr><td>Heartbeat</td>   <td th:text="${lastHeartbeatStatus} ?: '—'">—</td></tr>
+                <tr><td>Last Tick</td>   <td th:text="${lastHeartbeatAt} ?: '—'">—</td></tr>
             </table>
-            <div th:if="${session == null}" style="text-align:center; padding: 30px 0; color: var(--text-muted);">
+            <div th:if="${session == null and !loggedIn}" style="text-align:center; padding: 30px 0; color: var(--text-muted);">
                 <p>No active broker session.</p>
                 <a th:href="@{/login}" class="btn btn-primary">🔑 Login Now</a>
             </div>
-            <form th:if="${session != null}" th:action="@{/logout}" method="post" style="margin-top:16px;">
+            <form th:if="${session != null or loggedIn}" th:action="@{/logout}" method="post" style="margin-top:16px;">
                 <button type="submit" class="btn btn-danger">Logout</button>
             </form>
         </div>

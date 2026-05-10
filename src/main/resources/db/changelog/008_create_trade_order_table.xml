@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+    <changeSet id="008_create_trade_order_table" author="moneymaker">
+        <createTable tableName="trade_order">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="trade_config_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="instrument_name" type="VARCHAR(100)"/>
+            <column name="instrument_token" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="option_strike" type="INT"/>
+            <column name="option_type" type="VARCHAR(4)"/>
+            <column name="option_token" type="VARCHAR(100)"/>
+            <column name="entry_direction" type="VARCHAR(8)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="entry_time" type="DATETIME">
+                <constraints nullable="false"/>
+            </column>
+            <column name="entry_price" type="DECIMAL(12,4)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="exit_time" type="DATETIME"/>
+            <column name="exit_price" type="DECIMAL(12,4)"/>
+            <column name="profit" type="DECIMAL(12,4)"/>
+            <column name="status" type="VARCHAR(16)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex tableName="trade_order" indexName="idx_trade_order_open_lookup">
+            <column name="trade_config_id"/>
+            <column name="instrument_token"/>
+            <column name="option_type"/>
+            <column name="status"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

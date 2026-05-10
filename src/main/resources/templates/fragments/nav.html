@@ -15,7 +15,10 @@
     </button>
     <div id="primaryNavLinks" class="nav-links">
         <a th:href="@{/}"         class="nav-link" th:classappend="${activePage == 'dashboard'} ? ' active'">Dashboard</a>
-        <a th:href="@{/login}"    class="nav-link" th:classappend="${activePage == 'login'}     ? ' active'">🔑 Broker Login</a>
+        <!-- One canonical login entry: visible only when not logged in. Once authenticated
+             the user navigates via the dashboard / logout button below. -->
+        <a th:href="@{/login}"    class="nav-link" th:classappend="${activePage == 'login'} ? ' active'"
+           th:unless="${loggedIn}">🔑 Broker Login</a>
         <a th:href="@{/backtest}" class="nav-link" th:classappend="${activePage == 'backtest'}  ? ' active'">🧪 Backtest</a>
         <a th:href="@{/docs}"     class="nav-link" th:classappend="${activePage == 'docs'}      ? ' active'">📚 Documents</a>
         <span class="nav-separator"></span>
@@ -25,6 +28,13 @@
                                   (${lastHeartbeatStatus != null and lastHeartbeatStatus.name() == 'NO_DATA'} ? 'warn' : 'offline')"></span>
             <span th:text="${lastHeartbeatStatus} ?: 'UNKNOWN'">Status</span>
         </span>
+        <!-- Logout sits in the nav too, so it's reachable from any page -->
+        <form th:if="${loggedIn}" th:action="@{/logout}" method="post" style="display:inline; margin:0;">
+            <button type="submit" class="nav-link"
+                    style="background:none; border:none; cursor:pointer; color:inherit;">
+                ⏻ Logout
+            </button>
+        </form>
     </div>
 </nav>
 </body>

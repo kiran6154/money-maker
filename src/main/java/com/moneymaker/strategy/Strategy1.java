@@ -2,6 +2,7 @@ package com.moneymaker.strategy;
 
 import com.moneymaker.dto.TradeAction;
 import com.moneymaker.dto.TradeConfigCombinedDTO;
+import com.moneymaker.dto.TradeSignal;
 import com.moneymaker.entity.MarketData;
 import com.moneymaker.entity.SmaTimeframe;
 import com.moneymaker.shared.data.SharedData;
@@ -77,6 +78,10 @@ public class Strategy1 implements Strategy {
                 if (!tradeStart.name().equals("NONE")) {
                     log.debug("Strategy1 Trade Decision - Key: {}, Time: {}, primarySma: {}, interval: {}, TradeStart: {}",
                             key, lastCandle.getTimestamp(), primarySma, interval, tradeStart);
+                    SharedData.tradeSignals.add(new TradeSignal(
+                            key, tradeStart, tradeConfigId,
+                            lastCandle.getTimestamp(), primarySma, interval,
+                            lastCandle.getClose()));
                 }
             });
         }

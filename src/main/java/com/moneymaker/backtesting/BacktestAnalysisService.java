@@ -3,6 +3,7 @@ package com.moneymaker.backtesting;
 import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.entity.SmaTimeframe;
 import com.moneymaker.login.service.BrokerSessionStore;
+import com.moneymaker.order.service.OrderService;
 import com.moneymaker.scheduler.AnalysisScheduler;
 import com.moneymaker.scheduler.OrderScheduler;
 import com.moneymaker.scheduler.PositionScheduler;
@@ -31,6 +32,7 @@ public class BacktestAnalysisService {
     private final AnalysisScheduler analysisScheduler;
     private final OrderScheduler orderScheduler;
     private final PositionScheduler positionScheduler;
+    private final OrderService orderService;
     private final BrokerSessionStore brokerSessionStore;
     private final KiteConnect sharedKiteConnect;
 
@@ -39,12 +41,14 @@ public class BacktestAnalysisService {
             AnalysisScheduler analysisScheduler,
             OrderScheduler orderScheduler,
             PositionScheduler positionScheduler,
+            OrderService orderService,
             BrokerSessionStore brokerSessionStore,
             @Qualifier("sharedKiteConnect") KiteConnect sharedKiteConnect) {
         this.tradeConfigScheduler = tradeConfigScheduler;
         this.analysisScheduler = analysisScheduler;
         this.orderScheduler = orderScheduler;
         this.positionScheduler = positionScheduler;
+        this.orderService = orderService;
         this.brokerSessionStore = brokerSessionStore;
         this.sharedKiteConnect = sharedKiteConnect;
     }
@@ -91,8 +95,25 @@ public class BacktestAnalysisService {
                 currentDateTime = currentDateTime.plusMinutes(getSmallestTimePeriod(timePeriodsMinutes));
             }
 
+            // End-of-day cleanup: force-close any intraday position whose strike
+            // fell out of the active-strike set before the close-signal could fire.
+            try {
+                int closed = orderService.forceCloseOpenPositions(currentDate, dateEnd);
+                if (closed > 0) {
+                    log.info("[Backtest] {} — force-closed {} open intraday position(s) at {}",
+                            currentDate, closed, dateEnd);
+                }
+            } catch (Exception ex) {
+                log.error("[Backtest] {} — force-close at end-of-day failed", currentDate, ex);
+            }
+
             currentDate = currentDate.plusDays(1);
         }
+
+        // Drop any in-flight signals from the run so a subsequent backtest /
+        // live tick starts with a clean queue. Persisted TradeOrder rows stay —
+        // they are the backtest's output ledger.
+        SharedData.tradeSignals.clear();
 
         long durationMs = Duration.between(startedAt, Instant.now()).toMillis();
         long successCount = results.stream().filter(BacktestDayResult::success).count();

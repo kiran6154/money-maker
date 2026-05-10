@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+    <changeSet id="009_add_broker_order_id_to_trade_order" author="moneymaker">
+        <addColumn tableName="trade_order">
+            <column name="entry_broker_order_id" type="VARCHAR(64)"/>
+            <column name="exit_broker_order_id"  type="VARCHAR(64)"/>
+            <column name="fill_status"           type="VARCHAR(16)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

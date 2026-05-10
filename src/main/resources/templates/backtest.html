@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8" />
@@ -11,9 +11,10 @@
 <main class="page">
     <h1 class="page-title">🧪 Backtest</h1>
     <p class="page-subtitle">
-        Backtest mode lets you drive the <b>same</b> <code>LoginOrchestrator</code> the live scheduler uses,
-        but on demand instead of on a cron. There is intentionally no parallel "test login" code path.
+        Drive <code>LoginOrchestrator</code> + <code>BacktestAnalysisService</code> on demand.
+        The same code paths the live scheduler uses, just triggered manually.
     </p>
+
     <div class="glass-card" style="margin-bottom: 24px;">
         <div class="card-header">
             <h3>Run mode</h3>
@@ -23,16 +24,17 @@
         </div>
         <p style="color: var(--text-muted); margin: 0;">
             <span th:if="${backtestEnabled}">
-                <code>app.mode=backtest</code> — the live scheduler is <b>disabled</b> and you can drive
-                <code>LoginOrchestrator.ensureLoggedIn()</code> from the button below.
+                <code>app.mode=backtest</code> — buttons below call
+                <code>POST /api/backtest/login</code> and <code>POST /api/backtest/analysis</code>.
             </span>
             <span th:unless="${backtestEnabled}">
-                <code>app.mode=live</code> — the live scheduler runs (08:00 cron + 1-min heartbeat) and the
-                manual login endpoint is <b>not registered</b>. Set <code>app.mode=backtest</code> in
-                <code>application.properties</code> and restart to enable manual runs.
+                <code>app.mode=live</code> — manual endpoints are not registered.
+                Set <code>app.mode=backtest</code> in <code>application.properties</code> and restart.
             </span>
         </p>
     </div>
+
+    <!-- Login -->
     <div class="glass-card" style="margin-bottom: 24px;">
         <div class="card-header">
             <h3>Manual login</h3>
@@ -40,35 +42,87 @@
         </div>
         <p style="color: var(--text-muted); margin-bottom: 14px;">
             Active broker: <b th:text="${activeBroker}">ZERODHA</b>.
-            Calls <code>POST /api/backtest/login</code>, which delegates to
-            <code>LoginOrchestrator.ensureLoggedIn()</code> — same code path the 08:00 cron uses.
         </p>
         <button id="bt-run" class="btn btn-primary"
                 th:disabled="${!backtestEnabled}">▶ Run login</button>
-    </div>
-    <div class="glass-card">
-        <div class="card-header">
-            <h3>Latest result</h3>
-            <span id="bt-summary" class="badge badge-warn">no run yet</span>
-        </div>
-        <table class="kv-table" id="bt-table" style="display:none;">
+        <table class="kv-table" id="bt-table" style="display:none; margin-top:14px;">
             <tbody id="bt-rows"></tbody>
         </table>
-        <div id="bt-empty" style="text-align:center; padding: 30px 0; color: var(--text-muted);">
-            Click <b>Run login</b> above to invoke the orchestrator.
+    </div>
+
+    <!-- Analysis -->
+    <div class="glass-card" style="margin-bottom: 24px;">
+        <div class="card-header">
+            <h3>Run analysis</h3>
+            <span class="badge badge-info" id="an-status">idle</span>
+        </div>
+        <p style="color: var(--text-muted); margin-bottom: 14px;">
+            Calls <code>POST /api/backtest/analysis</code> and persists resulting trades into
+            <code>trade_order</code>. Results below come straight from that table.
+        </p>
+        <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+            <label style="display:flex; flex-direction:column; gap:4px;">
+                <span style="font-size:12px; color: var(--text-muted);">From</span>
+                <input type="date" id="an-from" />
+            </label>
+            <label style="display:flex; flex-direction:column; gap:4px;">
+                <span style="font-size:12px; color: var(--text-muted);">To</span>
+                <input type="date" id="an-to" />
+            </label>
+            <button id="an-run" class="btn btn-primary"
+                    th:disabled="${!backtestEnabled}">▶ Run analysis</button>
+            <button id="an-refresh" class="btn btn-ghost">↻ Refresh orders</button>
+        </div>
+        <table class="kv-table" id="an-summary-table" style="display:none; margin-top:14px;">
+            <tbody id="an-summary-rows"></tbody>
+        </table>
+    </div>
+
+    <!-- Orders -->
+    <div class="glass-card">
+        <div class="card-header">
+            <h3>Orders ledger</h3>
+            <span class="badge badge-info" id="orders-count">0 rows</span>
+        </div>
+        <div style="overflow-x:auto;">
+            <table class="kv-table" id="orders-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>ConfigId</th>
+                        <th>Instrument</th>
+                        <th>Strike</th>
+                        <th>Type</th>
+                        <th>Dir</th>
+                        <th>Entry</th>
+                        <th>Entry @</th>
+                        <th>Exit</th>
+                        <th>Exit @</th>
+                        <th>P/L</th>
+                        <th>Status</th>
+                        <th>Fill</th>
+                        <th>Broker IDs</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="orders-rows"></tbody>
+            </table>
+        </div>
+        <div id="orders-empty" style="text-align:center; padding: 24px 0; color: var(--text-muted);">
+            No orders yet. Run an analysis to populate.
         </div>
     </div>
 </main>
+
 <script th:inline="javascript">
     const backtestEnabled = /*[[${backtestEnabled}]]*/ false;
+
+    // -------- Login --------
     const runBtn   = document.getElementById('bt-run');
     const status   = document.getElementById('bt-status');
-    const summary  = document.getElementById('bt-summary');
     const table    = document.getElementById('bt-table');
     const rows     = document.getElementById('bt-rows');
-    const empty    = document.getElementById('bt-empty');
     function setStatus(text, cls) { status.textContent = text; status.className = 'badge ' + cls; }
-    function setSummary(text, cls) { summary.textContent = text; summary.className = 'badge ' + cls; }
     function row(k, v) {
         const tr = document.createElement('tr');
         tr.innerHTML = '<td>' + k + '</td><td>' + (v === null || v === undefined ? '—' : v) + '</td>';
@@ -80,34 +134,134 @@
         setStatus('running…', 'badge-info');
         try {
             const r = await fetch('/api/backtest/login', { method: 'POST' });
-            if (r.status === 404) {
-                setStatus('disabled', 'badge-warn');
-                setSummary('endpoint not registered (app.mode=live)', 'badge-warn');
-                return;
-            }
+            if (r.status === 404) { setStatus('disabled', 'badge-warn'); return; }
             const j = await r.json();
-            renderResult(j);
-            setStatus('done', j.success ? 'badge-success' : 'badge-danger');
+            rows.innerHTML = '';
+            rows.appendChild(row('Outcome', j.outcome));
+            rows.appendChild(row('Active broker', j.activeBroker));
+            rows.appendChild(row('Logged in', j.loggedIn));
+            rows.appendChild(row('Duration', j.durationMs + ' ms'));
+            rows.appendChild(row('Message', j.message));
+            table.style.display = '';
+            setStatus(j.success ? 'done' : 'failed', j.success ? 'badge-success' : 'badge-danger');
         } catch (e) {
             setStatus('error', 'badge-danger');
-            setSummary(e.message || 'request failed', 'badge-danger');
         } finally { runBtn.disabled = false; }
     });
 
-    function renderResult(j) {
-        rows.innerHTML = '';
-        rows.appendChild(row('Outcome', j.outcome));
-        rows.appendChild(row('Active broker', j.activeBroker));
-        rows.appendChild(row('Logged in', j.loggedIn));
-        rows.appendChild(row('Duration', j.durationMs + ' ms'));
-        rows.appendChild(row('Message', j.message));
-        table.style.display = '';
-        empty.style.display = 'none';
-        setSummary(
-            (j.success ? 'PASSED' : 'FAILED') + ' · ' + j.durationMs + ' ms',
-            j.success ? 'badge-success' : 'badge-danger'
-        );
+    // -------- Analysis --------
+    const anRun     = document.getElementById('an-run');
+    const anRefresh = document.getElementById('an-refresh');
+    const anStatus  = document.getElementById('an-status');
+    const anFrom    = document.getElementById('an-from');
+    const anTo      = document.getElementById('an-to');
+    const anSummary = document.getElementById('an-summary-table');
+    const anSumRows = document.getElementById('an-summary-rows');
+    function setAn(text, cls) { anStatus.textContent = text; anStatus.className = 'badge ' + cls; }
+
+    // Default to today / today
+    (function () {
+        const today = new Date().toISOString().slice(0, 10);
+        anFrom.value = today;
+        anTo.value = today;
+    })();
+
+    anRun.addEventListener('click', async () => {
+        if (!backtestEnabled) return;
+        if (!anFrom.value || !anTo.value) { setAn('pick dates', 'badge-warn'); return; }
+        anRun.disabled = true;
+        setAn('running…', 'badge-info');
+        try {
+            const url = '/api/backtest/analysis?fromDate=' + anFrom.value + '&toDate=' + anTo.value;
+            const r = await fetch(url, { method: 'POST' });
+            if (r.status === 404) { setAn('disabled', 'badge-warn'); return; }
+            const j = await r.json();
+            anSumRows.innerHTML = '';
+            anSumRows.appendChild(row('From', j.fromDate));
+            anSumRows.appendChild(row('To', j.toDate));
+            anSumRows.appendChild(row('Total ticks', j.totalDays));
+            anSumRows.appendChild(row('Successes', j.successDays));
+            anSumRows.appendChild(row('Duration', j.durationMs + ' ms'));
+            anSummary.style.display = '';
+            setAn('done', 'badge-success');
+            await loadOrders();
+        } catch (e) {
+            setAn('error', 'badge-danger');
+        } finally { anRun.disabled = false; }
+    });
+
+    anRefresh.addEventListener('click', loadOrders);
+
+    // -------- Orders ledger --------
+    const ordersTbl   = document.getElementById('orders-table');
+    const ordersRows  = document.getElementById('orders-rows');
+    const ordersCount = document.getElementById('orders-count');
+    const ordersEmpty = document.getElementById('orders-empty');
+    function fmt(v) { return v === null || v === undefined ? '—' : v; }
+
+    async function loadOrders() {
+        const params = new URLSearchParams();
+        if (anFrom.value) params.set('fromDate', anFrom.value);
+        if (anTo.value)   params.set('toDate', anTo.value);
+        try {
+            const r = await fetch('/api/orders?' + params.toString());
+            const list = await r.json();
+            ordersRows.innerHTML = '';
+            list.forEach(o => {
+                const tr = document.createElement('tr');
+                const brokerIds = [
+                    o.entryBrokerOrderId ? 'E:' + o.entryBrokerOrderId : null,
+                    o.exitBrokerOrderId  ? 'X:' + o.exitBrokerOrderId  : null
+                ].filter(Boolean).join(' ') || '—';
+                const canSync = (o.fillStatus && o.fillStatus !== 'BACKTEST')
+                    && (o.entryBrokerOrderId || o.exitBrokerOrderId);
+                tr.innerHTML =
+                    '<td>' + o.id + '</td>' +
+                    '<td>' + fmt(o.tradeConfigId) + '</td>' +
+                    '<td>' + fmt(o.instrumentName) + '</td>' +
+                    '<td>' + fmt(o.optionStrike) + '</td>' +
+                    '<td>' + fmt(o.optionType) + '</td>' +
+                    '<td>' + fmt(o.entryDirection) + '</td>' +
+                    '<td>' + fmt(o.entryPrice) + '</td>' +
+                    '<td>' + fmt(o.entryTime) + '</td>' +
+                    '<td>' + fmt(o.exitPrice) + '</td>' +
+                    '<td>' + fmt(o.exitTime) + '</td>' +
+                    '<td>' + fmt(o.profit) + '</td>' +
+                    '<td>' + fmt(o.status) + '</td>' +
+                    '<td>' + fmt(o.fillStatus) + '</td>' +
+                    '<td><code style="font-size:11px;">' + brokerIds + '</code></td>' +
+                    '<td>' + (canSync
+                        ? '<button class="btn btn-ghost" data-sync-id="' + o.id + '">↻ Sync</button>'
+                        : '<span style="color:var(--text-muted);font-size:11px;">—</span>')
+                    + '</td>';
+                ordersRows.appendChild(tr);
+            });
+            ordersCount.textContent = list.length + ' row' + (list.length === 1 ? '' : 's');
+            ordersTbl.style.display    = list.length ? '' : 'none';
+            ordersEmpty.style.display  = list.length ? 'none' : '';
+        } catch (e) {
+            ordersCount.textContent = 'fetch failed';
+        }
     }
+
+    // Per-row sync handler (delegated)
+    document.getElementById('orders-rows').addEventListener('click', async (ev) => {
+        const btn = ev.target.closest('[data-sync-id]');
+        if (!btn) return;
+        const id = btn.getAttribute('data-sync-id');
+        btn.disabled = true;
+        btn.textContent = 'syncing…';
+        try {
+            const r = await fetch('/api/orders/' + id + '/sync', { method: 'POST' });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            await loadOrders();
+        } catch (e) {
+            btn.textContent = 'failed';
+        }
+    });
+
+    // Initial load
+    loadOrders();
 </script>
 </body>
 </html>
