@@ -17,6 +17,7 @@ This is a **Spring Boot 3 / Java 17** broker-automation app. The architecture is
 6. **Liquibase only for schema.** Never edit a previously deployed changeset; always add a new `00X_*.xml` file under `src/main/resources/db/changelog/` and include it from the master.
 7. **`trade_order` is the order ledger.** Every entry / exit / force-close persists a row before any broker call. `OrderService` is the single owner of order lifecycle — feature code calls it, not the placement service directly.
 8. **Schedulers run identically in live and backtest.** `BacktestAnalysisService` calls the same `analysisScheduler.runStrategies()` / `orderScheduler.processOrders()` / `positionScheduler.processPositions()` methods the cron does. Do not put work inside the `@Scheduled` method that backtest can't replay.
+9. **No hardcoded trading-behaviour rules.** Caps, thresholds, lifecycle rules, and any number/boolean that controls *when to enter, when to exit, how many trades* must come from `TradeConfig` (or equivalent config). Idempotency guards and correctness invariants (e.g. "don't insert the same row twice", "don't monitor the candle that opened the trade") are technical and may stay in code. If a needed parameter has no `TradeConfig` field, **ask the user** before hardcoding — don't guess at a default. See ["Hardcoded vs config-driven" in ORDERS_AND_POSITIONS.md](docs/ORDERS_AND_POSITIONS.md#hardcoded-vs-config-driven).
 
 ---
 
@@ -150,6 +151,7 @@ See [`docs/NOTIFICATIONS.md` → How to add a new alert](docs/NOTIFICATIONS.md#h
 - ❌ Do not reach into `BrokerSessionStore` from a feature package when `AppState` already exposes the data you need.
 - ❌ Do not call `OrderPlacementService.place(...)` from feature code — go through `OrderService` so the DB ledger and dedupe rules stay authoritative.
 - ❌ Do not put work inside an `@Scheduled` method body that the backtest can't replay. Put it on the underlying service.
+- ❌ Do not hardcode trading-behaviour rules — caps, thresholds, lifecycle counts. They belong in `TradeConfig`. Ask before adding a constant that affects entry/exit decisions.
 
 ---
 

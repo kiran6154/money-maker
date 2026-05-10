@@ -257,6 +257,43 @@ Backtest mode is gated at `TelegramNotifier.send()` — `telegram.backtest-enabl
 
 ---
 
+## Hardcoded vs config-driven
+
+Trading-behaviour parameters — anything that controls *when* a trade enters, *when* it exits, *how many* trades fire — must come from `TradeConfig` (or equivalent configuration). They are **never** hardcoded in services. Idempotency guards and correctness invariants are a separate category and may stay in code.
+
+> **History note.** An earlier version of `OrderService.handleSignal` carried a hardcoded "1 entry per strike per day" guard (the `alreadyClosedToday` check). It was removed in favour of `tradeConfig.numberOfTradesPerDay` (config-driven, per config) plus `tradeConfig.numberOfParallelTrades` (config-driven, per direction). Re-adding any similar hardcoded cap is forbidden — see the principle below.
+
+### What MUST come from config
+
+| Behaviour | Config field |
+|---|---|
+| Entry direction allowed (BUY-only / SELL-only) | `tradeConfig.transactionType` |
+| Max trades per config per day (across all strikes, all statuses) | `tradeConfig.numberOfTradesPerDay` |
+| Max simultaneous OPEN trades per direction | `tradeConfig.numberOfParallelTrades` |
+| Profit target (per share) | `tradeConfig.target` → snapshotted to `target_at_entry` at open |
+| Stop loss (per share, positive) | `tradeConfig.stopLoss` → snapshotted to `stop_loss_at_entry` at open |
+| Lot quantity | `tradeConfig.lotQuantity` |
+| Active broker | `broker.active` (application property) |
+| Backtest replay window | `fromDate` / `toDate` from the `/api/backtest/analysis` request |
+
+When a new trading rule is needed and no `TradeConfig` field exists, **ask the user first** — they will either point at an existing column with a different name than expected, or sanction a new Liquibase changeset to add one. Do not guess at a default and do not embed a constant.
+
+### What MAY stay hardcoded (technical / correctness)
+
+- **Same-candle guard** in `PositionService.handleOne` — a trade cannot exit on the same candle that opened it. Correctness invariant.
+- **Exact-duplicate guard** in `OrderService.handleSignal` — `(configId, optionToken, direction, entryTime)` uniquely identifies one ledger row. Re-runs and same-tick repeats are deduplicated. Idempotency.
+- **`STATUS_OPEN` / `STATUS_CLOSED`, `FILL_PENDING` / `FILL_BACKTEST` / `FILL_COMPLETE`** — internal lifecycle vocabulary. Not user-tunable.
+- **Per-share P&L formula** — direction-aware subtraction. A formula, not a parameter.
+
+### What is technically hardcoded but probably should move to config later
+
+- **NSE market open `09:20`, market close `15:30`** in `BacktestAnalysisService.run` — market-wide constants today; would need to move to a `MarketProperties` if a non-NSE market is ever added.
+- **`15:15` "market close time" rule** in `CommonRules.isMarketCloseTime` — same caveat.
+
+These aren't trading-behaviour rules per se (they're broker / exchange constants), so they don't violate the principle today. But flagging them so the next contributor knows.
+
+---
+
 ## Things that are still pending
 
 - **Zerodha tradingsymbol resolution.** `ZerodhaOrderPlacementService.resolveTradingSymbol` returns `null`, so live `place(...)` short-circuits before hitting Kite. Needs a cached NFO instruments dump fetched at login + a `(name, expiry, strike, optionType)` lookup. Once that lands, the rest of the pipeline is wired.
