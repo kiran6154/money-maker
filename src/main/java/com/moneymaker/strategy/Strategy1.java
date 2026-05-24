@@ -74,6 +74,26 @@ public class Strategy1 implements Strategy {
                     .sorted(strikeComparator(isCe))
                     .toList();
 
+            // Diagnostic: show the SCAN ORDER explicitly with each strike's last
+            // candle close (≈ current premium). For CE this should be descending
+            // premium; for PE ascending strike but also descending premium. If
+            // this list looks reversed, the sort is wrong; if it looks right but
+            // the trade went to a low-premium strike anyway, the higher-premium
+            // strikes didn't fire the gate at this tick.
+            if (log.isDebugEnabled()) {
+                StringBuilder sb = new StringBuilder();
+                for (Map.Entry<String, List<MarketData>> e : sortedStrikes) {
+                    List<MarketData> dl = e.getValue();
+                    MarketData last = dl.get(dl.size() - 1);
+                    String strike = parseStrikeLabel(e.getKey());
+                    String close = last.getClose() != null ? last.getClose().toPlainString() : "?";
+                    if (sb.length() > 0) sb.append(", ");
+                    sb.append(strike).append("(").append(close).append(")");
+                }
+                log.debug("[strikes] tradeConfigId={} tf={} {} scan-order: {}",
+                        tradeConfigId, interval, isCe ? "CE" : "PE", sb);
+            }
+
             for (Map.Entry<String, List<MarketData>> entry : sortedStrikes) {
                 String key = entry.getKey();
                 List<MarketData> dataList = entry.getValue();

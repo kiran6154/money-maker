@@ -76,6 +76,7 @@ When changing anything in these areas, **read the relevant doc first**:
 | Login flow + broker adapters | [`docs/LOGIN_FLOW.md`](docs/LOGIN_FLOW.md) | OAuth vs TOTP, controller endpoints, callback handling |
 | Heartbeat probes + state machine | [`docs/HEARTBEAT.md`](docs/HEARTBEAT.md) | Auth + data probes, transition-only alerting, state diagram |
 | Backtesting | [`docs/BACKTESTING.md`](docs/BACKTESTING.md) | Run modes, pipeline, controller endpoints |
+| Backtest performance + live parity | [`docs/BACKTEST_PERFORMANCE.md`](docs/BACKTEST_PERFORMANCE.md) | Speed-up phases, per-phase live-mode impact, parity verification checklist |
 | Architecture overview | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | High-level layering and conventions |
 | Schedulers (all 5) | [`docs/SCHEDULERS.md`](docs/SCHEDULERS.md) | LoginScheduler, AnalysisScheduler, TradeConfigScheduler, OrderScheduler, PositionScheduler — cadence, pipeline, mode-gating |
 | Orders + position monitoring | [`docs/ORDERS_AND_POSITIONS.md`](docs/ORDERS_AND_POSITIONS.md) | Order lifecycle, dedupe rules, broker factories, peak / SL / target tracking, `trade_order` columns |

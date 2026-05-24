@@ -148,14 +148,13 @@ public class NotificationService {
         if (o == null) return;
         StringBuilder sb = new StringBuilder("[ORDER OPEN]").append('\n');
         sb.append("  id         : ").append(o.getId()).append('\n');
-        sb.append("  date       : ").append(o.getEntryTime() != null ? o.getEntryTime().toLocalDate().format(DATE_FMT) : "-").append('\n');
-        sb.append("  time       : ").append(o.getEntryTime() != null ? o.getEntryTime().toLocalTime().format(TIME_FMT) : "-").append('\n');
         sb.append("  strategy   : ").append(o.getStrategyId()).append('\n');
         sb.append("  config     : ").append(o.getTradeConfigId()).append('\n');
         sb.append("  instrument : ").append(safe(o.getInstrumentName())).append('\n');
         sb.append("  strike     : ").append(o.getOptionStrike()).append(' ').append(safe(o.getOptionType())).append('\n');
         sb.append("  direction  : ").append(safe(o.getEntryDirection())).append('\n');
         sb.append("  entry rule : ").append(safe(o.getEntryReason())).append('\n');
+        sb.append("  entry time : ").append(formatDateTime(o.getEntryTime())).append('\n');
         sb.append("  entry      : ").append(o.getEntryPrice());
         telegram.send(sb.toString());
     }
@@ -164,14 +163,14 @@ public class NotificationService {
         if (o == null) return;
         StringBuilder sb = new StringBuilder("[ORDER CLOSE]").append('\n');
         sb.append("  id         : ").append(o.getId()).append('\n');
-        sb.append("  date       : ").append(o.getEntryTime() != null ? o.getEntryTime().toLocalDate().format(DATE_FMT) : "-").append('\n');
-        sb.append("  time       : ").append(o.getEntryTime() != null ? o.getEntryTime().toLocalTime().format(TIME_FMT) : "-").append('\n');
         sb.append("  strategy   : ").append(o.getStrategyId()).append('\n');
         sb.append("  config     : ").append(o.getTradeConfigId()).append('\n');
         sb.append("  instrument : ").append(safe(o.getInstrumentName())).append('\n');
         sb.append("  strike     : ").append(o.getOptionStrike()).append(' ').append(safe(o.getOptionType())).append('\n');
         sb.append("  entry rule : ").append(safe(o.getEntryReason())).append('\n');
+        sb.append("  entry time : ").append(formatDateTime(o.getEntryTime())).append('\n');
         sb.append("  entry      : ").append(o.getEntryPrice()).append('\n');
+        sb.append("  exit time  : ").append(formatDateTime(o.getExitTime())).append('\n');
         sb.append("  exit       : ").append(o.getExitPrice()).append('\n');
         sb.append("  exit reason: ").append(safe(o.getExitReason())).append('\n');
         sb.append("  P/L        : ").append(o.getProfit());
@@ -182,17 +181,23 @@ public class NotificationService {
         if (o == null) return;
         StringBuilder sb = new StringBuilder("[ORDER FORCE-CLOSE]").append('\n');
         sb.append("  id         : ").append(o.getId()).append('\n');
-        sb.append("  date       : ").append(o.getEntryTime() != null ? o.getEntryTime().toLocalDate().format(DATE_FMT) : "-").append('\n');
-        sb.append("  time       : ").append(o.getEntryTime() != null ? o.getEntryTime().toLocalTime().format(TIME_FMT) : "-").append('\n');
         sb.append("  strategy   : ").append(o.getStrategyId()).append('\n');
         sb.append("  config     : ").append(o.getTradeConfigId()).append('\n');
         sb.append("  instrument : ").append(safe(o.getInstrumentName())).append('\n');
         sb.append("  strike     : ").append(o.getOptionStrike()).append(' ').append(safe(o.getOptionType())).append('\n');
         sb.append("  entry rule : ").append(safe(o.getEntryReason())).append('\n');
+        sb.append("  entry time : ").append(formatDateTime(o.getEntryTime())).append('\n');
         sb.append("  entry      : ").append(o.getEntryPrice()).append('\n');
+        sb.append("  exit time  : ").append(formatDateTime(o.getExitTime())).append('\n');
         sb.append("  exit       : ").append(o.getExitPrice()).append('\n');
         sb.append("  P/L        : ").append(o.getProfit());
         telegram.send(sb.toString());
+    }
+
+    /** Compact {@code yyyy-MM-dd HH:mm:ss} or {@code -} when null. */
+    private static String formatDateTime(java.time.LocalDateTime ts) {
+        if (ts == null) return "-";
+        return ts.toLocalDate().format(DATE_FMT) + " " + ts.toLocalTime().format(TIME_FMT);
     }
 
     public void alertOrderRejected(String brokerName, Long orderId, String reason) {
