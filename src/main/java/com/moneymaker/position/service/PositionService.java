@@ -102,14 +102,18 @@ public class PositionService {
         order.setLastMonitoredPrice(price);
         order.setLastMonitoredAt(asOf);
 
-        log.debug("PositionService: orderId={} dir={} entry={} asOf={} price={} pnl={} target={} stopLoss={}",
-                order.getId(), order.getEntryDirection(), order.getEntryPrice(), asOf, price, pnl,
-                order.getTargetAtEntry(), order.getStopLossAtEntry());
-
         // Threshold check using values snapshotted at entry — not the live config.
         String hit = thresholdBreach(order, pnl);
+
+        log.debug("[position] orderId={} {} {}{} entry={}@{} cur={}@{} pl={} maxPL={} maxLoss={} target={} stopLoss={} → {}",
+                order.getId(), order.getInstrumentName(), order.getOptionStrike(), order.getOptionType(),
+                order.getEntryPrice(), order.getEntryTime(),
+                price, asOf, pnl, order.getPeakProfit(), order.getPeakLoss(),
+                order.getTargetAtEntry(), order.getStopLossAtEntry(),
+                hit != null ? hit : "hold");
+
         if (hit != null) {
-            log.info("PositionService: orderId={} hit {} (pnl={}, threshold target={} stopLoss={}). Closing at {}.",
+            log.info("[position] CLOSE orderId={} reason={} pnl={} (target={} stopLoss={}) at {}",
                     order.getId(), hit, pnl, order.getTargetAtEntry(), order.getStopLossAtEntry(), asOf);
             // Save peak/last-monitored before closeManually loads the row again.
             tradeOrderRepository.save(order);

@@ -102,6 +102,14 @@ public class TradeOrder {
     private String exitReason;
 
     /**
+     * Which rule fired at entry — e.g. {@code "5min/SMA50"}. Snapshotted from
+     * the triggering {@link com.moneymaker.dto.TradeSignal} so the ledger and
+     * the order Telegram alert can show the trigger without re-deriving it.
+     */
+    @Column(name = "entry_reason", length = 64)
+    private String entryReason;
+
+    /**
      * Per-share profit target snapshotted from {@code TradeConfig.target} at the
      * moment this trade was opened. Used by {@code PositionService} so a config
      * edit mid-trade can't retroactively close already-open positions.

@@ -56,13 +56,18 @@ public class AnalysisScheduler {
 
     public void calculateIndicator(LocalDateTime analysisDateTime) {
         Objects.requireNonNull(analysisDateTime, "analysisDateTime must not be null");
-        logger.info("Calculating indicators for date-time: {}", analysisDateTime);
+        logger.debug("Calculating indicators for date-time: {}", analysisDateTime);
 
         try {
-            // Calculate startOfDay: 500 candles of 15 minutes = 7500 minutes lookback
-            LocalDateTime startOfDay = analysisDateTime.minusDays(10); // Using 10 days to ensure we have enough data for 15-minute candles
+            // Lookback derived from the largest (timeframe × SMA-period) the
+            // analysis pipeline is configured to compute. Hardcoding 10 days
+            // was failing for SMA500 on 5-min and above. See
+            // computeLookbackCalendarDays() for the calculation.
+            int lookbackDays = computeLookbackCalendarDays();
+            LocalDateTime startOfDay = analysisDateTime.minusDays(lookbackDays);
 
-            logger.info("Fetching market data from {} to {}", startOfDay, analysisDateTime);
+            logger.debug("Fetching market data from {} to {} (lookback={} calendar days)",
+                    startOfDay, analysisDateTime, lookbackDays);
 
             List<TradeConfigCombinedDTO> combinedDtoList = SharedData.combinedDto;
             if (combinedDtoList == null || combinedDtoList.isEmpty()) {
@@ -83,6 +88,7 @@ public class AnalysisScheduler {
                 }
 
                 String symbol = dto.getInstrumentDetails().getInstrumentToken().toString();
+                boolean indexLineEmitted = false;
                 for (Integer timeframe : timeframes.keySet()) {
                     String interval = toMarketDataInterval(timeframe);
                     if (interval == null) {
@@ -105,14 +111,22 @@ public class AnalysisScheduler {
 
                     List<List<Integer>> strikeList = calculateStrikesForCandles(marketDataList, dto.getInstrument(), dto.getTradeConfig());
                     SharedData.strikeList = strikeList;
-                  //  shareStrikesByStrikeKey(strikeList, dto.getInstrument(), dto.getTradeConfig(), analysisDateTime.toLocalDate(), interval);
+
+                    // One [index] line per config per tick — emitted on the first
+                    // timeframe iteration. Strikes are computed off the last candle's
+                    // close so they're identical across timeframes; no value in
+                    // repeating the line per timeframe.
+                    if (!indexLineEmitted && logger.isDebugEnabled()) {
+                        logIndexLine(dto, marketDataList, strikeList);
+                        indexLineEmitted = true;
+                    }
 
                     fetchAndShareStrikeMarketData(strikeList, dto.getInstrument(), dto.getTradeConfig(), timeframe, analysisDateTime.toLocalDate(), interval, startOfDay, analysisDateTime, marketDataKey);
 
                 }
             }
 
-            logger.info("Indicator analysis completed for date-time: {}", analysisDateTime);
+            logger.debug("Indicator analysis completed for date-time: {}", analysisDateTime);
 
         } catch (Exception ex) {
             logger.error("Error calculating indicators for date-time: {}", analysisDateTime, ex);
@@ -123,6 +137,51 @@ public class AnalysisScheduler {
     private String toMarketDataInterval(Integer timeframe) {
 
         return timeframe + "minute";
+    }
+
+    /**
+     * NSE trading minutes per day (09:15 → 15:30 = 6h15m = 375 min).
+     */
+    private static final int NSE_MINUTES_PER_DAY = 375;
+
+    /**
+     * Buffer added on top of the strict requirement to absorb holidays,
+     * occasional short trading days, and data gaps Zerodha sometimes returns.
+     */
+    private static final int LOOKBACK_BUFFER_DAYS = 7;
+
+    /**
+     * Returns the number of calendar days of historical data we must fetch so
+     * that the largest {@code (timeframe × sma-period)} configured in
+     * {@link SharedData#allTimeFrameMap} can be computed on every candle of
+     * the analysis day.
+     *
+     * <p>Example with the default map (5/10/15-min, SMA periods up to 500):
+     * largest pair is 10-min × 500 = 5000 trading minutes ≈ 14 trading days ≈
+     * 20 calendar days + buffer = ~27 days. With a 15-min × 500 entry it
+     * would jump to ~35 days. Computed each call so adding a timeframe in
+     * {@link com.moneymaker.dto.AllTimeFramedto} automatically widens the
+     * lookback without code edits.
+     */
+    private int computeLookbackCalendarDays() {
+        Map<Integer, List<Integer>> map = SharedData.allTimeFrameMap;
+        int maxRequiredMinutes = 0;
+        if (map != null) {
+            for (Map.Entry<Integer, List<Integer>> e : map.entrySet()) {
+                Integer tf = e.getKey();
+                List<Integer> smas = e.getValue();
+                if (tf == null || smas == null || smas.isEmpty()) continue;
+                int maxSma = smas.stream().mapToInt(Integer::intValue).max().orElse(0);
+                maxRequiredMinutes = Math.max(maxRequiredMinutes, tf * maxSma);
+            }
+        }
+        if (maxRequiredMinutes == 0) {
+            // No timeframes configured yet — fall back to a small safe window.
+            return 10;
+        }
+        int tradingDays  = (int) Math.ceil(maxRequiredMinutes / (double) NSE_MINUTES_PER_DAY);
+        int calendarDays = (int) Math.ceil(tradingDays * 7.0 / 5.0);
+        return calendarDays + LOOKBACK_BUFFER_DAYS;
     }
 
     private String toMarketDataKey(String instrumentToken, String interval) {
@@ -225,7 +284,7 @@ public class AnalysisScheduler {
             List<Integer> smaPeriodList = SharedData.allTimeFrameMap.get(timeframe);
             for (Integer period : smaPeriodList) {
                 Map<String, Double> strikeIndicators = calculateIndicators(strikeMarketDataList, period);
-        }
+            }
             String strikeMarketDataKey = toStrikeMarketDataKey(parentMarketDataKey, strike, optionType, optionToken, tradeConfig);
             SharedData.strikeMarketDataList = strikeMarketDataList;
             SharedData.strikeMarketDataByInstrumentAndInterval.put(
@@ -286,16 +345,26 @@ public class AnalysisScheduler {
         // Convert LocalDate to String format (YYYY-MM-DD) and Integer to BigDecimal for repository query
         String expiryString = expiryDate.toString();
         BigDecimal strikeBigDecimal = new BigDecimal(strike);
-        Optional<InstrumentDetails> instumentDetails= instrumentDetailsRepository.findByCriteria(
+        List<InstrumentDetails> matches = instrumentDetailsRepository.findByCriteria(
                 instrument.getInsName(),
                 expiryString,
                 strikeBigDecimal,
                 optionType
         );
 
-
-
-        return instumentDetails.get();
+        if (matches.isEmpty()) {
+            logger.warn("No InstrumentDetails for {}, expiry={}, strike={}, type={}",
+                    instrument.getInsName(), expiryString, strikeBigDecimal, optionType);
+            return null;
+        }
+        if (matches.size() > 1) {
+            // Same expiry / strike / type on two listings (e.g. NSE + BSE) — pick
+            // the lowest-id row deterministically and warn so the data can be cleaned.
+            logger.warn("Multiple InstrumentDetails ({}) for {}, expiry={}, strike={}, type={} — picking id={}",
+                    matches.size(), instrument.getInsName(), expiryString, strikeBigDecimal,
+                    optionType, matches.get(0).getInstrumentToken());
+        }
+        return matches.get(0);
     }
 
 /*    private String buildOptionTradingSymbol(Instrument instrument, LocalDate expiryDate, Integer strike, String optionType) {
@@ -376,6 +445,33 @@ public class AnalysisScheduler {
             return 14;
         }
         return timeframe.getSma();
+    }
+
+    /**
+     * Emits the per-tick {@code [index]} narrative line: underlying name,
+     * spot (last candle close), ATM, and the configured ITM / OTM strike sets.
+     * Only the call site decides when to emit — this method just formats.
+     */
+    private void logIndexLine(TradeConfigCombinedDTO dto, List<MarketData> marketDataList,
+                              List<List<Integer>> strikeList) {
+        if (marketDataList == null || marketDataList.isEmpty()) return;
+        MarketData last = marketDataList.get(marketDataList.size() - 1);
+        if (last == null || last.getClose() == null) return;
+
+        String name = dto.getInstrument() != null ? dto.getInstrument().getInsName() : "?";
+        double close = last.getClose().doubleValue();
+        int strikeStep = (dto.getInstrument() != null && dto.getInstrument().getStrikePoints() != null)
+                ? dto.getInstrument().getStrikePoints().intValue()
+                : 0;
+        int atm = strikeStep > 0
+                ? (int) (Math.floor(close / strikeStep) * strikeStep)
+                : -1;
+
+        List<Integer> itm = (strikeList != null && !strikeList.isEmpty()) ? strikeList.get(0) : List.of();
+        List<Integer> otm = (strikeList != null && strikeList.size() > 1) ? strikeList.get(1) : List.of();
+        logger.debug("[index] {} spot={} ATM={} ITM={} OTM={} tradeConfigId={}",
+                name, close, atm, itm, otm,
+                dto.getTradeConfig() != null ? dto.getTradeConfig().getId() : null);
     }
 
     public void runStrategies() {

@@ -26,46 +26,52 @@ public final class SmaTrendCalculator {
         if (data == null || data.isEmpty()) return;
 
         LocalDate currentDay = null;
-        int dDev50 = 0, dDev100 = 0, dDev200 = 0, dDev500 = 0;
-        int uDev50 = 0, uDev100 = 0, uDev200 = 0, uDev500 = 0;
+        int dDev20 = 0, dDev50 = 0, dDev100 = 0, dDev200 = 0, dDev500 = 0;
+        int uDev20 = 0, uDev50 = 0, uDev100 = 0, uDev200 = 0, uDev500 = 0;
         MarketData prev = null;
 
         for (MarketData c : data) {
             LocalDate day = c.getTimestamp().toLocalDate();
             if (!day.equals(currentDay)) {
                 currentDay = day;
-                dDev50 = dDev100 = dDev200 = dDev500 = 0;
-                uDev50 = uDev100 = uDev200 = uDev500 = 0;
+                dDev20 = dDev50 = dDev100 = dDev200 = dDev500 = 0;
+                uDev20 = uDev50 = uDev100 = uDev200 = uDev500 = 0;
                 prev = null;
             }
 
             if (prev == null) {
                 // First candle of the day — flag true if SMA is available.
+                c.setSma20DownTrending(c.getSmaValue20() != null);
                 c.setSma50DownTrending(c.getSmaValue50() != null);
                 c.setSma100DownTrending(c.getSmaValue100() != null);
                 c.setSma200DownTrending(c.getSmaValue200() != null);
                 c.setSma500DownTrending(c.getSmaValue500() != null);
 
+                c.setSma20UpTrending(c.getSmaValue20() != null);
                 c.setSma50UpTrending(c.getSmaValue50() != null);
                 c.setSma100UpTrending(c.getSmaValue100() != null);
                 c.setSma200UpTrending(c.getSmaValue200() != null);
                 c.setSma500UpTrending(c.getSmaValue500() != null);
             } else {
+                dDev20  += downDeviation(prev.getSmaValue20(),  c.getSmaValue20());
                 dDev50  += downDeviation(prev.getSmaValue50(),  c.getSmaValue50());
                 dDev100 += downDeviation(prev.getSmaValue100(), c.getSmaValue100());
                 dDev200 += downDeviation(prev.getSmaValue200(), c.getSmaValue200());
                 dDev500 += downDeviation(prev.getSmaValue500(), c.getSmaValue500());
 
+                uDev20  += upDeviation(prev.getSmaValue20(),  c.getSmaValue20());
                 uDev50  += upDeviation(prev.getSmaValue50(),  c.getSmaValue50());
                 uDev100 += upDeviation(prev.getSmaValue100(), c.getSmaValue100());
                 uDev200 += upDeviation(prev.getSmaValue200(), c.getSmaValue200());
                 uDev500 += upDeviation(prev.getSmaValue500(), c.getSmaValue500());
 
+                c.setSma20DownTrending(available(prev.getSmaValue20(),  c.getSmaValue20())  && dDev20  <= maxDeviations);
                 c.setSma50DownTrending(available(prev.getSmaValue50(),  c.getSmaValue50())  && dDev50  <= maxDeviations);
                 c.setSma100DownTrending(available(prev.getSmaValue100(), c.getSmaValue100()) && dDev100 <= maxDeviations);
                 c.setSma200DownTrending(available(prev.getSmaValue200(), c.getSmaValue200()) && dDev200 <= maxDeviations);
                 c.setSma500DownTrending(available(prev.getSmaValue500(), c.getSmaValue500()) && dDev500 <= maxDeviations);
 
+                c.setSma20UpTrending(available(prev.getSmaValue20(),  c.getSmaValue20())  && uDev20  <= maxDeviations);
                 c.setSma50UpTrending(available(prev.getSmaValue50(),  c.getSmaValue50())  && uDev50  <= maxDeviations);
                 c.setSma100UpTrending(available(prev.getSmaValue100(), c.getSmaValue100()) && uDev100 <= maxDeviations);
                 c.setSma200UpTrending(available(prev.getSmaValue200(), c.getSmaValue200()) && uDev200 <= maxDeviations);

@@ -14,9 +14,9 @@ static {
     if (SharedData.allTimeFrameMap == null) {
         throw new IllegalStateException("SharedData.allTimeFrameList must be initialized before AllTimeFramedto static initialization");
     }
-    timeframeToSmaMap.put(5, List.of(50, 100, 200, 500));
-    timeframeToSmaMap.put(10, List.of(50, 100, 200, 500));
-    timeframeToSmaMap.put(15, List.of(50, 100, 200));
+    timeframeToSmaMap.put(5, List.of(20, 50, 100, 200, 500));
+    timeframeToSmaMap.put(10, List.of(20, 50, 100, 200, 500));
+    timeframeToSmaMap.put(15, List.of(20, 50, 100, 200, 500));
 
     AllTimeFramedto dto= new AllTimeFramedto(timeframeToSmaMap);
     SharedData.allTimeFrameMap=timeframeToSmaMap;

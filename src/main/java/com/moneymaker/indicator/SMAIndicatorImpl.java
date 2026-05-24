@@ -47,7 +47,7 @@ public class SMAIndicatorImpl implements Indicator {
 
         int period = config.getPeriod();
         if (period <= 0 || period > marketData.size()) {
-            log.error("period must be valid {} and less than or equal to marketData size {}",
+            log.debug("SMA period={} cannot be computed: requires marketData size >= period, got size={}",
                     period, marketData.size());
             return null;
         }
@@ -65,7 +65,9 @@ public class SMAIndicatorImpl implements Indicator {
 
         int i = 0;
         for (MarketData md : marketData) {
-            if (config.getPeriod() == 50) {
+            if (config.getPeriod() == 20) {
+                md.setSmaValue20(sma.getValue(i).doubleValue());
+            } else if (config.getPeriod() == 50) {
                 md.setSmaValue50(sma.getValue(i).doubleValue());
             } else if (config.getPeriod() == 100) {
                 md.setSmaValue100(sma.getValue(i).doubleValue());

@@ -156,7 +156,7 @@ public class ZerodhaMarketDataService {
         }
     }
 
-    private List<ZerodhaInstrument> fetchInstruments(String accessToken) {
+    public List<ZerodhaInstrument> fetchInstruments(String accessToken) {
         BrokerProperties.Zerodha cfg = properties.getZerodha();
 
         HttpHeaders headers = new HttpHeaders();

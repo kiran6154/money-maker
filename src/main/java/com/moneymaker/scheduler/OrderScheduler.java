@@ -20,7 +20,7 @@ public class OrderScheduler {
     /** Every 5 minutes during NSE trading hours (Mon-Fri, 09:00-16:55 IST). */
     @Scheduled(cron = "0 0/5 9-16 * * MON-FRI")
     public void processOrders() {
-        log.info("OrderScheduler tick");
+        log.debug("OrderScheduler tick");
         try {
             orderService.processOrders();
         } catch (Exception ex) {

@@ -51,9 +51,6 @@ public class Strategy1 implements Strategy {
                 ? config.getInstrumentDetails().getInstrumentToken().toString()
                 : null;
 
-        // Run rules independently for each configured (timePeriod, sma) pair. Each
-        // iteration's inner forEach is filtered to its own interval, so a 5-minute
-        // timeframe never touches 15-minute keys and vice versa.
         for (SmaTimeframe tf : timeframes) {
             if (tf == null || tf.getTimePeriod() == null || tf.getSma() == null) continue;
 
@@ -66,20 +63,31 @@ public class Strategy1 implements Strategy {
                 if (!keyMatches(key, instrumentToken, interval)) return;
                 if (dataList == null || dataList.isEmpty()) return;
 
-                // Compute intra-day trend flags on the real-data list
                 SmaTrendCalculator.compute(dataList, 0);
 
                 MarketData lastCandle = dataList.get(dataList.size() - 1);
+                double smaVal = CommonRules.smaValue(lastCandle, primarySma);
+                double open   = lastCandle.getOpen()  != null ? lastCandle.getOpen().doubleValue()  : 0d;
+                double close  = lastCandle.getClose() != null ? lastCandle.getClose().doubleValue() : 0d;
+                boolean sellGate = smaVal > 0 && open > smaVal && close < smaVal;
+                boolean buyGate  = false; // raw buy-cross intentionally disabled
 
                 RuleContext ctx = new RuleContext(lastCandle, dataList.size() - 1,
                         dataList, primarySma, config);
-                TradeAction tradeStart = RuleEngine.decide(ctx, sellRules, buyRules);
+                RuleEngine.Decision decision = RuleEngine.decide(ctx, sellRules, buyRules);
 
-                if (!tradeStart.name().equals("NONE")) {
-                    log.debug("Strategy1 Trade Decision - Key: {}, Time: {}, primarySma: {}, interval: {}, TradeStart: {}",
-                            key, lastCandle.getTimestamp(), primarySma, interval, tradeStart);
+                String strikeLabel = parseStrikeLabel(key);
+                log.debug("[tick] tf={} {} ts={} open={} close={} sma{}={} sellGate={} buyGate={} → {} ({})",
+                        interval, strikeLabel, lastCandle.getTimestamp(),
+                        open, close, primarySma, smaVal,
+                        sellGate, buyGate, decision.action(), decision.reason());
+
+                if (decision.action() != TradeAction.NONE) {
+                    log.info("[signal] {} {} tf={} sma{}={} open={} close={} time={}",
+                            decision.action(), strikeLabel, interval,
+                            primarySma, smaVal, open, close, lastCandle.getTimestamp());
                     SharedData.tradeSignals.add(new TradeSignal(
-                            key, tradeStart, tradeConfigId,
+                            key, decision.action(), tradeConfigId,
                             lastCandle.getTimestamp(), primarySma, interval,
                             lastCandle.getClose()));
                 }
@@ -88,12 +96,16 @@ public class Strategy1 implements Strategy {
     }
 
     /**
-     * A {@code strikeMarketData} key has the form
-     * {@code <instrumentToken>|<interval>|<optionType>|<strike>|<optionToken>|<itmDepth>|<otmDepth>}
-     * (see AnalysisScheduler.toStrikeMarketDataKey). We match by the
-     * {@code instrumentToken|interval|} prefix so a strategy invocation only
-     * touches the strikes that belong to its config + configured timeframe.
+     * Key shape: {@code <instrumentToken>|<interval>|<optionType>|<strike>|<optionToken>|<itm>|<otm>}.
+     * Returns a compact "23700 CE" label for the tick log.
      */
+    private String parseStrikeLabel(String key) {
+        if (key == null) return "?";
+        String[] parts = key.split("\\|");
+        if (parts.length < 4) return key;
+        return parts[3] + " " + parts[2];
+    }
+
     private boolean keyMatches(String key, String instrumentToken, String interval) {
         if (key == null || interval == null) return false;
         if (instrumentToken != null) {
@@ -103,29 +115,14 @@ public class Strategy1 implements Strategy {
     }
 
     // ------------------------------------------------------------------
-    // Strategy-specific rules
+    // Strategy-specific rules. Wrap lambdas with TradeRule.named(...) so the
+    // [tick] log can name the failing rule instead of just printing an index.
     // ------------------------------------------------------------------
-    // The rule engine lives in com.moneymaker.strategy.rules — this class only
-    // declares which rules apply to each primary SMA period.
-    //
-    // How to add a new rule
-    // ---------------------
-    //  1) If it's reusable across strategies, add it to CommonRules. Otherwise
-    //     inline it as a lambda in the relevant builder below, or add a private
-    //     boolean helper method that takes a RuleContext.
-    //  2) Reference it inside one of the sellRulesForXX() / buyRulesForXX()
-    //     builders — either as a "required" rule (must pass) or an "anyOf"
-    //     rule (one of several alternative confirmations).
-    //
-    // SELL fires when:    sellGate AND every required rule passes AND
-    //                     (anyOf is empty OR at least one anyOf rule passes).
-    // BUY mirrors SELL.
-
-    // ----- Per-primary-SMA rule sets ----------------------------------
 
     private TradeRules sellRulesFor(Integer primarySmaPeriod) {
         if (primarySmaPeriod == null) return TradeRules.empty();
         switch (primarySmaPeriod) {
+            case 20:  return sellRulesFor20();
             case 50:  return sellRulesFor50();
             case 100: return sellRulesFor100();
             case 200: return sellRulesFor200();
@@ -137,6 +134,7 @@ public class Strategy1 implements Strategy {
     private TradeRules buyRulesFor(Integer primarySmaPeriod) {
         if (primarySmaPeriod == null) return TradeRules.empty();
         switch (primarySmaPeriod) {
+            case 20:  return buyRulesFor20();
             case 50:  return buyRulesFor50();
             case 100: return buyRulesFor100();
             case 200: return buyRulesFor200();
@@ -145,21 +143,33 @@ public class Strategy1 implements Strategy {
         }
     }
 
+    private TradeRules sellRulesFor20() {
+        List<TradeRule> required = new ArrayList<>();
+        required.add(TradeRule.named("isSma50DownTrending",
+                ctx -> ctx.candle.isSma50DownTrending()));
+        List<TradeRule> anyOf = new ArrayList<>();
+        return new TradeRules(required, anyOf);
+    }
+
+    private TradeRules buyRulesFor20()  {
+        List<TradeRule> required = new ArrayList<>();
+        List<TradeRule> anyOf = new ArrayList<>();
+        anyOf.add(TradeRule.named("isMarketCloseTime", CommonRules::isMarketCloseTime));
+        return new TradeRules(required, anyOf);
+    }
+
     private TradeRules sellRulesFor50() {
         List<TradeRule> required = new ArrayList<>();
-        //required.add(CommonRules::isDistanceToNextHigherSmaAboveTarget);    // SMA gap covers profit target
-        required.add(ctx -> ctx.candle.isSma50DownTrending());            // sma50 sloping down
-
+        required.add(TradeRule.named("isSma50DownTrending",
+                ctx -> ctx.candle.isSma50DownTrending()));
         List<TradeRule> anyOf = new ArrayList<>();
-
         return new TradeRules(required, anyOf);
     }
 
     private TradeRules buyRulesFor50()  {
         List<TradeRule> required = new ArrayList<>();
         List<TradeRule> anyOf = new ArrayList<>();
-
-        anyOf.add(CommonRules::isMarketCloseTime);
+        anyOf.add(TradeRule.named("isMarketCloseTime", CommonRules::isMarketCloseTime));
         return new TradeRules(required, anyOf);
     }
 
@@ -170,8 +180,7 @@ public class Strategy1 implements Strategy {
     private TradeRules buyRulesFor100() {
         List<TradeRule> required = new ArrayList<>();
         List<TradeRule> anyOf = new ArrayList<>();
-
-        anyOf.add(CommonRules::isMarketCloseTime);
+        anyOf.add(TradeRule.named("isMarketCloseTime", CommonRules::isMarketCloseTime));
         return new TradeRules(required, anyOf);
     }
 
@@ -180,19 +189,16 @@ public class Strategy1 implements Strategy {
     private TradeRules buyRulesFor200() {
         List<TradeRule> required = new ArrayList<>();
         List<TradeRule> anyOf = new ArrayList<>();
-
-        anyOf.add(CommonRules::isMarketCloseTime);
+        anyOf.add(TradeRule.named("isMarketCloseTime", CommonRules::isMarketCloseTime));
         return new TradeRules(required, anyOf);
     }
-
 
     private TradeRules sellRulesFor500() { return TradeRules.empty(); }
 
     private TradeRules buyRulesFor500() {
         List<TradeRule> required = new ArrayList<>();
         List<TradeRule> anyOf = new ArrayList<>();
-
-        anyOf.add(CommonRules::isMarketCloseTime);
+        anyOf.add(TradeRule.named("isMarketCloseTime", CommonRules::isMarketCloseTime));
         return new TradeRules(required, anyOf);
     }
 }

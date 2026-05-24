@@ -52,7 +52,7 @@ public class BacktestController {
     /** Manually invoke the login orchestrator for the active broker. */
     @PostMapping("/login")
     public ResponseEntity<Map<String, Object>> login() {
-        tradeConfigScheduler.fetchTradeConfigsByDate(LocalDate.now());
+        tradeConfigScheduler.getConfigsForDate(LocalDate.now());
 
         Instant start = Instant.now();
         Outcome outcome = loginOrchestrator.ensureLoggedIn();

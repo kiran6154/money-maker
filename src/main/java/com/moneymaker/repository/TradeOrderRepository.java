@@ -2,8 +2,11 @@ package com.moneymaker.repository;
 
 import com.moneymaker.entity.TradeOrder;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -66,4 +69,22 @@ public interface TradeOrderRepository extends JpaRepository<TradeOrder, Long> {
      */
     boolean existsByTradeConfigIdAndOptionTokenAndEntryDirectionAndEntryTime(
             Integer tradeConfigId, String optionToken, String entryDirection, LocalDateTime entryTime);
+
+    /**
+     * Sums the realised per-share P&L from CLOSED trades for this config
+     * whose entry timestamp falls inside the window. Returns 0 when no rows
+     * match. Used by {@code OrderService} to enforce the
+     * {@code TradeConfig.maxLoss} daily cap — i.e. "stop opening new trades
+     * for this strategy once it has bled more than the configured per-day
+     * loss". Only CLOSED trades count because OPEN positions still have
+     * floating P&L; the {@code max_loss} cap is a *realised-loss* gate.
+     */
+    @Query("SELECT COALESCE(SUM(t.profit), 0) FROM TradeOrder t " +
+            "WHERE t.tradeConfigId = :tradeConfigId " +
+            "AND t.status = 'CLOSED' " +
+            "AND t.entryTime BETWEEN :fromInclusive AND :toInclusive")
+    BigDecimal sumRealisedProfitForDay(
+            @Param("tradeConfigId") Integer tradeConfigId,
+            @Param("fromInclusive") LocalDateTime fromInclusive,
+            @Param("toInclusive") LocalDateTime toInclusive);
 }

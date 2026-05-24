@@ -4,6 +4,7 @@ import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.entity.SmaTimeframe;
 import com.moneymaker.login.service.BrokerSessionStore;
 import com.moneymaker.order.service.OrderService;
+import com.moneymaker.repository.TradeOrderRepository;
 import com.moneymaker.scheduler.AnalysisScheduler;
 import com.moneymaker.scheduler.OrderScheduler;
 import com.moneymaker.scheduler.PositionScheduler;
@@ -34,6 +35,7 @@ public class BacktestAnalysisService {
     private final OrderScheduler orderScheduler;
     private final PositionScheduler positionScheduler;
     private final OrderService orderService;
+    private final TradeOrderRepository tradeOrderRepository;
     private final BrokerSessionStore brokerSessionStore;
     private final KiteConnect sharedKiteConnect;
     private final NotificationService notifier;
@@ -44,6 +46,7 @@ public class BacktestAnalysisService {
             OrderScheduler orderScheduler,
             PositionScheduler positionScheduler,
             OrderService orderService,
+            TradeOrderRepository tradeOrderRepository,
             BrokerSessionStore brokerSessionStore,
             @Qualifier("sharedKiteConnect") KiteConnect sharedKiteConnect,
             NotificationService notifier) {
@@ -52,6 +55,7 @@ public class BacktestAnalysisService {
         this.orderScheduler = orderScheduler;
         this.positionScheduler = positionScheduler;
         this.orderService = orderService;
+        this.tradeOrderRepository = tradeOrderRepository;
         this.brokerSessionStore = brokerSessionStore;
         this.sharedKiteConnect = sharedKiteConnect;
         this.notifier = notifier;
@@ -71,45 +75,72 @@ public class BacktestAnalysisService {
         Instant startedAt = Instant.now();
         List<BacktestDayResult> results = new ArrayList<>();
 
-        // Get unique time periods from trade configs across the date range
-        Set<Integer> timePeriodsMinutes = getUniqueTimePeriods(fromDate, toDate);
-
-        if (timePeriodsMinutes.isEmpty()) {
-            log.warn("[Backtest] No time periods configured in SMA timeframes");
-            return new BacktestRunResult(fromDate, toDate, 0, 0, 0, results);
-        }
-
-        log.info("[Backtest] Running analysis with time periods (minutes): {}", timePeriodsMinutes);
-
         // Market hours: 9:15 AM to 3:30 PM
         LocalTime marketStart = LocalTime.of(9, 20);
         LocalTime marketEnd = LocalTime.of(15, 30);
 
-        // Loop through each date
+        // Loop through each date. Configs and time-periods are fetched *per day*
+        // — the same way the live 09:16 cron does it. A 50-day run does NOT
+        // pre-fetch all 50 days' configs upfront; each iteration of this loop
+        // is a "trading day" in isolation.
         LocalDate currentDate = fromDate;
         while (!currentDate.isAfter(toDate)) {
-            // Loop through each time interval for this date
             LocalDateTime currentDateTime = LocalDateTime.of(currentDate, marketStart);
             LocalDateTime dateEnd = LocalDateTime.of(currentDate, marketEnd);
-            List<TradeConfigCombinedDTO> combinedDto = tradeConfigScheduler.fetchTradeConfigsByDate(toDate);
 
+            // ===== Day-start: fetch this day's config (live cron equivalent) =====
+            List<TradeConfigCombinedDTO> combinedDto = tradeConfigScheduler.getConfigsForDate(currentDate);
+            Set<Integer> timePeriodsMinutes = uniqueTimePeriodsFor(combinedDto);
+
+            if (combinedDto.isEmpty() || timePeriodsMinutes.isEmpty()) {
+                log.info("[Backtest] day={} — no active configs / no time-periods, skipping day", currentDate);
+                currentDate = currentDate.plusDays(1);
+                continue;
+            }
+
+            // Count rows already in trade_order for this date so the end-of-day
+            // summary can show the *delta* this run produced, not the cumulative total.
+            long rowsBefore = countTradeOrdersOnDate(currentDate);
+            Instant dayStart = Instant.now();
+
+            log.info("[Backtest] day={} starting (configs={}, time-periods={})",
+                    currentDate, combinedDto.size(), timePeriodsMinutes);
+
+            // Log + telegram the active configs for this trading date — once per date.
+            tradeConfigScheduler.reportConfigsForDay(currentDate, combinedDto);
+
+            int tickMinutes = getSmallestTimePeriod(timePeriodsMinutes);
             while (!currentDateTime.isAfter(dateEnd)) {
-                BacktestDayResult result = runForDateTime(currentDateTime,combinedDto);
-                results.add(result);
-                currentDateTime = currentDateTime.plusMinutes(getSmallestTimePeriod(timePeriodsMinutes));
+                LocalDateTime tickAt = currentDateTime;
+                try {
+                    BacktestDayResult result = runForDateTime(tickAt, combinedDto);
+                    results.add(result);
+                } catch (Exception ex) {
+                    // Surface the exception unambiguously and keep the loop alive
+                    // so one bad tick doesn't abort the whole day — the run will
+                    // still reach the "[Backtest] day=… done" / "completed" lines.
+                    log.error("[Backtest] tick {} threw — continuing", tickAt, ex);
+                }
+                currentDateTime = currentDateTime.plusMinutes(tickMinutes);
             }
 
             // End-of-day cleanup: force-close any intraday position whose strike
             // fell out of the active-strike set before the close-signal could fire.
+            int forceClosed = 0;
             try {
-                int closed = orderService.forceCloseOpenPositions(currentDate, dateEnd);
-                if (closed > 0) {
+                forceClosed = orderService.forceCloseOpenPositions(currentDate, dateEnd);
+                if (forceClosed > 0) {
                     log.info("[Backtest] {} — force-closed {} open intraday position(s) at {}",
-                            currentDate, closed, dateEnd);
+                            currentDate, forceClosed, dateEnd);
                 }
             } catch (Exception ex) {
                 log.error("[Backtest] {} — force-close at end-of-day failed", currentDate, ex);
             }
+
+            long rowsAfter = countTradeOrdersOnDate(currentDate);
+            long dayMs = Duration.between(dayStart, Instant.now()).toMillis();
+            log.info("[Backtest] day={} done in {} ms — trade_order rows: before={} after={} delta={} forceClosed={}",
+                    currentDate, dayMs, rowsBefore, rowsAfter, rowsAfter - rowsBefore, forceClosed);
 
             currentDate = currentDate.plusDays(1);
         }
@@ -125,27 +156,22 @@ public class BacktestAnalysisService {
     }
 
     /**
-     * Get unique time periods (in minutes) from all trade configs in the date range
+     * Unique SMA-timeframe periods (in minutes) across the configs already
+     * fetched for *one* trading day. Used by the per-day loop to size the
+     * tick increment — no multi-day pre-fetch.
      */
-    private Set<Integer> getUniqueTimePeriods(LocalDate fromDate, LocalDate toDate) {
+    private Set<Integer> uniqueTimePeriodsFor(List<TradeConfigCombinedDTO> configs) {
         Set<Integer> periods = new HashSet<>();
-        LocalDate currentDate = fromDate;
-
-        while (!currentDate.isAfter(toDate)) {
-            List<TradeConfigCombinedDTO> configs = tradeConfigScheduler.fetchTradeConfigsByDate(currentDate);
-            for (TradeConfigCombinedDTO config : configs) {
-                List<SmaTimeframe> timeframes = config.getTimeframes();
-                if (timeframes != null) {
-                    for (SmaTimeframe timeframe : timeframes) {
-                        if (timeframe.getTimePeriod() != null) {
-                            periods.add(timeframe.getTimePeriod());
-                        }
-                    }
+        if (configs == null) return periods;
+        for (TradeConfigCombinedDTO config : configs) {
+            List<SmaTimeframe> timeframes = config.getTimeframes();
+            if (timeframes == null) continue;
+            for (SmaTimeframe timeframe : timeframes) {
+                if (timeframe.getTimePeriod() != null) {
+                    periods.add(timeframe.getTimePeriod());
                 }
             }
-            currentDate = currentDate.plusDays(1);
         }
-
         return periods;
     }
 
@@ -198,7 +224,7 @@ public class BacktestAnalysisService {
             // Also set in SharedData for backward compatibility
             SharedData.sharedKiteconnect = sharedKiteConnect;
 
-            log.info("[Backtest] KiteConnect initialized for user: {} on date: {}", userId, date);
+            log.debug("[Backtest] KiteConnect initialized for user: {} on date: {}", userId, date);
 
             SharedData.combinedDto = combinedDto;
 
@@ -207,21 +233,59 @@ public class BacktestAnalysisService {
                 return new BacktestDayResult(date, true, 0, durationMs, "No trade config found.");
             }
 
+            // ===== Per-tick narrative (DEBUG) =====
+            // The block between START and END is the single tick: indicators →
+            // strategy → orders → positions. Counters captured before/after so
+            // the END line shows what *this* tick produced (delta), not totals.
+            long rowsBefore   = safeCount();
+            long closedBefore = safeCountClosed();
+
+            log.debug("=== Analysis {} START ===", date);
+
             try {
                 analysisScheduler.calculateIndicator(date);
             }
             catch(Exception e){
-                e.printStackTrace();
+                log.error("[Backtest] calculateIndicator failed at {}", date, e);
             }
             analysisScheduler.runStrategies();
+            // Capture signals between strategy emit and order drain — processOrders
+            // empties the queue, so reading it after would always show 0.
+            int signalsEmitted = SharedData.tradeSignals != null ? SharedData.tradeSignals.size() : 0;
             orderScheduler.processOrders();
             positionScheduler.processPositions();
+
+            long rowsAfter   = safeCount();
+            long closedAfter = safeCountClosed();
+            long opened = rowsAfter - rowsBefore;             // new trade_order rows
+            long closed = closedAfter - closedBefore;          // OPEN → CLOSED transitions
+
             long durationMs = Duration.between(startedAt, Instant.now()).toMillis();
+            log.debug("=== Analysis {} END (signals={}, opened={}, closed={}, dur={}ms) ===",
+                    date, signalsEmitted, opened, closed, durationMs);
+
             return new BacktestDayResult(date, true, combinedDto.size(), durationMs, "Analysis completed.");
         } catch (Exception ex) {
             log.error("[Backtest] analysis failed for date {}", date, ex);
             long durationMs = Duration.between(startedAt, Instant.now()).toMillis();
             return new BacktestDayResult(date, false, 0, durationMs, ex.getMessage());
+        }
+    }
+
+    /** Total trade_order row count; 0 on any error so the tick log never fails. */
+    private long safeCount() {
+        try { return tradeOrderRepository.count(); }
+        catch (Exception ex) { return 0L; }
+    }
+
+    /** Trade_order rows in CLOSED status; 0 on any error. */
+    private long safeCountClosed() {
+        try {
+            LocalDateTime min = LocalDateTime.of(1970, 1, 1, 0, 0);
+            LocalDateTime max = LocalDateTime.of(9999, 1, 1, 0, 0);
+            return tradeOrderRepository.findByStatusAndEntryTimeBetween("CLOSED", min, max).size();
+        } catch (Exception ex) {
+            return 0L;
         }
     }
 
@@ -233,6 +297,24 @@ public class BacktestAnalysisService {
             long durationMs,
             List<BacktestDayResult> days
     ) {
+    }
+
+    /**
+     * Counts {@code trade_order} rows whose entry timestamp falls inside the
+     * trading day. Used by the per-day summary to report the row-delta produced
+     * by this backtest invocation rather than the cumulative total.
+     */
+    private long countTradeOrdersOnDate(LocalDate date) {
+        if (tradeOrderRepository == null || date == null) return 0L;
+        try {
+            LocalDateTime start = date.atStartOfDay();
+            LocalDateTime end   = start.plusDays(1).minusNanos(1);
+            return tradeOrderRepository.findByStatusAndEntryTimeBetween("OPEN", start, end).size()
+                    + tradeOrderRepository.findByStatusAndEntryTimeBetween("CLOSED", start, end).size();
+        } catch (Exception ex) {
+            log.debug("[Backtest] failed to count trade_order rows for {}: {}", date, ex.getMessage());
+            return 0L;
+        }
     }
 
     public record BacktestDayResult(

@@ -43,6 +43,7 @@ Other packages depend on `NotificationService`, never on `TelegramNotifier` or t
 | Order closed by signal | `alertOrderClosed(TradeOrder)` | None | **Suppressed** |
 | Order force-closed at EOD | `alertOrderForceClosed(TradeOrder)` | None | **Suppressed** |
 | Broker rejected an order | `alertOrderRejected(broker, orderId, reason)` | `sendIfChanged("order-rejected:<broker>", …)` — identical-reason loops stay quiet | **Suppressed** |
+| Trade configs active for the trading day | `TradeConfigScheduler.reportConfigsForDay(date, configs)` | Once per `(alertKey, date)` via **persisted** `DailyEventGuard` (row in `alert_state`). Survives JVM restart. `sendIfChanged("trade-configs:<date>", …)` backstops the actual send. | Fires (one per backtest date) |
 
 The "backtest behaviour" column reflects `app.mode=backtest`. Login and heartbeat alerts still fire because they're rare and useful in both modes; the noisy event types (per-order, market-data spam) are off so a multi-day replay can't blow up the chat.
 

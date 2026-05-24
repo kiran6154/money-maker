@@ -48,6 +48,7 @@ public final class CommonRules {
     public static Integer nextHigherSmaPeriod(Integer period) {
         if (period == null) return null;
         switch (period) {
+            case 20:  return 50;
             case 50:  return 100;
             case 100: return 200;
             case 200: return 500;
@@ -71,6 +72,7 @@ public final class CommonRules {
         if (c == null || period == null) return 0;
         Double v;
         switch (period) {
+            case 20:  v = c.getSmaValue20();  break;
             case 50:  v = c.getSmaValue50();  break;
             case 100: v = c.getSmaValue100(); break;
             case 200: v = c.getSmaValue200(); break;

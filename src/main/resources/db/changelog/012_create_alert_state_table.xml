@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+    <changeSet id="012_create_alert_state_table" author="moneymaker">
+        <createTable tableName="alert_state">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <!-- Logical "what was alerted" key, e.g. trade-configs / eod-pnl. -->
+            <column name="alert_key" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Trading date this alert was for. -->
+            <column name="alert_date" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Wall-clock time the alert actually fired. -->
+            <column name="fired_at" type="DATETIME">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addUniqueConstraint
+                tableName="alert_state"
+                columnNames="alert_key, alert_date"
+                constraintName="uk_alert_state_key_date"/>
+    </changeSet>
+
+</databaseChangeLog>

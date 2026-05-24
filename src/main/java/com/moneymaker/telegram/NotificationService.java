@@ -141,44 +141,55 @@ public class NotificationService {
 
     /* -------------------- orders -------------------- */
 
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss");
+
     public void alertOrderOpened(TradeOrder o) {
         if (o == null) return;
-        telegram.send(String.format(
-                "[ORDER OPEN] id=%d %s %s %s %s @ %s (cfg=%s)",
-                o.getId(),
-                o.getEntryDirection(),
-                safe(o.getInstrumentName()),
-                String.valueOf(o.getOptionStrike()),
-                safe(o.getOptionType()),
-                o.getEntryPrice(),
-                o.getTradeConfigId()));
+        StringBuilder sb = new StringBuilder("[ORDER OPEN]").append('\n');
+        sb.append("  id         : ").append(o.getId()).append('\n');
+        sb.append("  date       : ").append(o.getEntryTime() != null ? o.getEntryTime().toLocalDate().format(DATE_FMT) : "-").append('\n');
+        sb.append("  time       : ").append(o.getEntryTime() != null ? o.getEntryTime().toLocalTime().format(TIME_FMT) : "-").append('\n');
+        sb.append("  strategy   : ").append(o.getTradeConfigId()).append('\n');
+        sb.append("  instrument : ").append(safe(o.getInstrumentName())).append('\n');
+        sb.append("  strike     : ").append(o.getOptionStrike()).append(' ').append(safe(o.getOptionType())).append('\n');
+        sb.append("  direction  : ").append(safe(o.getEntryDirection())).append('\n');
+        sb.append("  entry      : ").append(o.getEntryPrice()).append('\n');
+        sb.append("  reason     : ").append(safe(o.getEntryReason()));
+        telegram.send(sb.toString());
     }
 
     public void alertOrderClosed(TradeOrder o) {
         if (o == null) return;
-        telegram.send(String.format(
-                "[ORDER CLOSE] id=%d %s %s %s reason=%s entry=%s exit=%s P/L=%s",
-                o.getId(),
-                safe(o.getInstrumentName()),
-                String.valueOf(o.getOptionStrike()),
-                safe(o.getOptionType()),
-                safe(o.getExitReason()),
-                o.getEntryPrice(),
-                o.getExitPrice(),
-                o.getProfit()));
+        StringBuilder sb = new StringBuilder("[ORDER CLOSE]").append('\n');
+        sb.append("  id         : ").append(o.getId()).append('\n');
+        sb.append("  date       : ").append(o.getEntryTime() != null ? o.getEntryTime().toLocalDate().format(DATE_FMT) : "-").append('\n');
+        sb.append("  time       : ").append(o.getEntryTime() != null ? o.getEntryTime().toLocalTime().format(TIME_FMT) : "-").append('\n');
+        sb.append("  strategy   : ").append(o.getTradeConfigId()).append('\n');
+        sb.append("  instrument : ").append(safe(o.getInstrumentName())).append('\n');
+        sb.append("  strike     : ").append(o.getOptionStrike()).append(' ').append(safe(o.getOptionType())).append('\n');
+        sb.append("  entry rule : ").append(safe(o.getEntryReason())).append('\n');
+        sb.append("  entry      : ").append(o.getEntryPrice()).append('\n');
+        sb.append("  exit       : ").append(o.getExitPrice()).append('\n');
+        sb.append("  exit reason: ").append(safe(o.getExitReason())).append('\n');
+        sb.append("  P/L        : ").append(o.getProfit());
+        telegram.send(sb.toString());
     }
 
     public void alertOrderForceClosed(TradeOrder o) {
         if (o == null) return;
-        telegram.send(String.format(
-                "[ORDER FORCE-CLOSE] id=%d %s %s %s entry=%s exit=%s P/L=%s",
-                o.getId(),
-                safe(o.getInstrumentName()),
-                String.valueOf(o.getOptionStrike()),
-                safe(o.getOptionType()),
-                o.getEntryPrice(),
-                o.getExitPrice(),
-                o.getProfit()));
+        StringBuilder sb = new StringBuilder("[ORDER FORCE-CLOSE]").append('\n');
+        sb.append("  id         : ").append(o.getId()).append('\n');
+        sb.append("  date       : ").append(o.getEntryTime() != null ? o.getEntryTime().toLocalDate().format(DATE_FMT) : "-").append('\n');
+        sb.append("  time       : ").append(o.getEntryTime() != null ? o.getEntryTime().toLocalTime().format(TIME_FMT) : "-").append('\n');
+        sb.append("  strategy   : ").append(o.getTradeConfigId()).append('\n');
+        sb.append("  instrument : ").append(safe(o.getInstrumentName())).append('\n');
+        sb.append("  strike     : ").append(o.getOptionStrike()).append(' ').append(safe(o.getOptionType())).append('\n');
+        sb.append("  entry rule : ").append(safe(o.getEntryReason())).append('\n');
+        sb.append("  entry      : ").append(o.getEntryPrice()).append('\n');
+        sb.append("  exit       : ").append(o.getExitPrice()).append('\n');
+        sb.append("  P/L        : ").append(o.getProfit());
+        telegram.send(sb.toString());
     }
 
     public void alertOrderRejected(String brokerName, Long orderId, String reason) {

@@ -36,6 +36,9 @@ public class MarketData {
     @Column(name = "instrumenttoken", nullable = false, length = 100)
     private String instrumenttoken;
 
+    @Column(name = "sma_value20")
+    private Double smaValue20;
+
     @Column(name = "sma_value50")
     private Double smaValue50;
 
@@ -50,6 +53,8 @@ public class MarketData {
 
     // ---- Runtime-computed trend flags (not persisted) ----
     @Transient
+    private boolean sma20DownTrending;
+    @Transient
     private boolean sma50DownTrending;
     @Transient
     private boolean sma100DownTrending;
@@ -58,6 +63,8 @@ public class MarketData {
     @Transient
     private boolean sma500DownTrending;
 
+    @Transient
+    private boolean sma20UpTrending;
     @Transient
     private boolean sma50UpTrending;
     @Transient

@@ -8,16 +8,16 @@ import com.moneymaker.entity.SmaTimeframe;
  * Strategy-agnostic rule execution. Strategies bring their own {@link TradeRules};
  * this class just composes them.
  *
- * <ul>
- *   <li>{@link #evaluate(RuleContext, TradeRules)} — pure AND/OR composition.</li>
- *   <li>{@link #decide(RuleContext, TradeRules, TradeRules)} — SMA-cross gate
- *       plus rule evaluation, returning a {@link TradeAction}.</li>
- *   <li>{@link #resolvePrimarySmaPeriod(TradeConfigCombinedDTO)} — picks the
- *       SMA period to gate on from the config.</li>
- * </ul>
+ * <p>{@link #decide(RuleContext, TradeRules, TradeRules)} returns a
+ * {@link Decision} that carries both the action and a human-readable reason —
+ * the caller (typically Strategy1) prints the reason on the tick log so you can
+ * see at-a-glance WHY a gate did/didn't fire and which rule passed or failed.
  */
 public final class RuleEngine {
     private RuleEngine() {}
+
+    /** Action + reason. Reason is a short one-liner suitable for the [tick] log. */
+    public record Decision(TradeAction action, String reason) {}
 
     /**
      * Reads {@code config.timeframes[*].sma} and returns the first non-null
@@ -35,43 +35,78 @@ public final class RuleEngine {
      * SMA-cross gate + rules:
      * <pre>
      *   open &gt; primarySMA &amp;&amp; close &lt; primarySMA  → SELL candidate
-     *   open &lt; primarySMA &amp;&amp; close &gt; primarySMA  → BUY  candidate
+     *   open &lt; primarySMA &amp;&amp; close &gt; primarySMA  → BUY  candidate (currently disabled)
      * </pre>
-     * Then evaluates the matching {@link TradeRules}. Returns
-     * {@link TradeAction#NONE} when no gate fires or its rules fail.
      */
-    public static TradeAction decide(RuleContext ctx, TradeRules sellRules, TradeRules buyRules) {
-        if (ctx.primarySmaPeriod == null) return TradeAction.NONE;
+    public static Decision decide(RuleContext ctx, TradeRules sellRules, TradeRules buyRules) {
+        if (ctx.primarySmaPeriod == null) {
+            return new Decision(TradeAction.NONE, "primarySma=null");
+        }
         double primarySma = CommonRules.smaValue(ctx.candle, ctx.primarySmaPeriod);
-        if (primarySma <= 0) return TradeAction.NONE;
+        if (primarySma <= 0) {
+            return new Decision(TradeAction.NONE,
+                    "sma" + ctx.primarySmaPeriod + "=N/A (need more historical candles)");
+        }
 
         double open  = CommonRules.openValue(ctx.candle);
         double close = CommonRules.closeValue(ctx.candle);
 
-        boolean sellGate = open > primarySma && close < primarySma;
-        if (sellGate && evaluate(ctx, sellRules)) return TradeAction.SELL;
+        boolean sellGate   = open > primarySma && close < primarySma;
+        boolean rawBuyGate = open < primarySma && close > primarySma;
 
-//        boolean buyGate = open < primarySma && close > primarySma;
-        boolean buyGate = false;
-        if (evaluate(ctx, buyRules)) return TradeAction.BUY;
+        if (sellGate) {
+            EvalResult r = evaluateWithReason(ctx, sellRules);
+            if (r.pass) return new Decision(TradeAction.SELL,
+                    "sellGate=true, sell rules OK [" + r.reason + "]");
+            return new Decision(TradeAction.NONE,
+                    "sellGate=true, sell rules FAIL [" + r.reason + "]");
+        }
 
-        return TradeAction.NONE;
+        // Raw buy gate is intentionally disabled. Buy rules still run (e.g. an
+        // end-of-day close); buyGate=false is reported for clarity.
+        EvalResult r = evaluateWithReason(ctx, buyRules);
+        if (r.pass) return new Decision(TradeAction.BUY,
+                "sellGate=false, rawBuyGate=" + rawBuyGate + " (disabled), buy rules OK [" + r.reason + "]");
+        return new Decision(TradeAction.NONE,
+                "sellGate=false, rawBuyGate=" + rawBuyGate + " (disabled), buy rules FAIL [" + r.reason + "]");
     }
 
     /**
-     * Pure rule composition: every {@code required} rule must pass AND
-     * ({@code anyOf} is empty OR at least one of its rules passes). A null or
-     * empty {@link TradeRules} returns true.
+     * Pure rule composition retained for callers that only want a boolean.
+     * Uses the same logic as {@link #evaluateWithReason} but discards the reason.
      */
     public static boolean evaluate(RuleContext ctx, TradeRules rules) {
-        if (rules == null) return true;
-        for (TradeRule r : rules.required) {
-            if (!r.test(ctx)) return false;
-        }
-        if (rules.anyOf.isEmpty()) return true;
-        for (TradeRule r : rules.anyOf) {
-            if (r.test(ctx)) return true;
-        }
-        return false;
+        return evaluateWithReason(ctx, rules).pass;
     }
+
+    /**
+     * Evaluates {@link TradeRules} (required AND, anyOf OR) and returns both
+     * the boolean and a one-line reason naming the first failing required rule
+     * or the matching anyOf rule. A null or fully-empty rules object returns
+     * {@code pass=true, reason="no rules"}.
+     */
+    private static EvalResult evaluateWithReason(RuleContext ctx, TradeRules rules) {
+        if (rules == null
+                || (rules.required.isEmpty() && rules.anyOf.isEmpty())) {
+            return new EvalResult(true, "no rules");
+        }
+        for (int i = 0; i < rules.required.size(); i++) {
+            TradeRule r = rules.required.get(i);
+            if (!r.test(ctx)) {
+                return new EvalResult(false, "required[" + i + ":" + r.name() + "]=FAIL");
+            }
+        }
+        if (rules.anyOf.isEmpty()) {
+            return new EvalResult(true, "required all OK");
+        }
+        for (int i = 0; i < rules.anyOf.size(); i++) {
+            TradeRule r = rules.anyOf.get(i);
+            if (r.test(ctx)) {
+                return new EvalResult(true, "anyOf[" + i + ":" + r.name() + "]=OK");
+            }
+        }
+        return new EvalResult(false, "all " + rules.anyOf.size() + " anyOf FAIL");
+    }
+
+    private record EvalResult(boolean pass, String reason) {}
 }

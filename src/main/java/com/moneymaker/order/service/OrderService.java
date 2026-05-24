@@ -98,7 +98,7 @@ public class OrderService {
         if (openOpt.isPresent()) {
             TradeOrder open = openOpt.get();
             if (sameDirection(open.getEntryDirection(), signal.getAction())) {
-                log.debug("Skipping signal — open trade already exists in same direction: id={}, dir={}",
+                log.debug("[order] skip signal — open trade already exists in same direction: id={}, dir={}",
                         open.getId(), open.getEntryDirection());
                 return;
             }
@@ -113,7 +113,7 @@ public class OrderService {
         String configTxn = config.getTradeConfig() != null ? config.getTradeConfig().getTransactionType() : null;
         if (configTxn != null && !configTxn.isBlank()
                 && !configTxn.trim().equalsIgnoreCase(signal.getAction().name())) {
-            log.debug("Skipping signal — no open trade and signal direction {} differs from config.transactionType={} (would-be entry suppressed)",
+            log.debug("[order] skip signal — direction {} != config.transactionType {} (entry suppressed)",
                     signal.getAction(), configTxn);
             return;
         }
@@ -132,8 +132,30 @@ public class OrderService {
                     .countByTradeConfigIdAndEntryTimeBetween(
                             signal.getTradeConfigId(), startOfDay, endOfDay);
             if (todayCount >= maxPerDay) {
-                log.debug("Skipping signal — numberOfTradesPerDay={} reached for tradeConfigId={} (todayCount={})",
+                log.debug("[order] skip signal — numberOfTradesPerDay={} reached for tradeConfigId={} (todayCount={})",
                         maxPerDay, signal.getTradeConfigId(), todayCount);
+                return;
+            }
+        }
+
+        // Daily realised-loss cap: TradeConfig.maxLoss stops this strategy from
+        // opening new trades once today's CLOSED P&L has dropped below
+        // -maxLoss. Floating P&L on OPEN trades is intentionally NOT counted —
+        // the cap is a *realised* threshold so a temporary drawdown on a
+        // still-open trade doesn't choke off legitimate re-entries. Null /
+        // non-positive maxLoss means no cap.
+        BigDecimal maxLoss = config.getTradeConfig() != null
+                ? config.getTradeConfig().getMaxLoss()
+                : null;
+        if (maxLoss != null && maxLoss.signum() > 0) {
+            LocalDateTime sodMax = signal.getSignalTime().toLocalDate().atStartOfDay();
+            LocalDateTime eodMax = sodMax.plusDays(1).minusNanos(1);
+            BigDecimal realised = tradeOrderRepository.sumRealisedProfitForDay(
+                    signal.getTradeConfigId(), sodMax, eodMax);
+            if (realised == null) realised = BigDecimal.ZERO;
+            if (realised.compareTo(maxLoss.negate()) <= 0) {
+                log.debug("[order] skip signal — daily maxLoss={} reached for tradeConfigId={} (realised={})",
+                        maxLoss, signal.getTradeConfigId(), realised);
                 return;
             }
         }
@@ -152,7 +174,7 @@ public class OrderService {
                             signal.getAction().name(),
                             STATUS_OPEN);
             if (openSameDir >= maxParallel) {
-                log.debug("Skipping signal — numberOfParallelTrades={} reached for tradeConfigId={} dir={} (openSameDir={})",
+                log.debug("[order] skip signal — numberOfParallelTrades={} reached for tradeConfigId={} dir={} (openSameDir={})",
                         maxParallel, signal.getTradeConfigId(), signal.getAction(), openSameDir);
                 return;
             }
@@ -168,7 +190,7 @@ public class OrderService {
                         signal.getTradeConfigId(), key.optionToken,
                         signal.getAction().name(), signal.getSignalTime());
         if (exactDuplicate) {
-            log.debug("Skipping signal — exact duplicate exists: tradeConfigId={} optionToken={} dir={} entryTime={}",
+            log.debug("[order] skip signal — exact duplicate exists: tradeConfigId={} optionToken={} dir={} entryTime={}",
                     signal.getTradeConfigId(), key.optionToken, signal.getAction(), signal.getSignalTime());
             return;
         }
@@ -193,6 +215,7 @@ public class OrderService {
         order.setEntryDirection(signal.getAction().name());
         order.setEntryTime(signal.getSignalTime());
         order.setEntryPrice(signal.getPrice());
+        order.setEntryReason(buildEntryReason(signal));
         order.setStatus(STATUS_OPEN);
         order.setFillStatus(initialFillStatus(placement));
         // Snapshot SL / target so PositionService doesn't depend on SharedData
@@ -218,7 +241,7 @@ public class OrderService {
             order = tradeOrderRepository.save(order);
         }
 
-        log.info("Opened order id={} via {}: tradeConfigId={}, dir={}, instrument={}, strike={} {} @ {}, brokerOrderId={}, fillStatus={}",
+        log.info("[order] OPEN id={} via {} tradeConfigId={} dir={} {} {}{} @ {} brokerOrderId={} fillStatus={}",
                 order.getId(), placement.getName(), order.getTradeConfigId(), order.getEntryDirection(),
                 order.getInstrumentName(), order.getOptionStrike(), order.getOptionType(), order.getEntryPrice(),
                 order.getEntryBrokerOrderId(), order.getFillStatus());
@@ -248,7 +271,7 @@ public class OrderService {
             open = tradeOrderRepository.save(open);
         }
 
-        log.info("Closed order id={} via {}: dir={}, entry={} @ {} → exit @ {}, profit/share={}, brokerOrderId={}, fillStatus={}",
+        log.info("[order] CLOSE id={} via {} dir={} {} entry={} → exit={} profit/share={} brokerOrderId={} fillStatus={}",
                 open.getId(), placement.getName(), open.getEntryDirection(),
                 open.getInstrumentName(), open.getEntryPrice(), open.getExitPrice(), open.getProfit(),
                 open.getExitBrokerOrderId(), open.getFillStatus());
@@ -396,7 +419,7 @@ public class OrderService {
             // for live — live force-closes need a real broker exit, which is a
             // bigger change; for now we just mark the row CLOSED locally).
             order = tradeOrderRepository.save(order);
-            log.info("Force-closed end-of-day order id={} dir={} entry={} → exit={} profit/share={}",
+            log.info("[order] FORCE_CLOSE id={} dir={} entry={} → exit={} profit/share={}",
                     order.getId(), order.getEntryDirection(),
                     order.getEntryPrice(), exitPrice, order.getProfit());
             notifier.alertOrderForceClosed(order);
@@ -445,6 +468,22 @@ public class OrderService {
             return entryPrice.subtract(exitPrice);
         }
         return exitPrice.subtract(entryPrice);
+    }
+
+    /**
+     * Compact human-readable reason snapshotted on entry — e.g.
+     * {@code "5min/SMA50"}. Used by the Telegram alert and the {@code trade_order}
+     * ledger row so the trigger doesn't need to be re-derived later.
+     */
+    private String buildEntryReason(TradeSignal signal) {
+        if (signal == null) return null;
+        String interval = signal.getInterval();
+        if (interval != null) interval = interval.replace("minute", "min");
+        Integer sma = signal.getPrimarySma();
+        if (interval == null && sma == null) return null;
+        if (interval == null) return "SMA" + sma;
+        if (sma == null) return interval;
+        return interval + "/SMA" + sma;
     }
 
     private boolean sameDirection(String entryDirection, TradeAction signalAction) {

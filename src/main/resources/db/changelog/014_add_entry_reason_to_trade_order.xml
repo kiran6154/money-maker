@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+    <!--
+        Snapshots which rule fired at entry — e.g. "5min/SMA50" — so the
+        Telegram alert and the trade_order ledger can show the trigger reason
+        without joining back to live config (which can drift mid-day) or the
+        signal queue (which is drained immediately).
+    -->
+    <changeSet id="014_add_entry_reason_to_trade_order" author="moneymaker">
+        <addColumn tableName="trade_order">
+            <column name="entry_reason" type="VARCHAR(64)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

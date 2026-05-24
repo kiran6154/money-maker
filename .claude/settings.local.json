@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(mvn -q -DskipTests compile)"
+      "PowerShell(mvn -q -DskipTests compile)",
+      "Bash(mvn -q -DskipTests compile)",
+      "Bash(echo \"EXIT=$?\")"
     ]
   }
 }

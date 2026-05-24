@@ -20,7 +20,7 @@ public class PositionScheduler {
     /** Every 5 minutes during NSE trading hours (Mon-Fri, 09:00-16:55 IST). */
     @Scheduled(cron = "0 0/5 9-16 * * MON-FRI")
     public void processPositions() {
-        log.info("PositionScheduler tick");
+        log.debug("PositionScheduler tick");
         try {
             positionService.processPositions();
         } catch (Exception ex) {

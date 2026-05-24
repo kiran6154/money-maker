@@ -68,9 +68,15 @@ Detailed state machine and alert-rule matrix live in [HEARTBEAT.md](HEARTBEAT.md
 
 - Loads `TradeConfig` + `Instrument` + `InstrumentDetails` + `SmaTimeframe` for a given trading date and assembles them into `List<TradeConfigCombinedDTO>`.
 - Stashes the result on `SharedData.combinedDto` so downstream schedulers can read configs without hitting the DB on every tick.
-- Called on demand: by `BacktestController.login` at the start of a backtest, by `BacktestAnalysisService.run` once per backtest day, and by live login flows.
+- Has a `@Scheduled(cron = "0 16 9 * * MON-FRI")` job that does the live 09:16 IST load.
 
-No `@Scheduled` annotation — it's a service that schedulers/controllers call. Listed here because it's part of the cadence you reason about.
+### Single entry point: `getConfigsForDate(date)`
+
+All callers (live cron, backtest outer loop, backtest's `getUniqueTimePeriods`, controllers) **must** go through `getConfigsForDate(LocalDate)`. It is a date-keyed cache on top of the raw `fetchTradeConfigsByDate(date)` DB query — the same date never hits the DB more than once per JVM lifetime. Use `invalidateConfigsCache()` if you need to force a refresh; otherwise restart the JVM to pick up DB edits.
+
+### Once-per-day report
+
+After the live cron stores configs into `SharedData`, and at the top of each backtest day's outer loop, `reportConfigsForDay(date, configs)` runs. It logs an `INFO` line with each config's key fields (id, instrument, direction, target / SL, lot count, trade caps, timeframes) and emits a Telegram message with the same content. Fires **at most once per `(alertKey, date)` across JVM restarts** — gating is delegated to [`DailyEventGuard`](../src/main/java/com/moneymaker/state/DailyEventGuard.java) which writes to the `alert_state` table (Liquibase 012). See [NOTIFICATIONS.md](NOTIFICATIONS.md).
 
 ---
 
