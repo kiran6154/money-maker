@@ -39,6 +39,7 @@ public class BacktestAnalysisService {
     private final BrokerSessionStore brokerSessionStore;
     private final KiteConnect sharedKiteConnect;
     private final NotificationService notifier;
+    private final BacktestMarketDataCache marketDataCache;
 
     public BacktestAnalysisService(
             TradeConfigScheduler tradeConfigScheduler,
@@ -49,7 +50,8 @@ public class BacktestAnalysisService {
             TradeOrderRepository tradeOrderRepository,
             BrokerSessionStore brokerSessionStore,
             @Qualifier("sharedKiteConnect") KiteConnect sharedKiteConnect,
-            NotificationService notifier) {
+            NotificationService notifier,
+            BacktestMarketDataCache marketDataCache) {
         this.tradeConfigScheduler = tradeConfigScheduler;
         this.analysisScheduler = analysisScheduler;
         this.orderScheduler = orderScheduler;
@@ -59,6 +61,7 @@ public class BacktestAnalysisService {
         this.brokerSessionStore = brokerSessionStore;
         this.sharedKiteConnect = sharedKiteConnect;
         this.notifier = notifier;
+        this.marketDataCache = marketDataCache;
     }
 
     public BacktestRunResult run(LocalDate fromDate, LocalDate toDate) {
@@ -107,41 +110,59 @@ public class BacktestAnalysisService {
             long rowsBefore = countTradeOrdersOnDate(currentDate);
             Instant dayStart = Instant.now();
 
-            log.info("[Backtest] day={} starting (configs={}, time-periods={})",
-                    currentDate, combinedDto.size(), timePeriodsMinutes);
+            // ===== Phase 1: enable per-day candle cache =====
+            // MarketDataService now slices the cached series for every tick's
+            // fetchHistoricalData call. First call per (symbol, interval) does
+            // a single broker fetch over the wide [dayFrom, dayTo] window; the
+            // remaining ~71 ticks for that pair are slice-only. Live mode is
+            // unaffected — the cache stays inactive outside backtest.
+            int lookbackDays = analysisScheduler.computeLookbackCalendarDays();
+            LocalDateTime dayFrom = LocalDateTime.of(currentDate, marketStart).minusDays(lookbackDays);
+            LocalDateTime dayTo   = LocalDateTime.of(currentDate, marketEnd);
+            marketDataCache.beginDay(dayFrom, dayTo);
+
+            log.info("[Backtest] day={} starting (configs={}, time-periods={}, cache window={}..{})",
+                    currentDate, combinedDto.size(), timePeriodsMinutes, dayFrom, dayTo);
 
             // Log + telegram the active configs for this trading date — once per date.
             tradeConfigScheduler.reportConfigsForDay(currentDate, combinedDto);
 
             int tickMinutes = getSmallestTimePeriod(timePeriodsMinutes);
-            while (!currentDateTime.isAfter(dateEnd)) {
-                LocalDateTime tickAt = currentDateTime;
-                try {
-                    BacktestDayResult result = runForDateTime(tickAt, combinedDto);
-                    results.add(result);
-                } catch (Exception ex) {
-                    // Surface the exception unambiguously and keep the loop alive
-                    // so one bad tick doesn't abort the whole day — the run will
-                    // still reach the "[Backtest] day=… done" / "completed" lines.
-                    log.error("[Backtest] tick {} threw — continuing", tickAt, ex);
-                }
-                currentDateTime = currentDateTime.plusMinutes(tickMinutes);
-            }
-
-            // End-of-day cleanup: force-close any intraday position whose strike
-            // fell out of the active-strike set before the close-signal could fire.
             int forceClosed = 0;
+            long rowsAfter;
             try {
-                forceClosed = orderService.forceCloseOpenPositions(currentDate, dateEnd);
-                if (forceClosed > 0) {
-                    log.info("[Backtest] {} — force-closed {} open intraday position(s) at {}",
-                            currentDate, forceClosed, dateEnd);
+                while (!currentDateTime.isAfter(dateEnd)) {
+                    LocalDateTime tickAt = currentDateTime;
+                    try {
+                        BacktestDayResult result = runForDateTime(tickAt, combinedDto);
+                        results.add(result);
+                    } catch (Exception ex) {
+                        // Surface the exception unambiguously and keep the loop alive
+                        // so one bad tick doesn't abort the whole day — the run will
+                        // still reach the "[Backtest] day=… done" / "completed" lines.
+                        log.error("[Backtest] tick {} threw — continuing", tickAt, ex);
+                    }
+                    currentDateTime = currentDateTime.plusMinutes(tickMinutes);
                 }
-            } catch (Exception ex) {
-                log.error("[Backtest] {} — force-close at end-of-day failed", currentDate, ex);
-            }
 
-            long rowsAfter = countTradeOrdersOnDate(currentDate);
+                // End-of-day cleanup: force-close any intraday position whose strike
+                // fell out of the active-strike set before the close-signal could fire.
+                try {
+                    forceClosed = orderService.forceCloseOpenPositions(currentDate, dateEnd);
+                    if (forceClosed > 0) {
+                        log.info("[Backtest] {} — force-closed {} open intraday position(s) at {}",
+                                currentDate, forceClosed, dateEnd);
+                    }
+                } catch (Exception ex) {
+                    log.error("[Backtest] {} — force-close at end-of-day failed", currentDate, ex);
+                }
+
+                rowsAfter = countTradeOrdersOnDate(currentDate);
+            } finally {
+                // Always release the cache, even if the tick loop or force-close threw.
+                // Leaving it active across days would leak the previous day's series.
+                marketDataCache.endDay();
+            }
             long dayMs = Duration.between(dayStart, Instant.now()).toMillis();
             log.info("[Backtest] day={} done in {} ms — trade_order rows: before={} after={} delta={} forceClosed={}",
                     currentDate, dayMs, rowsBefore, rowsAfter, rowsAfter - rowsBefore, forceClosed);

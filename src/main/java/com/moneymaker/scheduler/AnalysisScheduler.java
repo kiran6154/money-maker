@@ -163,7 +163,7 @@ public class AnalysisScheduler {
      * {@link com.moneymaker.dto.AllTimeFramedto} automatically widens the
      * lookback without code edits.
      */
-    private int computeLookbackCalendarDays() {
+    public int computeLookbackCalendarDays() {
         Map<Integer, List<Integer>> map = SharedData.allTimeFrameMap;
         int maxRequiredMinutes = 0;
         if (map != null) {

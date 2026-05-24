@@ -1,70 +1,75 @@
 package com.moneymaker.market.service;
 
+import com.moneymaker.backtesting.BacktestMarketDataCache;
 import com.moneymaker.entity.MarketData;
-import com.moneymaker.market.exception.KiteRateLimitException;
-import com.moneymaker.market.provider.MarketDataProvider;
-import com.moneymaker.telegram.NotificationService;
-import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
-import io.github.resilience4j.retry.annotation.Retry;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 
+/**
+ * Façade callers use to fetch historical candles. Cache-aware:
+ * <ol>
+ *   <li>Tries {@link BacktestMarketDataCache#slice} first. In backtest the cache
+ *       is active and a slice almost always satisfies the request after the
+ *       first miss of the day. In live mode the cache is permanently inactive,
+ *       slice returns {@code null}, and the call routes straight to the
+ *       throttled fetcher — zero behaviour change for live.</li>
+ *   <li>On miss, calls {@link KiteHistoricalFetcher#fetch} with a wider window
+ *       ({@code [dayFrom, dayTo]}) so subsequent ticks within the day are
+ *       served from the cache. In live mode, the request is forwarded
+ *       verbatim — no widening.</li>
+ * </ol>
+ *
+ * <p>The wider-window fetch in backtest is the entire Phase 1 speed-up:
+ * approximately {@code ticks_per_day} fewer broker calls per
+ * {@code (symbol, interval)} per day. See {@code docs/BACKTEST_PERFORMANCE.md}.
+ */
+@Slf4j
 @Service
 public class MarketDataService {
-    private static final Logger logger = LoggerFactory.getLogger(MarketDataService.class);
 
-    /** Resilience4j instance name configured in application.properties. */
-    private static final String LIMITER_NAME = "kiteHistorical";
+    private final KiteHistoricalFetcher fetcher;
+    private final BacktestMarketDataCache cache;
 
-    private final MarketDataProvider marketDataProvider;
-    private final NotificationService notifier;
-
-    public MarketDataService(MarketDataProvider marketDataProvider,
-                             NotificationService notifier) {
-        this.marketDataProvider = Objects.requireNonNull(marketDataProvider, "marketDataProvider must not be null");
-        this.notifier = Objects.requireNonNull(notifier, "notifier must not be null");
-        logger.info("MarketDataService initialized with provider: {}", marketDataProvider.getName());
+    public MarketDataService(KiteHistoricalFetcher fetcher,
+                             BacktestMarketDataCache cache) {
+        this.fetcher = Objects.requireNonNull(fetcher, "fetcher must not be null");
+        this.cache = Objects.requireNonNull(cache, "cache must not be null");
+        log.info("MarketDataService initialized with provider: {}", fetcher.getActiveProvider());
     }
 
-    /**
-     * Fetches historical candles via the active provider. Throttled by the
-     * {@code kiteHistorical} Resilience4j RateLimiter and retried on rate-limit
-     * failures (only) by the matching Retry instance. Other failures propagate
-     * immediately as {@link RuntimeException}.
-     */
-    @RateLimiter(name = LIMITER_NAME)
-    @Retry(name = LIMITER_NAME)
     public List<MarketData> fetchHistoricalData(String symbol, LocalDateTime from, LocalDateTime to, String interval) {
         Objects.requireNonNull(symbol, "symbol must not be null");
         Objects.requireNonNull(from, "from must not be null");
         Objects.requireNonNull(to, "to must not be null");
         Objects.requireNonNull(interval, "interval must not be null");
 
-        try {
-            List<MarketData> result = marketDataProvider.fetchHistoricalData(symbol, from, to, interval);
-            // Successful fetch — clear any previous "down" alert so the next
-            // failure (potentially with a different reason) gets reported.
-            notifier.alertMarketDataUp();
-            return result;
-        } catch (Exception ex) {
-            if (isRateLimit(ex)) {
-                logger.warn("Provider rate-limit hit for symbol={}, interval={} — will retry", symbol, interval);
-                throw new KiteRateLimitException("Rate limited: " + ex.getMessage(), ex);
+        // Fast path: backtest cache hit. In live mode isActive()=false and this
+        // short-circuits to the throttled fetch below.
+        if (cache.isActive()) {
+            List<MarketData> hit = cache.slice(symbol, interval, from, to);
+            if (hit != null && !hit.isEmpty()) {
+                return hit;
             }
-            // After-retry / non-rate-limit failure — alert (deduped at the
-            // notification layer, so identical reasons fire once until recovery).
-            String reason = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
-            notifier.alertMarketDataDown(reason);
-            logger.error("Error fetching historical data for symbol: {} using provider: {}", symbol, marketDataProvider.getName(), ex);
-            throw new RuntimeException("Failed to fetch market data: " + ex.getMessage(), ex);
+
+            // Backtest cache miss — fetch the entire day's [dayFrom, dayTo]
+            // superset once, cache it, then slice. All subsequent ticks for
+            // this (symbol, interval) hit the cache.
+            LocalDateTime wideFrom = cache.dayFrom() != null ? cache.dayFrom() : from;
+            LocalDateTime wideTo   = cache.dayTo()   != null ? cache.dayTo()   : to;
+            List<MarketData> wide = fetcher.fetch(symbol, wideFrom, wideTo, interval);
+            cache.put(symbol, interval, wide);
+
+            List<MarketData> sliced = cache.slice(symbol, interval, from, to);
+            return sliced != null ? sliced : wide;
         }
+
+        // Live path — exact same call shape as before Phase 1.
+        return fetcher.fetch(symbol, from, to, interval);
     }
 
     public List<Double> extractClosePrices(List<MarketData> marketDataList) {
@@ -81,25 +86,6 @@ public class MarketDataService {
     }
 
     public String getActiveProvider() {
-        return marketDataProvider.getName();
-    }
-
-    /**
-     * Walks the cause chain looking for a "too many requests" / 429 marker in
-     * any throwable's message. Conservative — only matches text the broker
-     * actually emits for rate limiting.
-     */
-    private static boolean isRateLimit(Throwable t) {
-        while (t != null) {
-            String msg = t.getMessage();
-            if (msg != null) {
-                String lower = msg.toLowerCase(Locale.ROOT);
-                if (lower.contains("too many requests") || lower.contains("429")) {
-                    return true;
-                }
-            }
-            t = t.getCause();
-        }
-        return false;
+        return fetcher.getActiveProvider();
     }
 }
