@@ -150,12 +150,13 @@ public class NotificationService {
         sb.append("  id         : ").append(o.getId()).append('\n');
         sb.append("  date       : ").append(o.getEntryTime() != null ? o.getEntryTime().toLocalDate().format(DATE_FMT) : "-").append('\n');
         sb.append("  time       : ").append(o.getEntryTime() != null ? o.getEntryTime().toLocalTime().format(TIME_FMT) : "-").append('\n');
-        sb.append("  strategy   : ").append(o.getTradeConfigId()).append('\n');
+        sb.append("  strategy   : ").append(o.getStrategyId()).append('\n');
+        sb.append("  config     : ").append(o.getTradeConfigId()).append('\n');
         sb.append("  instrument : ").append(safe(o.getInstrumentName())).append('\n');
         sb.append("  strike     : ").append(o.getOptionStrike()).append(' ').append(safe(o.getOptionType())).append('\n');
         sb.append("  direction  : ").append(safe(o.getEntryDirection())).append('\n');
-        sb.append("  entry      : ").append(o.getEntryPrice()).append('\n');
-        sb.append("  reason     : ").append(safe(o.getEntryReason()));
+        sb.append("  entry rule : ").append(safe(o.getEntryReason())).append('\n');
+        sb.append("  entry      : ").append(o.getEntryPrice());
         telegram.send(sb.toString());
     }
 
@@ -165,7 +166,8 @@ public class NotificationService {
         sb.append("  id         : ").append(o.getId()).append('\n');
         sb.append("  date       : ").append(o.getEntryTime() != null ? o.getEntryTime().toLocalDate().format(DATE_FMT) : "-").append('\n');
         sb.append("  time       : ").append(o.getEntryTime() != null ? o.getEntryTime().toLocalTime().format(TIME_FMT) : "-").append('\n');
-        sb.append("  strategy   : ").append(o.getTradeConfigId()).append('\n');
+        sb.append("  strategy   : ").append(o.getStrategyId()).append('\n');
+        sb.append("  config     : ").append(o.getTradeConfigId()).append('\n');
         sb.append("  instrument : ").append(safe(o.getInstrumentName())).append('\n');
         sb.append("  strike     : ").append(o.getOptionStrike()).append(' ').append(safe(o.getOptionType())).append('\n');
         sb.append("  entry rule : ").append(safe(o.getEntryReason())).append('\n');
@@ -182,7 +184,8 @@ public class NotificationService {
         sb.append("  id         : ").append(o.getId()).append('\n');
         sb.append("  date       : ").append(o.getEntryTime() != null ? o.getEntryTime().toLocalDate().format(DATE_FMT) : "-").append('\n');
         sb.append("  time       : ").append(o.getEntryTime() != null ? o.getEntryTime().toLocalTime().format(TIME_FMT) : "-").append('\n');
-        sb.append("  strategy   : ").append(o.getTradeConfigId()).append('\n');
+        sb.append("  strategy   : ").append(o.getStrategyId()).append('\n');
+        sb.append("  config     : ").append(o.getTradeConfigId()).append('\n');
         sb.append("  instrument : ").append(safe(o.getInstrumentName())).append('\n');
         sb.append("  strike     : ").append(o.getOptionStrike()).append(' ').append(safe(o.getOptionType())).append('\n');
         sb.append("  entry rule : ").append(safe(o.getEntryReason())).append('\n');

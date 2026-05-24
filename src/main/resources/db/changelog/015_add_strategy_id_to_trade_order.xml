@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+    <!--
+        Snapshots which strategy ran the entry — read from TradeConfig.stratergyId
+        at the moment OrderService.openOrder fires. Surfaced on the orders ledger
+        UI alongside entry_reason (which rule fired) so a trader can see at a
+        glance "Strategy 1, 5min/SMA50 cross" without joining back to trade_config.
+    -->
+    <changeSet id="015_add_strategy_id_to_trade_order" author="moneymaker">
+        <addColumn tableName="trade_order">
+            <column name="strategy_id" type="INT"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

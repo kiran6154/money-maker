@@ -154,10 +154,12 @@
                     <tr>
                         <th>ID</th>
                         <th>Cfg</th>
+                        <th title="Strategy that fired the entry (snapshot at order open)">Strategy</th>
                         <th>Instrument</th>
                         <th>Strike</th>
                         <th>Type</th>
                         <th>Dir</th>
+                        <th title="Which rule fired the entry — e.g. 5min/SMA50">Entry rule</th>
                         <th class="num">Entry @</th>
                         <th>Entry time</th>
                         <th class="num">Exit @</th>
@@ -166,7 +168,7 @@
                         <th class="num" title="Highest unrealised P&L observed during the trade (≥ 0)">Peak +</th>
                         <th class="num" title="Lowest unrealised P&L observed during the trade (≤ 0)">Peak −</th>
                         <th>Status</th>
-                        <th>Reason</th>
+                        <th title="Why the trade exited: SIGNAL / TARGET / STOP_LOSS / FORCE_CLOSE">Exit reason</th>
                         <th>Fill</th>
                         <th>Broker IDs</th>
                         <th></th>
@@ -321,10 +323,12 @@
                 tr.innerHTML =
                     '<td>' + o.id + '</td>' +
                     '<td>' + fmt(o.tradeConfigId) + '</td>' +
+                    '<td>' + fmt(o.strategyId) + '</td>' +
                     '<td>' + fmt(o.instrumentName) + '</td>' +
                     '<td>' + fmt(o.optionStrike) + '</td>' +
                     '<td>' + fmt(o.optionType) + '</td>' +
                     '<td>' + fmt(o.entryDirection) + '</td>' +
+                    '<td>' + fmt(o.entryReason) + '</td>' +
                     '<td class="num">' + fmtNum(o.entryPrice) + '</td>' +
                     '<td>' + fmtTime(o.entryTime) + '</td>' +
                     '<td class="num">' + fmtNum(o.exitPrice) + '</td>' +

@@ -75,9 +75,13 @@ public class BacktestAnalysisService {
         Instant startedAt = Instant.now();
         List<BacktestDayResult> results = new ArrayList<>();
 
-        // Market hours: 9:15 AM to 3:30 PM
+        // Market hours: 09:15–15:30. We stop the strategy loop and force-close
+        // every still-OPEN intraday position at 15:20 — that's the de-facto
+        // broker square-off cutoff for index options. Closes at 15:30 (the
+        // hard market close) get rejected by most brokers in live mode, and
+        // SEBI's 5-minute pre-close auction phase distorts last-tick prices.
         LocalTime marketStart = LocalTime.of(9, 20);
-        LocalTime marketEnd = LocalTime.of(15, 30);
+        LocalTime marketEnd = LocalTime.of(15, 20);
 
         // Loop through each date. Configs and time-periods are fetched *per day*
         // — the same way the live 09:16 cron does it. A 50-day run does NOT

@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -51,6 +52,14 @@ public class Strategy1 implements Strategy {
                 ? config.getInstrumentDetails().getInstrumentToken().toString()
                 : null;
 
+        // CE → ascending strike (lowest = deepest ITM = highest premium).
+        // PE → descending strike (highest = deepest ITM = highest premium).
+        // Scanning most-ITM first means the most-expensive leg's signal is
+        // queued first; under TradeConfig.numberOfTradesPerDay / parallel-trade
+        // caps it wins the entry deterministically — re-running the same
+        // backtest now always picks the same strike.
+        final boolean isCe = isCallSide(config);
+
         for (SmaTimeframe tf : timeframes) {
             if (tf == null || tf.getTimePeriod() == null || tf.getSma() == null) continue;
 
@@ -59,9 +68,15 @@ public class Strategy1 implements Strategy {
             final TradeRules sellRules = sellRulesFor(primarySma);
             final TradeRules buyRules  = buyRulesFor(primarySma);
 
-            strikeMarketData.forEach((key, dataList) -> {
-                if (!keyMatches(key, instrumentToken, interval)) return;
-                if (dataList == null || dataList.isEmpty()) return;
+            List<Map.Entry<String, List<MarketData>>> sortedStrikes = strikeMarketData.entrySet().stream()
+                    .filter(e -> keyMatches(e.getKey(), instrumentToken, interval))
+                    .filter(e -> e.getValue() != null && !e.getValue().isEmpty())
+                    .sorted(strikeComparator(isCe))
+                    .toList();
+
+            for (Map.Entry<String, List<MarketData>> entry : sortedStrikes) {
+                String key = entry.getKey();
+                List<MarketData> dataList = entry.getValue();
 
                 SmaTrendCalculator.compute(dataList, 0);
 
@@ -91,8 +106,40 @@ public class Strategy1 implements Strategy {
                             lastCandle.getTimestamp(), primarySma, interval,
                             lastCandle.getClose()));
                 }
-            });
+            }
         }
+    }
+
+    /** True iff the trade config's side resolves to a CE (call) leg. */
+    private boolean isCallSide(TradeConfigCombinedDTO config) {
+        if (config == null || config.getTradeConfig() == null) return true;
+        String side = config.getTradeConfig().getTradingSide();
+        if (side == null) return true;
+        String up = side.toUpperCase();
+        if (up.contains("PE") || up.equals("P")) return false;
+        return true;
+    }
+
+    /**
+     * Comparator over strike-keyed entries. Most-ITM-first: ascending strike
+     * for CE, descending for PE. Falls back to key-string compare when strike
+     * can't be parsed (defensive — keys always carry an integer strike today).
+     */
+    private Comparator<Map.Entry<String, List<MarketData>>> strikeComparator(boolean isCe) {
+        return (a, b) -> {
+            Integer sa = parseStrikeOrNull(a.getKey());
+            Integer sb = parseStrikeOrNull(b.getKey());
+            if (sa == null || sb == null) return a.getKey().compareTo(b.getKey());
+            return isCe ? Integer.compare(sa, sb) : Integer.compare(sb, sa);
+        };
+    }
+
+    private Integer parseStrikeOrNull(String key) {
+        if (key == null) return null;
+        String[] parts = key.split("\\|");
+        if (parts.length < 4) return null;
+        try { return Integer.parseInt(parts[3]); }
+        catch (NumberFormatException ex) { return null; }
     }
 
     /**

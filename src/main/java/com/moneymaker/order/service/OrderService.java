@@ -216,6 +216,8 @@ public class OrderService {
         order.setEntryTime(signal.getSignalTime());
         order.setEntryPrice(signal.getPrice());
         order.setEntryReason(buildEntryReason(signal));
+        order.setStrategyId(config != null && config.getTradeConfig() != null
+                ? config.getTradeConfig().getStratergyId() : null);
         order.setStatus(STATUS_OPEN);
         order.setFillStatus(initialFillStatus(placement));
         // Snapshot SL / target so PositionService doesn't depend on SharedData

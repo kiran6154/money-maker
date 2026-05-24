@@ -110,6 +110,14 @@ public class TradeOrder {
     private String entryReason;
 
     /**
+     * Strategy id that owned the entry (e.g. 1 = Strategy1). Snapshotted from
+     * {@code TradeConfig.stratergyId} at open so a config edit / re-mapping
+     * later in the day can't change the historical attribution.
+     */
+    @Column(name = "strategy_id")
+    private Integer strategyId;
+
+    /**
      * Per-share profit target snapshotted from {@code TradeConfig.target} at the
      * moment this trade was opened. Used by {@code PositionService} so a config
      * edit mid-trade can't retroactively close already-open positions.
