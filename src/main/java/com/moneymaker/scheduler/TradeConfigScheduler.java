@@ -13,6 +13,9 @@ import com.moneymaker.telegram.NotificationService;
 import com.moneymaker.util.ConverterUtility;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -43,6 +46,9 @@ public class TradeConfigScheduler {
     @Autowired
     private DailyEventGuard dailyEventGuard;
 
+    @Value("${app.mode:live}")
+    private String appMode;
+
     /**
      * Date-keyed cache for {@link #getConfigsForDate(LocalDate)}. Callers
      * (live cron, backtest outer loop, backtest's {@code getUniqueTimePeriods},
@@ -51,6 +57,36 @@ public class TradeConfigScheduler {
      * mid-day DB edits are not picked up — restart to refresh.
      */
     private final Map<LocalDate, List<TradeConfigCombinedDTO>> configsCache = new ConcurrentHashMap<>();
+
+    /**
+     * Live-mode startup seed. The 09:16 cron is the only other writer to
+     * {@link SharedData#combinedDto}, so a JVM started after 09:16 on a
+     * trading day would leave the pipeline schedulers idle until the next
+     * day's cron fires. This listener loads today's configs once on boot so
+     * the next 5-min Analysis/Order/Position tick has something to work with.
+     *
+     * <p>Skipped in backtest mode — {@code BacktestAnalysisService} manages
+     * {@code combinedDto} per-day inside its own loop and we don't want to
+     * fire the trade-configs Telegram on every backtest boot.</p>
+     *
+     * <p>Idempotent with the 09:16 cron: {@link #getConfigsForDate} is
+     * date-keyed cached and {@link #reportConfigsForDay} is gated by
+     * {@link DailyEventGuard} (one Telegram per date across JVM restarts).</p>
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void seedConfigsOnStartup() {
+        if (!"live".equalsIgnoreCase(appMode)) {
+            return;
+        }
+        LocalDate today = LocalDate.now();
+        if (today.getDayOfWeek() == DayOfWeek.SATURDAY || today.getDayOfWeek() == DayOfWeek.SUNDAY) {
+            return;
+        }
+        log.info("[TradeConfigScheduler] Startup seed: loading trade configs for {}", today);
+        List<TradeConfigCombinedDTO> combinedDto = getConfigsForDate(today);
+        SharedData.combinedDto = combinedDto;
+        reportConfigsForDay(today, combinedDto);
+    }
 
     @Scheduled(cron = "0 12 9 * * MON-FRI")
     public void dailyTaskAt912AM() {

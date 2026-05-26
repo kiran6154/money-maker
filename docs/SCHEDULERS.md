@@ -11,7 +11,7 @@ Every `@Scheduled` bean in the app, what it does, when it runs, and what it depe
 | Scheduler | Package | Cadence (live) | Replays in backtest? | Reads | Writes |
 |---|---|---|---|---|---|
 | [`LoginScheduler`](#loginscheduler) | `com.moneymaker.scheduler` | `0 0 8 * * MON-FRI` (08:00 IST) + `fixedDelay=60s` heartbeat | No (controller-driven) | `AppState`, `BrokerLoginManager` | `broker_session`, Telegram |
-| [`TradeConfigScheduler`](#tradeconfigscheduler) | `com.moneymaker.scheduler` | On demand / startup | Yes (per-day fetch) | `trade_config`, `instrument`, `sma_timeframe` | `SharedData.combinedDto` |
+| [`TradeConfigScheduler`](#tradeconfigscheduler) | `com.moneymaker.scheduler` | `ApplicationReadyEvent` (live, weekday) + `0 16 9 * * MON-FRI` | Yes (per-day fetch) | `trade_config`, `instrument`, `sma_timeframe` | `SharedData.combinedDto` |
 | [`AnalysisScheduler`](#analysisscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI` | Yes (every backtest tick) | Broker historical data | `SharedData.strikeMarketDataByInstrumentAndInterval`, `SharedData.tradeSignals` |
 | [`OrderScheduler`](#orderscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI` | Yes (after `AnalysisScheduler` each tick) | `SharedData.tradeSignals` | `trade_order`, broker order endpoints, Telegram |
 | [`PositionScheduler`](#positionscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI` | Yes (after `OrderScheduler` each tick) | OPEN `trade_order` rows, broker LTP | `trade_order` (peak/last-monitored/exit), Telegram |
@@ -69,6 +69,7 @@ Detailed state machine and alert-rule matrix live in [HEARTBEAT.md](HEARTBEAT.md
 - Loads `TradeConfig` + `Instrument` + `InstrumentDetails` + `SmaTimeframe` for a given trading date and assembles them into `List<TradeConfigCombinedDTO>`.
 - Stashes the result on `SharedData.combinedDto` so downstream schedulers can read configs without hitting the DB on every tick.
 - Has a `@Scheduled(cron = "0 16 9 * * MON-FRI")` job that does the live 09:16 IST load.
+- Also has an `ApplicationReadyEvent` listener (`seedConfigsOnStartup`) that does the same load once at boot in `app.mode=live` on weekdays. This covers the case where the JVM is started after 09:16 — without it, `SharedData.combinedDto` would stay empty until the next day's 09:16 cron and the Analysis/Order/Position pipeline would idle. Idempotent with the cron (date-keyed cache + `DailyEventGuard` on the Telegram report). Skipped in backtest mode — `BacktestAnalysisService` manages `combinedDto` per-day in its own loop.
 
 ### Single entry point: `getConfigsForDate(date)`
 
