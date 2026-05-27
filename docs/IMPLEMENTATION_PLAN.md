@@ -170,8 +170,12 @@ Three calls to make before M0 starts:
 
 ## Updating this plan
 
-When a milestone lands:
-1. Flip its status to ☑ in the table at the top.
-2. Add a one-line "what changed" note with the PR/commit reference.
-3. If any sub-item was deferred or replaced, note it inline.
-4. Don't delete completed milestones — the audit trail of *which* item closed *which* GAP is the value.
+When a milestone (or any meaningful slice of work) lands:
+
+1. **Update [`CHANGELOG.md`](../CHANGELOG.md) in the same commit.** Promote the entries from `[Unreleased]` into a dated, milestone-tagged release block. The changelog is the source of truth for *what shipped, when*; this plan is the source of truth for *what's next*.
+2. **Flip the status row** in the table at the top of this doc to ☑.
+3. **Add a one-line note** in the milestone's row pointing at the changelog release tag (e.g. *"shipped 2026-06-03 — see CHANGELOG `[M0 — Backtest reproducibility]`"*).
+4. **If any sub-item was deferred, dropped, or replaced**, note it inline below the milestone table — don't silently delete it.
+5. **Don't delete completed milestones.** The audit trail of which change closed which GAP / ARCH / SEQ item is the value of this doc.
+
+The two files have different jobs: the changelog tells you "what's in the code now"; this plan tells you "what we still owe". They drift apart silently unless you update them together — make it one commit.
