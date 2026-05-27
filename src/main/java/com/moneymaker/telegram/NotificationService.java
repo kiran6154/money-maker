@@ -200,6 +200,17 @@ public class NotificationService {
         return ts.toLocalDate().format(DATE_FMT) + " " + ts.toLocalTime().format(TIME_FMT);
     }
 
+    /**
+     * End-of-day digest. One message per trading day; once-per-day gating is
+     * the caller's responsibility (see {@code DaySummaryScheduler} +
+     * {@link com.moneymaker.state.DailyEventGuard}). Body is pre-formatted by
+     * the scheduler so this method stays a thin pass-through.
+     */
+    public void alertDaySummary(String body) {
+        if (body == null || body.isBlank()) return;
+        telegram.send(body);
+    }
+
     public void alertOrderRejected(String brokerName, Long orderId, String reason) {
         String key = KEY_REJECT_PREFIX + (brokerName == null ? "?" : brokerName.toUpperCase(Locale.ROOT));
         sendIfChanged(key, String.format(

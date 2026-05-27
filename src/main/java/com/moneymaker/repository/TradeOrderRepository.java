@@ -87,4 +87,18 @@ public interface TradeOrderRepository extends JpaRepository<TradeOrder, Long> {
             @Param("tradeConfigId") Integer tradeConfigId,
             @Param("fromInclusive") LocalDateTime fromInclusive,
             @Param("toInclusive") LocalDateTime toInclusive);
+
+    /**
+     * Returns every trade — OPEN or CLOSED — whose entry timestamp falls in
+     * the given window. Used by {@code DaySummaryScheduler} to compose the
+     * end-of-day Telegram digest.
+     */
+    List<TradeOrder> findByEntryTimeBetween(LocalDateTime fromInclusive, LocalDateTime toInclusive);
+
+    /**
+     * True when any trade_order row references this trade_config. Used by
+     * the trade-config admin to block destructive edits (delete) on configs
+     * that already have an audit trail of executed trades.
+     */
+    boolean existsByTradeConfigId(Integer tradeConfigId);
 }

@@ -159,9 +159,20 @@ public class BacktestAnalysisService {
 
                 rowsAfter = countTradeOrdersOnDate(currentDate);
             } finally {
-                // Always release the cache, even if the tick loop or force-close threw.
-                // Leaving it active across days would leak the previous day's series.
+                // Day-end wipe — runs after force-close, regardless of exceptions.
+                // Every per-day cache/state container is cleared here so the next
+                // backtest day (and any subsequent run of /api/backtest/analysis
+                // in the same JVM) starts from a clean slate. Without this, leftover
+                // entries in SharedData's strike maps cause Strategy1 to evaluate
+                // stale strikes and — because ConcurrentHashMap iteration is
+                // non-deterministic — picks a different "first" strike across runs
+                // even for identical inputs.
                 marketDataCache.endDay();
+                SharedData.strikeMarketDataByInstrumentAndInterval.clear();
+                SharedData.marketDataByInstrumentAndInterval.clear();
+                SharedData.tradeSignals.clear();
+                log.debug("[Backtest] day={} — caches wiped (strikeMarketData, marketData, tradeSignals)",
+                        currentDate);
             }
             long dayMs = Duration.between(dayStart, Instant.now()).toMillis();
             log.info("[Backtest] day={} done in {} ms — trade_order rows: before={} after={} delta={} forceClosed={}",

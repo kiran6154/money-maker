@@ -9,12 +9,14 @@ import com.moneymaker.entity.TradeConfig;
 import com.moneymaker.indicator.IndicatorConfig;
 import com.moneymaker.indicator.IndicatorService;
 import com.moneymaker.market.service.MarketDataService;
+import com.moneymaker.market.service.MarketHoursService;
 import com.moneymaker.repository.ExpiryDatesRepository;
 import com.moneymaker.repository.InstrumentDetailsRepository;
 import com.moneymaker.shared.data.SharedData;
 import com.moneymaker.strategy.StrategyFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -31,21 +33,31 @@ public class AnalysisScheduler {
     private final InstrumentDetailsRepository instrumentDetailsRepository;
     private final ExpiryDatesRepository expiryDatesRepository;
     private final StrategyFactory strategyFactory;
+    private final MarketHoursService marketHours;
+
+    @Value("${app.mode:live}")
+    private String appMode;
 
     public AnalysisScheduler(MarketDataService marketDataService,
                              IndicatorService indicatorService,
                              InstrumentDetailsRepository instrumentDetailsRepository,
                              ExpiryDatesRepository expiryDatesRepository,
-                             StrategyFactory strategyFactory) {
+                             StrategyFactory strategyFactory,
+                             MarketHoursService marketHours) {
         this.marketDataService = Objects.requireNonNull(marketDataService, "marketDataService must not be null");
         this.indicatorService = Objects.requireNonNull(indicatorService, "indicatorService must not be null");
         this.instrumentDetailsRepository = Objects.requireNonNull(instrumentDetailsRepository, "instrumentDetailsRepository must not be null");
         this.expiryDatesRepository = Objects.requireNonNull(expiryDatesRepository, "expiryDatesRepository must not be null");
         this.strategyFactory = Objects.requireNonNull(strategyFactory, "strategyFactory must not be null");
+        this.marketHours = Objects.requireNonNull(marketHours, "marketHours must not be null");
     }
 
     @Scheduled(cron = "0 0/5 9-16 * * MON-FRI")
     public void analyzeMarketData() {
+        if ("live".equalsIgnoreCase(appMode) && !marketHours.isOpenNow()) {
+            logger.debug("AnalysisScheduler skipped: outside market hours");
+            return;
+        }
         logger.info("Starting market analysis scheduler");
         try {
             calculateIndicator(LocalDateTime.now());

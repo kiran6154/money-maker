@@ -150,7 +150,15 @@ public class Strategy1 implements Strategy {
             Integer sa = parseStrikeOrNull(a.getKey());
             Integer sb = parseStrikeOrNull(b.getKey());
             if (sa == null || sb == null) return a.getKey().compareTo(b.getKey());
-            return isCe ? Integer.compare(sa, sb) : Integer.compare(sb, sa);
+            int strikeCmp = isCe ? Integer.compare(sa, sb) : Integer.compare(sb, sa);
+            if (strikeCmp != 0) return strikeCmp;
+            // Tie-breaker: lexicographic key. Two cache entries can share the
+            // same strike when sibling configs use different itmDepth/otmDepth
+            // values (the depths are part of the cache key). Without an
+            // explicit tie-breaker the stable sort falls back to ConcurrentHashMap
+            // iteration order — which is non-deterministic across runs and is
+            // the root cause of "same config, different strike each run".
+            return a.getKey().compareTo(b.getKey());
         };
     }
 

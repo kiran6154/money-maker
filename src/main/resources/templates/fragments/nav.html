@@ -20,6 +20,7 @@
         <a th:href="@{/login}"    class="nav-link" th:classappend="${activePage == 'login'} ? ' active'"
            th:unless="${loggedIn}">🔑 Broker Login</a>
         <a th:href="@{/backtest}" class="nav-link" th:classappend="${activePage == 'backtest'}  ? ' active'">🧪 Backtest</a>
+        <a th:href="@{/trade-configs}" class="nav-link" th:classappend="${activePage == 'trade-configs'} ? ' active'">⚙ Trade Configs</a>
         <a th:href="@{/docs}"     class="nav-link" th:classappend="${activePage == 'docs'}      ? ' active'">📚 Documents</a>
         <span class="nav-separator"></span>
         <span class="nav-link" style="cursor:default;" id="navStatus">

@@ -13,6 +13,7 @@ import lombok.Setter;
 public class SmaTimeframe {
 
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
     @Column(name = "time_period")

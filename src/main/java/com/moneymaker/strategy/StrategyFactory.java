@@ -30,6 +30,15 @@ public class StrategyFactory {
     /**
      * Look up a strategy by its numeric id.
      */
+    /**
+     * Returns the registered strategy ids in ascending order — used by the
+     * trade-config admin UI to populate the strategy dropdown without
+     * hardcoding the list.
+     */
+    public List<Integer> availableStrategyIds() {
+        return strategiesById.keySet().stream().sorted().toList();
+    }
+
     public Strategy get(Integer strategyId) {
         if (strategyId == null) {
             throw new IllegalArgumentException("strategyId is null");

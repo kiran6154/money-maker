@@ -3,7 +3,15 @@
     "allow": [
       "PowerShell(mvn -q -DskipTests compile)",
       "Bash(mvn -q -DskipTests compile)",
-      "Bash(echo \"EXIT=$?\")"
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(findstr /S /I /M \"InstrumentRepository\" d:\\\\office\\\\stocks\\\\workspace\\\\money-maker\\\\src\\\\main\\\\java 2>nul)",
+      "Bash(findstr /N /C:\"form-control\" /C:\"form-row\" /C:\"btn-ghost\" /C:\".pagination\" d:\\\\office\\\\stocks\\\\workspace\\\\money-maker\\\\src\\\\main\\\\resources\\\\static\\\\css\\\\app.css)",
+      "Bash(findstr /N \".\")",
+      "PowerShell($out = mvn -DskipTests compile 2>&1; $out | Select-Object -Last 30; \"EXIT=$LASTEXITCODE\")",
+      "PowerShell($out = mvn -DskipTests compile 2>&1; $out | Select-Object -Last 20; \"EXIT=$LASTEXITCODE\")"
+    ],
+    "additionalDirectories": [
+      "d:\\office\\stocks\\workspace\\money-maker"
     ]
   }
 }
