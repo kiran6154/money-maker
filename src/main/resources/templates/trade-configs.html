@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Money Maker — Trade Configs</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}" />
+    <style>
+        .tc-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: end;
+            margin-bottom: 16px;
+        }
+        .tc-toolbar .form-row { margin-bottom: 0; min-width: 160px; }
+        .tc-toolbar .spacer    { flex: 1; }
+
+        .tc-form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+        .tc-form-grid .form-row { margin-bottom: 0; }
+        .tc-section-title {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: var(--text-muted);
+            margin: 6px 0 10px;
+        }
+
+        .sma-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr auto;
+            gap: 10px;
+            align-items: end;
+            margin-bottom: 10px;
+        }
+        .sma-row .form-row { margin-bottom: 0; }
+        .sma-row .remove-btn {
+            padding: 10px 12px;
+            border: 1px solid rgba(0,0,0,0.08);
+            background: rgba(255,255,255,0.7);
+            border-radius: 10px;
+            cursor: pointer;
+            color: var(--danger);
+            font-weight: 600;
+        }
+
+        .report-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .report-table th,
+        .report-table td {
+            padding: 9px 10px;
+            text-align: left;
+            border-bottom: 1px dashed rgba(0,0,0,0.08);
+            white-space: nowrap;
+        }
+        .report-table thead th {
+            background: rgba(255,255,255,0.7);
+            font-weight: 600;
+            border-bottom: 1px solid rgba(0,0,0,0.12);
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .report-table tbody tr:hover { background: rgba(0, 122, 255, 0.04); }
+        .report-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+        .report-scroll {
+            max-height: 520px;
+            overflow: auto;
+            border-radius: 12px;
+            border: 1px solid rgba(0,0,0,0.06);
+        }
+        .row-actions { display: inline-flex; gap: 6px; }
+        .icon-btn {
+            padding: 5px 10px;
+            border: 1px solid rgba(0,0,0,0.08);
+            border-radius: 8px;
+            background: rgba(255,255,255,0.75);
+            cursor: pointer;
+            font-size: 12px;
+            color: var(--text);
+        }
+        .icon-btn.danger { color: var(--danger); }
+        .icon-btn:hover { background: rgba(255,255,255,1); }
+
+        .pagination {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            justify-content: flex-end;
+            margin-top: 14px;
+            flex-wrap: wrap;
+        }
+        .pagination .page-info { color: var(--text-muted); font-size: 13px; }
+        .pagination .page-btn {
+            padding: 6px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(0,0,0,0.08);
+            background: rgba(255,255,255,0.75);
+            cursor: pointer;
+        }
+        .pagination .page-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        .form-card-collapsed { display: none; }
+        .form-card-actions {
+            display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px;
+        }
+
+        .pill-tf {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: rgba(0, 122, 255, 0.10);
+            color: var(--primary-strong);
+            font-size: 11px;
+            font-weight: 600;
+            margin-right: 4px;
+        }
+        .empty-state {
+            text-align: center; padding: 28px 0; color: var(--text-muted);
+        }
+        .inline-alert {
+            margin-bottom: 14px;
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 13px;
+        }
+        .inline-alert.error   { background: rgba(232,73,76,0.10);  color: #b6262a; }
+        .inline-alert.success { background: rgba(41,194,106,0.12); color: #1f8f4d; }
+    </style>
+</head>
+<body>
+<div th:replace="~{fragments/nav :: nav}"></div>
+
+<main class="page">
+    <h1 class="page-title">⚙ Trade Configs</h1>
+    <p class="page-subtitle">
+        Create / edit the trade configs and their SMA timeframes consumed by
+        <code>AnalysisScheduler</code>, <code>OrderScheduler</code> and <code>PositionScheduler</code>.
+        Writes invalidate the in-JVM date cache; live-mode edits to today refresh <code>SharedData.combinedDto</code> immediately.
+    </p>
+
+    <!-- ─────────────────── Filter + Add toolbar ─────────────────── -->
+    <div class="glass-card" style="margin-bottom: 18px;">
+        <div class="tc-toolbar">
+            <div class="form-row">
+                <label for="tc-filter-date">Trading date</label>
+                <input id="tc-filter-date" type="date" class="form-control" />
+            </div>
+            <div class="form-row">
+                <label for="tc-page-size">Rows per page</label>
+                <select id="tc-page-size" class="form-control">
+                    <option value="5">5</option>
+                    <option value="10" selected>10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                </select>
+            </div>
+            <button id="tc-clear-filter" class="btn btn-ghost" type="button">Show all dates</button>
+            <button id="tc-refresh" class="btn btn-ghost" type="button">↻ Refresh</button>
+            <div class="spacer"></div>
+            <button id="tc-add" class="btn btn-primary" type="button">+ Add Trade Config</button>
+        </div>
+    </div>
+
+    <!-- ─────────────────── Inline form (hidden by default) ─────────────────── -->
+    <div id="tc-form-card" class="glass-card form-card-collapsed" style="margin-bottom: 18px;">
+        <div class="card-header">
+            <h3 id="tc-form-title">New trade config</h3>
+            <span id="tc-form-mode" class="badge badge-info">CREATE</span>
+        </div>
+
+        <div id="tc-form-alert" class="inline-alert" style="display:none;"></div>
+
+        <input type="hidden" id="tc-id" />
+
+        <div class="tc-section-title">Core</div>
+        <div class="tc-form-grid">
+            <div class="form-row">
+                <label for="tc-instrument">Instrument *</label>
+                <select id="tc-instrument" class="form-control"></select>
+            </div>
+            <div class="form-row">
+                <label for="tc-date">Trading date *</label>
+                <input id="tc-date" type="date" class="form-control" />
+            </div>
+            <div class="form-row">
+                <label for="tc-strategy">Strategy *</label>
+                <select id="tc-strategy" class="form-control"></select>
+            </div>
+            <div class="form-row">
+                <label for="tc-side">Trading side</label>
+                <select id="tc-side" class="form-control">
+                    <option value="">—</option>
+                    <option value="CE">CE (Call)</option>
+                    <option value="PE">PE (Put)</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label for="tc-txn">Transaction type</label>
+                <select id="tc-txn" class="form-control">
+                    <option value="">—</option>
+                    <option value="BUY">BUY</option>
+                    <option value="SELL">SELL</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="tc-section-title">Risk &amp; sizing</div>
+        <div class="tc-form-grid">
+            <div class="form-row">
+                <label for="tc-target">Target (per share)</label>
+                <input id="tc-target" type="number" step="0.01" class="form-control" />
+            </div>
+            <div class="form-row">
+                <label for="tc-sl">Stop loss (per share)</label>
+                <input id="tc-sl" type="number" step="0.01" class="form-control" />
+            </div>
+            <div class="form-row">
+                <label for="tc-max-loss">Max loss / day</label>
+                <input id="tc-max-loss" type="number" step="0.01" class="form-control" />
+            </div>
+            <div class="form-row">
+                <label for="tc-lots">Lot quantity</label>
+                <input id="tc-lots" type="number" step="1" class="form-control" />
+            </div>
+            <div class="form-row">
+                <label for="tc-trades-day">Max trades / day</label>
+                <input id="tc-trades-day" type="number" step="1" class="form-control" />
+            </div>
+            <div class="form-row">
+                <label for="tc-parallel">Max parallel trades</label>
+                <input id="tc-parallel" type="number" step="1" class="form-control" />
+            </div>
+        </div>
+
+        <div class="tc-section-title">Strike depth</div>
+        <div class="tc-form-grid">
+            <div class="form-row">
+                <label for="tc-option-depth">Option depth</label>
+                <input id="tc-option-depth" type="number" step="1" class="form-control" />
+            </div>
+            <div class="form-row">
+                <label for="tc-itm">ITM depth</label>
+                <input id="tc-itm" type="number" step="1" class="form-control" />
+            </div>
+            <div class="form-row">
+                <label for="tc-atm">ATM depth</label>
+                <input id="tc-atm" type="number" step="1" class="form-control" />
+            </div>
+            <div class="form-row">
+                <label for="tc-otm">OTM depth</label>
+                <input id="tc-otm" type="number" step="1" class="form-control" />
+            </div>
+        </div>
+
+        <div class="tc-section-title" style="display:flex; align-items:center; justify-content:space-between;">
+            <span>SMA timeframes</span>
+            <button id="tc-add-tf" class="icon-btn" type="button">+ Add timeframe</button>
+        </div>
+        <div id="tc-tf-rows"></div>
+        <p id="tc-tf-empty" style="color: var(--text-muted); font-size: 12px; margin: 0 0 12px;">
+            No timeframes yet. Click <b>+ Add timeframe</b> to attach one.
+        </p>
+
+        <div class="form-card-actions">
+            <button id="tc-save" class="btn btn-primary" type="button">💾 Save</button>
+            <button id="tc-cancel" class="btn btn-ghost" type="button">Cancel</button>
+        </div>
+    </div>
+
+    <!-- ─────────────────── Report ─────────────────── -->
+    <div class="glass-card">
+        <div class="card-header">
+            <h3>Configured trade configs</h3>
+            <span id="tc-count" class="badge badge-info">0 rows</span>
+        </div>
+        <div class="report-scroll">
+            <table class="report-table" id="tc-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Date</th>
+                        <th>Instrument</th>
+                        <th>Side</th>
+                        <th>Txn</th>
+                        <th>Strategy</th>
+                        <th class="num">Target</th>
+                        <th class="num">SL</th>
+                        <th class="num">Lots</th>
+                        <th class="num">Trades/day</th>
+                        <th class="num">Parallel</th>
+                        <th class="num">ITM</th>
+                        <th class="num">ATM</th>
+                        <th class="num">OTM</th>
+                        <th>Timeframes</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="tc-rows"></tbody>
+            </table>
+        </div>
+        <div id="tc-empty" class="empty-state">
+            No trade configs for the selected filter. Click <b>+ Add Trade Config</b> above to create one.
+        </div>
+        <div class="pagination">
+            <span id="tc-page-info" class="page-info">page 1 / 1</span>
+            <button id="tc-prev" class="page-btn" type="button">‹ Prev</button>
+            <button id="tc-next" class="page-btn" type="button">Next ›</button>
+        </div>
+    </div>
+</main>
+
+<script th:inline="javascript">
+(function () {
+    // ---------- state ----------
+    const state = {
+        page: 0,
+        size: 10,
+        date: null,
+        editingId: null,
+        instruments: [],
+        strategies: []
+    };
+
+    // ---------- elements ----------
+    const els = {
+        filterDate:   document.getElementById('tc-filter-date'),
+        pageSize:     document.getElementById('tc-page-size'),
+        clearFilter:  document.getElementById('tc-clear-filter'),
+        refresh:      document.getElementById('tc-refresh'),
+        addBtn:       document.getElementById('tc-add'),
+
+        formCard:     document.getElementById('tc-form-card'),
+        formTitle:    document.getElementById('tc-form-title'),
+        formMode:     document.getElementById('tc-form-mode'),
+        formAlert:    document.getElementById('tc-form-alert'),
+
+        id:           document.getElementById('tc-id'),
+        instrument:   document.getElementById('tc-instrument'),
+        date:         document.getElementById('tc-date'),
+        strategy:     document.getElementById('tc-strategy'),
+        side:         document.getElementById('tc-side'),
+        txn:          document.getElementById('tc-txn'),
+        target:       document.getElementById('tc-target'),
+        sl:           document.getElementById('tc-sl'),
+        maxLoss:      document.getElementById('tc-max-loss'),
+        lots:         document.getElementById('tc-lots'),
+        tradesDay:    document.getElementById('tc-trades-day'),
+        parallel:     document.getElementById('tc-parallel'),
+        optionDepth:  document.getElementById('tc-option-depth'),
+        itm:          document.getElementById('tc-itm'),
+        atm:          document.getElementById('tc-atm'),
+        otm:          document.getElementById('tc-otm'),
+        tfRows:       document.getElementById('tc-tf-rows'),
+        tfEmpty:      document.getElementById('tc-tf-empty'),
+        addTf:        document.getElementById('tc-add-tf'),
+        save:         document.getElementById('tc-save'),
+        cancel:       document.getElementById('tc-cancel'),
+
+        table:        document.getElementById('tc-table'),
+        rows:         document.getElementById('tc-rows'),
+        empty:        document.getElementById('tc-empty'),
+        count:        document.getElementById('tc-count'),
+        pageInfo:     document.getElementById('tc-page-info'),
+        prev:         document.getElementById('tc-prev'),
+        next:         document.getElementById('tc-next')
+    };
+
+    // ---------- helpers ----------
+    const today = () => new Date().toISOString().slice(0, 10);
+    const fmtNum = (v) => (v === null || v === undefined || v === '') ? '—' : v;
+    const setAlert = (msg, kind) => {
+        if (!msg) { els.formAlert.style.display = 'none'; return; }
+        els.formAlert.textContent = msg;
+        els.formAlert.className = 'inline-alert ' + (kind || 'error');
+        els.formAlert.style.display = '';
+    };
+
+    // ---------- dropdown bootstrapping ----------
+    async function loadInstruments() {
+        const r = await fetch('/api/trade-configs/instruments');
+        state.instruments = await r.json();
+        els.instrument.innerHTML = '<option value="">— select —</option>' +
+            state.instruments.map(i => `<option value="${i.id}">${i.name}</option>`).join('');
+    }
+    async function loadStrategies() {
+        const r = await fetch('/api/trade-configs/strategies');
+        state.strategies = await r.json();
+        els.strategy.innerHTML = '<option value="">— select —</option>' +
+            state.strategies.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+    }
+
+    // ---------- timeframe rows ----------
+    function addTimeframeRow(tf) {
+        const row = document.createElement('div');
+        row.className = 'sma-row';
+        row.innerHTML =
+            '<div class="form-row"><label>Time period (min)</label>' +
+                '<input data-tf="timePeriod" type="number" step="1" class="form-control" /></div>' +
+            '<div class="form-row"><label>SMA</label>' +
+                '<input data-tf="sma" type="number" step="1" class="form-control" /></div>' +
+            '<div class="form-row"><label>Slope</label>' +
+                '<input data-tf="slope" type="number" step="0.0001" class="form-control" /></div>' +
+            '<button type="button" class="remove-btn" title="Remove timeframe">✕</button>';
+        if (tf) {
+            row.querySelector('[data-tf="timePeriod"]').value = tf.timePeriod ?? '';
+            row.querySelector('[data-tf="sma"]').value        = tf.sma ?? '';
+            row.querySelector('[data-tf="slope"]').value      = tf.slope ?? '';
+            row.dataset.tfId = tf.id ?? '';
+        }
+        row.querySelector('.remove-btn').addEventListener('click', () => {
+            row.remove();
+            updateTfEmpty();
+        });
+        els.tfRows.appendChild(row);
+        updateTfEmpty();
+    }
+    function updateTfEmpty() {
+        els.tfEmpty.style.display = els.tfRows.children.length === 0 ? '' : 'none';
+    }
+    function collectTimeframes() {
+        return Array.from(els.tfRows.children).map(row => {
+            const tpRaw  = row.querySelector('[data-tf="timePeriod"]').value;
+            const smaRaw = row.querySelector('[data-tf="sma"]').value;
+            const slRaw  = row.querySelector('[data-tf="slope"]').value;
+            return {
+                id:         row.dataset.tfId ? Number(row.dataset.tfId) : null,
+                timePeriod: tpRaw  === '' ? null : Number(tpRaw),
+                sma:        smaRaw === '' ? null : Number(smaRaw),
+                slope:      slRaw  === '' ? null : Number(slRaw)
+            };
+        }).filter(tf => tf.timePeriod !== null && tf.sma !== null);
+    }
+
+    // ---------- form open/close ----------
+    function clearForm() {
+        els.id.value = '';
+        [els.target, els.sl, els.maxLoss, els.lots, els.tradesDay, els.parallel,
+         els.optionDepth, els.itm, els.atm, els.otm].forEach(e => e.value = '');
+        els.instrument.value = '';
+        els.strategy.value = '';
+        els.side.value = '';
+        els.txn.value = '';
+        els.date.value = state.date || today();
+        els.tfRows.innerHTML = '';
+        updateTfEmpty();
+        setAlert(null);
+    }
+    function openCreate() {
+        state.editingId = null;
+        els.formTitle.textContent = 'New trade config';
+        els.formMode.textContent  = 'CREATE';
+        els.formMode.className    = 'badge badge-info';
+        clearForm();
+        els.formCard.classList.remove('form-card-collapsed');
+        els.formCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        els.instrument.focus();
+    }
+    function openEdit(view) {
+        state.editingId = view.id;
+        els.formTitle.textContent = 'Edit trade config #' + view.id;
+        els.formMode.textContent  = 'EDIT';
+        els.formMode.className    = 'badge badge-warn';
+        clearForm();
+        els.id.value          = view.id;
+        els.instrument.value  = view.instrumentId ?? '';
+        els.date.value        = view.tradingDate ?? today();
+        els.strategy.value    = view.strategyId ?? '';
+        els.side.value        = view.tradingSide ?? '';
+        els.txn.value         = view.transactionType ?? '';
+        els.target.value      = view.target ?? '';
+        els.sl.value          = view.stopLoss ?? '';
+        els.maxLoss.value     = view.maxLoss ?? '';
+        els.lots.value        = view.lotQuantity ?? '';
+        els.tradesDay.value   = view.numberOfTradesPerDay ?? '';
+        els.parallel.value    = view.numberOfParallelTrades ?? '';
+        els.optionDepth.value = view.optionDepth ?? '';
+        els.itm.value         = view.itmDepth ?? '';
+        els.atm.value         = view.atmDepth ?? '';
+        els.otm.value         = view.otmDepth ?? '';
+        (view.timeframes || []).forEach(addTimeframeRow);
+        els.formCard.classList.remove('form-card-collapsed');
+        els.formCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    function closeForm() {
+        els.formCard.classList.add('form-card-collapsed');
+        state.editingId = null;
+    }
+
+    // ---------- save ----------
+    async function save() {
+        const num = (el) => el.value === '' ? null : Number(el.value);
+        const payload = {
+            instrumentId:             num(els.instrument),
+            tradingDate:              els.date.value || null,
+            strategyId:               num(els.strategy),
+            tradingSide:              els.side.value || null,
+            transactionType:          els.txn.value  || null,
+            target:                   num(els.target),
+            stopLoss:                 num(els.sl),
+            maxLoss:                  num(els.maxLoss),
+            lotQuantity:              num(els.lots),
+            numberOfTradesPerDay:     num(els.tradesDay),
+            numberOfParallelTrades:   num(els.parallel),
+            optionDepth:              num(els.optionDepth),
+            itmDepth:                 num(els.itm),
+            atmDepth:                 num(els.atm),
+            otmDepth:                 num(els.otm),
+            timeframes:               collectTimeframes()
+        };
+        try {
+            els.save.disabled = true;
+            const url = state.editingId
+                ? '/api/trade-configs/' + state.editingId
+                : '/api/trade-configs';
+            const method = state.editingId ? 'PUT' : 'POST';
+            const r = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!r.ok) {
+                const err = await r.json().catch(() => ({}));
+                setAlert(err.error || ('HTTP ' + r.status), 'error');
+                return;
+            }
+            setAlert(state.editingId ? 'Updated.' : 'Created.', 'success');
+            closeForm();
+            await loadList();
+        } catch (e) {
+            setAlert(String(e), 'error');
+        } finally {
+            els.save.disabled = false;
+        }
+    }
+
+    // ---------- delete ----------
+    async function remove(id) {
+        if (!confirm('Delete trade config #' + id + '?')) return;
+        const r = await fetch('/api/trade-configs/' + id, { method: 'DELETE' });
+        if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            alert(err.error || ('HTTP ' + r.status));
+            return;
+        }
+        await loadList();
+    }
+
+    // ---------- list / pagination ----------
+    async function loadList() {
+        const params = new URLSearchParams();
+        if (state.date) params.set('date', state.date);
+        params.set('page', String(state.page));
+        params.set('size', String(state.size));
+        const r = await fetch('/api/trade-configs?' + params.toString());
+        const data = await r.json();
+        renderList(data);
+    }
+
+    function renderList(data) {
+        const items = data.items || [];
+        els.rows.innerHTML = '';
+        items.forEach(v => {
+            const tfHtml = (v.timeframes || []).map(t =>
+                `<span class="pill-tf">${t.timePeriod}m / SMA${t.sma}${t.slope != null ? ' · sl' + t.slope : ''}</span>`
+            ).join('') || '<span style="color:var(--text-muted)">—</span>';
+            const tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td>' + v.id + '</td>' +
+                '<td>' + fmtNum(v.tradingDate) + '</td>' +
+                '<td>' + fmtNum(v.instrumentName) + '</td>' +
+                '<td>' + fmtNum(v.tradingSide) + '</td>' +
+                '<td>' + fmtNum(v.transactionType) + '</td>' +
+                '<td>' + fmtNum(v.strategyId) + '</td>' +
+                '<td class="num">' + fmtNum(v.target) + '</td>' +
+                '<td class="num">' + fmtNum(v.stopLoss) + '</td>' +
+                '<td class="num">' + fmtNum(v.lotQuantity) + '</td>' +
+                '<td class="num">' + fmtNum(v.numberOfTradesPerDay) + '</td>' +
+                '<td class="num">' + fmtNum(v.numberOfParallelTrades) + '</td>' +
+                '<td class="num">' + fmtNum(v.itmDepth) + '</td>' +
+                '<td class="num">' + fmtNum(v.atmDepth) + '</td>' +
+                '<td class="num">' + fmtNum(v.otmDepth) + '</td>' +
+                '<td>' + tfHtml + '</td>' +
+                '<td><span class="row-actions">' +
+                    '<button class="icon-btn" data-edit="' + v.id + '">✎ Edit</button>' +
+                    '<button class="icon-btn danger" data-delete="' + v.id + '">🗑</button>' +
+                '</span></td>';
+            els.rows.appendChild(tr);
+        });
+        els.count.textContent = data.totalItems + ' row' + (data.totalItems === 1 ? '' : 's');
+        els.table.style.display = items.length ? '' : 'none';
+        els.empty.style.display = items.length ? 'none' : '';
+
+        const totalPages = Math.max(data.totalPages, 1);
+        els.pageInfo.textContent = 'page ' + (data.page + 1) + ' / ' + totalPages;
+        els.prev.disabled = data.page <= 0;
+        els.next.disabled = data.page + 1 >= totalPages;
+    }
+
+    // ---------- row actions (event delegation) ----------
+    els.rows.addEventListener('click', async (ev) => {
+        const editBtn = ev.target.closest('[data-edit]');
+        const delBtn  = ev.target.closest('[data-delete]');
+        if (editBtn) {
+            const id = editBtn.getAttribute('data-edit');
+            const r = await fetch('/api/trade-configs/' + id);
+            if (!r.ok) { alert('Load failed'); return; }
+            openEdit(await r.json());
+        } else if (delBtn) {
+            await remove(delBtn.getAttribute('data-delete'));
+        }
+    });
+
+    // ---------- wire toolbar ----------
+    els.addBtn.addEventListener('click', openCreate);
+    els.cancel.addEventListener('click', closeForm);
+    els.save.addEventListener('click', save);
+    els.addTf.addEventListener('click', () => addTimeframeRow(null));
+    els.refresh.addEventListener('click', loadList);
+    els.clearFilter.addEventListener('click', () => {
+        state.date = null;
+        els.filterDate.value = '';
+        state.page = 0;
+        loadList();
+    });
+    els.filterDate.addEventListener('change', () => {
+        state.date = els.filterDate.value || null;
+        state.page = 0;
+        loadList();
+    });
+    els.pageSize.addEventListener('change', () => {
+        state.size = Number(els.pageSize.value) || 10;
+        state.page = 0;
+        loadList();
+    });
+    els.prev.addEventListener('click', () => { if (state.page > 0) { state.page--; loadList(); } });
+    els.next.addEventListener('click', () => { state.page++; loadList(); });
+
+    // ---------- init ----------
+    (async function init() {
+        els.filterDate.value = today();
+        state.date = els.filterDate.value;
+        await Promise.all([loadInstruments(), loadStrategies()]);
+        await loadList();
+    })();
+})();
+</script>
+</body>
+</html>
