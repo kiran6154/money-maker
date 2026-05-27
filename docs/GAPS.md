@@ -162,17 +162,15 @@ Legend for effort:
 
 > Companion to Gap #14. Together these are the "stop the next orphan from happening" fix.
 
-## 15. EMA and RSI indicator implementations are stubs returning 0.0
+## 15. EMA and RSI indicator implementations are stubs returning 0.0 — **RESOLVED 2026-05-28**
 
 | | |
 |---|---|
-| Where | [`EMAIndicatorImpl.calculate`](../src/main/java/com/moneymaker/indicator/EMAIndicatorImpl.java), [`RSIIndicatorImpl.calculate`](../src/main/java/com/moneymaker/indicator/RSIIndicatorImpl.java) |
-| Why | Both classes implement the `Indicator` interface, do input validation, then `return 0.0;`. They are registered in `IndicatorFactory` so `IndicatorFactory.create("EMA")` works — but the computed value is meaningless. Any strategy that wires through these will get nonsense signals (always 0). SMA is the only real implementation today. |
-| Fix sketch | Either (a) write real implementations using the same ta4j pattern `SMAIndicatorImpl` uses, or (b) remove the stubs + factory registrations until they're really needed. **B6 unit tests pin the stub contract** ([`EMAIndicatorImplTest`](../src/test/java/com/moneymaker/indicator/EMAIndicatorImplTest.java)), so a real implementation will fail tests in CI — forcing the author to delete the stub assertion and write real coverage in the same commit. |
-| Effort | **M** per indicator if real implementations are wanted; **S** if removing the stubs. |
-| Priority | _TBD_ — defer until a strategy actually requires EMA or RSI. |
-
-> Surfaced during the M0.1.5 test-coverage batch.
+| Resolution | **Option (a) — deleted both stub files** + their tests. `IndicatorFactory` no longer registers `"EMA"` or `"RSI"`; calling `create("EMA")` now throws `IllegalArgumentException("Unknown indicator: EMA")`. |
+| Why this option | Grep confirmed zero production callers ever asked for `"EMA"` or `"RSI"` — `AnalysisScheduler.java:457` is the only `IndicatorService.calculate` caller and it hardcodes `"SMA"`. Stubs returning 0.0 with no callers were pure dead code; tests pinning them were maintenance overhead for no value. |
+| Re-adding later | When a strategy actually needs EMA / RSI: implement using the `SMAIndicatorImpl` ta4j pattern (real calculation, not a stub), add the `registry.put(...)` line back, write real tests (not stub-pinning). The factory comment block documents the contract. |
+| Test outcome | `IndicatorFactoryTest.EMA_and_RSI_no_longer_registered_after_gap_15_resolution` pins the new contract so anyone re-registering without removing this test gets a clear failure. |
+| Shipped | Commit `_M1.5_` (see CHANGELOG). |
 
 ## 16. Documentation lag from this session's changes
 

@@ -61,6 +61,16 @@ Use these headings in each release block. Omit empty ones.
 
 ## [Unreleased]
 
+### Removed — M1.5 GAP #15 resolution: dead EMA/RSI stubs (2026-05-28)
+
+- Deleted `EMAIndicatorImpl.java` and `RSIIndicatorImpl.java` — both were stubs returning `0.0` regardless of input. Grep confirmed zero production callers asked for `"EMA"` or `"RSI"`: `AnalysisScheduler.java:457` is the only `IndicatorService.calculate` caller and it hardcodes `"SMA"`.
+- Removed the corresponding `IndicatorFactory.registry.put(...)` lines. `IndicatorFactory.create("EMA")` now throws `IllegalArgumentException("Unknown indicator: EMA")`.
+- Deleted `EMAIndicatorImplTest.java` and `RSIIndicatorImplTest.java` (the stub-pinning tests).
+- Updated `IndicatorFactoryTest` with `EMA_and_RSI_no_longer_registered_after_gap_15_resolution` so a future re-registration without intent will fail this test loudly.
+- Factory class-comment block documents the contract for re-adding: implement real calculation (not a stub), register, write real tests.
+
+**Closes GAP #15.** When EMA / RSI are needed for a real strategy, the implementation work is M-level (write real ta4j-based calculation) but the architectural plumbing is unchanged.
+
 ### Added — M1 Reproducibility fix (2026-05-28)
 
 The substantive reproducibility milestone: identical inputs now produce identical `trade_order` rows across runs. 184 tests cumulative; all green.

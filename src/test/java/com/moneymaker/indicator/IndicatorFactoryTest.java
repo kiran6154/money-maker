@@ -15,15 +15,16 @@ class IndicatorFactoryTest {
     }
 
     @Test
-    void create_returns_EMA_implementation() {
-        Indicator i = IndicatorFactory.create("EMA");
-        assertThat(i).isInstanceOf(EMAIndicatorImpl.class);
-    }
-
-    @Test
-    void create_returns_RSI_implementation() {
-        Indicator i = IndicatorFactory.create("RSI");
-        assertThat(i).isInstanceOf(RSIIndicatorImpl.class);
+    void EMA_and_RSI_no_longer_registered_after_gap_15_resolution() {
+        // Both impls were stubs returning 0.0 with zero production callers;
+        // removed in M1's GAP #15 resolution. Re-add a registration when a
+        // real implementation lands — and write real tests then.
+        assertThatThrownBy(() -> IndicatorFactory.create("EMA"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown indicator");
+        assertThatThrownBy(() -> IndicatorFactory.create("RSI"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown indicator");
     }
 
     @Test
