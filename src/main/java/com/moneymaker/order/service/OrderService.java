@@ -42,6 +42,8 @@ public class OrderService {
     static final String FILL_PENDING = "PENDING";
     static final String FILL_BACKTEST = "BACKTEST";
     static final String FILL_COMPLETE = "COMPLETE";
+    /** Row was force-closed locally but the broker exit order failed. Operator action required. */
+    static final String FILL_EXIT_FAILED = "EXIT_FAILED";
 
     static final String BACKTESTING_NAME = "BACKTESTING";
 
@@ -403,6 +405,13 @@ public class OrderService {
                 .findByStatusAndEntryTimeBetween(STATUS_OPEN, startOfDay, endOfDay);
         if (openToday.isEmpty()) return 0;
 
+        // Active placement: BACKTESTING (no-op) in backtest mode; a real broker
+        // placement in live. The distinction matters below — a null broker order
+        // id from BACKTESTING is "normal"; a null from a live broker means the
+        // exit attempt failed and the row stays OPEN with fill_status=EXIT_FAILED.
+        OrderPlacementService placement = placementFactory.active();
+        boolean isBacktestPlacement = BACKTESTING_NAME.equalsIgnoreCase(placement.getName());
+
         int closed = 0;
         for (TradeOrder order : openToday) {
             BigDecimal exitPrice = lastPriceFor(order.getOptionToken(), closeAt);
@@ -412,20 +421,63 @@ public class OrderService {
                 exitPrice = order.getEntryPrice();
             }
 
+            // Local fields populated FIRST so place(order) can read status=CLOSED
+            // and infer the opposite-direction broker call (see e.g.
+            // ZerodhaOrderPlacementService.transactionType).
             order.setExitTime(closeAt);
             order.setExitPrice(exitPrice);
             order.setProfit(perShareProfit(order.getEntryDirection(), order.getEntryPrice(), exitPrice));
             order.setStatus(STATUS_CLOSED);
             order.setExitReason("FORCE_CLOSE");
-            // The fill state stays whatever it was (BACKTEST in backtest, PENDING
-            // for live — live force-closes need a real broker exit, which is a
-            // bigger change; for now we just mark the row CLOSED locally).
+            order.setFillStatus(initialFillStatus(placement));
+
+            // M3: attempt the real broker exit. In backtest the call returns null
+            // (FILL_BACKTEST stays). In live, a successful call returns the broker
+            // order id; a null return means the broker call failed — we keep the
+            // row OPEN, mark fill_status=EXIT_FAILED, and alert ops loudly.
+            String brokerOrderId = null;
+            try {
+                brokerOrderId = placement.place(order, findConfig(order.getTradeConfigId()));
+            } catch (Exception ex) {
+                log.error("Force-close placement threw for orderId={}", order.getId(), ex);
+            }
+
+            if (brokerOrderId != null) {
+                order.setExitBrokerOrderId(brokerOrderId);
+                order.setFillStatus(FILL_PENDING);
+                order = tradeOrderRepository.save(order);
+                log.info("[order] FORCE_CLOSE id={} dir={} entry={} → exit={} profit/share={} brokerOrderId={}",
+                        order.getId(), order.getEntryDirection(),
+                        order.getEntryPrice(), exitPrice, order.getProfit(), brokerOrderId);
+                notifier.alertOrderForceClosed(order);
+                closed++;
+                continue;
+            }
+
+            if (isBacktestPlacement) {
+                // Backtest path — null broker id is expected.
+                order = tradeOrderRepository.save(order);
+                log.info("[order] FORCE_CLOSE id={} dir={} entry={} → exit={} profit/share={} (backtest)",
+                        order.getId(), order.getEntryDirection(),
+                        order.getEntryPrice(), exitPrice, order.getProfit());
+                notifier.alertOrderForceClosed(order);
+                closed++;
+                continue;
+            }
+
+            // Live placement failed — the broker position is still open. Keep
+            // our row OPEN so a retry (manual or via the DaySummary 15:31 cron)
+            // can try again. Alert ops CRITICAL with the row details.
+            order.setStatus(STATUS_OPEN);
+            order.setExitTime(null);
+            order.setExitPrice(null);
+            order.setProfit(null);
+            order.setExitReason(null);
+            order.setFillStatus(FILL_EXIT_FAILED);
             order = tradeOrderRepository.save(order);
-            log.info("[order] FORCE_CLOSE id={} dir={} entry={} → exit={} profit/share={}",
-                    order.getId(), order.getEntryDirection(),
-                    order.getEntryPrice(), exitPrice, order.getProfit());
-            notifier.alertOrderForceClosed(order);
-            closed++;
+            log.error("[order] FORCE_CLOSE FAILED id={} — broker exit returned null; row kept OPEN with fill_status=EXIT_FAILED",
+                    order.getId());
+            notifier.alertOrderExitFailed(order, "broker placeOrder returned null");
         }
         return closed;
     }

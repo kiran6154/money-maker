@@ -43,20 +43,29 @@ public class MarketHoursService {
     @Value("${app.market.timezone:Asia/Kolkata}")
     private String timezoneStr;
 
+    @Value("${app.market.force-close-time:15:25}")
+    private String forceCloseStr;
+
     private LocalTime open;
     private LocalTime close;
+    private LocalTime forceClose;
     private ZoneId zone;
 
     @PostConstruct
     void init() {
         this.open = LocalTime.parse(openStr.trim(), HHMM);
         this.close = LocalTime.parse(closeStr.trim(), HHMM);
+        this.forceClose = LocalTime.parse(forceCloseStr.trim(), HHMM);
         this.zone = ZoneId.of(timezoneStr.trim());
         if (!close.isAfter(open)) {
             throw new IllegalStateException(
                     "app.market.close (" + closeStr + ") must be after app.market.open (" + openStr + ")");
         }
-        log.info("[market-hours] window={}-{} {} (MON-FRI)", open, close, zone);
+        if (forceClose.isAfter(close) || forceClose.isBefore(open)) {
+            throw new IllegalStateException(
+                    "app.market.force-close-time (" + forceCloseStr + ") must lie within [open, close]");
+        }
+        log.info("[market-hours] window={}-{} force-close={} {} (MON-FRI)", open, close, forceClose, zone);
     }
 
     /**
@@ -76,6 +85,16 @@ public class MarketHoursService {
     /** Today's close moment in the configured zone. */
     public LocalDateTime marketCloseToday() {
         return LocalDate.now(zone).atTime(close);
+    }
+
+    /**
+     * Today's force-close moment in the configured zone (default 15:25 IST,
+     * 5-min buffer before close). Used by {@code DaySummaryScheduler} to
+     * anchor {@code OrderService.forceCloseOpenPositions} — leaving room
+     * for the broker exit order to be accepted before the hard 15:30 cliff.
+     */
+    public LocalDateTime forceCloseToday() {
+        return LocalDate.now(zone).atTime(forceClose);
     }
 
     /** Today's open moment in the configured zone. */

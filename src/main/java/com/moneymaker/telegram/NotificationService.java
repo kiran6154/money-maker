@@ -189,6 +189,27 @@ public class NotificationService {
         telegram.send(sb.toString());
     }
 
+    /**
+     * <b>Critical</b> alert: a force-close attempt placed via the broker
+     * returned null. The row stays {@code OPEN} with
+     * {@code fill_status=EXIT_FAILED} so it can be retried (manually or by
+     * the next {@code DaySummaryScheduler} tick); meanwhile the broker
+     * position is unattended, so ops needs to know now.
+     */
+    public void alertOrderExitFailed(TradeOrder o, String reason) {
+        if (o == null) return;
+        StringBuilder sb = new StringBuilder("[CRITICAL] ORDER EXIT FAILED").append('\n');
+        sb.append("  id         : ").append(o.getId()).append('\n');
+        sb.append("  config     : ").append(o.getTradeConfigId()).append('\n');
+        sb.append("  instrument : ").append(safe(o.getInstrumentName())).append('\n');
+        sb.append("  strike     : ").append(o.getOptionStrike()).append(' ').append(safe(o.getOptionType())).append('\n');
+        sb.append("  direction  : ").append(safe(o.getEntryDirection())).append('\n');
+        sb.append("  entry      : ").append(o.getEntryPrice()).append(" @ ").append(formatDateTime(o.getEntryTime())).append('\n');
+        sb.append("  reason     : ").append(safe(reason)).append('\n');
+        sb.append("  ACTION     : broker position still OPEN — reconcile manually or wait for retry");
+        telegram.send(sb.toString());
+    }
+
     public void alertOrderForceClosed(TradeOrder o) {
         if (o == null) return;
         StringBuilder sb = new StringBuilder("[ORDER FORCE-CLOSE]").append('\n');

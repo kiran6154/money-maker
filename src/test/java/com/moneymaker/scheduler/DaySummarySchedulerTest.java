@@ -55,6 +55,8 @@ class DaySummarySchedulerTest {
                 .thenReturn(LocalDate.now().atTime(15, 30));
         lenient().when(marketHours.marketOpenToday())
                 .thenReturn(LocalDate.now().atTime(9, 15));
+        lenient().when(marketHours.forceCloseToday())
+                .thenReturn(LocalDate.now().atTime(15, 25));
     }
 
     @Test

@@ -79,7 +79,9 @@ public class DaySummaryScheduler {
             return;
         }
 
-        LocalDateTime closeAt = marketHours.marketCloseToday();
+        // M3: force-close happens 5 min before market close (15:25 default)
+        // so the broker exit order is accepted before the hard 15:30 cliff.
+        LocalDateTime closeAt = marketHours.forceCloseToday();
         log.info("[day-summary] {} — running end-of-day at {}", today, closeAt);
 
         int forceClosed = 0;

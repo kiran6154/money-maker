@@ -24,10 +24,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class MarketHoursServiceTest {
 
     private MarketHoursService newService(String open, String close, String tz) {
+        return newService(open, close, tz, "15:25");
+    }
+
+    private MarketHoursService newService(String open, String close, String tz, String forceClose) {
         MarketHoursService svc = new MarketHoursService();
         ReflectionTestUtils.setField(svc, "openStr", open);
         ReflectionTestUtils.setField(svc, "closeStr", close);
         ReflectionTestUtils.setField(svc, "timezoneStr", tz);
+        ReflectionTestUtils.setField(svc, "forceCloseStr", forceClose);
         ReflectionTestUtils.invokeMethod(svc, "init");
         return svc;
     }
@@ -95,9 +100,28 @@ class MarketHoursServiceTest {
     @Test
     void supports_alternative_market_window() {
         // US-style 09:30-16:00 ET should configure cleanly.
-        MarketHoursService svc = newService("09:30", "16:00", "America/New_York");
+        // Force-close override stays within the new window.
+        MarketHoursService svc = newService("09:30", "16:00", "America/New_York", "15:55");
         assertThat(svc.zone()).isEqualTo(ZoneId.of("America/New_York"));
         assertThat(svc.marketOpenToday().toLocalTime()).isEqualTo(LocalTime.of(9, 30));
         assertThat(svc.marketCloseToday().toLocalTime()).isEqualTo(LocalTime.of(16, 0));
+        assertThat(svc.forceCloseToday().toLocalTime()).isEqualTo(LocalTime.of(15, 55));
+    }
+
+    @Test
+    void forceCloseToday_default_is_15_25() {
+        MarketHoursService svc = newService("09:15", "15:30", "Asia/Kolkata");
+        assertThat(svc.forceCloseToday().toLocalTime()).isEqualTo(LocalTime.of(15, 25));
+    }
+
+    @Test
+    void init_rejects_force_close_outside_market_window() {
+        // Force-close after close — reject.
+        assertThatThrownBy(() -> newService("09:15", "15:30", "Asia/Kolkata", "15:45"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("must lie within");
+        // Force-close before open — reject.
+        assertThatThrownBy(() -> newService("09:15", "15:30", "Asia/Kolkata", "09:00"))
+                .isInstanceOf(IllegalStateException.class);
     }
 }

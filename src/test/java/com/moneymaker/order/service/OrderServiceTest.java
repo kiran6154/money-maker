@@ -292,6 +292,76 @@ class OrderServiceTest {
             assertThat(closed).isZero();
             verify(tradeOrderRepository, never()).save(any());
         }
+
+        @Test
+        void live_success_persists_broker_order_id_and_fillStatus_PENDING() {
+            // Live broker placement (name != BACKTESTING) returns a broker id.
+            when(placement.getName()).thenReturn("ZERODHA");
+            when(placement.place(any(), any())).thenReturn("KITE-ORD-42");
+
+            TradeOrder open = openTradeOrder("SELL", 24000, "CE");
+            open.setEntryPrice(new BigDecimal("100"));
+            when(tradeOrderRepository.findByStatusAndEntryTimeBetween(
+                    eq("OPEN"), any(), any())).thenReturn(java.util.List.of(open));
+
+            int closed = service.forceCloseOpenPositions(
+                    java.time.LocalDate.of(2026, 4, 1),
+                    LocalDateTime.of(2026, 4, 1, 15, 25));
+
+            assertThat(closed).isEqualTo(1);
+            assertThat(open.getStatus()).isEqualTo("CLOSED");
+            assertThat(open.getExitReason()).isEqualTo("FORCE_CLOSE");
+            assertThat(open.getExitBrokerOrderId()).isEqualTo("KITE-ORD-42");
+            assertThat(open.getFillStatus()).isEqualTo("PENDING");
+            verify(notifier).alertOrderForceClosed(any());
+            verify(notifier, never()).alertOrderExitFailed(any(), any());
+        }
+
+        @Test
+        void live_failure_keeps_row_OPEN_with_EXIT_FAILED_and_alerts() {
+            // Live broker placement returns null → exit failed.
+            when(placement.getName()).thenReturn("ZERODHA");
+            when(placement.place(any(), any())).thenReturn(null);
+
+            TradeOrder open = openTradeOrder("SELL", 24000, "CE");
+            open.setEntryPrice(new BigDecimal("100"));
+            when(tradeOrderRepository.findByStatusAndEntryTimeBetween(
+                    eq("OPEN"), any(), any())).thenReturn(java.util.List.of(open));
+
+            int closed = service.forceCloseOpenPositions(
+                    java.time.LocalDate.of(2026, 4, 1),
+                    LocalDateTime.of(2026, 4, 1, 15, 25));
+
+            assertThat(closed).isZero();
+            // Row reverted: OPEN, no exit fields, EXIT_FAILED.
+            assertThat(open.getStatus()).isEqualTo("OPEN");
+            assertThat(open.getExitTime()).isNull();
+            assertThat(open.getExitPrice()).isNull();
+            assertThat(open.getProfit()).isNull();
+            assertThat(open.getExitReason()).isNull();
+            assertThat(open.getFillStatus()).isEqualTo("EXIT_FAILED");
+            verify(notifier).alertOrderExitFailed(any(), org.mockito.ArgumentMatchers.contains("returned null"));
+            verify(notifier, never()).alertOrderForceClosed(any());
+        }
+
+        @Test
+        void live_placement_throw_treated_as_failure() {
+            when(placement.getName()).thenReturn("ZERODHA");
+            when(placement.place(any(), any())).thenThrow(new RuntimeException("broker down"));
+
+            TradeOrder open = openTradeOrder("SELL", 24000, "CE");
+            open.setEntryPrice(new BigDecimal("100"));
+            when(tradeOrderRepository.findByStatusAndEntryTimeBetween(
+                    eq("OPEN"), any(), any())).thenReturn(java.util.List.of(open));
+
+            int closed = service.forceCloseOpenPositions(
+                    java.time.LocalDate.of(2026, 4, 1),
+                    LocalDateTime.of(2026, 4, 1, 15, 25));
+
+            assertThat(closed).isZero();
+            assertThat(open.getFillStatus()).isEqualTo("EXIT_FAILED");
+            verify(notifier).alertOrderExitFailed(any(), any());
+        }
     }
 
     @Nested
