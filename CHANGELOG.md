@@ -61,7 +61,17 @@ Use these headings in each release block. Omit empty ones.
 
 ## [Unreleased]
 
-### Added
+### Added — M0.1 test harness scaffold (2026-05-27)
+- [`src/test/resources/application-test.properties`](src/test/resources/application-test.properties) — H2 in MySQL-compatibility mode for the test profile. **Decision:** H2 over Testcontainers because the dev environment has no Docker; trade-off accepted is periodic manual re-verification against real MySQL.
+- [`BacktestParityTest`](src/test/java/com/moneymaker/backtesting/BacktestParityTest.java) with two tests: a `canary_must_fail` (proves the harness can detect failures; removed in M2) and `spring_context_boots_against_h2` (proves Liquibase migrations are portable).
+- [`TradeOrderSnapshot`](src/test/java/com/moneymaker/backtesting/support/TradeOrderSnapshot.java) — deterministic JSON-ish serialiser. Rows sorted by business keys, never by DB-assigned id. `BigDecimal` via `toPlainString()` so scale survives round-trip.
+- [`FixtureLoader`](src/test/java/com/moneymaker/backtesting/support/FixtureLoader.java) — skeleton for loading `.sql` fixture files (used by M0.2/M0.3).
+- [`TradeOrderSnapshotTest`](src/test/java/com/moneymaker/backtesting/support/TradeOrderSnapshotTest.java) — 5 unit tests asserting determinism + scale preservation + id exclusion.
+
+### Fixed — M0.1 surfaced two pre-existing schema bugs (2026-05-27)
+- [`db/changelog/005_create_market_data_table.xml`](src/main/resources/db/changelog/005_create_market_data_table.xml) was orphaned — present on disk, not wired into the master changelog. Production worked only because Hibernate `ddl-auto=update` created the table from the JPA entity; Liquibase never ran the changeset. Wired into master with a `tableExists` precondition (`onFail=MARK_RAN`) so production picks up no-op and H2/fresh installs run the CREATE. Same file referenced `dbchangelog-4.23.0.xsd` (unbundled, requires network); aligned to `dbchangelog-3.8.xsd` matching the rest of the changesets.
+
+### Added prior to M0.1 (uncommitted across earlier sessions, now committed)
 - Trade-config admin UI at `/trade-configs` with inline form + paginated report. New endpoints under `/api/trade-configs/*`. New package `com.moneymaker.tradeconfig.*` (controller + service + DTOs). Backed by [`TradeConfigAdminService`](src/main/java/com/moneymaker/tradeconfig/service/TradeConfigAdminService.java) which invalidates the date-cache and refreshes `SharedData.combinedDto` on writes to today's configs.
 - [`MarketHoursService`](src/main/java/com/moneymaker/market/service/MarketHoursService.java) as the single source of truth for the trading window (default 09:15–15:30 Asia/Kolkata, configurable via `app.market.*`).
 - [`DaySummaryScheduler`](src/main/java/com/moneymaker/scheduler/DaySummaryScheduler.java) fires once at 15:31 IST Mon–Fri: force-closes any leftover OPEN trades, builds a Telegram summary, gates with `DailyEventGuard`.
@@ -83,6 +93,7 @@ Use these headings in each release block. Omit empty ones.
 - Added [`docs/SEQUENCING_AND_CACHE.md`](docs/SEQUENCING_AND_CACHE.md) — scheduler ordering, concurrency, cache inventory, backtest reproducibility prescription.
 - Added [`docs/GAPS.md`](docs/GAPS.md) — operational follow-ups (13 entries).
 - Added [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) — milestone plan M0–M7 with status table.
+- Added [`docs/MILESTONE_DETAILS.md`](docs/MILESTONE_DETAILS.md) and [`docs/EXECUTION_PLAN.md`](docs/EXECUTION_PLAN.md).
 - Added this `CHANGELOG.md`.
 
 ---

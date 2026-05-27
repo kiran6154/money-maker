@@ -11,6 +11,9 @@
     <include file="db/changelog/003_create_trade_config_table.xml"/>
     <include file="db/changelog/004_create_sma_timeframe_table.xml"/>
     <include file="db/changelog/005_create_broker_session_table.xml"/>
+    <!-- 005_create_market_data must run before 007_add_sma_value tries to
+         ALTER it. Has a tableExists precondition so it's a no-op on prod. -->
+    <include file="db/changelog/005_create_market_data_table.xml"/>
     <include file="db/changelog/006_create_options_data_table.xml"/>
     <include file="db/changelog/007_add_sma_value_to_market_data.xml"/>
     <include file="db/changelog/008_create_trade_order_table.xml"/>

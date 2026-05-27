@@ -138,7 +138,31 @@ Legend for effort:
 | Effort | **M** (per broker that wants it). |
 | Priority | _TBD_ |
 
-## 13. Documentation lag from this session's changes
+## 13. Orphan Liquibase changesets — 016 and 017
+
+| | |
+|---|---|
+| Where | [`016_add_interval_expiry_to_market_data.xml`](../src/main/resources/db/changelog/016_add_interval_expiry_to_market_data.xml), [`017_add_underlying_name_to_market_data.xml`](../src/main/resources/db/changelog/017_add_underlying_name_to_market_data.xml) — both present on disk, neither wired into [`db.changelog-master.xml`](../src/main/resources/db/changelog/db.changelog-master.xml) |
+| Why | Both files add columns the team plans to use for the M12 milestone (full live-writes-candles). They sit unwired because the supporting code isn't ready yet. Both files already carry `columnExists` preconditions with `onFail=MARK_RAN`, so they're safe to include in master immediately — production would simply mark them ran without executing. Leaving them unwired risks the same class of bug surfaced in M0.1 (orphan 005): a future test environment or fresh install ends up with inconsistent schema. |
+| Fix sketch | Either (a) include both in master now (safe — preconditions handle production), or (b) physically delete the files until M12 needs them. Choose one; the worst option is "leave them sitting there." |
+| Effort | **S** |
+| Priority | _TBD_ |
+
+> Surfaced during M0.1 while fixing the 005 orphan. Same pattern (changeset on disk, not in master) suggests the team needs a Liquibase pre-commit check.
+
+## 14. No Liquibase changeset master-inclusion guard
+
+| | |
+|---|---|
+| Where | Build pipeline (none exists) |
+| Why | The 005 / 016 / 017 orphans (Gaps #14) prove the team is forgetting to add new changesets to `db.changelog-master.xml`. A linter / unit test that scans `db/changelog/*.xml` and asserts every file (except master itself) is `<include>`d somewhere would catch this at build time, before tests or production. |
+| Fix sketch | Small Java test: glob `db/changelog/00*.xml`, parse master, assert every changeset file is referenced. ArchUnit-style. |
+| Effort | **S** |
+| Priority | _TBD_ |
+
+> Companion to Gap #14. Together these are the "stop the next orphan from happening" fix.
+
+## 15. Documentation lag from this session's changes
 
 | | |
 |---|---|

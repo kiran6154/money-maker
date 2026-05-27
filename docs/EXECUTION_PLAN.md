@@ -77,31 +77,20 @@
 
 ## PR breakdown
 
-### PR M0.1 — Testcontainers scaffold + canary
-**Branch:** `m0-test-skeleton`
+### Decision pivot — H2 + JUnit (2026-05-28)
+
+> **Original plan:** Testcontainers MySQL + JUnit. **Revised:** H2 in MySQL-compatibility mode + JUnit 5.
+> **Reason:** no Docker available in the dev environment.
+> **Trade-off accepted:** H2's `BETWEEN` + index behaviour can drift from MySQL on edge cases; we mitigate by (a) using `MODE=MySQL` compatibility flag, (b) keeping a periodic manual re-verification against real MySQL until CI runs both.
+> **Cucumber considered, rejected:** parity tests are data-in/data-out; Gherkin adds ceremony for no readability win.
+
+### PR M0.1 — H2 test scaffold + canary
+**Branch:** `M0` (already created)
 **Estimated:** 0.5 day
 
 Steps:
-1. Add to `pom.xml`:
-   ```xml
-   <dependency>
-       <groupId>org.testcontainers</groupId>
-       <artifactId>mysql</artifactId>
-       <version>1.19.7</version>
-       <scope>test</scope>
-   </dependency>
-   <dependency>
-       <groupId>org.springframework.boot</groupId>
-       <artifactId>spring-boot-starter-test</artifactId>
-       <scope>test</scope>
-   </dependency>
-   <dependency>
-       <groupId>org.assertj</groupId>
-       <artifactId>assertj-core</artifactId>
-       <scope>test</scope>
-   </dependency>
-   ```
-2. Create `src/test/resources/application-test.properties` with `backtest.auto-reset=true`.
+1. `pom.xml` — no changes needed. H2 already declared (runtime scope works for tests); `spring-boot-starter-test` already declared (bundles JUnit 5 + AssertJ + Mockito).
+2. Create `src/test/resources/application-test.properties` with H2 in MySQL mode + `backtest.auto-reset=true`.
 3. Create `src/test/java/com/moneymaker/backtesting/BacktestParityTest.java` with the canary test only:
    ```java
    @Test void canary_must_fail() { assertEquals(1, 2); }
