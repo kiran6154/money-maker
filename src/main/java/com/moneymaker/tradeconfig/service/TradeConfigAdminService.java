@@ -80,9 +80,14 @@ public class TradeConfigAdminService {
         int safePage = Math.max(page, 0);
         int safeSize = Math.max(pageSize, 1);
 
-        List<TradeConfig> all = (date == null)
+        // Defensive copy: Spring Data Repository.findAll() returns an
+        // ArrayList in production, but Repository.findBy* with custom
+        // queries can return immutable lists in some test setups (and
+        // List.of(...) used in tests). Mutating the result directly via
+        // .sort() throws UnsupportedOperationException in those cases.
+        List<TradeConfig> all = new java.util.ArrayList<>((date == null)
                 ? tradeConfigRepository.findAll()
-                : tradeConfigRepository.findByTradingDate(date);
+                : tradeConfigRepository.findByTradingDate(date));
 
         all.sort(Comparator.comparing(TradeConfig::getId, Comparator.nullsLast(Integer::compareTo)).reversed());
 
