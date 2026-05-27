@@ -61,6 +61,13 @@ Use these headings in each release block. Omit empty ones.
 
 ## [Unreleased]
 
+### Fixed — M0.1.6 Gap cleanup (2026-05-28)
+- **GAP #11** — Deleted `TradeConfigScheduler.dailyTaskAt912AM` no-op stub. The method only logged a line and added cron metadata for no real work.
+- **GAP #13** — Wired orphan `016_add_interval_expiry_to_market_data.xml` and `017_add_underlying_name_to_market_data.xml` into `db.changelog-master.xml`. Both already carried `columnExists` preconditions with `onFail=MARK_RAN`, so production picks up no-op if the columns were created out-of-band; fresh installs get them via Liquibase. Closes the orphan-changeset class of bug for these two files.
+
+### Added — M0.1.6 (2026-05-28)
+- **GAP #14** — [`LiquibaseMasterInclusionTest`](src/test/java/com/moneymaker/architecture/LiquibaseMasterInclusionTest.java): build-time guard that scans every `*.xml` under `db/changelog/` and asserts each is referenced by `<include file="…"/>` in the master, plus the reverse (no dangling includes). A new orphan changeset now fails the build at test time instead of failing silently on production / failing loudly on H2 weeks later. Two tests; pure file I/O, no Spring context.
+
 ### Added — M0.1.5 Tier-1 unit test coverage (2026-05-28)
 
 10 new test classes, **107 tests, all green** (`mvn test` passes cleanly). Covers the pure-logic Tier-1 classes per [TEST_COVERAGE_PLAN.md](docs/TEST_COVERAGE_PLAN.md). Pure-logic tests run in <5s total; the single Spring Boot test (`BacktestParityTest`) adds ~25s. The canary test from M0.1 was removed — the new ~100-test suite gives sufficient proof the harness can detect failures.

@@ -24,5 +24,12 @@
     <include file="db/changelog/013_add_sma_value20_to_market_data.xml"/>
     <include file="db/changelog/014_add_entry_reason_to_trade_order.xml"/>
     <include file="db/changelog/015_add_strategy_id_to_trade_order.xml"/>
+    <!-- Both 016 and 017 add forward-looking columns the M12 live-writes-candles
+         work will populate. Both files already carry columnExists preconditions
+         with onFail=MARK_RAN so they're safe to include now: production picks
+         up no-op if the columns were created out-of-band, fresh installs get
+         them via Liquibase. Wired into master in M0.1.6 to fix GAPS #13. -->
+    <include file="db/changelog/016_add_interval_expiry_to_market_data.xml"/>
+    <include file="db/changelog/017_add_underlying_name_to_market_data.xml"/>
 
 </databaseChangeLog>
