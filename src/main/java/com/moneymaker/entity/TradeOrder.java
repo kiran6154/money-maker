@@ -131,4 +131,15 @@ public class TradeOrder {
      */
     @Column(name = "stop_loss_at_entry", precision = 12, scale = 4)
     private BigDecimal stopLossAtEntry;
+
+    /**
+     * Lot quantity snapshotted from {@code TradeConfig.lotQuantity} at order
+     * open (M4.1). Used by {@code DaySummaryScheduler} to compute rupee P&L
+     * (per-share profit × lot_quantity_at_entry). Snapshotted so a mid-day
+     * config edit can't retroactively change historical rupee figures.
+     * Default 0 means "not set" — DaySummary skips the rupee multiplication
+     * for those rows, falling back to per-share P&L only.
+     */
+    @Column(name = "lot_quantity_at_entry", nullable = false)
+    private Integer lotQuantityAtEntry = 0;
 }

@@ -96,6 +96,13 @@ public interface TradeOrderRepository extends JpaRepository<TradeOrder, Long> {
     List<TradeOrder> findByEntryTimeBetween(LocalDateTime fromInclusive, LocalDateTime toInclusive);
 
     /**
+     * Counts trades in the given status for a trade config (across all
+     * dates). Used by the trade-config admin UI (M4.4): if a config has
+     * OPEN trades, the edit screen shows a warning banner.
+     */
+    long countByTradeConfigIdAndStatus(Integer tradeConfigId, String status);
+
+    /**
      * True when any trade_order row references this trade_config. Used by
      * the trade-config admin to block destructive edits (delete) on configs
      * that already have an audit trail of executed trades.

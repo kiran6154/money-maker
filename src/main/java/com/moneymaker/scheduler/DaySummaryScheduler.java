@@ -117,6 +117,12 @@ public class DaySummaryScheduler {
         int total = trades.size();
         int closed = 0, openLeftover = 0, winners = 0, losers = 0, scratches = 0;
         BigDecimal totalPnl = BigDecimal.ZERO;
+        // M4.1: rupee P&L = sum of per-share P&L × lot_quantity_at_entry.
+        // Snapshot column was added in changeset 018 and is back-filled for
+        // historical rows; rows with lot_quantity_at_entry=0 (unset) are
+        // simply skipped from the rupee total so the figure isn't silently
+        // misleading.
+        BigDecimal totalRupeePnl = BigDecimal.ZERO;
         TradeOrder biggestWinner = null;
         TradeOrder biggestLoser  = null;
         Map<String, Integer> byExitReason = new HashMap<>();
@@ -127,6 +133,10 @@ public class DaySummaryScheduler {
                 closed++;
                 BigDecimal pnl = t.getProfit() == null ? BigDecimal.ZERO : t.getProfit();
                 totalPnl = totalPnl.add(pnl);
+                Integer lots = t.getLotQuantityAtEntry();
+                if (lots != null && lots > 0) {
+                    totalRupeePnl = totalRupeePnl.add(pnl.multiply(BigDecimal.valueOf(lots)));
+                }
                 int sign = pnl.signum();
                 if (sign > 0) {
                     winners++;
@@ -158,6 +168,7 @@ public class DaySummaryScheduler {
         sb.append("  losers      : ").append(losers).append(nl);
         sb.append("  scratches   : ").append(scratches).append(nl);
         sb.append("  P/L (per-sh): ").append(totalPnl).append(nl);
+        sb.append("  P/L (rupees): ").append(totalRupeePnl).append(nl);
 
         if (biggestWinner != null) {
             sb.append("  best winner : id=").append(biggestWinner.getId())

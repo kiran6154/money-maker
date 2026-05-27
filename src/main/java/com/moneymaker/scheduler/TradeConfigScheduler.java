@@ -236,6 +236,11 @@ return tradeConfigCombinedDTOList;
         tc.setItmDepth(toInteger(row[i++]));
         tc.setOtmDepth(toInteger(row[i++]));
         tc.setAtmDepth(toInteger(row[i++]));
+        // M4.3: is_active column added by Liquibase 019. SELECT tc.* now
+        // returns 17 columns; defensive defaulting to TRUE so a missing
+        // value doesn't accidentally disable the config.
+        Object isActiveVal = row[i++];
+        tc.setIsActive(isActiveVal == null ? Boolean.TRUE : Boolean.TRUE.equals(isActiveVal));
 
 
         // Instrument will be set separately by mapToInstrument
@@ -243,8 +248,8 @@ return tradeConfigCombinedDTOList;
     }
 
     private Instrument mapToInstrument(Object[] row, TradeConfig tc) {
-        // Instrument starts after TradeConfig fields (0-11)
-        int i = 16;  // Starting index for Instrument fields
+        // Instrument starts after TradeConfig fields (0-16, +1 for is_active M4.3).
+        int i = 17;  // Starting index for Instrument fields
         Instrument ins = new Instrument();
         ins.setId(toInteger(row[i++])); // id
         ins.setInsName(ConverterUtility.toString(row[i++])); // ins_name
@@ -257,8 +262,9 @@ return tradeConfigCombinedDTOList;
     }
 
     private InstrumentDetails mapToInstrumentDetails(Object[] row, TradeConfig tc, Instrument ins) {
-        // InstrumentDetails starts after TradeConfig (12) and Instrument (5) fields
-        int i = 21;  // Starting index for InstrumentDetails fields
+        // InstrumentDetails starts after TradeConfig (17, with is_active M4.3)
+        // and Instrument (5) fields → index 22.
+        int i = 22;  // Starting index for InstrumentDetails fields
         InstrumentDetails id = new InstrumentDetails();
         id.setInstrumentToken(toInteger(row[i++])); // instrument_token
         id.setExchangeToken(toInteger(row[i++])); // exchange_token

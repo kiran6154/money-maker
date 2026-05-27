@@ -141,8 +141,8 @@ class TradeConfigSchedulerTest {
      * shape (12 trade_config + 5 instrument + 16 instrument_details).
      */
     private static Object[] stubRow(int id) {
-        Object[] row = new Object[34];
-        // trade_config (16 fields starting at index 0)
+        Object[] row = new Object[35];
+        // trade_config (17 fields, indices 0-16, includes is_active per M4.3)
         row[0]  = id;
         row[1]  = "CE";
         row[2]  = java.sql.Date.valueOf(LocalDate.of(2026, 4, 1));
@@ -159,25 +159,26 @@ class TradeConfigSchedulerTest {
         row[13] = 0;                                 // itmDepth
         row[14] = 0;                                 // otmDepth
         row[15] = 0;                                 // atmDepth
-        // instrument (5 fields starting at index 16)
-        row[16] = 99;          // id
-        row[17] = "NIFTY";     // insName
-        row[18] = "256265";    // insId
-        row[19] = 50;          // lotQty
-        row[20] = new java.math.BigDecimal("50"); // strikePoints
-        // instrument_details (12 fields starting at index 21)
-        row[21] = 256265;      // instrumentToken
-        row[22] = 256265;      // exchangeToken
-        row[23] = "NIFTY24APR24000CE"; // tradingSymbol
-        row[24] = "NIFTY";     // name
-        row[25] = new java.math.BigDecimal("100");
-        row[26] = "2026-04-03";  // expiry (skipped by impl)
-        row[27] = new java.math.BigDecimal("24000");
-        row[28] = new java.math.BigDecimal("0.05");
-        row[29] = new java.math.BigDecimal("50");
-        row[30] = "CE";
-        row[31] = "NFO-OPT";
-        row[32] = "NFO";
+        row[16] = Boolean.TRUE;                      // is_active (M4.3)
+        // instrument (5 fields starting at index 17)
+        row[17] = 99;          // id
+        row[18] = "NIFTY";     // insName
+        row[19] = "256265";    // insId
+        row[20] = 50;          // lotQty
+        row[21] = new java.math.BigDecimal("50"); // strikePoints
+        // instrument_details (12 fields starting at index 22)
+        row[22] = 256265;      // instrumentToken
+        row[23] = 256265;      // exchangeToken
+        row[24] = "NIFTY24APR24000CE"; // tradingSymbol
+        row[25] = "NIFTY";     // name
+        row[26] = new java.math.BigDecimal("100");
+        row[27] = "2026-04-03";  // expiry (skipped by impl)
+        row[28] = new java.math.BigDecimal("24000");
+        row[29] = new java.math.BigDecimal("0.05");
+        row[30] = new java.math.BigDecimal("50");
+        row[31] = "CE";
+        row[32] = "NFO-OPT";
+        row[33] = "NFO";
         return row;
     }
 

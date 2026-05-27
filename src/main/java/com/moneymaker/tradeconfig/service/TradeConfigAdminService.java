@@ -144,6 +144,90 @@ public class TradeConfigAdminService {
         return findById(id);
     }
 
+    /**
+     * M4.2 (GAPS #9): clone all <b>active</b> configs from {@code fromDate}
+     * to {@code toDate}. Skip rows for which a config with the same
+     * (instrumentId, strategyId, tradingSide, transactionType, tradingDate)
+     * already exists on the target — prevents accidental duplicates when
+     * the same morning's clone is invoked twice. Inactive (paused) source
+     * configs are NOT cloned so an operator paused config doesn't silently
+     * reactivate on tomorrow's clone.
+     *
+     * <p>Returns the count of configs actually created.
+     */
+    @Transactional
+    public CloneSummary cloneFromDate(LocalDate fromDate, LocalDate toDate) {
+        if (fromDate == null || toDate == null) {
+            throw new IllegalArgumentException("fromDate and toDate are required");
+        }
+        if (fromDate.equals(toDate)) {
+            throw new IllegalArgumentException("fromDate and toDate must differ");
+        }
+        List<TradeConfig> source = tradeConfigRepository.findByTradingDateAndIsActiveTrue(fromDate);
+        if (source.isEmpty()) {
+            return new CloneSummary(fromDate, toDate, 0, 0);
+        }
+        List<TradeConfig> existingTarget = tradeConfigRepository.findByTradingDate(toDate);
+
+        int cloned = 0, skipped = 0;
+        for (TradeConfig src : source) {
+            // Dedupe key intentionally loose — the user can clone twice on
+            // different sides / strategies; only the same shape collides.
+            boolean duplicate = existingTarget.stream().anyMatch(t ->
+                    java.util.Objects.equals(t.getInstrument() != null ? t.getInstrument().getId() : null,
+                                             src.getInstrument() != null ? src.getInstrument().getId() : null)
+                    && java.util.Objects.equals(t.getStratergyId(), src.getStratergyId())
+                    && java.util.Objects.equals(t.getTradingSide(), src.getTradingSide())
+                    && java.util.Objects.equals(t.getTransactionType(), src.getTransactionType()));
+            if (duplicate) {
+                skipped++;
+                continue;
+            }
+
+            TradeConfig copy = new TradeConfig();
+            copy.setInstrument(src.getInstrument());
+            copy.setTradingDate(toDate);
+            copy.setTradingSide(src.getTradingSide());
+            copy.setTransactionType(src.getTransactionType());
+            copy.setTarget(src.getTarget());
+            copy.setStopLoss(src.getStopLoss());
+            copy.setMaxLoss(src.getMaxLoss());
+            copy.setOptionDepth(src.getOptionDepth());
+            copy.setLotQuantity(src.getLotQuantity());
+            copy.setStratergyId(src.getStratergyId());
+            copy.setNumberOfTradesPerDay(src.getNumberOfTradesPerDay());
+            copy.setNumberOfParallelTrades(src.getNumberOfParallelTrades());
+            copy.setItmDepth(src.getItmDepth());
+            copy.setOtmDepth(src.getOtmDepth());
+            copy.setAtmDepth(src.getAtmDepth());
+            copy.setIsActive(Boolean.TRUE);
+            TradeConfig saved = tradeConfigRepository.save(copy);
+
+            // Copy SMA timeframes
+            List<SmaTimeframe> srcTfs = smaTimeframeRepository.findByTradeConfigId(src.getId());
+            if (!srcTfs.isEmpty()) {
+                TradeConfig parentRef = tradeConfigRepository.getReferenceById(saved.getId());
+                List<SmaTimeframe> copies = new java.util.ArrayList<>(srcTfs.size());
+                for (SmaTimeframe tf : srcTfs) {
+                    SmaTimeframe ntf = new SmaTimeframe();
+                    ntf.setTradeConfig(parentRef);
+                    ntf.setTimePeriod(tf.getTimePeriod());
+                    ntf.setSma(tf.getSma());
+                    ntf.setSlope(tf.getSlope());
+                    copies.add(ntf);
+                }
+                smaTimeframeRepository.saveAll(copies);
+            }
+            cloned++;
+        }
+        afterMutation(toDate);
+        log.info("[trade-config] clone {} → {}: cloned={} skipped={}", fromDate, toDate, cloned, skipped);
+        return new CloneSummary(fromDate, toDate, cloned, skipped);
+    }
+
+    /** Result of {@link #cloneFromDate(LocalDate, LocalDate)}. */
+    public record CloneSummary(LocalDate fromDate, LocalDate toDate, int cloned, int skipped) {}
+
     @Transactional
     public void delete(Integer id) {
         TradeConfig tc = tradeConfigRepository.findById(id)
@@ -191,6 +275,9 @@ public class TradeConfigAdminService {
         tc.setItmDepth(form.getItmDepth());
         tc.setOtmDepth(form.getOtmDepth());
         tc.setAtmDepth(form.getAtmDepth());
+        // M4.3: active flag. Defensive default to true so a partially-filled
+        // form (legacy clients) doesn't silently disable the config.
+        tc.setIsActive(form.getActive() == null ? Boolean.TRUE : form.getActive());
     }
 
     /**
@@ -255,12 +342,21 @@ public class TradeConfigAdminService {
         v.setOtmDepth(tc.getOtmDepth());
         v.setAtmDepth(tc.getAtmDepth());
 
+        // M4.3: is_active
+        v.setActive(tc.getIsActive() == null ? true : tc.getIsActive());
+
         List<SmaTimeframe> rows = (tc.getId() == null)
                 ? List.of()
                 : smaTimeframeRepository.findByTradeConfigId(tc.getId());
         v.setTimeframes(rows.stream()
                 .map(r -> new SmaTimeframeDTO(r.getId(), r.getTimePeriod(), r.getSma(), r.getSlope()))
                 .toList());
+
+        // M4.4: open-trade count (across all dates) so the UI can show a
+        // warning banner before edits.
+        v.setOpenTradeCount(tc.getId() == null
+                ? 0
+                : tradeOrderRepository.countByTradeConfigIdAndStatus(tc.getId(), "OPEN"));
         return v;
     }
 }

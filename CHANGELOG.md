@@ -61,6 +61,40 @@ Use these headings in each release block. Omit empty ones.
 
 ## [Unreleased]
 
+### Added — B3 service tests + M3 force-close + M4 live polish (2026-05-28)
+
+This wave: **B3 service test coverage**, **M3 (force-close real broker exit, closes GAPS #1)**, and **M4.1 / M4.2 / M4.3 / M4.4** of the live-polish batch. M4.5 (stratergyId rename) deferred — the architect-mandated 3-step migration needs a 3-calendar-day deploy hold and can't ship in a single session.
+
+**B3 service tests (+54 tests)** — see commits c4f9eea (B3a) and 03386da (B3b). OrderService, PositionService, LoginOrchestrator, TradeConfigAdminService, DaySummaryScheduler, TradeConfigScheduler. Surfaced one real bug: `TradeConfigAdminService.list` was calling `.sort()` on the repo result, which fails on immutable Spring Data results; fixed with defensive copy.
+
+**M3 — force-close real broker exit** — commit d7f7127. `OrderService.forceCloseOpenPositions` now calls `placement.place(order)` after the local-state update. Three outcome branches: live success persists broker order id with `fill_status=PENDING`; backtest no-op stays `BACKTEST`; live null/throw reverts row to `OPEN` with `fill_status=EXIT_FAILED` and fires `[CRITICAL]` `alertOrderExitFailed`. New `app.market.force-close-time=15:25` property + `MarketHoursService.forceCloseToday()`; `DaySummaryScheduler` anchors at the new method. **Closes GAPS #1.**
+
+**M4.1 — rupee P&L on day-summary (GAPS #2)**
+- Liquibase `018_add_lot_quantity_at_entry.xml` — adds the column with backfill from `trade_config.lot_quantity` for historical rows.
+- `OrderService.openOrder` snapshots `tradeConfig.lotQuantity` onto the order. Per architect: null lotQuantity → 0 (not silent fallback to 1) + WARN log.
+- `DaySummaryScheduler.buildSummary` adds `P/L (rupees): N` line = sum of (per-share profit × lot_quantity_at_entry).
+
+**M4.3 — soft-delete via `is_active` (GAPS #7)**
+- Liquibase `019_add_is_active_to_trade_config.xml` — `BOOLEAN NOT NULL DEFAULT TRUE`.
+- `TradeConfigRepository`: new `findByTradingDateAndIsActiveTrue`; `fetchCombinedByTradingDate` native query gains `AND is_active = TRUE` filter so the pipeline only runs active configs.
+- `TradeConfigAdminService.applyForm` writes `isActive` from the form (defensive default true).
+- `TradeConfigScheduler.mapToTradeConfig` reads the new column; downstream offsets shifted by +1 (instrument now starts at row index 17, instrument_details at 22). Test fixture updated to match.
+
+**M4.2 — clone yesterday's configs (GAPS #9)**
+- `TradeConfigAdminService.cloneFromDate(from, to)` copies all <b>active</b> source configs (inactive ones skipped) including SMA timeframes. Dedupe key: `(instrumentId, strategyId, tradingSide, transactionType)`. Same-date call rejected.
+- `POST /api/trade-configs/clone?fromDate=&toDate=` endpoint returns `CloneSummary{cloned, skipped, ...}`.
+
+**M4.4 — open-trade warning banner (GAPS #8)**
+- `TradeOrderRepository.countByTradeConfigIdAndStatus` (new derived query).
+- `TradeConfigViewDTO` gains `active`, `openTradeCount`, and computed `hasOpenTrades` — populated by `toView()`. UI Thymeleaf banner deferred (DTO change is the API contract).
+
+**Tests added** (cumulative 234 after wave, up from 183 at start of session):
+- `OrderServiceTest.ForceCloseOpenPositions`: 3 new tests for live success / live failure / live throw.
+- `MarketHoursServiceTest`: 2 new tests for `forceCloseToday` default + boundary rejection.
+- `TradeConfigAdminServiceTest`: 4 new tests for clone happy-path / clone dedupe-skip / clone arg rejection / view openTradeCount populated.
+
+**Deferred from M4** — M4.5 `stratergyId` → `strategyId` rename. Per architect's M4.5 review, must run as a 3-step deploy (add new column → dual-write + backfill → drop old column) with ≥1 calendar day soak between steps. Not appropriate for a single-session commit.
+
 ### Removed — M1.5 GAP #15 resolution: dead EMA/RSI stubs (2026-05-28)
 
 - Deleted `EMAIndicatorImpl.java` and `RSIIndicatorImpl.java` — both were stubs returning `0.0` regardless of input. Grep confirmed zero production callers asked for `"EMA"` or `"RSI"`: `AnalysisScheduler.java:457` is the only `IndicatorService.calculate` caller and it hardcodes `"SMA"`.

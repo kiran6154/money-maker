@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+    <!--
+        M4.1 (closes GAPS #2): snapshot trade_config.lot_quantity onto the
+        trade_order row at the moment OrderService.openOrder fires, so
+        DaySummaryScheduler can multiply per-share P&L by the lot quantity
+        and report rupee P&L in the daily Telegram digest. Mirrors the
+        snapshot pattern already in place for target_at_entry and
+        stop_loss_at_entry (changeset 011).
+
+        Backfill in the same changeset: populate the column on any historical
+        rows from their config's current lot_quantity. Acceptable for backfill
+        because lot_quantity rarely changes; gives historical digests
+        meaningful rupee figures rather than zeros.
+
+        Precondition: skip the addColumn if it already exists (e.g. someone
+        added it out-of-band). Backfill runs unconditionally as a separate
+        changeSet so it's idempotent — UPDATE … WHERE lot_quantity_at_entry
+        IS NULL OR = 0 won't double-apply.
+    -->
+    <changeSet id="018_add_lot_quantity_at_entry_column" author="moneymaker">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="trade_order" columnName="lot_quantity_at_entry"/>
+            </not>
+        </preConditions>
+        <addColumn tableName="trade_order">
+            <column name="lot_quantity_at_entry" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="018_backfill_lot_quantity_at_entry" author="moneymaker">
+        <sql>
+            UPDATE trade_order
+               SET lot_quantity_at_entry = COALESCE(
+                       (SELECT lot_quantity FROM trade_config WHERE id = trade_order.trade_config_id),
+                       0)
+             WHERE lot_quantity_at_entry IS NULL
+                OR lot_quantity_at_entry = 0
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

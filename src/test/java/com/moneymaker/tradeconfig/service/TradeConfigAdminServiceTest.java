@@ -156,6 +156,71 @@ class TradeConfigAdminServiceTest {
     }
 
     @Test
+    void cloneFromDate_copies_active_configs_with_smaTimeframes() {
+        TradeConfig src = stubConfig(7);
+        src.setStratergyId(1);
+        when(tradeConfigRepository.findByTradingDateAndIsActiveTrue(LocalDate.of(2026, 4, 1)))
+                .thenReturn(List.of(src));
+        when(tradeConfigRepository.findByTradingDate(LocalDate.of(2026, 4, 2))).thenReturn(List.of());
+        SmaTimeframe tf = new SmaTimeframe();
+        tf.setTimePeriod(5);
+        tf.setSma(50);
+        when(smaTimeframeRepository.findByTradeConfigId(7)).thenReturn(List.of(tf));
+        when(tradeConfigRepository.save(any(TradeConfig.class)))
+                .thenAnswer(inv -> { TradeConfig t = inv.getArgument(0); t.setId(77); return t; });
+        when(tradeConfigRepository.getReferenceById(77)).thenReturn(stubConfig(77));
+
+        var summary = service.cloneFromDate(LocalDate.of(2026, 4, 1), LocalDate.of(2026, 4, 2));
+
+        assertThat(summary.cloned()).isEqualTo(1);
+        assertThat(summary.skipped()).isZero();
+        verify(smaTimeframeRepository).saveAll(any());
+    }
+
+    @Test
+    void cloneFromDate_skips_when_target_already_has_same_shape() {
+        TradeConfig src = stubConfig(7);
+        TradeConfig existing = stubConfig(88);
+        // existing has same (instrumentId, strategyId, side, txn) → dedupe.
+        when(tradeConfigRepository.findByTradingDateAndIsActiveTrue(LocalDate.of(2026, 4, 1)))
+                .thenReturn(List.of(src));
+        when(tradeConfigRepository.findByTradingDate(LocalDate.of(2026, 4, 2)))
+                .thenReturn(List.of(existing));
+
+        var summary = service.cloneFromDate(LocalDate.of(2026, 4, 1), LocalDate.of(2026, 4, 2));
+
+        assertThat(summary.cloned()).isZero();
+        assertThat(summary.skipped()).isEqualTo(1);
+        verify(tradeConfigRepository, never()).save(any(TradeConfig.class));
+    }
+
+    @Test
+    void cloneFromDate_rejects_same_date_and_null_args() {
+        assertThatThrownBy(() -> service.cloneFromDate(LocalDate.of(2026, 4, 1), LocalDate.of(2026, 4, 1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must differ");
+        assertThatThrownBy(() -> service.cloneFromDate(null, LocalDate.of(2026, 4, 1)))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.cloneFromDate(LocalDate.of(2026, 4, 1), null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void list_view_populates_openTradeCount_and_hasOpenTrades() {
+        when(tradeConfigRepository.findByTradingDate(LocalDate.of(2026, 4, 1)))
+                .thenReturn(List.of(stubConfig(1)));
+        when(smaTimeframeRepository.findByTradeConfigId(1)).thenReturn(List.of());
+        when(tradeOrderRepository.countByTradeConfigIdAndStatus(1, "OPEN")).thenReturn(2L);
+
+        var paged = service.list(LocalDate.of(2026, 4, 1), 0, 10);
+
+        assertThat(paged.getItems()).hasSize(1);
+        TradeConfigViewDTO v = paged.getItems().get(0);
+        assertThat(v.getOpenTradeCount()).isEqualTo(2L);
+        assertThat(v.isHasOpenTrades()).isTrue();
+    }
+
+    @Test
     void list_sorts_descending_by_id_and_paginates() {
         when(tradeConfigRepository.findByTradingDate(LocalDate.of(2026, 4, 1)))
                 .thenReturn(List.of(stubConfig(1), stubConfig(3), stubConfig(2)));

@@ -31,5 +31,8 @@
          them via Liquibase. Wired into master in M0.1.6 to fix GAPS #13. -->
     <include file="db/changelog/016_add_interval_expiry_to_market_data.xml"/>
     <include file="db/changelog/017_add_underlying_name_to_market_data.xml"/>
+    <!-- M4 batch — live trading polish. -->
+    <include file="db/changelog/018_add_lot_quantity_at_entry.xml"/>
+    <include file="db/changelog/019_add_is_active_to_trade_config.xml"/>
 
 </databaseChangeLog>

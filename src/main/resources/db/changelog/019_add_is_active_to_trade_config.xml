@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+    <!--
+        M4.3 (closes GAPS #7): adds is_active flag to trade_config so a
+        config that's already produced trades can be paused without being
+        deleted. Hard-delete in TradeConfigAdminService still blocks when
+        trade_order rows reference the config; this flag is the soft-delete
+        path that doesn't lose the audit trail.
+
+        Pipeline reads via TradeConfigRepository.findByTradingDateAndIsActiveTrue
+        — inactive configs neither produce signals nor get included in
+        clone-yesterday. Open trades on a then-active config keep being
+        monitored (PositionScheduler walks trade_order, not configs).
+
+        Default TRUE so all existing rows behave as before — no behaviour
+        change on first deploy. Precondition: skip if already present.
+    -->
+    <changeSet id="019_add_is_active_to_trade_config" author="moneymaker">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="trade_config" columnName="is_active"/>
+            </not>
+        </preConditions>
+        <addColumn tableName="trade_config">
+            <column name="is_active" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

@@ -228,6 +228,16 @@ public class OrderService {
         if (config != null && config.getTradeConfig() != null) {
             order.setTargetAtEntry(config.getTradeConfig().getTarget());
             order.setStopLossAtEntry(config.getTradeConfig().getStopLoss());
+            // M4.1: snapshot lot_quantity for rupee-P&L on the day summary.
+            // Architect's review: NULL is a misconfigured config; fall back
+            // to 0 (which DaySummary treats as "skip rupee multiplication")
+            // rather than silently assuming 1.
+            Integer lots = config.getTradeConfig().getLotQuantity();
+            order.setLotQuantityAtEntry(lots != null ? lots : 0);
+            if (lots == null) {
+                log.warn("[order] openOrder: tradeConfigId={} has null lotQuantity; rupee P&L will be missing for this row",
+                        config.getTradeConfig().getId());
+            }
         }
         // Seed peak P&L tracking at the entry baseline (0). The position monitor
         // then reports max(0, observed P&L) and min(0, observed P&L) — which
