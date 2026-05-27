@@ -162,7 +162,19 @@ Legend for effort:
 
 > Companion to Gap #14. Together these are the "stop the next orphan from happening" fix.
 
-## 15. Documentation lag from this session's changes
+## 15. EMA and RSI indicator implementations are stubs returning 0.0
+
+| | |
+|---|---|
+| Where | [`EMAIndicatorImpl.calculate`](../src/main/java/com/moneymaker/indicator/EMAIndicatorImpl.java), [`RSIIndicatorImpl.calculate`](../src/main/java/com/moneymaker/indicator/RSIIndicatorImpl.java) |
+| Why | Both classes implement the `Indicator` interface, do input validation, then `return 0.0;`. They are registered in `IndicatorFactory` so `IndicatorFactory.create("EMA")` works — but the computed value is meaningless. Any strategy that wires through these will get nonsense signals (always 0). SMA is the only real implementation today. |
+| Fix sketch | Either (a) write real implementations using the same ta4j pattern `SMAIndicatorImpl` uses, or (b) remove the stubs + factory registrations until they're really needed. **B6 unit tests pin the stub contract** ([`EMAIndicatorImplTest`](../src/test/java/com/moneymaker/indicator/EMAIndicatorImplTest.java)), so a real implementation will fail tests in CI — forcing the author to delete the stub assertion and write real coverage in the same commit. |
+| Effort | **M** per indicator if real implementations are wanted; **S** if removing the stubs. |
+| Priority | _TBD_ — defer until a strategy actually requires EMA or RSI. |
+
+> Surfaced during the M0.1.5 test-coverage batch.
+
+## 16. Documentation lag from this session's changes
 
 | | |
 |---|---|

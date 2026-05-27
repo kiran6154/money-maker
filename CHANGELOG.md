@@ -61,6 +61,31 @@ Use these headings in each release block. Omit empty ones.
 
 ## [Unreleased]
 
+### Added — M0.1.5 Tier-1 unit test coverage (2026-05-28)
+
+10 new test classes, **107 tests, all green** (`mvn test` passes cleanly). Covers the pure-logic Tier-1 classes per [TEST_COVERAGE_PLAN.md](docs/TEST_COVERAGE_PLAN.md). Pure-logic tests run in <5s total; the single Spring Boot test (`BacktestParityTest`) adds ~25s. The canary test from M0.1 was removed — the new ~100-test suite gives sufficient proof the harness can detect failures.
+
+- [`MarketHoursServiceTest`](src/test/java/com/moneymaker/market/service/MarketHoursServiceTest.java) — init parsing, validation, window helpers, alternative-market support.
+- [`TotpGeneratorTest`](src/test/java/com/moneymaker/login/util/TotpGeneratorTest.java) — RFC 6238 reference vectors at three published timestamps; 30s step boundary; secret-format tolerance.
+- [`ConverterUtilityTest`](src/test/java/com/moneymaker/util/ConverterUtilityTest.java) — every `Object[]`-row mapper depends on these three methods.
+- [`IndicatorConfigTest`](src/test/java/com/moneymaker/indicator/IndicatorConfigTest.java) — period validation.
+- [`IndicatorFactoryTest`](src/test/java/com/moneymaker/indicator/IndicatorFactoryTest.java) — dispatch, case-insensitivity, registration.
+- [`SMAIndicatorImplTest`](src/test/java/com/moneymaker/indicator/SMAIndicatorImplTest.java) — math correctness, side-effect on `MarketData.smaValueN`, edge cases (period > size, empty, null).
+- [`EMAIndicatorImplTest`](src/test/java/com/moneymaker/indicator/EMAIndicatorImplTest.java), [`RSIIndicatorImplTest`](src/test/java/com/moneymaker/indicator/RSIIndicatorImplTest.java) — pin the **stub** contract so future real implementations fail these tests in CI, forcing real coverage in the same commit.
+- [`BacktestMarketDataCacheTest`](src/test/java/com/moneymaker/backtesting/BacktestMarketDataCacheTest.java) — active gating, slice semantics, null-tolerance, immutability of cached series.
+- [`AppStateTest`](src/test/java/com/moneymaker/state/AppStateTest.java) — heartbeat state machine, "transient probe failure preserves session" contract, defensive list copying.
+- [`DailyEventGuardTest`](src/test/java/com/moneymaker/state/DailyEventGuardTest.java) — once-per-day semantics, race-loser handling via `DataIntegrityViolationException`.
+
+### Changed — M0.1.5 (2026-05-28)
+- [`BacktestParityTest`](src/test/java/com/moneymaker/backtesting/BacktestParityTest.java) — removed `canary_must_fail` (purpose served by the 107-test green suite). `spring_context_boots_against_h2` retained as Spring-context-startup smoke.
+
+### Fixed — M0.1.5 (2026-05-28)
+- [`TotpGeneratorTest.invalid_base32_character_is_rejected`](src/test/java/com/moneymaker/login/util/TotpGeneratorTest.java) — initial assertion looked for the wrong message. `TotpGenerator` wraps the inner `BrokerLoginException("Invalid Base32 character: …")` in an outer `BrokerLoginException("Failed to generate TOTP", "TOTP_ERROR", e)`. Test now asserts both the outer message and the root-cause message — pins the wrapping contract.
+
+### Added — M0.1.5 docs (2026-05-28)
+- [`docs/TEST_COVERAGE_PLAN.md`](docs/TEST_COVERAGE_PLAN.md) — tiered approach (Tier 0 skipped with rationale, Tier 1 must-have, Tier 2 should-have, Tier 3 on-demand), inventory of 24 Tier-1 classes, ship-incrementally batch plan (B1 done; B2 strategy/rule tests next).
+- [`docs/GAPS.md`](docs/GAPS.md) — new gap #15: EMA and RSI implementations are stubs returning 0.0.
+
 ### Added — M0.1 test harness scaffold (2026-05-27)
 - [`src/test/resources/application-test.properties`](src/test/resources/application-test.properties) — H2 in MySQL-compatibility mode for the test profile. **Decision:** H2 over Testcontainers because the dev environment has no Docker; trade-off accepted is periodic manual re-verification against real MySQL.
 - [`BacktestParityTest`](src/test/java/com/moneymaker/backtesting/BacktestParityTest.java) with two tests: a `canary_must_fail` (proves the harness can detect failures; removed in M2) and `spring_context_boots_against_h2` (proves Liquibase migrations are portable).
