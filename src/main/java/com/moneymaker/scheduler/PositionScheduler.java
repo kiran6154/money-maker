@@ -25,11 +25,10 @@ public class PositionScheduler {
     }
 
     /**
-     * Every 5 minutes during NSE trading hours. Live mode short-circuits
-     * outside the configured market window so SL / target monitoring stops
-     * the moment {@code DaySummaryScheduler} has force-closed everything.
+     * Live cadence: driven by {@link TradingPipelineScheduler#tick()} —
+     * <b>not</b> via {@code @Scheduled} here. Live-mode market-hours gate
+     * retained as defence-in-depth. Backtest calls directly each replay tick.
      */
-    @Scheduled(cron = "0 0/5 9-16 * * MON-FRI")
     public void processPositions() {
         if ("live".equalsIgnoreCase(appMode) && !marketHours.isOpenNow()) {
             log.debug("PositionScheduler skipped: outside market hours");

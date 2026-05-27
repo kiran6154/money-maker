@@ -25,12 +25,10 @@ public class OrderScheduler {
     }
 
     /**
-     * Every 5 minutes during NSE trading hours. In live mode the tick
-     * additionally honours {@link MarketHoursService#isOpenNow()} so we don't
-     * burn cycles after market close; backtest replays through this body
-     * straight from {@code BacktestAnalysisService}.
+     * Live cadence: driven by {@link TradingPipelineScheduler#tick()} —
+     * <b>not</b> via {@code @Scheduled} here. Live-mode market-hours gate
+     * retained as defence-in-depth. Backtest calls directly each replay tick.
      */
-    @Scheduled(cron = "0 0/5 9-16 * * MON-FRI")
     public void processOrders() {
         if ("live".equalsIgnoreCase(appMode) && !marketHours.isOpenNow()) {
             log.debug("OrderScheduler skipped: outside market hours");

@@ -442,12 +442,21 @@ public class OrderService {
         Map<String, List<MarketData>> cache = SharedData.strikeMarketDataByInstrumentAndInterval;
         if (cache == null || cache.isEmpty()) return null;
 
-        for (Map.Entry<String, List<MarketData>> e : cache.entrySet()) {
-            String[] parts = e.getKey().split("\\|");
+        // M1.1: iterate keys in natural order, not ConcurrentHashMap's
+        // non-deterministic iteration order. Multiple cache entries can
+        // share the same optionToken (different itm/otm depths in the key
+        // suffix) — without sorting, which entry's "last close" wins varies
+        // run-to-run. The sort makes force-close exit prices stable for
+        // reproducibility.
+        java.util.List<String> orderedKeys = new java.util.ArrayList<>(cache.keySet());
+        java.util.Collections.sort(orderedKeys);
+
+        for (String key : orderedKeys) {
+            String[] parts = key.split("\\|");
             if (parts.length < 5) continue;
             if (!optionToken.equals(parts[4])) continue;
 
-            List<MarketData> list = e.getValue();
+            List<MarketData> list = cache.get(key);
             if (list == null || list.isEmpty()) continue;
             for (int i = list.size() - 1; i >= 0; i--) {
                 MarketData md = list.get(i);

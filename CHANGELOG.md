@@ -61,6 +61,28 @@ Use these headings in each release block. Omit empty ones.
 
 ## [Unreleased]
 
+### Added — M1 Reproducibility fix (2026-05-28)
+
+The substantive reproducibility milestone: identical inputs now produce identical `trade_order` rows across runs. 184 tests cumulative; all green.
+
+**M1.1 — Deterministic iteration**
+- [`OrderService.lastPriceFor`](src/main/java/com/moneymaker/order/service/OrderService.java) iterates the strike-cache to find a matching `optionToken` for force-close pricing. Multiple cache keys can share an `optionToken` (different `itm/otm` depth suffixes); without sorting, HashMap order determined which cached candle's close was returned. Now sorts keys naturally first → deterministic exit price across runs.
+- [`BacktestingPositionMonitorService.currentQuote`](src/main/java/com/moneymaker/backtesting/BacktestingPositionMonitorService.java) — same fix, same reason. Without it, peak-P&L tracking drifted subtly across reruns.
+
+**M1.2 — `TradingPipelineScheduler` with `tryLock` guard**
+- New [`TradingPipelineScheduler`](src/main/java/com/moneymaker/scheduler/TradingPipelineScheduler.java) — single `@Scheduled(cron = "0 0/5 9-15 …")`, calls `analysis → orders → positions` in strict order. `ReentrantLock.tryLock()` skips re-entrant ticks (when a slow broker fetch overruns the 5-min window); cumulative skip counter logged every 10 events.
+- Removed `@Scheduled` from `AnalysisScheduler.analyzeMarketData`, `OrderScheduler.processOrders`, `PositionScheduler.processPositions`. Methods stay public — backtest still calls them directly; live now goes through the new coordinator. Fixes the "correct by alphabetical accident" failure mode that GAPS #4 / SEQUENCING_AND_CACHE §1 called out.
+- 5 new tests in [`TradingPipelineSchedulerTest`](src/test/java/com/moneymaker/scheduler/TradingPipelineSchedulerTest.java) — strict ordering via `InOrder`, backtest-mode no-op, market-hours gate, concurrent re-entrant skip with `CountDownLatch`, exception-tolerance.
+
+**M1.3 — `BacktestResetService` + `POST /api/backtest/reset` + auto-reset**
+- New [`BacktestResetService`](src/main/java/com/moneymaker/backtesting/BacktestResetService.java) — purges `trade_order` rows + `alert_state` rows in `[fromDate, toDate]` and invalidates `TradeConfigScheduler` date-cache (C9) + `NotificationService` dedupe (C11/C12).
+- New `POST /api/backtest/reset?fromDate=&toDate=` endpoint on `BacktestController`. Validates `toDate ≤ today` (returns 400 with body if violated — operator-typo guard).
+- Auto-reset wired into `POST /api/backtest/analysis` when `backtest.auto-reset=true`. Default `false` in `application.properties` (operator-safety); `true` in `application-test.properties` so the parity-test harness always starts clean.
+- New `NotificationService.clearAllDedupeState()` for the reset path. Documented as not-for-live-use.
+- 6 new tests in [`BacktestResetServiceTest`](src/test/java/com/moneymaker/backtesting/BacktestResetServiceTest.java) — SQL + arg verification per delete, cache invalidations, null / reversed-range rejection.
+
+**Closes** GAPS #4 (pipeline crons firing in backtest mode bodies); resolves the architect's #1 reproducibility prescription from SEQUENCING_AND_CACHE.
+
 ### Added — M0.1.7 B2 strategy + rule-engine tests (2026-05-28)
 
 6 new test classes, **64 new tests** (109 → 173 cumulative). All green; full suite `mvn test` completes in ~35s.

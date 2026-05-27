@@ -37,12 +37,19 @@ public class BacktestingPositionMonitorService implements PositionMonitorService
         Map<String, List<MarketData>> cache = SharedData.strikeMarketDataByInstrumentAndInterval;
         if (cache == null || cache.isEmpty()) return null;
 
-        for (Map.Entry<String, List<MarketData>> e : cache.entrySet()) {
-            String[] parts = e.getKey().split("\\|");
+        // M1.1: iterate keys in natural order so the monitor picks the same
+        // cache entry every run when multiple keys share an optionToken
+        // (different itm/otm depths in the suffix). Without this, peak P&L
+        // tracking varies subtly across reruns of the same backtest day.
+        java.util.List<String> orderedKeys = new java.util.ArrayList<>(cache.keySet());
+        java.util.Collections.sort(orderedKeys);
+
+        for (String key : orderedKeys) {
+            String[] parts = key.split("\\|");
             if (parts.length < 5) continue;
             if (!order.getOptionToken().equals(parts[4])) continue;
 
-            List<MarketData> list = e.getValue();
+            List<MarketData> list = cache.get(key);
             if (list == null || list.isEmpty()) continue;
             for (int i = list.size() - 1; i >= 0; i--) {
                 MarketData md = list.get(i);

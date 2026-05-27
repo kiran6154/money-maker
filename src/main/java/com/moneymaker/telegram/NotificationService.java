@@ -72,6 +72,18 @@ public class NotificationService {
         throttleState.remove(dedupeKey);
     }
 
+    /**
+     * Drops ALL remembered dedupe / throttle state. Used by
+     * {@code BacktestResetService} between backtest runs so a second run in
+     * the same JVM doesn't suppress alerts the first run already sent.
+     * <b>Do not call from live-mode runtime paths</b> — would re-fire every
+     * dedup'd alert on the next emit.
+     */
+    public void clearAllDedupeState() {
+        dedupeState.clear();
+        throttleState.clear();
+    }
+
     /** Sends only if the last send for {@code dedupeKey} was more than {@code cooldown} ago. */
     public void sendThrottled(String dedupeKey, Duration cooldown, String message) {
         Instant last = throttleState.get(dedupeKey);
