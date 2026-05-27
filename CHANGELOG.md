@@ -61,6 +61,17 @@ Use these headings in each release block. Omit empty ones.
 
 ## [Unreleased]
 
+### Added — M0.1.7 B2 strategy + rule-engine tests (2026-05-28)
+
+6 new test classes, **64 new tests** (109 → 173 cumulative). All green; full suite `mvn test` completes in ~35s.
+
+- [`TradeRulesTest`](src/test/java/com/moneymaker/strategy/rules/TradeRulesTest.java) — value-class invariants + immutability of `empty()`.
+- [`CommonRulesTest`](src/test/java/com/moneymaker/strategy/rules/CommonRulesTest.java) — 22 tests across 6 `@Nested` groups: `isMarketCloseTime`, `isDistanceToNextHigherSmaAboveTarget`, `nextHigherSmaPeriod`, `profitTarget`, `smaValue`, price helpers. Every rule predicate and every SMA-period mapping pinned.
+- [`SmaTrendCalculatorTest`](src/test/java/com/moneymaker/strategy/rules/SmaTrendCalculatorTest.java) — first-candle-of-day trending, strictly-monotonic SMA series, `maxDeviations` tolerance, day-boundary reset, zero-SMA / null-SMA edge cases.
+- [`RuleEngineTest`](src/test/java/com/moneymaker/strategy/rules/RuleEngineTest.java) — 17 tests covering `resolvePrimarySmaPeriod`, the SMA-cross gate decision matrix (SELL/BUY/NONE for every combination of gate × rule outcome), and the required-AND / anyOf-OR evaluator.
+- [`Strategy1Test`](src/test/java/com/moneymaker/strategy/Strategy1Test.java) — `SharedData`-aware integration unit test: wipes static state before/after each case, verifies SELL signal end-to-end, instrument-token + interval filtering, **CE = ascending strike order / PE = descending strike order** (pins the determinism fix that prevents "different strike each run").
+- [`Strategy2Test`](src/test/java/com/moneymaker/strategy/Strategy2Test.java) — pins stub contract; will fail loudly when real logic lands.
+
 ### Fixed — M0.1.6 Gap cleanup (2026-05-28)
 - **GAP #11** — Deleted `TradeConfigScheduler.dailyTaskAt912AM` no-op stub. The method only logged a line and added cron metadata for no real work.
 - **GAP #13** — Wired orphan `016_add_interval_expiry_to_market_data.xml` and `017_add_underlying_name_to_market_data.xml` into `db.changelog-master.xml`. Both already carried `columnExists` preconditions with `onFail=MARK_RAN`, so production picks up no-op if the columns were created out-of-band; fresh installs get them via Liquibase. Closes the orphan-changeset class of bug for these two files.
