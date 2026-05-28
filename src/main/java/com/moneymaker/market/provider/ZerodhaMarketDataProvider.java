@@ -1,6 +1,8 @@
 package com.moneymaker.market.provider;
 
+import com.moneymaker.data.download.ZerodhaMarketDataService;
 import com.moneymaker.entity.MarketData;
+import com.moneymaker.login.model.BrokerSession;
 import com.zerodhatech.kiteconnect.KiteConnect;
 import com.zerodhatech.kiteconnect.kitehttp.exceptions.KiteException;
 import com.zerodhatech.models.HistoricalData;
@@ -29,9 +31,12 @@ public class ZerodhaMarketDataProvider implements MarketDataProvider {
     private static final String NAME = "ZERODHA";
     private static final DateTimeFormatter KITE_TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssZ");
     private final KiteConnect sharedKiteConnect;
+    private final ZerodhaMarketDataService optionsDataService;
 
-    public ZerodhaMarketDataProvider(@Qualifier("sharedKiteConnect") KiteConnect sharedKiteConnect) {
+    public ZerodhaMarketDataProvider(@Qualifier("sharedKiteConnect") KiteConnect sharedKiteConnect,
+                                     ZerodhaMarketDataService optionsDataService) {
         this.sharedKiteConnect = Objects.requireNonNull(sharedKiteConnect, "sharedKiteConnect must not be null");
+        this.optionsDataService = Objects.requireNonNull(optionsDataService, "optionsDataService must not be null");
         logger.info("ZerodhaMarketDataProvider initialized");
     }
 
@@ -86,6 +91,31 @@ public class ZerodhaMarketDataProvider implements MarketDataProvider {
             marketDataList.add(marketData);
         }
         return marketDataList;
+    }
+
+    /**
+     * M12 (closes GAPS #12): Zerodha implementation of the daily options
+     * fetch — delegates to the existing {@link ZerodhaMarketDataService}.
+     * Previously this call was hardcoded inside {@code LoginScheduler}
+     * with a Zerodha-only guard; now any future broker provider that
+     * implements its own options-data ingest plugs in by overriding the
+     * interface default.
+     */
+    @Override
+    public void fetchAndSaveDailyOptions(BrokerSession session, java.util.List<String> underlyings) {
+        if (session == null || session.getAccessToken() == null) {
+            logger.warn("[options-data] Zerodha provider got null session/token — skipping");
+            return;
+        }
+        if (underlyings == null || underlyings.isEmpty()) return;
+        for (String underlying : underlyings) {
+            try {
+                optionsDataService.fetchAndSaveOptionsData(underlying, session.getAccessToken());
+            } catch (Exception ex) {
+                logger.error("[options-data] Zerodha fetch failed for {} — continuing with next underlying",
+                        underlying, ex);
+            }
+        }
     }
 
     private LocalDateTime parseTimestamp(String timestamp) {

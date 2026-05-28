@@ -2,7 +2,6 @@ package com.moneymaker.scheduler;
 
 import com.moneymaker.broker.angelone.AngelOneLoginService;
 import com.moneymaker.broker.groww.GrowwLoginService;
-import com.moneymaker.data.download.ZerodhaMarketDataService;
 import com.moneymaker.login.model.Broker;
 import com.moneymaker.login.model.BrokerSession;
 import com.moneymaker.login.model.HeartbeatResult;
@@ -10,6 +9,7 @@ import com.moneymaker.login.model.HeartbeatStatus;
 import com.moneymaker.login.service.BrokerLoginManager;
 import com.moneymaker.login.service.BrokerLoginService;
 import com.moneymaker.login.service.LoginOrchestrator;
+import com.moneymaker.market.provider.MarketDataProvider;
 import com.moneymaker.market.service.MarketHoursService;
 import com.moneymaker.state.AppState;
 import com.moneymaker.telegram.NotificationService;
@@ -44,7 +44,7 @@ public class LoginScheduler {
     private final AppState appState;
     private final NotificationService notifier;
     private final LoginOrchestrator loginOrchestrator;
-    private final ZerodhaMarketDataService marketDataService;
+    private final MarketDataProvider marketDataProvider;
     private final MarketHoursService marketHours;
 
     /** 08:00 IST Mon-Fri: first login of the day. */
@@ -123,7 +123,15 @@ public class LoginScheduler {
         }
     }
 
-    /** Fetch and save NIFTY and BANKNIFTY options data daily at 09:15 IST Mon-Fri. */
+    /**
+     * Fetch and save NIFTY + BANKNIFTY options data daily at 09:15 IST Mon-Fri.
+     *
+     * <p>M12 (closes GAPS #12): the call is now broker-agnostic — delegates
+     * to {@link MarketDataProvider#fetchAndSaveDailyOptions(BrokerSession, java.util.List)}
+     * which the active provider (Zerodha today, Groww/Angel-One when their
+     * adapters add options ingest) implements or no-ops by default. Removed
+     * the {@code session.getBroker() != Broker.ZERODHA} hardcoded check.
+     */
     @Scheduled(cron = "0 15 9 * * MON-FRI", zone = "Asia/Kolkata")
     public void fetchOptionsData() {
         LocalDateTime now = LocalDateTime.now();
@@ -132,14 +140,13 @@ public class LoginScheduler {
         }
 
         BrokerSession session = appState.currentSession().orElse(null);
-        if (session == null || session.getBroker() != Broker.ZERODHA) {
-            log.debug("[OptionsData] Skipping - no active Zerodha session");
+        if (session == null) {
+            log.debug("[OptionsData] Skipping — no active session");
             return;
         }
 
-        log.info("[OptionsData] Starting fetch at {}", now);
-        marketDataService.fetchAndSaveOptionsData("NIFTY", session.getAccessToken());
-        marketDataService.fetchAndSaveOptionsData("BANKNIFTY", session.getAccessToken());
+        log.info("[OptionsData] Starting fetch at {} via provider '{}'", now, marketDataProvider.getName());
+        marketDataProvider.fetchAndSaveDailyOptions(session, java.util.List.of("NIFTY", "BANKNIFTY"));
         log.info("[OptionsData] Completed fetch");
     }
 

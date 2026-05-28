@@ -108,7 +108,16 @@ Legend for effort:
 | Effort | **S** for bulk; **M** with UI affordance + dry-run preview. |
 | Priority | _TBD_ |
 
-## 10. `TradeConfig.stratergyId` — column name typo
+## 10. `TradeConfig.stratergyId` — column name typo — **RESOLVED 2026-05-28**
+
+| | |
+|---|---|
+| Resolution | Single atomic-PR rename: Liquibase `020_rename_stratergy_id_to_strategy_id.xml` (`renameColumn` with `columnExists` precondition for idempotency), JPA entity field rename, 11 caller updates including tests. |
+| Architect-engineer note | The architect's M4.5 review prescribed a 3-step deploy (add → backfill → drop) with calendar-day holds — correct for multi-instance rolling deploys. For this single-process / manual-deploy setup the operator stops the app, runs Liquibase on startup, starts the new jar; no concurrent-traffic window. Single atomic PR is therefore safe AND cheaper. If the codebase ever goes multi-instance, the next typo rename will need the 3-step approach. |
+| Test outcome | All 243 tests green after rename. |
+| Shipped | Commit `45230ca`. |
+
+## 10-original. `TradeConfig.stratergyId` — column name typo (original entry)
 
 | | |
 |---|---|
@@ -128,7 +137,16 @@ Legend for effort:
 | Effort | **S** |
 | Priority | _TBD_ |
 
-## 12. Options-data fetch is Zerodha-only
+## 12. Options-data fetch is Zerodha-only — **RESOLVED 2026-05-28**
+
+| | |
+|---|---|
+| Resolution | Added a default-no-op `fetchAndSaveDailyOptions(BrokerSession, List<String>)` to `MarketDataProvider`. `ZerodhaMarketDataProvider` overrides it and delegates to the existing `ZerodhaMarketDataService.fetchAndSaveOptionsData`. `LoginScheduler.fetchOptionsData` now calls `marketDataProvider.fetchAndSaveDailyOptions(session, List.of("NIFTY","BANKNIFTY"))` — the `session.getBroker() != Broker.ZERODHA` hardcoded guard is gone. |
+| Scope decision | This is the **lean** fix per the architect — restores "one adapter per broker" without taking on the full M12 live-writes-candles work. Groww / Angel One / Custom providers inherit the default no-op until their adapter implements real options-data fetch (no broker-coupling in scheduler code). Full M12 (live writes + nightly backfill + local provider for backtest) remains deferred to demand. |
+| Test outcome | All 243 tests green after the refactor. |
+| Shipped | (next commit). |
+
+## 12-original. Options-data fetch is Zerodha-only (original entry)
 
 | | |
 |---|---|
