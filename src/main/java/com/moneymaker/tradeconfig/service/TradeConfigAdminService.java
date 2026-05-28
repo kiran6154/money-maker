@@ -176,7 +176,7 @@ public class TradeConfigAdminService {
             boolean duplicate = existingTarget.stream().anyMatch(t ->
                     java.util.Objects.equals(t.getInstrument() != null ? t.getInstrument().getId() : null,
                                              src.getInstrument() != null ? src.getInstrument().getId() : null)
-                    && java.util.Objects.equals(t.getStratergyId(), src.getStratergyId())
+                    && java.util.Objects.equals(t.getStrategyId(), src.getStrategyId())
                     && java.util.Objects.equals(t.getTradingSide(), src.getTradingSide())
                     && java.util.Objects.equals(t.getTransactionType(), src.getTransactionType()));
             if (duplicate) {
@@ -194,7 +194,7 @@ public class TradeConfigAdminService {
             copy.setMaxLoss(src.getMaxLoss());
             copy.setOptionDepth(src.getOptionDepth());
             copy.setLotQuantity(src.getLotQuantity());
-            copy.setStratergyId(src.getStratergyId());
+            copy.setStrategyId(src.getStrategyId());
             copy.setNumberOfTradesPerDay(src.getNumberOfTradesPerDay());
             copy.setNumberOfParallelTrades(src.getNumberOfParallelTrades());
             copy.setItmDepth(src.getItmDepth());
@@ -269,7 +269,7 @@ public class TradeConfigAdminService {
         tc.setMaxLoss(form.getMaxLoss());
         tc.setOptionDepth(form.getOptionDepth());
         tc.setLotQuantity(form.getLotQuantity());
-        tc.setStratergyId(form.getStrategyId());
+        tc.setStrategyId(form.getStrategyId());
         tc.setNumberOfTradesPerDay(form.getNumberOfTradesPerDay());
         tc.setNumberOfParallelTrades(form.getNumberOfParallelTrades());
         tc.setItmDepth(form.getItmDepth());
@@ -335,7 +335,7 @@ public class TradeConfigAdminService {
         v.setMaxLoss(tc.getMaxLoss());
         v.setOptionDepth(tc.getOptionDepth());
         v.setLotQuantity(tc.getLotQuantity());
-        v.setStrategyId(tc.getStratergyId());
+        v.setStrategyId(tc.getStrategyId());
         v.setNumberOfTradesPerDay(tc.getNumberOfTradesPerDay());
         v.setNumberOfParallelTrades(tc.getNumberOfParallelTrades());
         v.setItmDepth(tc.getItmDepth());

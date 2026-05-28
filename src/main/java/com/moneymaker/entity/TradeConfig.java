@@ -45,8 +45,8 @@ public class TradeConfig {
     @Column(name = "lot_quantity")
     private Integer lotQuantity;
 
-    @Column(name = "stratergy_id")
-    private Integer stratergyId;
+    @Column(name = "strategy_id")
+    private Integer strategyId;
 
     @Column(name = "no_of_trades")
     private Integer numberOfTradesPerDay;

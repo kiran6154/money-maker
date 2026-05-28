@@ -188,7 +188,7 @@ class TradeConfigSchedulerTest {
         tc.setId(id);
         tc.setTradingSide("CE");
         tc.setTransactionType("SELL");
-        tc.setStratergyId(1);
+        tc.setStrategyId(1);
         tc.setTarget(new java.math.BigDecimal("10"));
         tc.setStopLoss(new java.math.BigDecimal("5"));
         tc.setLotQuantity(50);

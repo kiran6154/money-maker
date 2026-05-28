@@ -111,7 +111,7 @@ public class TradeOrder {
 
     /**
      * Strategy id that owned the entry (e.g. 1 = Strategy1). Snapshotted from
-     * {@code TradeConfig.stratergyId} at open so a config edit / re-mapping
+     * {@code TradeConfig.strategyId} at open so a config edit / re-mapping
      * later in the day can't change the historical attribution.
      */
     @Column(name = "strategy_id")

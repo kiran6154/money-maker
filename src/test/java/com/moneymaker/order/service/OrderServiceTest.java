@@ -437,7 +437,7 @@ class OrderServiceTest {
         tc.setTransactionType("SELL");
         tc.setTarget(new BigDecimal("10.00"));
         tc.setStopLoss(new BigDecimal("5.00"));
-        tc.setStratergyId(1);
+        tc.setStrategyId(1);
         dto.setTradeConfig(tc);
 
         Instrument ins = new Instrument();

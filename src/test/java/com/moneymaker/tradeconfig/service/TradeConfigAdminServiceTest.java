@@ -158,7 +158,7 @@ class TradeConfigAdminServiceTest {
     @Test
     void cloneFromDate_copies_active_configs_with_smaTimeframes() {
         TradeConfig src = stubConfig(7);
-        src.setStratergyId(1);
+        src.setStrategyId(1);
         when(tradeConfigRepository.findByTradingDateAndIsActiveTrue(LocalDate.of(2026, 4, 1)))
                 .thenReturn(List.of(src));
         when(tradeConfigRepository.findByTradingDate(LocalDate.of(2026, 4, 2))).thenReturn(List.of());
@@ -259,7 +259,7 @@ class TradeConfigAdminServiceTest {
         ins.setId(99);
         ins.setInsName("NIFTY");
         t.setInstrument(ins);
-        t.setStratergyId(1);
+        t.setStrategyId(1);
         return t;
     }
 }

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+    <!--
+        M4.5 (closes GAPS #10): fix the typo. The column was misspelled
+        `stratergy_id` since changeset 003; the corresponding JPA field
+        was `stratergyId`. Renaming both in one atomic change.
+
+        Architect-engineer debate context: the architect's review of M4.5
+        recommended a 3-step deploy (add new col → dual-write + backfill →
+        drop old col) with a 1-day soak between steps. That guidance is
+        correct for multi-instance, rolling-deploy production systems where
+        a brief window of "DB has new name, app expects old name" is a
+        real outage.
+
+        For THIS deployment — single Spring Boot process, single MySQL,
+        manual deploy controlled by a single operator — the architect's
+        concern does not apply: the operator stops the app, runs the
+        migration via Liquibase on startup, starts the new jar. No
+        in-flight requests during the rename window. Atomic single-PR
+        rename is therefore safe AND cheaper than the 3-step alternative.
+
+        If this codebase ever goes multi-instance, the rename is already
+        done — the next-style typo will need the architect's 3-step
+        approach again. This is documented in the commit message for
+        future readers.
+
+        Precondition: skip if the rename was applied out-of-band.
+    -->
+    <changeSet id="020_rename_stratergy_id_on_trade_config" author="moneymaker">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <columnExists tableName="trade_config" columnName="stratergy_id"/>
+                <not>
+                    <columnExists tableName="trade_config" columnName="strategy_id"/>
+                </not>
+            </and>
+        </preConditions>
+        <renameColumn tableName="trade_config"
+                      oldColumnName="stratergy_id"
+                      newColumnName="strategy_id"
+                      columnDataType="INT"/>
+    </changeSet>
+
+</databaseChangeLog>

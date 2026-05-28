@@ -202,7 +202,7 @@ return tradeConfigCombinedDTOList;
             sb.append("  lots        : ").append(tc.getLotQuantity()).append(nl);
             sb.append("  trades/day  : ").append(tc.getNumberOfTradesPerDay()).append(nl);
             sb.append("  parallel    : ").append(tc.getNumberOfParallelTrades()).append(nl);
-            sb.append("  strategy    : ").append(tc.getStratergyId()).append(nl);
+            sb.append("  strategy    : ").append(tc.getStrategyId()).append(nl);
 
             List<SmaTimeframe> tfs = dto.getTimeframes();
             if (tfs != null && !tfs.isEmpty()) {
@@ -230,7 +230,7 @@ return tradeConfigCombinedDTOList;
         tc.setOptionDepth(toInteger(row[i++])); // option_depth
         tc.setTransactionType(ConverterUtility.toString(row[i++])); // transaction_type
         tc.setLotQuantity(toInteger(row[i++])); // lot_quantity
-        tc.setStratergyId(toInteger(row[i++])); // stratergy_id
+        tc.setStrategyId(toInteger(row[i++])); // strategy_id
         tc.setNumberOfTradesPerDay(toInteger(row[i++])); // no_of_trades
         tc.setNumberOfParallelTrades(toInteger(row[i++])); // no_of_parrellel_trades
         tc.setItmDepth(toInteger(row[i++]));

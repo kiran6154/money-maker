@@ -5,13 +5,13 @@ import com.moneymaker.dto.TradeConfigCombinedDTO;
 /**
  * Contract for trading strategy implementations.
  * Each strategy is identified by an integer id that maps to
- * {@code TradeConfig#stratergyId}.
+ * {@code TradeConfig#strategyId}.
  */
 public interface Strategy {
 
     /**
      * @return the id this strategy handles (matches
-     * {@link com.moneymaker.entity.TradeConfig#getStratergyId()}).
+     * {@link com.moneymaker.entity.TradeConfig#getStrategyId()}).
      */
     int getId();
 

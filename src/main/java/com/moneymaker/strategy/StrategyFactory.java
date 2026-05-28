@@ -13,7 +13,7 @@ import java.util.stream.Collectors;
 /**
  * Resolves the {@link Strategy} to run for a given
  * {@link TradeConfigCombinedDTO} based on
- * {@link TradeConfig#getStratergyId()}.
+ * {@link TradeConfig#getStrategyId()}.
  */
 @Slf4j
 @Component
@@ -57,7 +57,7 @@ public class StrategyFactory {
         if (config == null || config.getTradeConfig() == null) {
             throw new IllegalArgumentException("TradeConfigCombinedDTO or its TradeConfig is null");
         }
-        Integer id = config.getTradeConfig().getStratergyId();
+        Integer id = config.getTradeConfig().getStrategyId();
         Strategy strategy = get(id);
         log.debug("Dispatching to strategy id={} ({})", id, strategy.getClass().getSimpleName());
         strategy.execute(config);

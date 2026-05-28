@@ -34,5 +34,6 @@
     <!-- M4 batch — live trading polish. -->
     <include file="db/changelog/018_add_lot_quantity_at_entry.xml"/>
     <include file="db/changelog/019_add_is_active_to_trade_config.xml"/>
+    <include file="db/changelog/020_rename_stratergy_id_to_strategy_id.xml"/>
 
 </databaseChangeLog>
