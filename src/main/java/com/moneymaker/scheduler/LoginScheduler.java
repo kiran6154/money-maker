@@ -10,6 +10,7 @@ import com.moneymaker.login.model.HeartbeatStatus;
 import com.moneymaker.login.service.BrokerLoginManager;
 import com.moneymaker.login.service.BrokerLoginService;
 import com.moneymaker.login.service.LoginOrchestrator;
+import com.moneymaker.market.service.MarketHoursService;
 import com.moneymaker.state.AppState;
 import com.moneymaker.telegram.NotificationService;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,7 @@ public class LoginScheduler {
     private final NotificationService notifier;
     private final LoginOrchestrator loginOrchestrator;
     private final ZerodhaMarketDataService marketDataService;
+    private final MarketHoursService marketHours;
 
     /** 08:00 IST Mon-Fri: first login of the day. */
     @Scheduled(cron = "0 0 8 * * MON-FRI", zone = "Asia/Kolkata")
@@ -56,11 +58,22 @@ public class LoginScheduler {
         loginOrchestrator.ensureLoggedIn();
     }
 
-    /** Heartbeat every 1 minute. Telegram alerts are emitted only on state
-     *  transitions (see {@link #transitionAndNotify}), so a steady "OK" or
-     *  steady "AUTH_FAIL" never spams the channel. */
+    /** Heartbeat every 1 minute during the heartbeat window
+     *  ({@code app.market.heartbeat-window-start} – {@code app.market.heartbeat-window-end},
+     *  defaults 07:50–15:40 IST Mon-Fri). Telegram alerts are emitted only
+     *  on state transitions (see {@link #transitionAndNotify}), so a steady
+     *  "OK" or steady "AUTH_FAIL" never spams the channel.
+     *
+     *  <p>M5.3 (GAPS #3): outside the window the heartbeat is silent —
+     *  there's no point catching a token death at 22:00 on a Friday when
+     *  trading is closed; the 08:00 cron will re-establish the session for
+     *  Monday's market open.</p> */
     @Scheduled(fixedDelay = 60_000L, initialDelay = 30_000L)
     public void heartbeat() {
+        if (!marketHours.isWithinHeartbeatWindow()) {
+            log.trace("[heartbeat] skipped — outside heartbeat window");
+            return;
+        }
         BrokerSession session = appState.currentSession().orElse(null);
         if (session == null) {
             transitionAndNotify(HeartbeatStatus.NO_SESSION, null, "no active session");

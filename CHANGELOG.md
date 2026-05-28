@@ -61,6 +61,33 @@ Use these headings in each release block. Omit empty ones.
 
 ## [Unreleased]
 
+### Added — M5 Operational hardening (2026-05-28)
+
+The P1 ops batch — closes GAPS #3, #5, #6 and SEQ §5 #6. **243 tests cumulative, all green.**
+
+**M5.1 — Two-key DailyEventGuard for day-summary (closes GAPS #5)**
+- Replaced single `day-summary` guard key with two: `day-summary-forceclose` (marked only after force-close succeeds) and `day-summary-telegram` (marked only after telegram send succeeds).
+- Transient Telegram failure no longer loses the digest forever — next cron tick re-attempts only the unmarked half.
+- `DaySummaryScheduler.runEndOfDay` refactored into `runForDate(date, force)` so the manual endpoint can target a date and bypass guards.
+
+**M5.2 — Manual day-summary re-trigger (closes GAPS #6)**
+- New [`AdminController`](src/main/java/com/moneymaker/scheduler/AdminController.java) — `POST /api/admin/day-summary?date=&force=true`. Default `date=today`, `force=false`. Validates `date ≤ today`.
+- Returns a `RunSummary` record documenting which halves ran this invocation.
+- **Known limitation:** no auth on the endpoint. Filed for future hardening.
+
+**M5.3 — Heartbeat windowing (closes GAPS #3)**
+- `MarketHoursService.isWithinHeartbeatWindow()` — `[app.market.heartbeat-window-start, end]`, default `07:50–15:40` IST.
+- `LoginScheduler.heartbeat` early-returns outside the window. No more AUTH_FAIL Telegram at 22:00 Friday for a token death that doesn't matter until Monday.
+
+**M5.5 — `LiveCacheJanitor` (SEQ §5 #6)**
+- New [`LiveCacheJanitor`](src/main/java/com/moneymaker/scheduler/LiveCacheJanitor.java) clears `SharedData.optionTokenMap`, `strikesByInstrumentAndInterval`, and `NotificationService.clearAllDedupeState()`.
+- Fires daily at 08:00 IST Mon–Fri AND on `ApplicationReadyEvent` (architect's pushback — JVM restart after 08:00 must still get a fresh cache before the first analysis tick).
+- Live-only via `app.mode` check.
+
+**Tests added (+9):** 4 in `DaySummarySchedulerTest` (two-key guard scenarios), 4 in new `LiveCacheJanitorTest`, 2 in `MarketHoursServiceTest` (heartbeat window).
+
+**Remaining open gaps after M5:** #10 (M4.5 rename — 3-calendar-day hold deferred), #12 (M12 options-data — deferred to demand).
+
 ### Added — B3 service tests + M3 force-close + M4 live polish (2026-05-28)
 
 This wave: **B3 service test coverage**, **M3 (force-close real broker exit, closes GAPS #1)**, and **M4.1 / M4.2 / M4.3 / M4.4** of the live-polish batch. M4.5 (stratergyId rename) deferred — the architect-mandated 3-step migration needs a 3-calendar-day deploy hold and can't ship in a single session.

@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -68,8 +69,9 @@ class DaySummarySchedulerTest {
     }
 
     @Test
-    void runEndOfDay_noop_when_already_fired_for_today() {
-        when(dailyEventGuard.firstTime(eq("day-summary"), any())).thenReturn(false);
+    void runEndOfDay_noop_when_both_guard_keys_already_fired() {
+        when(dailyEventGuard.alreadyFired(eq("day-summary-forceclose"), any())).thenReturn(true);
+        when(dailyEventGuard.alreadyFired(eq("day-summary-telegram"), any())).thenReturn(true);
 
         scheduler.runEndOfDay();
 
@@ -78,8 +80,62 @@ class DaySummarySchedulerTest {
     }
 
     @Test
+    void M51_only_telegram_runs_when_forceClose_already_marked() {
+        // Recovery scenario: force-close succeeded earlier, telegram failed.
+        // Next cron tick must skip force-close (already done) and retry
+        // only the telegram half.
+        when(dailyEventGuard.alreadyFired(eq("day-summary-forceclose"), any())).thenReturn(true);
+        when(dailyEventGuard.alreadyFired(eq("day-summary-telegram"), any())).thenReturn(false);
+        lenient().when(dailyEventGuard.firstTime(any(), any())).thenReturn(true);
+        when(tradeOrderRepository.findByEntryTimeBetween(any(), any())).thenReturn(List.of());
+
+        scheduler.runEndOfDay();
+
+        verify(orderService, never()).forceCloseOpenPositions(any(), any());
+        verify(notifier).alertDaySummary(anyString());
+    }
+
+    @Test
+    void M51_telegram_guard_NOT_marked_when_send_fails() {
+        // Telegram throws → guard for telegram half stays unmarked so the
+        // next tick retries. Force-close half succeeds → its guard IS marked.
+        when(dailyEventGuard.alreadyFired(eq("day-summary-forceclose"), any())).thenReturn(false);
+        when(dailyEventGuard.alreadyFired(eq("day-summary-telegram"), any())).thenReturn(false);
+        when(dailyEventGuard.firstTime(any(), any())).thenReturn(true);
+        when(orderService.forceCloseOpenPositions(any(), any())).thenReturn(0);
+        when(tradeOrderRepository.findByEntryTimeBetween(any(), any())).thenReturn(List.of());
+        doThrow(new RuntimeException("telegram down"))
+                .when(notifier).alertDaySummary(anyString());
+
+        scheduler.runEndOfDay();
+
+        verify(dailyEventGuard).firstTime(eq("day-summary-forceclose"), any());
+        verify(dailyEventGuard, never()).firstTime(eq("day-summary-telegram"), any());
+    }
+
+    @Test
+    void M52_force_true_bypasses_both_guards() {
+        // Manual re-trigger with force=true must run both halves even if
+        // both guards say already-fired. Guard marks are NOT updated.
+        when(dailyEventGuard.alreadyFired(any(), any())).thenReturn(true);
+        when(orderService.forceCloseOpenPositions(any(), any())).thenReturn(2);
+        when(tradeOrderRepository.findByEntryTimeBetween(any(), any())).thenReturn(List.of());
+
+        DaySummaryScheduler.RunSummary summary = scheduler.runForDate(LocalDate.now(), true);
+
+        assertThat(summary.ranForceClose()).isTrue();
+        assertThat(summary.ranTelegram()).isTrue();
+        verify(orderService).forceCloseOpenPositions(any(), any());
+        verify(notifier).alertDaySummary(anyString());
+        // Guards untouched when force=true.
+        verify(dailyEventGuard, never()).firstTime(any(), any());
+    }
+
+    @Test
     void runEndOfDay_runs_forceClose_then_builds_and_sends_summary() {
-        when(dailyEventGuard.firstTime(eq("day-summary"), any())).thenReturn(true);
+        when(dailyEventGuard.alreadyFired(eq("day-summary-forceclose"), any())).thenReturn(false);
+        when(dailyEventGuard.alreadyFired(eq("day-summary-telegram"), any())).thenReturn(false);
+        lenient().when(dailyEventGuard.firstTime(any(), any())).thenReturn(true);
         when(orderService.forceCloseOpenPositions(any(), any())).thenReturn(1);
         when(tradeOrderRepository.findByEntryTimeBetween(any(), any()))
                 .thenReturn(List.of(
@@ -102,7 +158,9 @@ class DaySummarySchedulerTest {
 
     @Test
     void runEndOfDay_emits_no_trades_message_when_ledger_empty() {
-        when(dailyEventGuard.firstTime(eq("day-summary"), any())).thenReturn(true);
+        when(dailyEventGuard.alreadyFired(eq("day-summary-forceclose"), any())).thenReturn(false);
+        when(dailyEventGuard.alreadyFired(eq("day-summary-telegram"), any())).thenReturn(false);
+        lenient().when(dailyEventGuard.firstTime(any(), any())).thenReturn(true);
         when(orderService.forceCloseOpenPositions(any(), any())).thenReturn(0);
         when(tradeOrderRepository.findByEntryTimeBetween(any(), any())).thenReturn(List.of());
 
@@ -115,7 +173,9 @@ class DaySummarySchedulerTest {
 
     @Test
     void runEndOfDay_continues_when_forceClose_throws() {
-        when(dailyEventGuard.firstTime(eq("day-summary"), any())).thenReturn(true);
+        when(dailyEventGuard.alreadyFired(eq("day-summary-forceclose"), any())).thenReturn(false);
+        when(dailyEventGuard.alreadyFired(eq("day-summary-telegram"), any())).thenReturn(false);
+        lenient().when(dailyEventGuard.firstTime(any(), any())).thenReturn(true);
         when(orderService.forceCloseOpenPositions(any(), any()))
                 .thenThrow(new RuntimeException("broker down"));
         when(tradeOrderRepository.findByEntryTimeBetween(any(), any())).thenReturn(List.of());

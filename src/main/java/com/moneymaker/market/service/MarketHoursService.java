@@ -46,9 +46,25 @@ public class MarketHoursService {
     @Value("${app.market.force-close-time:15:25}")
     private String forceCloseStr;
 
+    /**
+     * M5.3 (GAPS #3): wider window during which {@code LoginScheduler.heartbeat}
+     * is active. Outside this window the heartbeat is silent (no broker
+     * probe, no Telegram). Default 07:50–15:40 IST — starts before the
+     * 08:00 login cron so the heartbeat sees the post-login state quickly;
+     * ends 10 min after market close so post-trading reconciliation still
+     * has health signal.
+     */
+    @Value("${app.market.heartbeat-window-start:07:50}")
+    private String heartbeatStartStr;
+
+    @Value("${app.market.heartbeat-window-end:15:40}")
+    private String heartbeatEndStr;
+
     private LocalTime open;
     private LocalTime close;
     private LocalTime forceClose;
+    private LocalTime heartbeatStart;
+    private LocalTime heartbeatEnd;
     private ZoneId zone;
 
     @PostConstruct
@@ -56,6 +72,8 @@ public class MarketHoursService {
         this.open = LocalTime.parse(openStr.trim(), HHMM);
         this.close = LocalTime.parse(closeStr.trim(), HHMM);
         this.forceClose = LocalTime.parse(forceCloseStr.trim(), HHMM);
+        this.heartbeatStart = LocalTime.parse(heartbeatStartStr.trim(), HHMM);
+        this.heartbeatEnd = LocalTime.parse(heartbeatEndStr.trim(), HHMM);
         this.zone = ZoneId.of(timezoneStr.trim());
         if (!close.isAfter(open)) {
             throw new IllegalStateException(
@@ -65,7 +83,12 @@ public class MarketHoursService {
             throw new IllegalStateException(
                     "app.market.force-close-time (" + forceCloseStr + ") must lie within [open, close]");
         }
-        log.info("[market-hours] window={}-{} force-close={} {} (MON-FRI)", open, close, forceClose, zone);
+        if (!heartbeatEnd.isAfter(heartbeatStart)) {
+            throw new IllegalStateException(
+                    "app.market.heartbeat-window-end (" + heartbeatEndStr + ") must be after start (" + heartbeatStartStr + ")");
+        }
+        log.info("[market-hours] trading={}-{} force-close={} heartbeat={}-{} {} (MON-FRI)",
+                open, close, forceClose, heartbeatStart, heartbeatEnd, zone);
     }
 
     /**
@@ -80,6 +103,20 @@ public class MarketHoursService {
         if (dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY) return false;
         LocalTime t = now.toLocalTime();
         return !t.isBefore(open) && !t.isAfter(close);
+    }
+
+    /**
+     * M5.3 (GAPS #3): heartbeat window — wider than the trading window so
+     * the heartbeat sees the post-login state at 08:00 and stays active for
+     * a few minutes after close for reconciliation. Outside this window
+     * {@code LoginScheduler.heartbeat} short-circuits.
+     */
+    public boolean isWithinHeartbeatWindow() {
+        ZonedDateTime now = ZonedDateTime.now(zone);
+        DayOfWeek dow = now.getDayOfWeek();
+        if (dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY) return false;
+        LocalTime t = now.toLocalTime();
+        return !t.isBefore(heartbeatStart) && !t.isAfter(heartbeatEnd);
     }
 
     /** Today's close moment in the configured zone. */

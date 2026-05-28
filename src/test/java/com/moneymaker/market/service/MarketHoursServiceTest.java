@@ -28,11 +28,18 @@ class MarketHoursServiceTest {
     }
 
     private MarketHoursService newService(String open, String close, String tz, String forceClose) {
+        return newService(open, close, tz, forceClose, "07:50", "15:40");
+    }
+
+    private MarketHoursService newService(String open, String close, String tz, String forceClose,
+                                          String heartbeatStart, String heartbeatEnd) {
         MarketHoursService svc = new MarketHoursService();
         ReflectionTestUtils.setField(svc, "openStr", open);
         ReflectionTestUtils.setField(svc, "closeStr", close);
         ReflectionTestUtils.setField(svc, "timezoneStr", tz);
         ReflectionTestUtils.setField(svc, "forceCloseStr", forceClose);
+        ReflectionTestUtils.setField(svc, "heartbeatStartStr", heartbeatStart);
+        ReflectionTestUtils.setField(svc, "heartbeatEndStr", heartbeatEnd);
         ReflectionTestUtils.invokeMethod(svc, "init");
         return svc;
     }
@@ -95,6 +102,25 @@ class MarketHoursServiceTest {
         MarketHoursService svc = newService("09:15", "15:30", "Asia/Kolkata");
         boolean result = svc.isOpenNow();
         assertThat(result).isIn(true, false);
+    }
+
+    @Test
+    void isWithinHeartbeatWindow_returns_a_boolean_without_throwing() {
+        // M5.3 heartbeat gate. Same approach as isOpenNow (clock-dependent).
+        MarketHoursService svc = newService("09:15", "15:30", "Asia/Kolkata");
+        boolean result = svc.isWithinHeartbeatWindow();
+        assertThat(result).isIn(true, false);
+    }
+
+    @Test
+    void init_rejects_heartbeat_end_not_after_start() {
+        assertThatThrownBy(() ->
+                newService("09:15", "15:30", "Asia/Kolkata", "15:25", "10:00", "10:00"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("heartbeat-window-end");
+        assertThatThrownBy(() ->
+                newService("09:15", "15:30", "Asia/Kolkata", "15:25", "15:00", "10:00"))
+                .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
