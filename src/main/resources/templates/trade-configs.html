@@ -135,6 +135,14 @@
         }
         .inline-alert.error   { background: rgba(232,73,76,0.10);  color: #b6262a; }
         .inline-alert.success { background: rgba(41,194,106,0.12); color: #1f8f4d; }
+        .inline-alert.warn    { background: rgba(255,149,0,0.14);  color: #b15e00; }
+
+        /* M4.3 active toggle (table column + inline switch). */
+        .row-active-cell { text-align: center; }
+        .pill-active   { display:inline-block; padding:2px 8px; border-radius:999px;
+                         background: rgba(41,194,106,0.15); color:#1a9a4f; font-size:11px; font-weight:600; }
+        .pill-inactive { display:inline-block; padding:2px 8px; border-radius:999px;
+                         background: rgba(0,0,0,0.06); color:#666; font-size:11px; font-weight:600; }
     </style>
 </head>
 <body>
@@ -166,6 +174,8 @@
             </div>
             <button id="tc-clear-filter" class="btn btn-ghost" type="button">Show all dates</button>
             <button id="tc-refresh" class="btn btn-ghost" type="button">↻ Refresh</button>
+            <button id="tc-clone-yesterday" class="btn btn-ghost" type="button"
+                    title="Copy yesterday's active configs to today (M4.2)">⎘ Clone yesterday → today</button>
             <div class="spacer"></div>
             <button id="tc-add" class="btn btn-primary" type="button">+ Add Trade Config</button>
         </div>
@@ -177,6 +187,10 @@
             <h3 id="tc-form-title">New trade config</h3>
             <span id="tc-form-mode" class="badge badge-info">CREATE</span>
         </div>
+
+        <!-- M4.4: banner shown when the edited config has OPEN trades. Date-agnostic
+             count split into "today" + "carryover" per architect's note. -->
+        <div id="tc-open-trade-banner" class="inline-alert warn" style="display:none;"></div>
 
         <div id="tc-form-alert" class="inline-alert" style="display:none;"></div>
 
@@ -302,6 +316,7 @@
                         <th class="num">ATM</th>
                         <th class="num">OTM</th>
                         <th>Timeframes</th>
+                        <th>Active</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -471,6 +486,16 @@
         els.formMode.textContent  = 'EDIT';
         els.formMode.className    = 'badge badge-warn';
         clearForm();
+        // M4.4: open-trade banner. Shown when the config has any OPEN rows
+        // (date-agnostic — a carryover from yesterday matters too).
+        if (view.hasOpenTrades) {
+            const banner = document.getElementById('tc-open-trade-banner');
+            banner.textContent =
+                '⚠ This config has ' + view.openTradeCount + ' open trade(s). ' +
+                'Edits to target / stop-loss / lot quantity won\'t affect them — exits use the snapshotted values from order entry. ' +
+                'Other edits (cap counts, txn type) DO take effect immediately on the next analysis tick.';
+            banner.style.display = '';
+        }
         els.id.value          = view.id;
         els.instrument.value  = view.instrumentId ?? '';
         els.date.value        = view.tradingDate ?? today();
@@ -493,6 +518,7 @@
     }
     function closeForm() {
         els.formCard.classList.add('form-card-collapsed');
+        document.getElementById('tc-open-trade-banner').style.display = 'none';
         state.editingId = null;
     }
 
@@ -590,8 +616,15 @@
                 '<td class="num">' + fmtNum(v.atmDepth) + '</td>' +
                 '<td class="num">' + fmtNum(v.otmDepth) + '</td>' +
                 '<td>' + tfHtml + '</td>' +
+                '<td class="row-active-cell">' +
+                    (v.active
+                        ? '<span class="pill-active">ACTIVE</span>'
+                        : '<span class="pill-inactive">PAUSED</span>') +
+                '</td>' +
                 '<td><span class="row-actions">' +
                     '<button class="icon-btn" data-edit="' + v.id + '">✎ Edit</button>' +
+                    '<button class="icon-btn" data-toggle-active="' + v.id + '" data-active="' + v.active + '" title="Toggle active/paused (M4.3)">' +
+                        (v.active ? '⏸' : '▶') + '</button>' +
                     '<button class="icon-btn danger" data-delete="' + v.id + '">🗑</button>' +
                 '</span></td>';
             els.rows.appendChild(tr);
@@ -608,8 +641,9 @@
 
     // ---------- row actions (event delegation) ----------
     els.rows.addEventListener('click', async (ev) => {
-        const editBtn = ev.target.closest('[data-edit]');
-        const delBtn  = ev.target.closest('[data-delete]');
+        const editBtn  = ev.target.closest('[data-edit]');
+        const delBtn   = ev.target.closest('[data-delete]');
+        const tglBtn   = ev.target.closest('[data-toggle-active]');
         if (editBtn) {
             const id = editBtn.getAttribute('data-edit');
             const r = await fetch('/api/trade-configs/' + id);
@@ -617,6 +651,40 @@
             openEdit(await r.json());
         } else if (delBtn) {
             await remove(delBtn.getAttribute('data-delete'));
+        } else if (tglBtn) {
+            const id = tglBtn.getAttribute('data-toggle-active');
+            const currentlyActive = tglBtn.getAttribute('data-active') === 'true';
+            if (currentlyActive && !confirm('Pause this config? Open trades will continue to be monitored.')) return;
+            // Re-use PUT /api/trade-configs/{id} with the existing payload
+            // plus flipped active. Load current → flip → save.
+            const r = await fetch('/api/trade-configs/' + id);
+            if (!r.ok) { alert('Load failed'); return; }
+            const cfg = await r.json();
+            cfg.active = !currentlyActive;
+            // Map view DTO back to form DTO shape (rename instrumentName→drop).
+            const payload = {
+                instrumentId: cfg.instrumentId,
+                tradingDate: cfg.tradingDate,
+                strategyId: cfg.strategyId,
+                tradingSide: cfg.tradingSide,
+                transactionType: cfg.transactionType,
+                target: cfg.target, stopLoss: cfg.stopLoss, maxLoss: cfg.maxLoss,
+                lotQuantity: cfg.lotQuantity,
+                numberOfTradesPerDay: cfg.numberOfTradesPerDay,
+                numberOfParallelTrades: cfg.numberOfParallelTrades,
+                optionDepth: cfg.optionDepth,
+                itmDepth: cfg.itmDepth, atmDepth: cfg.atmDepth, otmDepth: cfg.otmDepth,
+                active: cfg.active,
+                timeframes: (cfg.timeframes || []).map(t => ({
+                    id: t.id, timePeriod: t.timePeriod, sma: t.sma, slope: t.slope }))
+            };
+            const sav = await fetch('/api/trade-configs/' + id, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!sav.ok) { alert('Toggle failed'); return; }
+            await loadList();
         }
     });
 
@@ -644,6 +712,24 @@
     });
     els.prev.addEventListener('click', () => { if (state.page > 0) { state.page--; loadList(); } });
     els.next.addEventListener('click', () => { state.page++; loadList(); });
+
+    // ---------- M4.2 clone yesterday → today ----------
+    document.getElementById('tc-clone-yesterday').addEventListener('click', async () => {
+        const to   = els.filterDate.value || today();
+        const fromD = new Date(to);
+        fromD.setDate(fromD.getDate() - 1);
+        const from = fromD.toISOString().slice(0, 10);
+        if (!confirm('Clone active configs from ' + from + ' → ' + to + '?')) return;
+        const r = await fetch('/api/trade-configs/clone?fromDate=' + from + '&toDate=' + to, { method: 'POST' });
+        if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            alert('Clone failed: ' + (err.error || ('HTTP ' + r.status)));
+            return;
+        }
+        const summary = await r.json();
+        alert('Cloned ' + summary.cloned + ' config(s), skipped ' + summary.skipped + ' (duplicate shape on target).');
+        await loadList();
+    });
 
     // ---------- init ----------
     (async function init() {
