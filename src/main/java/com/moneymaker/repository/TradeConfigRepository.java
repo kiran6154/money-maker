@@ -13,9 +13,17 @@ import java.util.List;
 public interface TradeConfigRepository extends JpaRepository<TradeConfig, Integer> {
     List<TradeConfig> findByTradingDate(LocalDate tradingDate);
 
+    /**
+     * M4.3: pipeline reads only active configs. The trade-config admin UI
+     * still lists everything via {@link #findByTradingDate(LocalDate)} so
+     * the operator can toggle is_active without losing visibility.
+     */
+    List<TradeConfig> findByTradingDateAndIsActiveTrue(LocalDate tradingDate);
+
     @Query(value = "SELECT tc.*, i.*, id.* FROM trade_config tc " +
             "JOIN instrument i ON tc.p_instrument = i.id " +
             "JOIN instrument_details id ON i.ins_id = id.instrument_token " +
-            "WHERE DATE(tc.trading_date) = :tradingDate", nativeQuery = true)
+            "WHERE DATE(tc.trading_date) = :tradingDate " +
+            "  AND tc.is_active = TRUE", nativeQuery = true)
     List<Object[]> fetchCombinedByTradingDate(@Param("tradingDate") LocalDate tradingDate);
 }

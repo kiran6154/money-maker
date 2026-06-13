@@ -52,7 +52,13 @@ public class AnalysisScheduler {
         this.marketHours = Objects.requireNonNull(marketHours, "marketHours must not be null");
     }
 
-    @Scheduled(cron = "0 0/5 9-16 * * MON-FRI")
+    /**
+     * Live cadence: driven by {@link TradingPipelineScheduler#tick()} —
+     * <b>not</b> via {@code @Scheduled} here. Centralising the cron in one
+     * place enforces fixed analysis → orders → positions ordering and adds
+     * tick-overrun protection. Backtest calls this directly each replay tick.
+     * Market-hours gate retained as defence-in-depth.
+     */
     public void analyzeMarketData() {
         if ("live".equalsIgnoreCase(appMode) && !marketHours.isOpenNow()) {
             logger.debug("AnalysisScheduler skipped: outside market hours");

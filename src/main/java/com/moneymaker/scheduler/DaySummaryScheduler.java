@@ -48,7 +48,25 @@ import java.util.TreeMap;
 @RequiredArgsConstructor
 public class DaySummaryScheduler {
 
-    private static final String ALERT_KEY = "day-summary";
+    /**
+     * Two guard keys (M5.1 / GAPS #5). The original single "day-summary" key
+     * marked done on entry — meaning a Telegram-send failure (network blip,
+     * bot rate limit) lost the digest forever because the guard already
+     * marked the date as fired. Split into:
+     * <ul>
+     *   <li>{@code day-summary-forceclose} — set only after
+     *       {@code OrderService.forceCloseOpenPositions} returns without
+     *       throwing.</li>
+     *   <li>{@code day-summary-telegram} — set only after
+     *       {@code notifier.alertDaySummary} returns without throwing.</li>
+     * </ul>
+     * Each subsequent cron tick attempts whichever half is still unmarked,
+     * so a transient Telegram failure is recovered automatically on the next
+     * tick (or via the manual re-trigger endpoint, M5.2).
+     */
+    static final String ALERT_KEY_FORCECLOSE = "day-summary-forceclose";
+    static final String ALERT_KEY_TELEGRAM   = "day-summary-telegram";
+
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
 
     private final OrderService orderService;
@@ -70,33 +88,81 @@ public class DaySummaryScheduler {
             log.debug("[day-summary] skipped — app.mode={}", appMode);
             return;
         }
-        LocalDate today = LocalDate.now(marketHours.zone());
-        if (today.getDayOfWeek() == DayOfWeek.SATURDAY || today.getDayOfWeek() == DayOfWeek.SUNDAY) {
-            return;
-        }
-        if (!dailyEventGuard.firstTime(ALERT_KEY, today)) {
-            log.info("[day-summary] {} — already fired today, skipping", today);
-            return;
+        runForDate(LocalDate.now(marketHours.zone()), false);
+    }
+
+    /**
+     * Public entry point shared by the cron and the manual re-trigger
+     * endpoint (M5.2 / GAPS #6). Idempotent under the two-key guard: each
+     * half (force-close, telegram) runs only if its guard key isn't set
+     * yet, unless {@code force=true} bypasses the guards.
+     *
+     * <p>Weekend dates short-circuit (consistent with the cron).
+     *
+     * @return a summary of what ran this invocation.
+     */
+    public RunSummary runForDate(LocalDate date, boolean force) {
+        if (date == null) throw new IllegalArgumentException("date is required");
+        if (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY) {
+            log.info("[day-summary] {} — weekend, skipping", date);
+            return new RunSummary(date, false, false, 0);
         }
 
-        LocalDateTime closeAt = marketHours.marketCloseToday();
-        log.info("[day-summary] {} — running end-of-day at {}", today, closeAt);
+        boolean forceCloseAlreadyDone = !force && dailyEventGuard.alreadyFired(ALERT_KEY_FORCECLOSE, date);
+        boolean telegramAlreadyDone   = !force && dailyEventGuard.alreadyFired(ALERT_KEY_TELEGRAM,   date);
+
+        if (forceCloseAlreadyDone && telegramAlreadyDone) {
+            log.info("[day-summary] {} — both halves already fired, nothing to do", date);
+            return new RunSummary(date, false, false, 0);
+        }
+
+        // M3: force-close happens 5 min before market close (15:25 default).
+        LocalDateTime closeAt = marketHours.forceCloseToday().toLocalDate().equals(date)
+                ? marketHours.forceCloseToday()
+                : date.atTime(marketHours.forceCloseToday().toLocalTime());
 
         int forceClosed = 0;
-        try {
-            forceClosed = orderService.forceCloseOpenPositions(today, closeAt);
-        } catch (Exception ex) {
-            log.error("[day-summary] forceCloseOpenPositions failed", ex);
+        boolean ranForceClose = false;
+        if (!forceCloseAlreadyDone) {
+            log.info("[day-summary] {} — running force-close at {}", date, closeAt);
+            try {
+                forceClosed = orderService.forceCloseOpenPositions(date, closeAt);
+                if (!force) {
+                    // Mark done only on success. Failures leave the guard
+                    // unmarked so the next tick (or manual re-trigger)
+                    // attempts again.
+                    dailyEventGuard.firstTime(ALERT_KEY_FORCECLOSE, date);
+                }
+                ranForceClose = true;
+            } catch (Exception ex) {
+                log.error("[day-summary] forceCloseOpenPositions failed", ex);
+            }
+        } else {
+            log.info("[day-summary] {} — force-close already done, skipping", date);
         }
 
-        String body = buildSummary(today, forceClosed);
-        log.info("[day-summary] {}\n{}", today, body);
-        try {
-            notifier.alertDaySummary(body);
-        } catch (Exception ex) {
-            log.error("[day-summary] Telegram send failed", ex);
+        boolean ranTelegram = false;
+        if (!telegramAlreadyDone) {
+            String body = buildSummary(date, forceClosed);
+            log.info("[day-summary] {}\n{}", date, body);
+            try {
+                notifier.alertDaySummary(body);
+                if (!force) {
+                    dailyEventGuard.firstTime(ALERT_KEY_TELEGRAM, date);
+                }
+                ranTelegram = true;
+            } catch (Exception ex) {
+                log.error("[day-summary] Telegram send failed", ex);
+            }
+        } else {
+            log.info("[day-summary] {} — telegram already sent, skipping", date);
         }
+
+        return new RunSummary(date, ranForceClose, ranTelegram, forceClosed);
     }
+
+    /** Result of a {@link #runForDate} invocation. */
+    public record RunSummary(LocalDate date, boolean ranForceClose, boolean ranTelegram, int forceClosed) {}
 
     /* ---------------- summary builder ---------------- */
 
@@ -115,6 +181,12 @@ public class DaySummaryScheduler {
         int total = trades.size();
         int closed = 0, openLeftover = 0, winners = 0, losers = 0, scratches = 0;
         BigDecimal totalPnl = BigDecimal.ZERO;
+        // M4.1: rupee P&L = sum of per-share P&L × lot_quantity_at_entry.
+        // Snapshot column was added in changeset 018 and is back-filled for
+        // historical rows; rows with lot_quantity_at_entry=0 (unset) are
+        // simply skipped from the rupee total so the figure isn't silently
+        // misleading.
+        BigDecimal totalRupeePnl = BigDecimal.ZERO;
         TradeOrder biggestWinner = null;
         TradeOrder biggestLoser  = null;
         Map<String, Integer> byExitReason = new HashMap<>();
@@ -125,6 +197,10 @@ public class DaySummaryScheduler {
                 closed++;
                 BigDecimal pnl = t.getProfit() == null ? BigDecimal.ZERO : t.getProfit();
                 totalPnl = totalPnl.add(pnl);
+                Integer lots = t.getLotQuantityAtEntry();
+                if (lots != null && lots > 0) {
+                    totalRupeePnl = totalRupeePnl.add(pnl.multiply(BigDecimal.valueOf(lots)));
+                }
                 int sign = pnl.signum();
                 if (sign > 0) {
                     winners++;
@@ -156,6 +232,7 @@ public class DaySummaryScheduler {
         sb.append("  losers      : ").append(losers).append(nl);
         sb.append("  scratches   : ").append(scratches).append(nl);
         sb.append("  P/L (per-sh): ").append(totalPnl).append(nl);
+        sb.append("  P/L (rupees): ").append(totalRupeePnl).append(nl);
 
         if (biggestWinner != null) {
             sb.append("  best winner : id=").append(biggestWinner.getId())

@@ -3,9 +3,26 @@
         xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
-        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.0.xsd">
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
 
+    <!--
+        Historical orphan: this file existed on disk but was never wired into
+        db.changelog-master.xml. Production tolerated this because Hibernate
+        ddl-auto=update silently created the table from the JPA entity.
+        The H2 test harness (M0) surfaced the issue immediately — Liquibase
+        runs first on H2 and later changesets (007 add sma_value) fail when
+        market_data doesn't exist.
+
+        Wired into master in M0.1 with a precondition so production picks up
+        no-op (table already exists → MARK_RAN); H2/fresh installs run the
+        CREATE TABLE for the first time.
+    -->
     <changeSet id="005_create_market_data_table" author="moneymaker">
+        <preConditions onFail="MARK_RAN" onFailMessage="market_data already exists; marking ran">
+            <not>
+                <tableExists tableName="market_data"/>
+            </not>
+        </preConditions>
         <createTable tableName="market_data">
             <column name="id" type="INT" autoIncrement="true">
                 <constraints primaryKey="true" nullable="false"/>

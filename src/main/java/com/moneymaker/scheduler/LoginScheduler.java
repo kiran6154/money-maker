@@ -2,7 +2,6 @@ package com.moneymaker.scheduler;
 
 import com.moneymaker.broker.angelone.AngelOneLoginService;
 import com.moneymaker.broker.groww.GrowwLoginService;
-import com.moneymaker.data.download.ZerodhaMarketDataService;
 import com.moneymaker.login.model.Broker;
 import com.moneymaker.login.model.BrokerSession;
 import com.moneymaker.login.model.HeartbeatResult;
@@ -10,6 +9,8 @@ import com.moneymaker.login.model.HeartbeatStatus;
 import com.moneymaker.login.service.BrokerLoginManager;
 import com.moneymaker.login.service.BrokerLoginService;
 import com.moneymaker.login.service.LoginOrchestrator;
+import com.moneymaker.market.provider.MarketDataProvider;
+import com.moneymaker.market.service.MarketHoursService;
 import com.moneymaker.state.AppState;
 import com.moneymaker.telegram.NotificationService;
 import lombok.RequiredArgsConstructor;
@@ -43,7 +44,8 @@ public class LoginScheduler {
     private final AppState appState;
     private final NotificationService notifier;
     private final LoginOrchestrator loginOrchestrator;
-    private final ZerodhaMarketDataService marketDataService;
+    private final MarketDataProvider marketDataProvider;
+    private final MarketHoursService marketHours;
 
     /** 08:00 IST Mon-Fri: first login of the day. */
     @Scheduled(cron = "0 0 8 * * MON-FRI", zone = "Asia/Kolkata")
@@ -56,11 +58,22 @@ public class LoginScheduler {
         loginOrchestrator.ensureLoggedIn();
     }
 
-    /** Heartbeat every 1 minute. Telegram alerts are emitted only on state
-     *  transitions (see {@link #transitionAndNotify}), so a steady "OK" or
-     *  steady "AUTH_FAIL" never spams the channel. */
+    /** Heartbeat every 1 minute during the heartbeat window
+     *  ({@code app.market.heartbeat-window-start} – {@code app.market.heartbeat-window-end},
+     *  defaults 07:50–15:40 IST Mon-Fri). Telegram alerts are emitted only
+     *  on state transitions (see {@link #transitionAndNotify}), so a steady
+     *  "OK" or steady "AUTH_FAIL" never spams the channel.
+     *
+     *  <p>M5.3 (GAPS #3): outside the window the heartbeat is silent —
+     *  there's no point catching a token death at 22:00 on a Friday when
+     *  trading is closed; the 08:00 cron will re-establish the session for
+     *  Monday's market open.</p> */
     @Scheduled(fixedDelay = 60_000L, initialDelay = 30_000L)
     public void heartbeat() {
+        if (!marketHours.isWithinHeartbeatWindow()) {
+            log.trace("[heartbeat] skipped — outside heartbeat window");
+            return;
+        }
         BrokerSession session = appState.currentSession().orElse(null);
         if (session == null) {
             transitionAndNotify(HeartbeatStatus.NO_SESSION, null, "no active session");
@@ -110,7 +123,15 @@ public class LoginScheduler {
         }
     }
 
-    /** Fetch and save NIFTY and BANKNIFTY options data daily at 09:15 IST Mon-Fri. */
+    /**
+     * Fetch and save NIFTY + BANKNIFTY options data daily at 09:15 IST Mon-Fri.
+     *
+     * <p>M12 (closes GAPS #12): the call is now broker-agnostic — delegates
+     * to {@link MarketDataProvider#fetchAndSaveDailyOptions(BrokerSession, java.util.List)}
+     * which the active provider (Zerodha today, Groww/Angel-One when their
+     * adapters add options ingest) implements or no-ops by default. Removed
+     * the {@code session.getBroker() != Broker.ZERODHA} hardcoded check.
+     */
     @Scheduled(cron = "0 15 9 * * MON-FRI", zone = "Asia/Kolkata")
     public void fetchOptionsData() {
         LocalDateTime now = LocalDateTime.now();
@@ -119,14 +140,13 @@ public class LoginScheduler {
         }
 
         BrokerSession session = appState.currentSession().orElse(null);
-        if (session == null || session.getBroker() != Broker.ZERODHA) {
-            log.debug("[OptionsData] Skipping - no active Zerodha session");
+        if (session == null) {
+            log.debug("[OptionsData] Skipping — no active session");
             return;
         }
 
-        log.info("[OptionsData] Starting fetch at {}", now);
-        marketDataService.fetchAndSaveOptionsData("NIFTY", session.getAccessToken());
-        marketDataService.fetchAndSaveOptionsData("BANKNIFTY", session.getAccessToken());
+        log.info("[OptionsData] Starting fetch at {} via provider '{}'", now, marketDataProvider.getName());
+        marketDataProvider.fetchAndSaveDailyOptions(session, java.util.List.of("NIFTY", "BANKNIFTY"));
         log.info("[OptionsData] Completed fetch");
     }
 

@@ -11,6 +11,9 @@
     <include file="db/changelog/003_create_trade_config_table.xml"/>
     <include file="db/changelog/004_create_sma_timeframe_table.xml"/>
     <include file="db/changelog/005_create_broker_session_table.xml"/>
+    <!-- 005_create_market_data must run before 007_add_sma_value tries to
+         ALTER it. Has a tableExists precondition so it's a no-op on prod. -->
+    <include file="db/changelog/005_create_market_data_table.xml"/>
     <include file="db/changelog/006_create_options_data_table.xml"/>
     <include file="db/changelog/007_add_sma_value_to_market_data.xml"/>
     <include file="db/changelog/008_create_trade_order_table.xml"/>
@@ -21,5 +24,16 @@
     <include file="db/changelog/013_add_sma_value20_to_market_data.xml"/>
     <include file="db/changelog/014_add_entry_reason_to_trade_order.xml"/>
     <include file="db/changelog/015_add_strategy_id_to_trade_order.xml"/>
+    <!-- Both 016 and 017 add forward-looking columns the M12 live-writes-candles
+         work will populate. Both files already carry columnExists preconditions
+         with onFail=MARK_RAN so they're safe to include now: production picks
+         up no-op if the columns were created out-of-band, fresh installs get
+         them via Liquibase. Wired into master in M0.1.6 to fix GAPS #13. -->
+    <include file="db/changelog/016_add_interval_expiry_to_market_data.xml"/>
+    <include file="db/changelog/017_add_underlying_name_to_market_data.xml"/>
+    <!-- M4 batch — live trading polish. -->
+    <include file="db/changelog/018_add_lot_quantity_at_entry.xml"/>
+    <include file="db/changelog/019_add_is_active_to_trade_config.xml"/>
+    <include file="db/changelog/020_rename_stratergy_id_to_strategy_id.xml"/>
 
 </databaseChangeLog>

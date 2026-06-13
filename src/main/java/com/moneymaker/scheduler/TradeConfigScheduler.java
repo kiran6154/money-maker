@@ -88,15 +88,6 @@ public class TradeConfigScheduler {
         reportConfigsForDay(today, combinedDto);
     }
 
-    @Scheduled(cron = "0 12 9 * * MON-FRI")
-    public void dailyTaskAt912AM() {
-        LocalDateTime now = LocalDateTime.now();
-
-        if (now.getDayOfWeek() != DayOfWeek.SATURDAY && now.getDayOfWeek() != DayOfWeek.SUNDAY) {
-            log.info("Scheduler has run at 9:12 AM on {}", now);
-        }
-    }
-
     @Scheduled(cron = "0 16 9 * * MON-FRI")
     public void checkTradeConfigAt916AM() {
         LocalDateTime now = LocalDateTime.now();
@@ -211,7 +202,7 @@ return tradeConfigCombinedDTOList;
             sb.append("  lots        : ").append(tc.getLotQuantity()).append(nl);
             sb.append("  trades/day  : ").append(tc.getNumberOfTradesPerDay()).append(nl);
             sb.append("  parallel    : ").append(tc.getNumberOfParallelTrades()).append(nl);
-            sb.append("  strategy    : ").append(tc.getStratergyId()).append(nl);
+            sb.append("  strategy    : ").append(tc.getStrategyId()).append(nl);
 
             List<SmaTimeframe> tfs = dto.getTimeframes();
             if (tfs != null && !tfs.isEmpty()) {
@@ -239,12 +230,17 @@ return tradeConfigCombinedDTOList;
         tc.setOptionDepth(toInteger(row[i++])); // option_depth
         tc.setTransactionType(ConverterUtility.toString(row[i++])); // transaction_type
         tc.setLotQuantity(toInteger(row[i++])); // lot_quantity
-        tc.setStratergyId(toInteger(row[i++])); // stratergy_id
+        tc.setStrategyId(toInteger(row[i++])); // strategy_id
         tc.setNumberOfTradesPerDay(toInteger(row[i++])); // no_of_trades
         tc.setNumberOfParallelTrades(toInteger(row[i++])); // no_of_parrellel_trades
         tc.setItmDepth(toInteger(row[i++]));
         tc.setOtmDepth(toInteger(row[i++]));
         tc.setAtmDepth(toInteger(row[i++]));
+        // M4.3: is_active column added by Liquibase 019. SELECT tc.* now
+        // returns 17 columns; defensive defaulting to TRUE so a missing
+        // value doesn't accidentally disable the config.
+        Object isActiveVal = row[i++];
+        tc.setIsActive(isActiveVal == null ? Boolean.TRUE : Boolean.TRUE.equals(isActiveVal));
 
 
         // Instrument will be set separately by mapToInstrument
@@ -252,8 +248,8 @@ return tradeConfigCombinedDTOList;
     }
 
     private Instrument mapToInstrument(Object[] row, TradeConfig tc) {
-        // Instrument starts after TradeConfig fields (0-11)
-        int i = 16;  // Starting index for Instrument fields
+        // Instrument starts after TradeConfig fields (0-16, +1 for is_active M4.3).
+        int i = 17;  // Starting index for Instrument fields
         Instrument ins = new Instrument();
         ins.setId(toInteger(row[i++])); // id
         ins.setInsName(ConverterUtility.toString(row[i++])); // ins_name
@@ -266,8 +262,9 @@ return tradeConfigCombinedDTOList;
     }
 
     private InstrumentDetails mapToInstrumentDetails(Object[] row, TradeConfig tc, Instrument ins) {
-        // InstrumentDetails starts after TradeConfig (12) and Instrument (5) fields
-        int i = 21;  // Starting index for InstrumentDetails fields
+        // InstrumentDetails starts after TradeConfig (17, with is_active M4.3)
+        // and Instrument (5) fields → index 22.
+        int i = 22;  // Starting index for InstrumentDetails fields
         InstrumentDetails id = new InstrumentDetails();
         id.setInstrumentToken(toInteger(row[i++])); // instrument_token
         id.setExchangeToken(toInteger(row[i++])); // exchange_token

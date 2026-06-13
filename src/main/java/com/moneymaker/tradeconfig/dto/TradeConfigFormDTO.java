@@ -25,5 +25,7 @@ public class TradeConfigFormDTO {
     private Integer itmDepth;
     private Integer otmDepth;
     private Integer atmDepth;
+    /** M4.3 default true so existing UI flows behave as before. */
+    private Boolean active = Boolean.TRUE;
     private List<SmaTimeframeDTO> timeframes = new ArrayList<>();
 }

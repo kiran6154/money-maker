@@ -45,8 +45,8 @@ public class TradeConfig {
     @Column(name = "lot_quantity")
     private Integer lotQuantity;
 
-    @Column(name = "stratergy_id")
-    private Integer stratergyId;
+    @Column(name = "strategy_id")
+    private Integer strategyId;
 
     @Column(name = "no_of_trades")
     private Integer numberOfTradesPerDay;
@@ -62,6 +62,16 @@ public class TradeConfig {
 
     @Column(name = "atm_depth")
     private Integer atmDepth;
+
+    /**
+     * M4.3 (GAPS #7): soft-delete / pause flag. False = pipeline skips this
+     * config (no signals generated, excluded from clone-yesterday). True by
+     * default so all existing rows behave as before on first deploy. Open
+     * trades on a then-active config keep being monitored because
+     * {@code PositionScheduler} walks {@code trade_order}, not configs.
+     */
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = Boolean.TRUE;
 
     // Getters and setters
     // (Omitted for brevity)

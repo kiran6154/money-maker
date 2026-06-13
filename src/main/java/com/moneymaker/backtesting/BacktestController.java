@@ -8,6 +8,7 @@ import com.moneymaker.state.AppState;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -47,8 +48,19 @@ public class BacktestController {
     private final BrokerLoginManager manager;
     private final AppState appState;
     private final BacktestAnalysisService backtestAnalysisService;
+    private final BacktestResetService backtestResetService;
     @Autowired
-    private TradeConfigScheduler tradeConfigScheduler;;
+    private TradeConfigScheduler tradeConfigScheduler;
+
+    /**
+     * When true, {@link #runAnalysis} purges {@code trade_order} +
+     * {@code alert_state} rows + in-memory caches for the requested date
+     * range <b>before</b> running the backtest. Default {@code false} so
+     * an operator hitting the endpoint to inspect prior output doesn't
+     * lose it; tests override via {@code application-test.properties}.
+     */
+    @Value("${backtest.auto-reset:false}")
+    private boolean autoReset;
     /** Manually invoke the login orchestrator for the active broker. */
     @PostMapping("/login")
     public ResponseEntity<Map<String, Object>> login() {
@@ -80,9 +92,40 @@ public class BacktestController {
     public ResponseEntity<BacktestAnalysisService.BacktestRunResult> runAnalysis(
             @RequestParam("fromDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
             @RequestParam("toDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+        if (autoReset) {
+            BacktestResetService.ResetSummary summary = backtestResetService.resetRange(fromDate, toDate);
+            log.info("[Backtest] auto-reset before /analysis: {}", summary);
+        }
         BacktestAnalysisService.BacktestRunResult result = backtestAnalysisService.run(fromDate, toDate);
         log.info("[Backtest] /analysis {} -> {} completed in {}ms", fromDate, toDate, result.durationMs());
         return ResponseEntity.ok(result);
     }
 
+    /**
+     * Manual reset endpoint. Purges {@code trade_order} + {@code alert_state}
+     * rows in the date range and clears in-memory caches. Always available
+     * (so operators can recover from an incomplete prior run); the auto-reset
+     * variant above is what runs before every {@code /analysis} call when
+     * {@code backtest.auto-reset=true}.
+     *
+     * <p>Validation: {@code toDate} must be on or before today — protects
+     * against operator typos that would wipe future-dated data.
+     */
+    @PostMapping("/reset")
+    public ResponseEntity<?> reset(
+            @RequestParam("fromDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam("toDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+        if (toDate.isAfter(LocalDate.now())) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "toDate cannot be in the future",
+                    "toDate", toDate.toString(),
+                    "today", LocalDate.now().toString()));
+        }
+        try {
+            BacktestResetService.ResetSummary summary = backtestResetService.resetRange(fromDate, toDate);
+            return ResponseEntity.ok(summary);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 }

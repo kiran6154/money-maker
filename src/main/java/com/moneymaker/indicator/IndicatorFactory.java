@@ -10,8 +10,10 @@ public final class IndicatorFactory {
 
     static {
         registry.put("SMA", SMAIndicatorImpl::new);
-        registry.put("EMA", EMAIndicatorImpl::new);
-        registry.put("RSI", RSIIndicatorImpl::new);
+        // EMA + RSI registrations removed in GAP #15 resolution: the impls
+        // were stubs returning 0.0 and had zero production callers. If a
+        // strategy needs EMA/RSI later, add the impl class + register here
+        // (and write real tests, not the stub-pinning tests we removed).
     }
 
     private IndicatorFactory() {

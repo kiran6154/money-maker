@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -111,6 +112,24 @@ public class TradeConfigAdminController {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IllegalStateException e) {
             return ResponseEntity.status(409).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * M4.2 (GAPS #9): clone all active configs from {@code fromDate} to
+     * {@code toDate}. Skips configs whose (instrumentId, strategyId, side,
+     * txnType) shape already exists on {@code toDate}, so calling the same
+     * endpoint twice in the morning doesn't produce duplicates.
+     */
+    @PostMapping("/api/trade-configs/clone")
+    @ResponseBody
+    public ResponseEntity<?> clone(
+            @RequestParam("fromDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam("toDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+        try {
+            return ResponseEntity.ok(service.cloneFromDate(fromDate, toDate));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage()));
         }
     }
 

@@ -108,7 +108,16 @@ Legend for effort:
 | Effort | **S** for bulk; **M** with UI affordance + dry-run preview. |
 | Priority | _TBD_ |
 
-## 10. `TradeConfig.stratergyId` — column name typo
+## 10. `TradeConfig.stratergyId` — column name typo — **RESOLVED 2026-05-28**
+
+| | |
+|---|---|
+| Resolution | Single atomic-PR rename: Liquibase `020_rename_stratergy_id_to_strategy_id.xml` (`renameColumn` with `columnExists` precondition for idempotency), JPA entity field rename, 11 caller updates including tests. |
+| Architect-engineer note | The architect's M4.5 review prescribed a 3-step deploy (add → backfill → drop) with calendar-day holds — correct for multi-instance rolling deploys. For this single-process / manual-deploy setup the operator stops the app, runs Liquibase on startup, starts the new jar; no concurrent-traffic window. Single atomic PR is therefore safe AND cheaper. If the codebase ever goes multi-instance, the next typo rename will need the 3-step approach. |
+| Test outcome | All 243 tests green after rename. |
+| Shipped | Commit `45230ca`. |
+
+## 10-original. `TradeConfig.stratergyId` — column name typo (original entry)
 
 | | |
 |---|---|
@@ -128,7 +137,16 @@ Legend for effort:
 | Effort | **S** |
 | Priority | _TBD_ |
 
-## 12. Options-data fetch is Zerodha-only
+## 12. Options-data fetch is Zerodha-only — **RESOLVED 2026-05-28**
+
+| | |
+|---|---|
+| Resolution | Added a default-no-op `fetchAndSaveDailyOptions(BrokerSession, List<String>)` to `MarketDataProvider`. `ZerodhaMarketDataProvider` overrides it and delegates to the existing `ZerodhaMarketDataService.fetchAndSaveOptionsData`. `LoginScheduler.fetchOptionsData` now calls `marketDataProvider.fetchAndSaveDailyOptions(session, List.of("NIFTY","BANKNIFTY"))` — the `session.getBroker() != Broker.ZERODHA` hardcoded guard is gone. |
+| Scope decision | This is the **lean** fix per the architect — restores "one adapter per broker" without taking on the full M12 live-writes-candles work. Groww / Angel One / Custom providers inherit the default no-op until their adapter implements real options-data fetch (no broker-coupling in scheduler code). Full M12 (live writes + nightly backfill + local provider for backtest) remains deferred to demand. |
+| Test outcome | All 243 tests green after the refactor. |
+| Shipped | (next commit). |
+
+## 12-original. Options-data fetch is Zerodha-only (original entry)
 
 | | |
 |---|---|
@@ -138,7 +156,41 @@ Legend for effort:
 | Effort | **M** (per broker that wants it). |
 | Priority | _TBD_ |
 
-## 13. Documentation lag from this session's changes
+## 13. Orphan Liquibase changesets — 016 and 017
+
+| | |
+|---|---|
+| Where | [`016_add_interval_expiry_to_market_data.xml`](../src/main/resources/db/changelog/016_add_interval_expiry_to_market_data.xml), [`017_add_underlying_name_to_market_data.xml`](../src/main/resources/db/changelog/017_add_underlying_name_to_market_data.xml) — both present on disk, neither wired into [`db.changelog-master.xml`](../src/main/resources/db/changelog/db.changelog-master.xml) |
+| Why | Both files add columns the team plans to use for the M12 milestone (full live-writes-candles). They sit unwired because the supporting code isn't ready yet. Both files already carry `columnExists` preconditions with `onFail=MARK_RAN`, so they're safe to include in master immediately — production would simply mark them ran without executing. Leaving them unwired risks the same class of bug surfaced in M0.1 (orphan 005): a future test environment or fresh install ends up with inconsistent schema. |
+| Fix sketch | Either (a) include both in master now (safe — preconditions handle production), or (b) physically delete the files until M12 needs them. Choose one; the worst option is "leave them sitting there." |
+| Effort | **S** |
+| Priority | _TBD_ |
+
+> Surfaced during M0.1 while fixing the 005 orphan. Same pattern (changeset on disk, not in master) suggests the team needs a Liquibase pre-commit check.
+
+## 14. No Liquibase changeset master-inclusion guard
+
+| | |
+|---|---|
+| Where | Build pipeline (none exists) |
+| Why | The 005 / 016 / 017 orphans (Gaps #14) prove the team is forgetting to add new changesets to `db.changelog-master.xml`. A linter / unit test that scans `db/changelog/*.xml` and asserts every file (except master itself) is `<include>`d somewhere would catch this at build time, before tests or production. |
+| Fix sketch | Small Java test: glob `db/changelog/00*.xml`, parse master, assert every changeset file is referenced. ArchUnit-style. |
+| Effort | **S** |
+| Priority | _TBD_ |
+
+> Companion to Gap #14. Together these are the "stop the next orphan from happening" fix.
+
+## 15. EMA and RSI indicator implementations are stubs returning 0.0 — **RESOLVED 2026-05-28**
+
+| | |
+|---|---|
+| Resolution | **Option (a) — deleted both stub files** + their tests. `IndicatorFactory` no longer registers `"EMA"` or `"RSI"`; calling `create("EMA")` now throws `IllegalArgumentException("Unknown indicator: EMA")`. |
+| Why this option | Grep confirmed zero production callers ever asked for `"EMA"` or `"RSI"` — `AnalysisScheduler.java:457` is the only `IndicatorService.calculate` caller and it hardcodes `"SMA"`. Stubs returning 0.0 with no callers were pure dead code; tests pinning them were maintenance overhead for no value. |
+| Re-adding later | When a strategy actually needs EMA / RSI: implement using the `SMAIndicatorImpl` ta4j pattern (real calculation, not a stub), add the `registry.put(...)` line back, write real tests (not stub-pinning). The factory comment block documents the contract. |
+| Test outcome | `IndicatorFactoryTest.EMA_and_RSI_no_longer_registered_after_gap_15_resolution` pins the new contract so anyone re-registering without removing this test gets a clear failure. |
+| Shipped | Commit `_M1.5_` (see CHANGELOG). |
+
+## 16. Documentation lag from this session's changes
 
 | | |
 |---|---|

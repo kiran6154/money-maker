@@ -72,6 +72,18 @@ public class NotificationService {
         throttleState.remove(dedupeKey);
     }
 
+    /**
+     * Drops ALL remembered dedupe / throttle state. Used by
+     * {@code BacktestResetService} between backtest runs so a second run in
+     * the same JVM doesn't suppress alerts the first run already sent.
+     * <b>Do not call from live-mode runtime paths</b> — would re-fire every
+     * dedup'd alert on the next emit.
+     */
+    public void clearAllDedupeState() {
+        dedupeState.clear();
+        throttleState.clear();
+    }
+
     /** Sends only if the last send for {@code dedupeKey} was more than {@code cooldown} ago. */
     public void sendThrottled(String dedupeKey, Duration cooldown, String message) {
         Instant last = throttleState.get(dedupeKey);
@@ -174,6 +186,27 @@ public class NotificationService {
         sb.append("  exit       : ").append(o.getExitPrice()).append('\n');
         sb.append("  exit reason: ").append(safe(o.getExitReason())).append('\n');
         sb.append("  P/L        : ").append(o.getProfit());
+        telegram.send(sb.toString());
+    }
+
+    /**
+     * <b>Critical</b> alert: a force-close attempt placed via the broker
+     * returned null. The row stays {@code OPEN} with
+     * {@code fill_status=EXIT_FAILED} so it can be retried (manually or by
+     * the next {@code DaySummaryScheduler} tick); meanwhile the broker
+     * position is unattended, so ops needs to know now.
+     */
+    public void alertOrderExitFailed(TradeOrder o, String reason) {
+        if (o == null) return;
+        StringBuilder sb = new StringBuilder("[CRITICAL] ORDER EXIT FAILED").append('\n');
+        sb.append("  id         : ").append(o.getId()).append('\n');
+        sb.append("  config     : ").append(o.getTradeConfigId()).append('\n');
+        sb.append("  instrument : ").append(safe(o.getInstrumentName())).append('\n');
+        sb.append("  strike     : ").append(o.getOptionStrike()).append(' ').append(safe(o.getOptionType())).append('\n');
+        sb.append("  direction  : ").append(safe(o.getEntryDirection())).append('\n');
+        sb.append("  entry      : ").append(o.getEntryPrice()).append(" @ ").append(formatDateTime(o.getEntryTime())).append('\n');
+        sb.append("  reason     : ").append(safe(reason)).append('\n');
+        sb.append("  ACTION     : broker position still OPEN — reconcile manually or wait for retry");
         telegram.send(sb.toString());
     }
 
