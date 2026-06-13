@@ -138,7 +138,55 @@ Legend for effort:
 | Effort | **M** (per broker that wants it). |
 | Priority | _TBD_ |
 
+<<<<<<< Updated upstream
 ## 13. Documentation lag from this session's changes
+=======
+## 17. M10 strike caching — design premise contradicted by actual code
+
+| | |
+|---|---|
+| Where | [`AnalysisScheduler.calculateStrikesForCandles:222`](../src/main/java/com/moneymaker/scheduler/AnalysisScheduler.java#L222) |
+| Why | M10 in MILESTONE_DETAILS proposed per-(date, configId) caching, justified by "strikes anchored on first candle of the day → stable intraday." The implementation actually anchors on `marketDataList.get(marketDataList.size()-1)` — the LAST candle (latest tick's close). Spot moves intraday → ATM base shifts → strike set shifts. Naively caching would change live behavior, not just performance. |
+| Decision needed | Three paths: **(a)** Change anchor to first-of-day candle — real behavior change (strikes fixed at 09:15 spot for the day; matches the M10 spec but needs strategy-owner sign-off because it alters what gets traded). **(b)** Memoise by `(date, configId, lastCandleTimestamp)` — pure caching but the inner key changes per tick so there's no real saving. **(c)** Skip M10 entirely — accept that strike compute is intentionally per-tick and the "stable within day" claim was wrong. |
+| Recommendation | (a) is the right move IF the strategy owner agrees to the locked-anchor semantics. (c) is the cheap close. Don't ship without that decision. |
+| Surfaced | While trying to implement M10 in the "complete all" session — the architect-engineer debate during planning had assumed (a) but neither party verified against code. |
+
+## 13. Orphan Liquibase changesets — 016 and 017
+
+| | |
+|---|---|
+| Where | [`016_add_interval_expiry_to_market_data.xml`](../src/main/resources/db/changelog/016_add_interval_expiry_to_market_data.xml), [`017_add_underlying_name_to_market_data.xml`](../src/main/resources/db/changelog/017_add_underlying_name_to_market_data.xml) — both present on disk, neither wired into [`db.changelog-master.xml`](../src/main/resources/db/changelog/db.changelog-master.xml) |
+| Why | Both files add columns the team plans to use for the M12 milestone (full live-writes-candles). They sit unwired because the supporting code isn't ready yet. Both files already carry `columnExists` preconditions with `onFail=MARK_RAN`, so they're safe to include in master immediately — production would simply mark them ran without executing. Leaving them unwired risks the same class of bug surfaced in M0.1 (orphan 005): a future test environment or fresh install ends up with inconsistent schema. |
+| Fix sketch | Either (a) include both in master now (safe — preconditions handle production), or (b) physically delete the files until M12 needs them. Choose one; the worst option is "leave them sitting there." |
+| Effort | **S** |
+| Priority | _TBD_ |
+
+> Surfaced during M0.1 while fixing the 005 orphan. Same pattern (changeset on disk, not in master) suggests the team needs a Liquibase pre-commit check.
+
+## 14. No Liquibase changeset master-inclusion guard
+
+| | |
+|---|---|
+| Where | Build pipeline (none exists) |
+| Why | The 005 / 016 / 017 orphans (Gaps #14) prove the team is forgetting to add new changesets to `db.changelog-master.xml`. A linter / unit test that scans `db/changelog/*.xml` and asserts every file (except master itself) is `<include>`d somewhere would catch this at build time, before tests or production. |
+| Fix sketch | Small Java test: glob `db/changelog/00*.xml`, parse master, assert every changeset file is referenced. ArchUnit-style. |
+| Effort | **S** |
+| Priority | _TBD_ |
+
+> Companion to Gap #14. Together these are the "stop the next orphan from happening" fix.
+
+## 15. EMA and RSI indicator implementations are stubs returning 0.0 — **RESOLVED 2026-05-28**
+
+| | |
+|---|---|
+| Resolution | **Option (a) — deleted both stub files** + their tests. `IndicatorFactory` no longer registers `"EMA"` or `"RSI"`; calling `create("EMA")` now throws `IllegalArgumentException("Unknown indicator: EMA")`. |
+| Why this option | Grep confirmed zero production callers ever asked for `"EMA"` or `"RSI"` — `AnalysisScheduler.java:457` is the only `IndicatorService.calculate` caller and it hardcodes `"SMA"`. Stubs returning 0.0 with no callers were pure dead code; tests pinning them were maintenance overhead for no value. |
+| Re-adding later | When a strategy actually needs EMA / RSI: implement using the `SMAIndicatorImpl` ta4j pattern (real calculation, not a stub), add the `registry.put(...)` line back, write real tests (not stub-pinning). The factory comment block documents the contract. |
+| Test outcome | `IndicatorFactoryTest.EMA_and_RSI_no_longer_registered_after_gap_15_resolution` pins the new contract so anyone re-registering without removing this test gets a clear failure. |
+| Shipped | Commit `_M1.5_` (see CHANGELOG). |
+
+## 16. Documentation lag from this session's changes
+>>>>>>> Stashed changes
 
 | | |
 |---|---|

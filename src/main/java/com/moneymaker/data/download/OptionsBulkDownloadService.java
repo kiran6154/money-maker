@@ -65,6 +65,7 @@ public class OptionsBulkDownloadService {
     private final ZerodhaMarketDataService zerodhaMarketDataService;
     private final MarketDataService marketDataService;
     private final MarketDataRepository marketDataRepository;
+    private final MarketDataPersistService marketDataPersistService;
     private final AppState appState;
     private final KiteConnect sharedKiteConnect;
     private final int rangeExtension;
@@ -72,12 +73,14 @@ public class OptionsBulkDownloadService {
     public OptionsBulkDownloadService(ZerodhaMarketDataService zerodhaMarketDataService,
                                       MarketDataService marketDataService,
                                       MarketDataRepository marketDataRepository,
+                                      MarketDataPersistService marketDataPersistService,
                                       AppState appState,
                                       @Qualifier("sharedKiteConnect") KiteConnect sharedKiteConnect,
                                       @Value("${options.download.range-extension:200}") int rangeExtension) {
         this.zerodhaMarketDataService = Objects.requireNonNull(zerodhaMarketDataService);
         this.marketDataService = Objects.requireNonNull(marketDataService);
         this.marketDataRepository = Objects.requireNonNull(marketDataRepository);
+        this.marketDataPersistService = Objects.requireNonNull(marketDataPersistService);
         this.appState = Objects.requireNonNull(appState);
         this.sharedKiteConnect = Objects.requireNonNull(sharedKiteConnect);
         this.rangeExtension = rangeExtension;
@@ -129,22 +132,63 @@ public class OptionsBulkDownloadService {
         // 1) Read CSV → derive expiry + natural strike range.
         List<CsvRow> csvRows = readCsv();
         log.info("[bulk-download] CSV rows parsed: {}", csvRows.size());
+        
+        // Fetch fresh Zerodha dump early (needed regardless, and especially if CSV has no NIFTY options)
+        List<ZerodhaMarketDataService.ZerodhaInstrument> all =
+                zerodhaMarketDataService.fetchInstruments(accessToken);
+        log.info("[bulk-download] Zerodha instruments dump: {} total", all.size());
+        
+        // If CSV has no NIFTY options, derive expiry and strike range from the fresh Zerodha dump
+        LocalDate expiry;
+        int csvMinStrike, csvMaxStrike;
+        List<CsvRow> rowsForExpiry = new ArrayList<>();
+        
         if (csvRows.isEmpty()) {
-            log.warn("instruments.csv is empty or could not be read — nothing to download");
-            return emptySummary(null);
+            log.warn("[bulk-download] CSV has no NIFTY options; deriving from Zerodha instruments dump");
+            // Derive expiry from Zerodha dump
+            Set<LocalDate> expiryDates = all.stream()
+                    .filter(i -> "CE".equals(i.getInstrumentType()) || "PE".equals(i.getInstrumentType()))
+                    .filter(this::isPlainNiftyOption)
+                    .map(i -> parseExpiryDate(i.getExpiry()))
+                    .filter(d -> d != null && !d.isBefore(toDate))
+                    .collect(Collectors.toSet());
+            expiry = expiryDates.stream().min(Comparator.naturalOrder()).orElse(null);
+            
+            // Derive strike range from Zerodha dump for the selected expiry
+            if (expiry != null) {
+                csvMinStrike = all.stream()
+                        .filter(i -> "CE".equals(i.getInstrumentType()) || "PE".equals(i.getInstrumentType()))
+                        .filter(this::isPlainNiftyOption)
+                        .filter(i -> matchesExpiry(i.getExpiry(), expiry))
+                        .mapToInt(i -> (int) Math.round(i.getStrike()))
+                        .min()
+                        .orElse(0);
+
+                csvMaxStrike = all.stream()
+                        .filter(i -> "CE".equals(i.getInstrumentType()) || "PE".equals(i.getInstrumentType()))
+                        .filter(this::isPlainNiftyOption)
+                        .filter(i -> matchesExpiry(i.getExpiry(), expiry))
+                        .mapToInt(i -> (int) Math.round(i.getStrike()))
+                        .max()
+                        .orElse(0);
+            } else {
+                csvMinStrike = -1;
+                csvMaxStrike = -1;
+            }
+        } else {
+            expiry = pickWeeklyExpiry(csvRows, toDate);
+            rowsForExpiry = csvRows.stream()
+                    .filter(r -> r.expiry.equals(expiry))
+                    .toList();
+            csvMinStrike = rowsForExpiry.stream().mapToInt(r -> r.strike).min().orElse(-1);
+            csvMaxStrike = rowsForExpiry.stream().mapToInt(r -> r.strike).max().orElse(-1);
         }
-        LocalDate expiry = pickWeeklyExpiry(csvRows, fromDate);
-        log.info("[bulk-download] picked expiry={} (from {} CSV rows, fromDate={})", expiry, csvRows.size(), fromDate);
+        
+        log.info("[bulk-download] picked expiry={} (toDate={})", expiry, toDate);
         if (expiry == null) {
             return emptySummary(null);
         }
-        List<CsvRow> rowsForExpiry = csvRows.stream()
-                .filter(r -> r.expiry.equals(expiry))
-                .toList();
-        int csvMinStrike = rowsForExpiry.stream().mapToInt(r -> r.strike).min().orElse(-1);
-        int csvMaxStrike = rowsForExpiry.stream().mapToInt(r -> r.strike).max().orElse(-1);
-        log.info("[bulk-download] CSV rows for expiry {}: {} (strikes {}..{})",
-                expiry, rowsForExpiry.size(), csvMinStrike, csvMaxStrike);
+        log.info("[bulk-download] strike range: {}..{}", csvMinStrike, csvMaxStrike);
         if (csvMinStrike < 0 || csvMaxStrike < 0) {
             return emptySummary(expiry);
         }
@@ -152,10 +196,8 @@ public class OptionsBulkDownloadService {
         int extendedMax = csvMaxStrike + rangeExtension;
         log.info("[bulk-download] extended strike range: {}..{} (margin={})", extendedMin, extendedMax, rangeExtension);
 
-        // 2) Fetch fresh Zerodha dump → filter to NIFTY CE/PE at this expiry within extended range.
-        List<ZerodhaMarketDataService.ZerodhaInstrument> all =
-                zerodhaMarketDataService.fetchInstruments(accessToken);
-        log.info("[bulk-download] Zerodha instruments dump: {} total", all.size());
+        // 2) Use the already-fetched Zerodha dump to filter targets
+        // (removed duplicate fetch below)
 
         // Diagnostic: pick any CE/PE in the dump (no name filter) so we can see
         // what the live dump's name/expiry format actually looks like.
@@ -191,9 +233,10 @@ public class OptionsBulkDownloadService {
         }
 
         // 3) Fetch historical candles per instrument per interval and persist.
-        Set<Integer> intervals = SharedData.allTimeFrameMap != null && !SharedData.allTimeFrameMap.isEmpty()
-                ? SharedData.allTimeFrameMap.keySet()
-                : Set.of(5);
+        // Only fetch and persist the 5-minute timeframe to avoid multi-interval transaction errors
+        // observed on other intervals (we'll keep the default as 5). If you later want to
+        // enable more intervals, restore the SharedData-based logic.
+        Set<Integer> intervals = Set.of(5);
 
         LocalDateTime windowFrom = fromDate.atStartOfDay();
         LocalDateTime windowTo   = toDate.atTime(LocalTime.MAX);
@@ -209,20 +252,17 @@ public class OptionsBulkDownloadService {
                 String interval = minutes + "minute";
                 try {
                     // Delete-then-insert keeps the load idempotent.
-                    marketDataRepository.deleteByInstrumenttokenAndTimestampBetween(token, windowFrom, windowTo);
-
                     List<MarketData> candles = marketDataService.fetchHistoricalData(token, windowFrom, windowTo, interval);
                     if (candles == null || candles.isEmpty()) {
                         log.debug("[bulk-download] no candles returned for {} {} (token={})",
                                 inst.getTradingsymbol(), interval, token);
                         continue;
                     }
-                    for (MarketData md : candles) {
-                        md.setInstrumenttoken(token);
-                    }
-                    marketDataRepository.saveAll(candles);
-                    totalCandles += candles.size();
-                    savedForThisInstrument += candles.size();
+
+                    // Persist within its own transaction to avoid EntityManager scope issues
+                    int saved = marketDataPersistService.persistCandles(token, candles, windowFrom, windowTo);
+                    totalCandles += saved;
+                    savedForThisInstrument += saved;
                 } catch (Exception ex) {
                     log.error("[bulk-download] fetch/save failed for token={} symbol={} interval={} : {}",
                             token, inst.getTradingsymbol(), interval, ex.getMessage());
@@ -257,13 +297,18 @@ public class OptionsBulkDownloadService {
                 StandardCharsets.UTF_8))) {
 
             String header = reader.readLine(); // discard
+            log.debug("[bulk-download] CSV header: {}", header);
             String line;
+            int lineNum = 0;
             while ((line = reader.readLine()) != null) {
+                lineNum++;
                 if (line.isBlank()) continue;
                 CsvRow row = parseCsvLine(line);
                 if (row != null) rows.add(row);
             }
+            log.info("[bulk-download] read CSV: {} total lines, {} parsed rows", lineNum, rows.size());
         } catch (Exception ex) {
+            log.warn("[bulk-download] failed to read instruments.csv from primary path: {}, trying fallback...", ex.getMessage());
             // Fallback: try without classpath prefix (the file currently lives next to the Java source,
             // not under resources). Tolerate either layout.
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(
@@ -271,13 +316,16 @@ public class OptionsBulkDownloadService {
                     StandardCharsets.UTF_8))) {
                 reader.readLine();
                 String line;
+                int lineNum = 0;
                 while ((line = reader.readLine()) != null) {
+                    lineNum++;
                     if (line.isBlank()) continue;
                     CsvRow row = parseCsvLine(line);
                     if (row != null) rows.add(row);
                 }
+                log.info("[bulk-download] read CSV (fallback): {} total lines, {} parsed rows", lineNum, rows.size());
             } catch (Exception ignored) {
-                log.warn("Failed to read instruments.csv from classpath: {}", ex.getMessage());
+                log.error("[bulk-download] failed to read instruments.csv from both paths");
             }
         }
         return rows;
@@ -285,26 +333,69 @@ public class OptionsBulkDownloadService {
 
     private CsvRow parseCsvLine(String line) {
         String[] parts = line.split(",");
-        if (parts.length < 10) return null;
+        if (parts.length < 10) {
+            log.debug("[bulk-download] CSV line has < 10 parts ({}): {}", parts.length, line);
+            return null;
+        }
         try {
-            String name        = parts[3];
-            LocalDate expiry   = LocalDate.parse(parts[5], CSV_DATE);
-            int strike         = (int) Double.parseDouble(parts[6]);
-            String optionType  = parts[9];
-            if (!"NIFTY".equalsIgnoreCase(name)) return null;
-            if (!"CE".equals(optionType) && !"PE".equals(optionType)) return null;
+            // Column indices (from Zerodha instruments.csv):
+            // 0: instrument_token, 1: exchange_token, 2: tradingsymbol, 3: name,
+            // 4: last_price, 5: expiry, 6: strike, 7: tick_size, 8: lot_size, 
+            // 9: instrument_type, 10: segment, 11: exchange
+            
+            String optionType  = parts[9].trim();  // Must be CE or PE
+            if (!"CE".equals(optionType) && !"PE".equals(optionType)) {
+                return null; // Skip non-options (EQ, FUT, etc.)
+            }
+            
+            String name        = parts[3].trim();
+            String expiryStr   = parts[5].trim();
+            
+            // Skip if expiry is empty (not an option)
+            if (expiryStr.isEmpty()) {
+                log.debug("[bulk-download] skipping option with empty expiry: {}", line);
+                return null;
+            }
+            
+            if (!"NIFTY".equalsIgnoreCase(name)) {
+                log.debug("[bulk-download] skipping non-NIFTY option: name={}", name);
+                return null;
+            }
+            
+            LocalDate expiry   = LocalDate.parse(expiryStr, CSV_DATE);
+            int strike         = (int) Double.parseDouble(parts[6].trim());
+            
+            log.debug("[bulk-download] parsed CSV row: name={}, expiry={}, strike={}, optionType={}", 
+                    name, expiry, strike, optionType);
             return new CsvRow(name, expiry, strike, optionType);
         } catch (Exception ex) {
+            log.debug("[bulk-download] failed to parse CSV line: {} (error: {})", line, ex.getMessage());
             return null;
         }
     }
 
     /** Earliest expiry in the CSV that is on or after {@code reference} (i.e. not in the past). */
     private LocalDate pickWeeklyExpiry(List<CsvRow> rows, LocalDate reference) {
-        return rows.stream()
+        // Log all unique expiries for debugging
+        Set<LocalDate> uniqueExpiries = rows.stream()
+                .map(r -> r.expiry)
+                .collect(Collectors.toSet());
+        log.info("[bulk-download] unique expiries in CSV: {}", uniqueExpiries);
+        
+        var onOrAfter = rows.stream()
                 .map(r -> r.expiry)
                 .filter(d -> !d.isBefore(reference))
-                .min(Comparator.naturalOrder())
+                .min(Comparator.naturalOrder());
+        
+        if (onOrAfter.isPresent()) {
+            return onOrAfter.get();
+        }
+        
+        // Fallback: pick the latest available expiry if none are on or after reference
+        log.warn("[bulk-download] no expiry on or after {} found, falling back to latest available expiry", reference);
+        return rows.stream()
+                .map(r -> r.expiry)
+                .max(Comparator.naturalOrder())
                 .orElse(null);
     }
 
@@ -358,6 +449,24 @@ public class OptionsBulkDownloadService {
     private boolean matchesExpiry(String dumpExpiry, LocalDate target) {
         if (dumpExpiry == null || target == null) return false;
         return dumpExpiry.startsWith(target.toString());
+    }
+
+    /**
+     * Parses an expiry date from Zerodha dump format (yyyy-MM-dd or similar).
+     */
+    private LocalDate parseExpiryDate(String expiryStr) {
+        if (expiryStr == null || expiryStr.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            // Handle yyyy-MM-dd format (or yyyy-MM-ddTHH:mm:ss by taking prefix)
+            if (expiryStr.length() >= 10) {
+                return LocalDate.parse(expiryStr.substring(0, 10));
+            }
+        } catch (Exception ex) {
+            log.debug("[bulk-download] failed to parse expiry date: {}", expiryStr);
+        }
+        return null;
     }
 
     private record CsvRow(String name, LocalDate expiry, int strike, String optionType) {}
