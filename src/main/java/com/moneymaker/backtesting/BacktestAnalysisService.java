@@ -40,6 +40,7 @@ public class BacktestAnalysisService {
     private final KiteConnect sharedKiteConnect;
     private final NotificationService notifier;
     private final BacktestMarketDataCache marketDataCache;
+    private final EodDowntrendDetectionService eodDowntrendDetectionService;
 
     public BacktestAnalysisService(
             TradeConfigScheduler tradeConfigScheduler,
@@ -51,7 +52,8 @@ public class BacktestAnalysisService {
             BrokerSessionStore brokerSessionStore,
             @Qualifier("sharedKiteConnect") KiteConnect sharedKiteConnect,
             NotificationService notifier,
-            BacktestMarketDataCache marketDataCache) {
+            BacktestMarketDataCache marketDataCache,
+            EodDowntrendDetectionService eodDowntrendDetectionService) {
         this.tradeConfigScheduler = tradeConfigScheduler;
         this.analysisScheduler = analysisScheduler;
         this.orderScheduler = orderScheduler;
@@ -62,6 +64,7 @@ public class BacktestAnalysisService {
         this.sharedKiteConnect = sharedKiteConnect;
         this.notifier = notifier;
         this.marketDataCache = marketDataCache;
+        this.eodDowntrendDetectionService = eodDowntrendDetectionService;
     }
 
     public BacktestRunResult run(LocalDate fromDate, LocalDate toDate) {
@@ -155,6 +158,16 @@ public class BacktestAnalysisService {
                     }
                 } catch (Exception ex) {
                     log.error("[Backtest] {} — force-close at end-of-day failed", currentDate, ex);
+                }
+
+                // End-of-day downtrend detection — auto-generates next-day
+                // trade_config rows for every sma_downtrend_rule that passes.
+                // Backtest-only today (no live scheduler wired). Idempotent:
+                // skipped if AUTO_DOWNTREND rows already exist for the next day.
+                try {
+                    eodDowntrendDetectionService.runForDay(currentDate);
+                } catch (Exception ex) {
+                    log.error("[Backtest] {} — EOD downtrend detection failed", currentDate, ex);
                 }
 
                 rowsAfter = countTradeOrdersOnDate(currentDate);
