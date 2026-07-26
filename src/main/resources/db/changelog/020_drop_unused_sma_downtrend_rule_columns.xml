@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      Slim sma_downtrend_rule to detection-only columns.
+
+      The dropped fields fall into two buckets:
+        * sma, time_period, moneyness, depth — replaced by hardcoded grid
+          (SMA_PERIODS × TIMEFRAMES_MINUTES) and ATM-only strike selection
+          in EodDowntrendDetectionService.
+        * max_loss, lot_quantity, transaction_type, no_of_trades,
+          no_of_parrellel_trades — these were duplicates of trade_config
+          columns. They now live as per-strategy defaults in
+          EodDowntrendDetectionService.strategyDefaults(int).
+
+      See docs/EOD_DOWNTREND.md (§ "What lives in the rules table vs. what
+      lives in code").
+    -->
+    <changeSet id="020_drop_unused_sma_downtrend_rule_columns" author="moneymaker">
+        <dropColumn tableName="sma_downtrend_rule" columnName="sma"/>
+        <dropColumn tableName="sma_downtrend_rule" columnName="time_period"/>
+        <dropColumn tableName="sma_downtrend_rule" columnName="moneyness"/>
+        <dropColumn tableName="sma_downtrend_rule" columnName="depth"/>
+        <dropColumn tableName="sma_downtrend_rule" columnName="max_loss"/>
+        <dropColumn tableName="sma_downtrend_rule" columnName="lot_quantity"/>
+        <dropColumn tableName="sma_downtrend_rule" columnName="transaction_type"/>
+        <dropColumn tableName="sma_downtrend_rule" columnName="no_of_trades"/>
+        <dropColumn tableName="sma_downtrend_rule" columnName="no_of_parrellel_trades"/>
+    </changeSet>
+
+</databaseChangeLog>

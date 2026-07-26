@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      Tags how a trade_config row was created:
+        - 'MANUAL'         : human-inserted via UI / SQL (default for legacy rows)
+        - 'AUTO_DOWNTREND' : inserted by EodDowntrendDetectionService for next day
+      Used by the EOD generator to dedupe its own output across repeated backtest runs.
+    -->
+    <changeSet id="019_add_source_to_trade_config" author="moneymaker">
+        <addColumn tableName="trade_config">
+            <column name="source" type="VARCHAR(32)" defaultValue="MANUAL">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>
