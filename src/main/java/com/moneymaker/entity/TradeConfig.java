@@ -63,7 +63,12 @@ public class TradeConfig {
     @Column(name = "atm_depth")
     private Integer atmDepth;
 
-    // Getters and setters
-    // (Omitted for brevity)
+    /**
+     * Origin marker. {@code MANUAL} = inserted by hand (default). {@code AUTO_DOWNTREND}
+     * = inserted by {@code EodDowntrendDetectionService} for the next trading day.
+     * Used by the EOD generator to dedupe its own output across repeated backtest runs.
+     */
+    @Column(name = "source", nullable = false)
+    private String source;
 }
 

@@ -245,6 +245,7 @@ return tradeConfigCombinedDTOList;
         tc.setItmDepth(toInteger(row[i++]));
         tc.setOtmDepth(toInteger(row[i++]));
         tc.setAtmDepth(toInteger(row[i++]));
+        tc.setSource(ConverterUtility.toString(row[i++])); // source (MANUAL / AUTO_DOWNTREND)
 
 
         // Instrument will be set separately by mapToInstrument
@@ -252,8 +253,8 @@ return tradeConfigCombinedDTOList;
     }
 
     private Instrument mapToInstrument(Object[] row, TradeConfig tc) {
-        // Instrument starts after TradeConfig fields (0-11)
-        int i = 16;  // Starting index for Instrument fields
+        // Instrument starts after TradeConfig fields (0..16 incl. source)
+        int i = 17;  // Starting index for Instrument fields
         Instrument ins = new Instrument();
         ins.setId(toInteger(row[i++])); // id
         ins.setInsName(ConverterUtility.toString(row[i++])); // ins_name
@@ -266,8 +267,8 @@ return tradeConfigCombinedDTOList;
     }
 
     private InstrumentDetails mapToInstrumentDetails(Object[] row, TradeConfig tc, Instrument ins) {
-        // InstrumentDetails starts after TradeConfig (12) and Instrument (5) fields
-        int i = 21;  // Starting index for InstrumentDetails fields
+        // InstrumentDetails starts after TradeConfig (17 incl. source) and Instrument (5) fields
+        int i = 22;  // Starting index for InstrumentDetails fields
         InstrumentDetails id = new InstrumentDetails();
         id.setInstrumentToken(toInteger(row[i++])); // instrument_token
         id.setExchangeToken(toInteger(row[i++])); // exchange_token

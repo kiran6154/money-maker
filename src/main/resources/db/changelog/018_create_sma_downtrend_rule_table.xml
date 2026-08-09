@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      End-of-day downtrend detection rules. One row per
+      (strategy_id, sma, time_period, moneyness) combination the user wants
+      monitored. Static across days — edited only when the trading strategy
+      itself changes. See docs/EOD_DOWNTREND.md.
+
+      NOTE: this is the original/fat shape so the recorded checksum matches.
+      Columns sma, time_period, moneyness, depth, max_loss, lot_quantity,
+      transaction_type, no_of_trades, no_of_parrellel_trades are dropped by
+      changeset 020. Read 018 + 020 together to see the table's current shape;
+      the JPA entity SmaDowntrendRule reflects the post-020 state.
+    -->
+    <changeSet id="018_create_sma_downtrend_rule_table" author="moneymaker">
+        <createTable tableName="sma_downtrend_rule">
+            <column name="id" type="INT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+
+            <!-- which strategy this rule auto-generates configs for -->
+            <column name="strategy_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- underlying whose strikes we monitor and whose ATR drives target/sl -->
+            <column name="instrument_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- SMA period and candle timeframe under test -->
+            <column name="sma" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="time_period" type="INT">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- ITM / ATM / OTM + depth (e.g. ITM depth=1 = first in-the-money strike) -->
+            <column name="moneyness" type="VARCHAR(8)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="depth" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- max #candles where curr_sma >= prev_sma before the day is no longer 'downtrending' -->
+            <column name="max_deviation" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- counter begins at the first candle whose timestamp is >= start_time -->
+            <column name="start_time" type="TIME" defaultValue="09:20:00">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- ATR(N) of the underlying drives target/stop_loss for the auto-config -->
+            <column name="atr_periods" type="INT" defaultValueNumeric="14">
+                <constraints nullable="false"/>
+            </column>
+            <column name="target_multiplier" type="DECIMAL(10,4)" defaultValueNumeric="1.0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sl_multiplier" type="DECIMAL(10,4)" defaultValueNumeric="1.0">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- fixed fields copied verbatim into the generated trade_config -->
+            <column name="max_loss" type="DECIMAL(19,2)" defaultValueNumeric="200"/>
+            <column name="lot_quantity" type="INT" defaultValueNumeric="1"/>
+            <column name="transaction_type" type="VARCHAR(16)" defaultValue="SELL"/>
+            <column name="no_of_trades" type="INT" defaultValueNumeric="1"/>
+            <column name="no_of_parrellel_trades" type="INT" defaultValueNumeric="1"/>
+
+            <column name="enabled" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="sma_downtrend_rule"
+                                 baseColumnNames="instrument_id"
+                                 referencedTableName="instrument"
+                                 referencedColumnNames="id"
+                                 constraintName="fk_sma_downtrend_rule_instrument"/>
+    </changeSet>
+
+</databaseChangeLog>

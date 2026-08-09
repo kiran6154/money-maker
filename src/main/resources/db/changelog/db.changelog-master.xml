@@ -21,6 +21,10 @@
     <include file="db/changelog/013_add_sma_value20_to_market_data.xml"/>
     <include file="db/changelog/014_add_entry_reason_to_trade_order.xml"/>
     <include file="db/changelog/015_add_strategy_id_to_trade_order.xml"/>
+    <include file="db/changelog/018_create_sma_downtrend_rule_table.xml"/>
+    <include file="db/changelog/019_add_source_to_trade_config.xml"/>
+    <include file="db/changelog/020_drop_unused_sma_downtrend_rule_columns.xml"/>
+    <include file="db/changelog/021_create_index_data_table.xml"/>
     <include file="db/changelog/018_create_historical_chart_tables.xml"/>
 
 </databaseChangeLog>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="021_create_index_data_table" author="moneymaker">
+        <createTable tableName="index_data">
+            <column name="id" type="INT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="symbol" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="instrument_token" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="timeframe" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="timestamp" type="DATETIME">
+                <constraints nullable="false"/>
+            </column>
+            <column name="open" type="DECIMAL(10,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="high" type="DECIMAL(10,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="low" type="DECIMAL(10,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="close" type="DECIMAL(10,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="DATETIME" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex indexName="idx_index_data_symbol_tf_ts" tableName="index_data">
+            <column name="symbol"/>
+            <column name="timeframe"/>
+            <column name="timestamp"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

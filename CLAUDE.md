@@ -82,6 +82,7 @@ When changing anything in these areas, **read the relevant doc first**:
 | Orders + position monitoring | [`docs/ORDERS_AND_POSITIONS.md`](docs/ORDERS_AND_POSITIONS.md) | Order lifecycle, dedupe rules, broker factories, peak / SL / target tracking, `trade_order` columns |
 | Broker rate limiting + retry | [`docs/RATE_LIMITING.md`](docs/RATE_LIMITING.md) | Resilience4j wiring, the cache / reshape PR roadmap |
 | Telegram alerts + dedupe | [`docs/NOTIFICATIONS.md`](docs/NOTIFICATIONS.md) | `NotificationService` facade, `sendIfChanged` / `sendThrottled`, backtest gate |
+| EOD downtrend auto-config | [`docs/EOD_DOWNTREND.md`](docs/EOD_DOWNTREND.md) | `sma_downtrend_rule` table, end-of-day detector, `trade_config.source` marker, extension hooks |
 
 If you add a doc, link it here. If you change behaviour described in a doc, update the doc in the same PR — see the next section.
 
