@@ -17,6 +17,21 @@ public interface ExpiryDatesRepository extends JpaRepository<ExpiryDates, Intege
             LocalDate expiryDate
     );
 
+    List<ExpiryDates> findByInstrumentAndExpiryDateGreaterThanEqualOrderByExpiryDateAsc(
+            Instrument instrument,
+            LocalDate expiryDate
+    );
+
+    /**
+     * Future expiries across every instrument. The future chart resolver can
+     * use this when no symbol/index discriminator exists on expiry_dates and
+     * it needs to apply weekday rules (Tuesday for NIFTY, Wednesday for
+     * BANKNIFTY) itself.
+     */
+    List<ExpiryDates> findByExpiryDateGreaterThanEqualOrderByExpiryDateAsc(
+            LocalDate expiryDate
+    );
+
     List<ExpiryDates> findByInstrumentAndExpiryDateBetween(
             Instrument instrument,
             LocalDate from,

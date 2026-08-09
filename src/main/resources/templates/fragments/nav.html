@@ -15,6 +15,7 @@
     </button>
     <div id="primaryNavLinks" class="nav-links">
         <a th:href="@{/}"         class="nav-link" th:classappend="${activePage == 'dashboard'} ? ' active'">Dashboard</a>
+        <a th:href="@{/charts/dashboard}" class="nav-link" th:classappend="${activePage == 'charts'} ? ' active'">Charts</a>
         <!-- One canonical login entry: visible only when not logged in. Once authenticated
              the user navigates via the dashboard / logout button below. -->
         <a th:href="@{/login}"    class="nav-link" th:classappend="${activePage == 'login'} ? ' active'"

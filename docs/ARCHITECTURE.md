@@ -1,6 +1,6 @@
 # Architecture
 
-How the packages in `com.moneymaker.*` fit together. This is the "wiring diagram" companion to [`Readme.md`](../Readme.md). For deeper drills see [`LOGIN_FLOW.md`](LOGIN_FLOW.md), [`HEARTBEAT.md`](HEARTBEAT.md), [`BACKTESTING.md`](BACKTESTING.md).
+How the packages in `com.moneymaker.*` fit together. This is the "wiring diagram" companion to [`Readme.md`](../Readme.md). For deeper drills see [`LOGIN_FLOW.md`](LOGIN_FLOW.md), [`HEARTBEAT.md`](HEARTBEAT.md), [`BACKTESTING.md`](BACKTESTING.md), and [`CHART_DASHBOARD.md`](CHART_DASHBOARD.md).
 
 ---
 
@@ -95,6 +95,75 @@ How the packages in `com.moneymaker.*` fit together. This is the "wiring diagram
 2. Runner sorts all `BacktestStep` beans by `order()` and executes sequentially.
 3. `LoginStep` (order 0) calls `LoginOrchestrator.ensureLoggedIn()` — exactly what live does.
 4. First failure → remaining steps marked `SKIPPED`; report returned to caller.
+
+---
+
+## Chart Dashboard
+
+For the full request/response flow, repository usage, ATM logic, expiry rules,
+frontend rendering behavior, and debugging checklist, see
+[`CHART_DASHBOARD.md`](CHART_DASHBOARD.md).
+
+### Routes
+
+- Page route: `GET /charts/dashboard`
+- Data API: `GET /api/charts/market-data`
+
+### Request parameters
+
+- `date`
+- `dataSource`
+- `indexSymbol`
+- `chartType`
+- `timeframe`
+- `smaPeriods`
+
+### Supported values
+
+- `indexSymbol`: `NIFTY`, `BANKNIFTY`
+- `dataSource`: `HISTORICAL_ICICI`, `TOKEN_BASED`
+- `chartType`: `UNDERLYING`, `CE`, `PE`
+- `timeframe`: `5m`, `10m`, `15m`
+- `smaPeriods`: `20`, `50`, `100`, `200`, `500`
+
+### Data source
+
+- `TOKEN_BASED` uses the existing `market_data` and token metadata path.
+- `HISTORICAL_ICICI` uses `historical_spot_candles` and `historical_option_candles`.
+- `5m` uses raw 5-minute candles directly.
+- `10m` and `15m` are aggregated from the 5-minute candles.
+- SMA overlays are computed at runtime from 5-minute candle closes with
+  prior-day lookback, then projected onto aggregated charts.
+
+### Expiry and ATM rules
+
+- `TOKEN_BASED` uses `expiry_dates` for expiry lookup.
+- `HISTORICAL_ICICI` derives available expiries from `historical_option_candles`.
+- The nearest expiry date greater than or equal to the selected date is chosen.
+- Token-based NIFTY weekly expiry is Tuesday.
+- Token-based BANKNIFTY weekly expiry is Wednesday.
+- ATM rounding:
+  - `NIFTY` -> nearest `50`
+  - `BANKNIFTY` -> nearest `100`
+- Token-based CE/PE resolution uses `instrument_details` metadata.
+- Historical CE/PE resolution uses `stock_code`, `expiry_date`, `strike_price`, and `right`.
+
+### No-data behavior
+
+- Empty data is returned safely from the API when candles, expiry, or option metadata cannot be resolved.
+- The UI shows a no-data message instead of failing.
+
+### Example API requests
+
+- `GET /api/charts/market-data?date=2024-06-06&dataSource=HISTORICAL_ICICI&indexSymbol=NIFTY&chartType=UNDERLYING&timeframe=5m&smaPeriods=20,50,100,200,500`
+- `GET /api/charts/market-data?date=2024-06-06&dataSource=TOKEN_BASED&indexSymbol=NIFTY&chartType=CE&timeframe=10m&smaPeriods=20,50`
+- `GET /api/charts/market-data?date=2024-06-06&dataSource=HISTORICAL_ICICI&indexSymbol=BANKNIFTY&chartType=PE&timeframe=15m&smaPeriods=20,50,100`
+
+### Current limitations
+
+- Token-based CE/PE results depend on correct `instrument_details` metadata.
+- Token-based expiry lookup depends on populated `expiry_dates`.
+- Historical results depend on imported ICICI spot and option CSV data.
 
 ---
 

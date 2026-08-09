@@ -45,4 +45,26 @@ public interface InstrumentDetailsRepository extends JpaRepository<InstrumentDet
             @Param("strike") BigDecimal strike,
             @Param("instrumentType") String instrumentType
     );
+
+    /**
+     * Same lookup shape as {@link #findByCriteria(String, String, BigDecimal, String)},
+     * but returns the first deterministic candidate directly for read-only chart
+     * use cases that only need one token.
+     */
+    @Query(value = """
+        SELECT *
+        FROM instrument_details i
+        WHERE LOWER(i.tradingsymbol) LIKE LOWER(CONCAT(:symbol, '%'))
+          AND i.expiry = :expiry
+          AND i.strike = :strike
+          AND i.instrument_type = :instrumentType
+        ORDER BY i.instrument_token ASC
+        LIMIT 1
+    """, nativeQuery = true)
+    Optional<InstrumentDetails> findFirstByCriteria(
+            @Param("symbol") String symbol,
+            @Param("expiry") String expiry,
+            @Param("strike") BigDecimal strike,
+            @Param("instrumentType") String instrumentType
+    );
 }

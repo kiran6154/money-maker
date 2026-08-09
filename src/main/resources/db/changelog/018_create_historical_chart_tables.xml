@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="018_create_historical_spot_candles" author="moneymaker">
+        <createTable tableName="historical_spot_candles">
+            <column name="id" type="INT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="datetime" type="DATETIME">
+                <constraints nullable="false"/>
+            </column>
+            <column name="stock_code" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="exchange_code" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="open" type="DECIMAL(12,4)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="high" type="DECIMAL(12,4)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="low" type="DECIMAL(12,4)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="close" type="DECIMAL(12,4)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="volume" type="BIGINT"/>
+        </createTable>
+
+        <addUniqueConstraint
+                tableName="historical_spot_candles"
+                columnNames="stock_code, exchange_code, datetime"
+                constraintName="uk_historical_spot_series_time"/>
+
+        <createIndex tableName="historical_spot_candles" indexName="idx_historical_spot_lookup">
+            <column name="stock_code"/>
+            <column name="exchange_code"/>
+            <column name="datetime"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="018_create_historical_option_candles" author="moneymaker">
+        <createTable tableName="historical_option_candles">
+            <column name="id" type="INT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="datetime" type="DATETIME">
+                <constraints nullable="false"/>
+            </column>
+            <column name="stock_code" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="exchange_code" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="expiry_date" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="strike_price" type="DECIMAL(12,4)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="option_right" type="VARCHAR(2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="open" type="DECIMAL(12,4)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="high" type="DECIMAL(12,4)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="low" type="DECIMAL(12,4)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="close" type="DECIMAL(12,4)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="volume" type="BIGINT"/>
+            <column name="open_interest" type="BIGINT"/>
+        </createTable>
+
+        <addUniqueConstraint
+                tableName="historical_option_candles"
+                columnNames="stock_code, exchange_code, expiry_date, strike_price, option_right, datetime"
+                constraintName="uk_historical_option_series_time"/>
+
+        <createIndex tableName="historical_option_candles" indexName="idx_historical_option_lookup">
+            <column name="stock_code"/>
+            <column name="exchange_code"/>
+            <column name="expiry_date"/>
+            <column name="strike_price"/>
+            <column name="option_right"/>
+            <column name="datetime"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

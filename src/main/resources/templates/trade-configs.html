@@ -15,6 +15,20 @@
         }
         .tc-toolbar .form-row { margin-bottom: 0; min-width: 160px; }
         .tc-toolbar .spacer    { flex: 1; }
+        .tc-date-control {
+            display: grid;
+            grid-template-columns: 34px minmax(140px, 1fr) 34px auto;
+            gap: 6px;
+            align-items: center;
+        }
+        .tc-date-step,
+        .tc-date-today {
+            min-height: 38px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            justify-content: center;
+        }
+        .tc-date-step { width: 34px; }
 
         .tc-form-grid {
             display: grid;
@@ -113,6 +127,11 @@
         .form-card-actions {
             display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px;
         }
+        .tc-context-note {
+            color: var(--text-muted);
+            font-size: 12px;
+            margin: -4px 0 12px;
+        }
 
         .pill-tf {
             display: inline-block;
@@ -153,7 +172,12 @@
         <div class="tc-toolbar">
             <div class="form-row">
                 <label for="tc-filter-date">Trading date</label>
-                <input id="tc-filter-date" type="date" class="form-control" />
+                <div class="tc-date-control">
+                    <button id="tc-prev-date" class="btn btn-ghost tc-date-step" type="button" title="Previous day">&lt;</button>
+                    <input id="tc-filter-date" type="date" class="form-control" />
+                    <button id="tc-next-date" class="btn btn-ghost tc-date-step" type="button" title="Next day">&gt;</button>
+                    <button id="tc-today-date" class="btn btn-ghost tc-date-today" type="button">Today</button>
+                </div>
             </div>
             <div class="form-row">
                 <label for="tc-page-size">Rows per page</label>
@@ -181,6 +205,7 @@
         <div id="tc-form-alert" class="inline-alert" style="display:none;"></div>
 
         <input type="hidden" id="tc-id" />
+        <p id="tc-context-note" class="tc-context-note"></p>
 
         <div class="tc-section-title">Core</div>
         <div class="tc-form-grid">
@@ -273,6 +298,7 @@
 
         <div class="form-card-actions">
             <button id="tc-save" class="btn btn-primary" type="button">💾 Save</button>
+            <button id="tc-save-similar" class="btn btn-ghost" type="button">Save + New Similar</button>
             <button id="tc-cancel" class="btn btn-ghost" type="button">Cancel</button>
         </div>
     </div>
@@ -322,6 +348,11 @@
 <script th:inline="javascript">
 (function () {
     // ---------- state ----------
+    const LS_PREFIX = 'mm.tradeConfigs.';
+    const LS_KEYS = {
+        filterDate: LS_PREFIX + 'filterDate',
+        pageSize: LS_PREFIX + 'pageSize'
+    };
     const state = {
         page: 0,
         size: 10,
@@ -334,6 +365,9 @@
     // ---------- elements ----------
     const els = {
         filterDate:   document.getElementById('tc-filter-date'),
+        prevDate:     document.getElementById('tc-prev-date'),
+        nextDate:     document.getElementById('tc-next-date'),
+        todayDate:    document.getElementById('tc-today-date'),
         pageSize:     document.getElementById('tc-page-size'),
         clearFilter:  document.getElementById('tc-clear-filter'),
         refresh:      document.getElementById('tc-refresh'),
@@ -343,6 +377,7 @@
         formTitle:    document.getElementById('tc-form-title'),
         formMode:     document.getElementById('tc-form-mode'),
         formAlert:    document.getElementById('tc-form-alert'),
+        contextNote:  document.getElementById('tc-context-note'),
 
         id:           document.getElementById('tc-id'),
         instrument:   document.getElementById('tc-instrument'),
@@ -364,6 +399,7 @@
         tfEmpty:      document.getElementById('tc-tf-empty'),
         addTf:        document.getElementById('tc-add-tf'),
         save:         document.getElementById('tc-save'),
+        saveSimilar:  document.getElementById('tc-save-similar'),
         cancel:       document.getElementById('tc-cancel'),
 
         table:        document.getElementById('tc-table'),
@@ -376,7 +412,7 @@
     };
 
     // ---------- helpers ----------
-    const today = () => new Date().toISOString().slice(0, 10);
+    const today = () => localDateString(new Date());
     const fmtNum = (v) => (v === null || v === undefined || v === '') ? '—' : v;
     const setAlert = (msg, kind) => {
         if (!msg) { els.formAlert.style.display = 'none'; return; }
@@ -384,6 +420,47 @@
         els.formAlert.className = 'inline-alert ' + (kind || 'error');
         els.formAlert.style.display = '';
     };
+    function localDateString(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return year + '-' + month + '-' + day;
+    }
+    function parseDateInput(value) {
+        if (!value) return null;
+        const parts = value.split('-').map(Number);
+        if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
+        return new Date(parts[0], parts[1] - 1, parts[2]);
+    }
+    function storedValue(key) {
+        try {
+            return localStorage.getItem(key);
+        } catch (e) {
+            return null;
+        }
+    }
+    function persistState() {
+        try {
+            if (state.date) localStorage.setItem(LS_KEYS.filterDate, state.date);
+            else localStorage.removeItem(LS_KEYS.filterDate);
+            localStorage.setItem(LS_KEYS.pageSize, String(state.size));
+        } catch (e) {
+            // localStorage may be unavailable; keep the in-memory workflow alive.
+        }
+    }
+    function setFilterDate(value, reload) {
+        state.date = value || null;
+        els.filterDate.value = state.date || '';
+        state.page = 0;
+        persistState();
+        if (reload) loadList();
+    }
+    function stepFilterDate(days) {
+        const current = parseDateInput(els.filterDate.value || state.date || today());
+        if (!current) return;
+        current.setDate(current.getDate() + days);
+        setFilterDate(localDateString(current), true);
+    }
 
     // ---------- dropdown bootstrapping ----------
     async function loadInstruments() {
@@ -455,25 +532,14 @@
         updateTfEmpty();
         setAlert(null);
     }
-    function openCreate() {
-        state.editingId = null;
-        els.formTitle.textContent = 'New trade config';
-        els.formMode.textContent  = 'CREATE';
-        els.formMode.className    = 'badge badge-info';
-        clearForm();
-        els.formCard.classList.remove('form-card-collapsed');
-        els.formCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        els.instrument.focus();
+    function updateContextNote(prefix) {
+        const selectedDate = els.date.value || state.date || today();
+        els.contextNote.textContent = (prefix || 'Working date') + ': ' + selectedDate;
     }
-    function openEdit(view) {
-        state.editingId = view.id;
-        els.formTitle.textContent = 'Edit trade config #' + view.id;
-        els.formMode.textContent  = 'EDIT';
-        els.formMode.className    = 'badge badge-warn';
-        clearForm();
-        els.id.value          = view.id;
+    function fillForm(view) {
+        els.id.value          = view.id ?? '';
         els.instrument.value  = view.instrumentId ?? '';
-        els.date.value        = view.tradingDate ?? today();
+        els.date.value        = view.tradingDate ?? state.date ?? today();
         els.strategy.value    = view.strategyId ?? '';
         els.side.value        = view.tradingSide ?? '';
         els.txn.value         = view.transactionType ?? '';
@@ -487,7 +553,41 @@
         els.itm.value         = view.itmDepth ?? '';
         els.atm.value         = view.atmDepth ?? '';
         els.otm.value         = view.otmDepth ?? '';
+        els.tfRows.innerHTML = '';
         (view.timeframes || []).forEach(addTimeframeRow);
+        updateTfEmpty();
+    }
+    function openCreate() {
+        state.editingId = null;
+        els.formTitle.textContent = 'New trade config';
+        els.formMode.textContent  = 'CREATE';
+        els.formMode.className    = 'badge badge-info';
+        clearForm();
+        updateContextNote('Creating for');
+        els.formCard.classList.remove('form-card-collapsed');
+        els.formCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        els.instrument.focus();
+    }
+    function openEdit(view) {
+        state.editingId = view.id;
+        els.formTitle.textContent = 'Edit trade config #' + view.id;
+        els.formMode.textContent  = 'EDIT';
+        els.formMode.className    = 'badge badge-warn';
+        clearForm();
+        fillForm(view);
+        updateContextNote('Editing date');
+        els.formCard.classList.remove('form-card-collapsed');
+        els.formCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    function openClone(view) {
+        state.editingId = null;
+        els.formTitle.textContent = 'Clone trade config #' + view.id;
+        els.formMode.textContent  = 'CLONE';
+        els.formMode.className    = 'badge badge-info';
+        clearForm();
+        fillForm(Object.assign({}, view, { id: '' }));
+        els.id.value = '';
+        updateContextNote('Cloning for');
         els.formCard.classList.remove('form-card-collapsed');
         els.formCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
@@ -497,9 +597,9 @@
     }
 
     // ---------- save ----------
-    async function save() {
+    function collectPayload() {
         const num = (el) => el.value === '' ? null : Number(el.value);
-        const payload = {
+        return {
             instrumentId:             num(els.instrument),
             tradingDate:              els.date.value || null,
             strategyId:               num(els.strategy),
@@ -517,8 +617,12 @@
             otmDepth:                 num(els.otm),
             timeframes:               collectTimeframes()
         };
+    }
+    async function save(keepSimilar) {
+        const payload = collectPayload();
         try {
             els.save.disabled = true;
+            els.saveSimilar.disabled = true;
             const url = state.editingId
                 ? '/api/trade-configs/' + state.editingId
                 : '/api/trade-configs';
@@ -533,13 +637,28 @@
                 setAlert(err.error || ('HTTP ' + r.status), 'error');
                 return;
             }
-            setAlert(state.editingId ? 'Updated.' : 'Created.', 'success');
-            closeForm();
+            const saved = await r.json();
+            if (saved && saved.tradingDate) {
+                setFilterDate(saved.tradingDate, false);
+            }
+            if (keepSimilar) {
+                state.editingId = null;
+                els.id.value = '';
+                els.formTitle.textContent = 'New trade config';
+                els.formMode.textContent  = 'CREATE';
+                els.formMode.className    = 'badge badge-info';
+                setAlert('Saved. Ready for the next similar config.', 'success');
+                updateContextNote('Creating for');
+            } else {
+                setAlert(state.editingId ? 'Updated.' : 'Created.', 'success');
+                closeForm();
+            }
             await loadList();
         } catch (e) {
             setAlert(String(e), 'error');
         } finally {
             els.save.disabled = false;
+            els.saveSimilar.disabled = false;
         }
     }
 
@@ -592,6 +711,7 @@
                 '<td>' + tfHtml + '</td>' +
                 '<td><span class="row-actions">' +
                     '<button class="icon-btn" data-edit="' + v.id + '">✎ Edit</button>' +
+                    '<button class="icon-btn" data-clone="' + v.id + '">Clone</button>' +
                     '<button class="icon-btn danger" data-delete="' + v.id + '">🗑</button>' +
                 '</span></td>';
             els.rows.appendChild(tr);
@@ -609,12 +729,18 @@
     // ---------- row actions (event delegation) ----------
     els.rows.addEventListener('click', async (ev) => {
         const editBtn = ev.target.closest('[data-edit]');
+        const cloneBtn = ev.target.closest('[data-clone]');
         const delBtn  = ev.target.closest('[data-delete]');
         if (editBtn) {
             const id = editBtn.getAttribute('data-edit');
             const r = await fetch('/api/trade-configs/' + id);
             if (!r.ok) { alert('Load failed'); return; }
             openEdit(await r.json());
+        } else if (cloneBtn) {
+            const id = cloneBtn.getAttribute('data-clone');
+            const r = await fetch('/api/trade-configs/' + id);
+            if (!r.ok) { alert('Load failed'); return; }
+            openClone(await r.json());
         } else if (delBtn) {
             await remove(delBtn.getAttribute('data-delete'));
         }
@@ -623,23 +749,24 @@
     // ---------- wire toolbar ----------
     els.addBtn.addEventListener('click', openCreate);
     els.cancel.addEventListener('click', closeForm);
-    els.save.addEventListener('click', save);
+    els.save.addEventListener('click', () => save(false));
+    els.saveSimilar.addEventListener('click', () => save(true));
     els.addTf.addEventListener('click', () => addTimeframeRow(null));
     els.refresh.addEventListener('click', loadList);
+    els.prevDate.addEventListener('click', () => stepFilterDate(-1));
+    els.nextDate.addEventListener('click', () => stepFilterDate(1));
+    els.todayDate.addEventListener('click', () => setFilterDate(today(), true));
     els.clearFilter.addEventListener('click', () => {
-        state.date = null;
-        els.filterDate.value = '';
-        state.page = 0;
-        loadList();
+        setFilterDate(null, true);
     });
     els.filterDate.addEventListener('change', () => {
-        state.date = els.filterDate.value || null;
-        state.page = 0;
-        loadList();
+        setFilterDate(els.filterDate.value || null, true);
     });
+    els.date.addEventListener('change', () => updateContextNote(state.editingId ? 'Editing date' : 'Creating for'));
     els.pageSize.addEventListener('change', () => {
         state.size = Number(els.pageSize.value) || 10;
         state.page = 0;
+        persistState();
         loadList();
     });
     els.prev.addEventListener('click', () => { if (state.page > 0) { state.page--; loadList(); } });
@@ -647,8 +774,11 @@
 
     // ---------- init ----------
     (async function init() {
-        els.filterDate.value = today();
-        state.date = els.filterDate.value;
+        const storedDate = storedValue(LS_KEYS.filterDate);
+        const storedSize = Number(storedValue(LS_KEYS.pageSize));
+        state.size = Number.isFinite(storedSize) && storedSize > 0 ? storedSize : 10;
+        els.pageSize.value = String(state.size);
+        setFilterDate(storedDate || today(), false);
         await Promise.all([loadInstruments(), loadStrategies()]);
         await loadList();
     })();

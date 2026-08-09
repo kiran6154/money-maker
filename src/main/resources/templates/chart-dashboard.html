@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Money Maker - Chart Dashboard</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}" />
+    <link rel="stylesheet" th:href="@{/css/chart-dashboard.css}" />
+</head>
+<body>
+<div th:replace="~{fragments/nav :: nav}"></div>
+
+<main class="page">
+    <section class="chart-workbench-header">
+        <div>
+            <h1 class="page-title">Chart Dashboard</h1>
+            <p class="page-subtitle">Underlying, ATM PE, and ATM CE in one fast review surface.</p>
+        </div>
+        <div class="chart-workbench-actions">
+            <button id="fullscreenChartsBtn" class="btn btn-ghost chart-icon-btn" type="button" title="Toggle fullscreen chart view">Fullscreen</button>
+        </div>
+    </section>
+
+    <section class="chart-toolbar-card" id="chartToolbarCard">
+        <div class="chart-toolbar-grid">
+            <div class="form-row">
+                <label for="chartDate">Date</label>
+                <div class="chart-date-control">
+                    <button id="prevDateBtn" class="btn btn-ghost chart-step-btn" type="button" title="Previous day">&lt;</button>
+                    <input id="chartDate" class="form-control" type="date" />
+                    <button id="nextDateBtn" class="btn btn-ghost chart-step-btn" type="button" title="Next day">&gt;</button>
+                    <button id="todayDateBtn" class="btn btn-ghost chart-today-btn" type="button">Today</button>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <label for="chartDataSource">Data Source</label>
+                <select id="chartDataSource" class="form-control">
+                    <option value="HISTORICAL_ICICI" selected>Historical ICICI</option>
+                    <option value="TOKEN_BASED">Token Based</option>
+                </select>
+            </div>
+
+            <div class="form-row">
+                <label for="chartIndexSymbol">Index</label>
+                <select id="chartIndexSymbol" class="form-control">
+                    <option value="NIFTY" selected>NIFTY</option>
+                    <option value="BANKNIFTY">BANKNIFTY</option>
+                </select>
+            </div>
+
+            <div class="form-row">
+                <label>Timeframes</label>
+                <div id="chartTimeframes" class="chart-chip-group" role="group" aria-label="Timeframes">
+                    <button class="chart-chip is-selected" type="button" data-value="5m">5m</button>
+                    <button class="chart-chip" type="button" data-value="10m">10m</button>
+                    <button class="chart-chip" type="button" data-value="15m">15m</button>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <label>SMA Periods</label>
+                <div id="chartSmaPeriods" class="chart-chip-group chart-chip-group-wide" role="group" aria-label="SMA periods">
+                    <button class="chart-chip is-selected" type="button" data-value="20">20</button>
+                    <button class="chart-chip is-selected" type="button" data-value="50">50</button>
+                    <button class="chart-chip is-selected" type="button" data-value="100">100</button>
+                    <button class="chart-chip is-selected" type="button" data-value="200">200</button>
+                    <button class="chart-chip is-selected" type="button" data-value="500">500</button>
+                </div>
+            </div>
+
+            <div class="chart-toolbar-actions">
+                <button id="refreshChartsBtn" class="btn btn-primary" type="button">Refresh</button>
+            </div>
+        </div>
+    </section>
+
+    <section class="grid-3 chart-dashboard-grid" id="chartDashboardGrid">
+        <article class="glass-card chart-pane" id="pePane">
+            <div class="card-header">
+                <h3>ATM PE</h3>
+                <span class="badge badge-info pane-timeframe-badge" id="peActiveTimeframe">5m</span>
+            </div>
+
+            <div class="chart-pane-meta" id="peMeta">
+                <span><strong>Date</strong> <span id="peSelectedDate">-</span></span>
+                <span><strong>Index</strong> <span id="peSelectedIndex">NIFTY</span></span>
+                <span><strong>Expiry</strong> <span id="peExpiryDate">-</span></span>
+                <span><strong>ATM</strong> <span id="peAtmStrike">-</span></span>
+            </div>
+
+            <div class="chart-timeframe-tabs" id="peTimeframeTabs"></div>
+            <div class="chart-sma-legend" id="peSmaLegend"></div>
+
+            <div class="chart-state chart-loading-state" id="peLoadingState" style="display:none;">
+                Loading PE chart data...
+            </div>
+            <div class="chart-state chart-error-state" id="peErrorState" style="display:none;">
+                Unable to load PE chart data.
+            </div>
+            <div class="chart-state chart-empty-state" id="peNoDataState">
+                No PE chart data available for the selected filters.
+            </div>
+
+            <div class="chart-canvas-wrap" id="peChartWrap">
+                <div class="chart-canvas" id="peChart"></div>
+            </div>
+        </article>
+
+        <article class="glass-card chart-pane chart-pane-primary" id="underlyingPane">
+            <div class="card-header">
+                <h3 id="underlyingPaneTitle">NIFTY</h3>
+                <span class="badge badge-info pane-timeframe-badge" id="underlyingActiveTimeframe">5m</span>
+            </div>
+
+            <div class="chart-pane-meta" id="underlyingMeta">
+                <span><strong>Date</strong> <span id="underlyingSelectedDate">-</span></span>
+                <span><strong>Index</strong> <span id="underlyingSelectedIndex">NIFTY</span></span>
+                <span><strong>Timeframe</strong> <span id="underlyingSelectedTimeframe">5m</span></span>
+            </div>
+
+            <div class="chart-timeframe-tabs" id="underlyingTimeframeTabs"></div>
+            <div class="chart-sma-legend" id="underlyingSmaLegend"></div>
+
+            <div class="chart-state chart-loading-state" id="underlyingLoadingState" style="display:none;">
+                Loading underlying chart data...
+            </div>
+            <div class="chart-state chart-error-state" id="underlyingErrorState" style="display:none;">
+                Unable to load underlying chart data.
+            </div>
+            <div class="chart-state chart-empty-state" id="underlyingNoDataState">
+                No underlying chart data available for the selected filters.
+            </div>
+
+            <div class="chart-canvas-wrap" id="underlyingChartWrap">
+                <div class="chart-canvas" id="underlyingChart"></div>
+            </div>
+        </article>
+
+        <article class="glass-card chart-pane" id="cePane">
+            <div class="card-header">
+                <h3>ATM CE</h3>
+                <span class="badge badge-info pane-timeframe-badge" id="ceActiveTimeframe">5m</span>
+            </div>
+
+            <div class="chart-pane-meta" id="ceMeta">
+                <span><strong>Date</strong> <span id="ceSelectedDate">-</span></span>
+                <span><strong>Index</strong> <span id="ceSelectedIndex">NIFTY</span></span>
+                <span><strong>Expiry</strong> <span id="ceExpiryDate">-</span></span>
+                <span><strong>ATM</strong> <span id="ceAtmStrike">-</span></span>
+            </div>
+
+            <div class="chart-timeframe-tabs" id="ceTimeframeTabs"></div>
+            <div class="chart-sma-legend" id="ceSmaLegend"></div>
+
+            <div class="chart-state chart-loading-state" id="ceLoadingState" style="display:none;">
+                Loading CE chart data...
+            </div>
+            <div class="chart-state chart-error-state" id="ceErrorState" style="display:none;">
+                Unable to load CE chart data.
+            </div>
+            <div class="chart-state chart-empty-state" id="ceNoDataState">
+                No CE chart data available for the selected filters.
+            </div>
+
+            <div class="chart-canvas-wrap" id="ceChartWrap">
+                <div class="chart-canvas" id="ceChart"></div>
+            </div>
+        </article>
+    </section>
+</main>
+
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<script th:src="@{/js/chart-dashboard.js}"></script>
+</body>
+</html>

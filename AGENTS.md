@@ -77,6 +77,7 @@ When changing anything in these areas, read the relevant doc first:
 | Backtesting | [`docs/BACKTESTING.md`](docs/BACKTESTING.md) | Run modes, pipeline, controller endpoints |
 | Backtest performance + live parity | [`docs/BACKTEST_PERFORMANCE.md`](docs/BACKTEST_PERFORMANCE.md) | Speed-up phases, per-phase live-mode impact, parity verification checklist |
 | Architecture overview | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | High-level layering and conventions |
+| Chart dashboard | [`docs/CHART_DASHBOARD.md`](docs/CHART_DASHBOARD.md) | End-to-end dashboard flow, ATM/expiry logic, data dependencies, frontend rendering, debugging checklist |
 | Schedulers (all 5) | [`docs/SCHEDULERS.md`](docs/SCHEDULERS.md) | LoginScheduler, AnalysisScheduler, TradeConfigScheduler, OrderScheduler, PositionScheduler — cadence, pipeline, mode-gating |
 | Orders + position monitoring | [`docs/ORDERS_AND_POSITIONS.md`](docs/ORDERS_AND_POSITIONS.md) | Order lifecycle, dedupe rules, broker factories, peak / SL / target tracking, `trade_order` columns |
 | Broker rate limiting + retry | [`docs/RATE_LIMITING.md`](docs/RATE_LIMITING.md) | Resilience4j wiring, the cache / reshape PR roadmap |

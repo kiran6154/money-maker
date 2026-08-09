@@ -21,5 +21,6 @@
     <include file="db/changelog/013_add_sma_value20_to_market_data.xml"/>
     <include file="db/changelog/014_add_entry_reason_to_trade_order.xml"/>
     <include file="db/changelog/015_add_strategy_id_to_trade_order.xml"/>
+    <include file="db/changelog/018_create_historical_chart_tables.xml"/>
 
 </databaseChangeLog>
