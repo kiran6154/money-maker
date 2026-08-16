@@ -154,6 +154,96 @@
         }
         .inline-alert.error   { background: rgba(232,73,76,0.10);  color: #b6262a; }
         .inline-alert.success { background: rgba(41,194,106,0.12); color: #1f8f4d; }
+
+        /* ── Bulk delete panel ─────────────────────────────────────────────── */
+        .bd-header {
+            display: flex; align-items: center; gap: 10px;
+            cursor: pointer; user-select: none;
+        }
+        .bd-header h3 { margin: 0; font-size: 15px; }
+        .bd-caret { transition: transform .15s ease; color: var(--text-muted); }
+        .bd-card-open .bd-caret { transform: rotate(90deg); }
+        .bd-hint { font-size: 12px; color: var(--text-muted); }
+        .bd-collapsed .bd-body { display: none; }
+        .bd-body { margin-top: 16px; }
+
+        .bd-modes { display: flex; gap: 18px; margin-bottom: 14px; }
+        .bd-radio { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+
+        .bd-cal-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+        .bd-month-label { font-weight: 600; min-width: 150px; text-align: center; }
+
+        .bd-cal-dow, .bd-cal-grid {
+            display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
+        }
+        .bd-cal-dow span {
+            text-align: center; font-size: 11px; text-transform: uppercase;
+            letter-spacing: .5px; color: var(--text-muted); padding-bottom: 4px;
+        }
+
+        /* Day tile. Zerodha-style: the number is the headline, the tile is tinted
+           by whether there is anything to act on. */
+        .bd-day {
+            min-height: 58px; border-radius: 10px; padding: 6px 4px;
+            display: flex; flex-direction: column; align-items: center; gap: 2px;
+            border: 2px solid transparent; font-size: 12px;
+            background: rgba(120,120,128,0.08); color: var(--text-muted);
+        }
+        .bd-day-num { font-size: 11px; opacity: .75; }
+        .bd-day-count { font-size: 15px; font-weight: 700; line-height: 1; }
+        .bd-day-dots { display: flex; gap: 3px; }
+        .bd-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+        .bd-dot-ce { background: #2f80ed; }
+        .bd-dot-pe { background: var(--warn); }
+
+        .bd-day.empty { visibility: hidden; }
+        .bd-day.has {
+            background: rgba(41,194,106,0.14); color: inherit; cursor: pointer;
+        }
+        .bd-day.has:hover { background: rgba(41,194,106,0.24); }
+        .bd-day.sel {
+            background: rgba(232,73,76,0.16);
+            border-color: var(--danger);
+            color: #b6262a;
+        }
+
+        .bd-legend {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 11px; color: var(--text-muted); margin-top: 10px;
+        }
+        .bd-chip { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
+        .bd-chip-sel  { background: rgba(232,73,76,0.16); border: 2px solid var(--danger); }
+        .bd-chip-has  { background: rgba(41,194,106,0.14); }
+        .bd-chip-none { background: rgba(120,120,128,0.08); }
+
+        .bd-runs-list { display: flex; flex-direction: column; gap: 8px; }
+        .bd-run {
+            display: flex; align-items: center; gap: 10px; cursor: pointer;
+            padding: 10px 12px; border-radius: 10px;
+            background: rgba(120,120,128,0.08); font-size: 13px;
+        }
+        .bd-run.sel { background: rgba(232,73,76,0.14); border: 1px solid var(--danger); }
+        .bd-run-meta { color: var(--text-muted); font-size: 12px; }
+
+        .bd-summary {
+            margin-top: 14px; padding: 10px 14px; border-radius: 10px;
+            background: rgba(120,120,128,0.08); font-size: 13px;
+        }
+        .bd-actions {
+            display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px;
+        }
+
+        .bd-modal {
+            position: fixed; inset: 0; z-index: 50;
+            background: rgba(0,0,0,0.35);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .bd-modal-card { max-width: 520px; width: calc(100% - 40px); }
+        .bd-confirm-body { font-size: 13px; line-height: 1.6; }
+        .bd-confirm-body .bd-warn { color: #b15e00; }
+
+        .badge-auto { background: rgba(255,149,0,0.18); color: #b15e00; }
+        .badge-manual { background: rgba(120,120,128,0.14); color: var(--text-muted); }
     </style>
 </head>
 <body>
@@ -192,6 +282,77 @@
             <button id="tc-refresh" class="btn btn-ghost" type="button">↻ Refresh</button>
             <div class="spacer"></div>
             <button id="tc-add" class="btn btn-primary" type="button">+ Add Trade Config</button>
+        </div>
+    </div>
+
+    <!-- ─────────── Bulk delete of auto-generated configs (collapsed) ─────────── -->
+    <div id="bd-card" class="glass-card bd-collapsed" style="margin-bottom: 18px;">
+        <div class="bd-header" id="bd-toggle">
+            <span class="bd-caret">▸</span>
+            <h3>🗑 Bulk delete auto-generated configs</h3>
+            <span class="badge badge-warn">AUTO_DOWNTREND</span>
+            <div class="spacer"></div>
+            <span id="bd-hint" class="bd-hint">Manual configs are never affected</span>
+        </div>
+
+        <div class="bd-body">
+            <div class="bd-modes">
+                <label class="bd-radio">
+                    <input type="radio" name="bd-mode" value="TRADING_DATE" checked />
+                    <span>Trading date</span>
+                </label>
+                <label class="bd-radio">
+                    <input type="radio" name="bd-mode" value="UPDATED_RANGE" />
+                    <span>Generation run</span>
+                </label>
+            </div>
+
+            <!-- Calendar picker -->
+            <div id="bd-calendar-pane">
+                <div class="bd-cal-nav">
+                    <button id="bd-prev-month" class="btn btn-ghost" type="button">‹</button>
+                    <span id="bd-month-label" class="bd-month-label">—</span>
+                    <button id="bd-next-month" class="btn btn-ghost" type="button">›</button>
+                    <div class="spacer"></div>
+                    <button id="bd-select-month" class="btn btn-ghost" type="button">Select all in month</button>
+                </div>
+
+                <div class="bd-cal-dow">
+                    <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span>
+                    <span>Fri</span><span>Sat</span><span>Sun</span>
+                </div>
+                <div id="bd-cal-grid" class="bd-cal-grid"></div>
+
+                <div class="bd-legend">
+                    <span class="bd-chip bd-chip-sel"></span> selected
+                    <span class="bd-chip bd-chip-has"></span> has configs
+                    <span class="bd-chip bd-chip-none"></span> none
+                </div>
+            </div>
+
+            <!-- Run picker -->
+            <div id="bd-runs-pane" style="display:none;">
+                <div id="bd-runs-list" class="bd-runs-list"></div>
+            </div>
+
+            <div id="bd-summary" class="bd-summary">Nothing selected.</div>
+
+            <div class="bd-actions">
+                <button id="bd-clear" class="btn btn-ghost" type="button">Clear</button>
+                <button id="bd-delete" class="btn btn-danger" type="button" disabled>🗑 Delete selected</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm dialog: populated from the server's own dry-run count -->
+    <div id="bd-confirm" class="bd-modal" style="display:none;">
+        <div class="bd-modal-card glass-card">
+            <div class="card-header"><h3>Confirm delete</h3></div>
+            <div id="bd-confirm-body" class="bd-confirm-body"></div>
+            <div class="bd-actions">
+                <button id="bd-confirm-cancel" class="btn btn-ghost" type="button">Cancel</button>
+                <button id="bd-confirm-ok" class="btn btn-danger" type="button">Yes, delete</button>
+            </div>
         </div>
     </div>
 
@@ -314,6 +475,7 @@
                 <thead>
                     <tr>
                         <th>ID</th>
+                        <th>Source</th>
                         <th>Date</th>
                         <th>Instrument</th>
                         <th>Side</th>
@@ -692,9 +854,18 @@
             const tfHtml = (v.timeframes || []).map(t =>
                 `<span class="pill-tf">${t.timePeriod}m / SMA${t.sma}${t.slope != null ? ' · sl' + t.slope : ''}</span>`
             ).join('') || '<span style="color:var(--text-muted)">—</span>';
+            // Origin badge — without it AUTO and MANUAL rows are indistinguishable,
+            // which matters now that a generator writes into this table.
+            const isAuto = v.source === 'AUTO_DOWNTREND';
+            const srcHtml = '<span class="badge ' + (isAuto ? 'badge-auto">AUTO' : 'badge-manual">MANUAL')
+                + '</span>'
+                + (v.updatedDate
+                    ? '<div class="bd-run-meta">' + String(v.updatedDate).replace('T', ' ').slice(0, 16) + '</div>'
+                    : '');
             const tr = document.createElement('tr');
             tr.innerHTML =
                 '<td>' + v.id + '</td>' +
+                '<td>' + srcHtml + '</td>' +
                 '<td>' + fmtNum(v.tradingDate) + '</td>' +
                 '<td>' + fmtNum(v.instrumentName) + '</td>' +
                 '<td>' + fmtNum(v.tradingSide) + '</td>' +
@@ -782,6 +953,295 @@
         await Promise.all([loadInstruments(), loadStrategies()]);
         await loadList();
     })();
+})();
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Bulk delete of AUTO_DOWNTREND configs.
+
+   Kept in its own IIFE so it shares nothing with the CRUD script above beyond
+   the DOM — the only coupling is that a successful delete refreshes the table.
+   ══════════════════════════════════════════════════════════════════════════ */
+(function bulkDelete() {
+    const card     = document.getElementById('bd-card');
+    const toggle   = document.getElementById('bd-toggle');
+    const grid     = document.getElementById('bd-cal-grid');
+    const label    = document.getElementById('bd-month-label');
+    const summary  = document.getElementById('bd-summary');
+    const delBtn   = document.getElementById('bd-delete');
+    const calPane  = document.getElementById('bd-calendar-pane');
+    const runsPane = document.getElementById('bd-runs-pane');
+    const runsList = document.getElementById('bd-runs-list');
+    const modal    = document.getElementById('bd-confirm');
+    const modalBody= document.getElementById('bd-confirm-body');
+
+    const state = {
+        mode: 'TRADING_DATE',
+        month: startOfMonth(new Date()),
+        days: new Map(),      // 'yyyy-MM-dd' -> {total, ce, pe, combos}
+        selected: new Set(),  // 'yyyy-MM-dd'
+        runs: [],
+        selectedRun: null,
+        lastAnchor: null,     // for shift-click ranges
+        pending: null,        // dry-run result awaiting confirmation
+    };
+
+    function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+    function iso(d) {
+        return d.getFullYear() + '-' +
+               String(d.getMonth() + 1).padStart(2, '0') + '-' +
+               String(d.getDate()).padStart(2, '0');
+    }
+    function fmtDateTime(s) {
+        if (!s) return '';
+        return String(s).replace('T', ' ').slice(0, 19);
+    }
+
+    // ---------- data ----------
+    async function loadCalendar() {
+        const from = startOfMonth(state.month);
+        const to   = new Date(state.month.getFullYear(), state.month.getMonth() + 1, 0);
+        const res  = await fetch(`/api/trade-configs/auto/calendar?from=${iso(from)}&to=${iso(to)}`);
+        if (!res.ok) { state.days = new Map(); renderCalendar(); return; }
+        const data = await res.json();
+        state.days = new Map((data.days || []).map(d => [d.date, d]));
+        renderCalendar();
+    }
+
+    async function loadRuns() {
+        const res = await fetch('/api/trade-configs/auto/runs');
+        state.runs = res.ok ? await res.json() : [];
+        renderRuns();
+    }
+
+    // ---------- render ----------
+    function renderCalendar() {
+        const year  = state.month.getFullYear();
+        const month = state.month.getMonth();
+        label.textContent = state.month.toLocaleString(undefined, { month: 'long', year: 'numeric' });
+
+        const first = new Date(year, month, 1);
+        // JS weeks start Sunday; the grid starts Monday.
+        const lead  = (first.getDay() + 6) % 7;
+        const total = new Date(year, month + 1, 0).getDate();
+
+        const cells = [];
+        for (let i = 0; i < lead; i++) cells.push('<div class="bd-day empty"></div>');
+
+        for (let day = 1; day <= total; day++) {
+            const key  = iso(new Date(year, month, day));
+            const info = state.days.get(key);
+            const sel  = state.selected.has(key);
+            const cls  = ['bd-day', info ? 'has' : 'none', sel ? 'sel' : ''].join(' ').trim();
+
+            let inner = `<span class="bd-day-num">${day}</span>`;
+            if (info) {
+                const dots =
+                    (info.ce > 0 ? '<span class="bd-dot bd-dot-ce"></span>' : '') +
+                    (info.pe > 0 ? '<span class="bd-dot bd-dot-pe"></span>' : '');
+                inner += `<span class="bd-day-count">${info.total}</span>`
+                       + `<span class="bd-day-dots">${dots}</span>`;
+            }
+            cells.push(`<div class="${cls}" data-date="${key}" ${info ? '' : 'aria-disabled="true"'}>${inner}</div>`);
+        }
+        grid.innerHTML = cells.join('');
+        renderSummary();
+    }
+
+    function renderRuns() {
+        if (!state.runs.length) {
+            runsList.innerHTML = '<div class="empty-state">No generation runs recorded yet.</div>';
+            return;
+        }
+        runsList.innerHTML = state.runs.map((r, i) => {
+            const dates = (r.tradingDates || []);
+            const span  = dates.length
+                ? `${dates[0]} → ${dates[dates.length - 1]}`
+                : '—';
+            const sel = state.selectedRun === i ? ' sel' : '';
+            return `<div class="bd-run${sel}" data-run="${i}">
+                        <input type="radio" name="bd-run" ${sel ? 'checked' : ''} />
+                        <span><b>${fmtDateTime(r.ranAt)}</b></span>
+                        <span class="bd-run-meta">${r.configs} config(s) · ${span}</span>
+                    </div>`;
+        }).join('');
+    }
+
+    function renderSummary() {
+        if (state.mode === 'TRADING_DATE') {
+            if (!state.selected.size) {
+                summary.textContent = 'Nothing selected.';
+                delBtn.disabled = true;
+                return;
+            }
+            let configs = 0, combos = 0;
+            const parts = [];
+            [...state.selected].sort().forEach(k => {
+                const info = state.days.get(k);
+                if (!info) return;
+                configs += info.total;
+                combos  += info.combos;
+                parts.push(`${k} (${info.total})`);
+            });
+            summary.innerHTML =
+                `<b>${state.selected.size} date(s) · ${configs} config(s) · ${combos} timeframe row(s)</b>`
+                + `<div class="bd-run-meta" style="margin-top:6px;">${parts.join('   ')}</div>`;
+            delBtn.disabled = configs === 0;
+        } else {
+            const run = state.runs[state.selectedRun];
+            if (!run) {
+                summary.textContent = 'No run selected.';
+                delBtn.disabled = true;
+                return;
+            }
+            summary.innerHTML =
+                `<b>Run at ${fmtDateTime(run.ranAt)} · ${run.configs} config(s)</b>`
+                + `<div class="bd-run-meta" style="margin-top:6px;">`
+                + `trading dates: ${(run.tradingDates || []).join(', ') || '—'}</div>`;
+            delBtn.disabled = run.configs === 0;
+        }
+    }
+
+    // ---------- selection ----------
+    grid.addEventListener('click', (e) => {
+        const cell = e.target.closest('.bd-day');
+        if (!cell || !cell.classList.contains('has')) return;
+        const key = cell.dataset.date;
+
+        if (e.shiftKey && state.lastAnchor) {
+            // Range select across populated days only.
+            const keys = [...state.days.keys()].sort();
+            const a = keys.indexOf(state.lastAnchor);
+            const b = keys.indexOf(key);
+            if (a !== -1 && b !== -1) {
+                keys.slice(Math.min(a, b), Math.max(a, b) + 1)
+                    .forEach(k => state.selected.add(k));
+            }
+        } else {
+            state.selected.has(key) ? state.selected.delete(key) : state.selected.add(key);
+            state.lastAnchor = key;
+        }
+        renderCalendar();
+    });
+
+    runsList.addEventListener('click', (e) => {
+        const row = e.target.closest('.bd-run');
+        if (!row) return;
+        state.selectedRun = Number(row.dataset.run);
+        renderRuns();
+        renderSummary();
+    });
+
+    document.getElementById('bd-select-month').addEventListener('click', () => {
+        const prefix = `${state.month.getFullYear()}-${String(state.month.getMonth() + 1).padStart(2, '0')}`;
+        [...state.days.keys()].filter(k => k.startsWith(prefix)).forEach(k => state.selected.add(k));
+        renderCalendar();
+    });
+
+    document.getElementById('bd-clear').addEventListener('click', () => {
+        state.selected.clear();
+        state.selectedRun = null;
+        state.lastAnchor = null;
+        renderCalendar();
+        renderRuns();
+        renderSummary();
+    });
+
+    document.getElementById('bd-prev-month').addEventListener('click', () => {
+        state.month = new Date(state.month.getFullYear(), state.month.getMonth() - 1, 1);
+        loadCalendar();
+    });
+    document.getElementById('bd-next-month').addEventListener('click', () => {
+        state.month = new Date(state.month.getFullYear(), state.month.getMonth() + 1, 1);
+        loadCalendar();
+    });
+
+    document.querySelectorAll('input[name="bd-mode"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            state.mode = e.target.value;
+            const byDate = state.mode === 'TRADING_DATE';
+            calPane.style.display  = byDate ? '' : 'none';
+            runsPane.style.display = byDate ? 'none' : '';
+            if (!byDate && !state.runs.length) loadRuns();
+            renderSummary();
+        });
+    });
+
+    toggle.addEventListener('click', () => {
+        const opening = card.classList.contains('bd-collapsed');
+        card.classList.toggle('bd-collapsed');
+        card.classList.toggle('bd-card-open');
+        if (opening && !state.days.size) loadCalendar();
+    });
+
+    // ---------- delete ----------
+    function buildRequest(dryRun) {
+        if (state.mode === 'TRADING_DATE') {
+            return { mode: 'TRADING_DATE', dates: [...state.selected].sort(), dryRun };
+        }
+        const run = state.runs[state.selectedRun];
+        return {
+            mode: 'UPDATED_RANGE',
+            updatedFrom: run.updatedFrom,
+            updatedTo: run.updatedTo,
+            dryRun
+        };
+    }
+
+    async function post(body) {
+        const res = await fetch('/api/trade-configs/auto/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        return { ok: res.ok, data: await res.json() };
+    }
+
+    // Always preview first: the number shown in the dialog is the server's, not
+    // one derived from cached calendar counts that may be stale.
+    delBtn.addEventListener('click', async () => {
+        delBtn.disabled = true;
+        const { ok, data } = await post(buildRequest(true));
+        delBtn.disabled = false;
+        if (!ok) { alert(data.error || 'Preview failed'); return; }
+
+        state.pending = buildRequest(false);
+        const dates = Object.entries(data.byDate || {})
+            .map(([d, n]) => `${d} (${n})`).join('   ') || '—';
+
+        let html = `<p>${data.message}</p>`
+                 + `<p class="bd-run-meta">${dates}</p>`;
+        if (data.skippedWithTrades > 0) {
+            html += `<p class="bd-warn">⚠ ${data.skippedWithTrades} config(s) will be kept `
+                  + `because trade_order rows reference them — deleting those would break `
+                  + `the audit trail.</p>`;
+        }
+        html += `<p><b>This cannot be undone.</b></p>`;
+        modalBody.innerHTML = html;
+        modal.style.display = 'flex';
+    });
+
+    document.getElementById('bd-confirm-cancel').addEventListener('click', () => {
+        modal.style.display = 'none';
+        state.pending = null;
+    });
+
+    document.getElementById('bd-confirm-ok').addEventListener('click', async () => {
+        if (!state.pending) return;
+        const { ok, data } = await post(state.pending);
+        modal.style.display = 'none';
+        state.pending = null;
+        if (!ok) { alert(data.error || 'Delete failed'); return; }
+
+        state.selected.clear();
+        state.selectedRun = null;
+        await loadCalendar();
+        await loadRuns();
+        renderSummary();
+
+        // Refresh the table below so it cannot show rows that no longer exist.
+        document.getElementById('tc-refresh')?.click();
+        alert(data.message);
+    });
 })();
 </script>
 </body>

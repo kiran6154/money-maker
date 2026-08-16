@@ -1,6 +1,7 @@
 package com.moneymaker.tradeconfig.controller;
 
 import com.moneymaker.state.AppState;
+import com.moneymaker.tradeconfig.dto.AutoDeleteRequestDTO;
 import com.moneymaker.tradeconfig.dto.InstrumentOptionDTO;
 import com.moneymaker.tradeconfig.dto.PagedResponse;
 import com.moneymaker.tradeconfig.dto.StrategyOptionDTO;
@@ -111,6 +112,45 @@ public class TradeConfigAdminController {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IllegalStateException e) {
             return ResponseEntity.status(409).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Bulk delete of auto-generated (AUTO_DOWNTREND) configs
+    // ------------------------------------------------------------------
+
+    /** Per-day counts that paint the bulk-delete calendar. */
+    @GetMapping("/api/trade-configs/auto/calendar")
+    @ResponseBody
+    public ResponseEntity<?> autoCalendar(
+            @RequestParam("from") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam("to") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        try {
+            return ResponseEntity.ok(service.autoCalendar(from, to));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Generation runs, newest first — the "undo that run" selector. */
+    @GetMapping("/api/trade-configs/auto/runs")
+    @ResponseBody
+    public List<Map<String, Object>> autoRuns() {
+        return service.autoRuns();
+    }
+
+    /**
+     * Bulk delete. POST rather than DELETE because the selector is a body, and
+     * {@code dryRun} defaults to true — a caller that omits it gets a preview, not
+     * a deletion.
+     */
+    @PostMapping("/api/trade-configs/auto/delete")
+    @ResponseBody
+    public ResponseEntity<?> autoDelete(@RequestBody AutoDeleteRequestDTO request) {
+        try {
+            return ResponseEntity.ok(service.deleteAuto(request));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 

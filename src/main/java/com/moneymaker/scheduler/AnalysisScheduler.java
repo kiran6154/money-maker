@@ -10,8 +10,10 @@ import com.moneymaker.indicator.IndicatorConfig;
 import com.moneymaker.indicator.IndicatorService;
 import com.moneymaker.market.service.MarketDataService;
 import com.moneymaker.market.service.MarketHoursService;
+import com.moneymaker.entity.TradeOrder;
 import com.moneymaker.repository.ExpiryDatesRepository;
 import com.moneymaker.repository.InstrumentDetailsRepository;
+import com.moneymaker.repository.TradeOrderRepository;
 import com.moneymaker.shared.data.SharedData;
 import com.moneymaker.strategy.StrategyFactory;
 import org.slf4j.Logger;
@@ -34,6 +36,7 @@ public class AnalysisScheduler {
     private final ExpiryDatesRepository expiryDatesRepository;
     private final StrategyFactory strategyFactory;
     private final MarketHoursService marketHours;
+    private final TradeOrderRepository tradeOrderRepository;
 
     @Value("${app.mode:live}")
     private String appMode;
@@ -43,13 +46,15 @@ public class AnalysisScheduler {
                              InstrumentDetailsRepository instrumentDetailsRepository,
                              ExpiryDatesRepository expiryDatesRepository,
                              StrategyFactory strategyFactory,
-                             MarketHoursService marketHours) {
+                             MarketHoursService marketHours,
+                             TradeOrderRepository tradeOrderRepository) {
         this.marketDataService = Objects.requireNonNull(marketDataService, "marketDataService must not be null");
         this.indicatorService = Objects.requireNonNull(indicatorService, "indicatorService must not be null");
         this.instrumentDetailsRepository = Objects.requireNonNull(instrumentDetailsRepository, "instrumentDetailsRepository must not be null");
         this.expiryDatesRepository = Objects.requireNonNull(expiryDatesRepository, "expiryDatesRepository must not be null");
         this.strategyFactory = Objects.requireNonNull(strategyFactory, "strategyFactory must not be null");
         this.marketHours = Objects.requireNonNull(marketHours, "marketHours must not be null");
+        this.tradeOrderRepository = Objects.requireNonNull(tradeOrderRepository, "tradeOrderRepository must not be null");
     }
 
     @Scheduled(cron = "0 0/5 9-16 * * MON-FRI")
@@ -121,7 +126,9 @@ public class AnalysisScheduler {
                     String marketDataKey = toMarketDataKey(symbol, interval);
                     SharedData.marketDataByInstrumentAndInterval.put(marketDataKey, marketDataList);
 
-                    List<List<Integer>> strikeList = calculateStrikesForCandles(marketDataList, dto.getInstrument(), dto.getTradeConfig());
+                    List<List<Integer>> strikeList = withOpenPositionStrikes(
+                            calculateStrikesForCandles(marketDataList, dto.getInstrument(), dto.getTradeConfig()),
+                            dto.getTradeConfig());
                     SharedData.strikeList = strikeList;
 
                     // One [index] line per config per tick — emitted on the first
@@ -198,6 +205,52 @@ public class AnalysisScheduler {
 
     private String toMarketDataKey(String instrumentToken, String interval) {
         return instrumentToken + "|" + interval;
+    }
+
+    /**
+     * Adds the strikes of any still-OPEN position to the derived strike set.
+     *
+     * <p>The derived strikes follow the <i>live</i> ATM, which moves during the day.
+     * A position opened at one strike therefore drops out of the fetch set as soon as
+     * spot crosses a boundary far enough — and once it does, nothing refreshes its
+     * entry in {@code strikeMarketDataByInstrumentAndInterval}. The backtest monitor
+     * resolves quotes by scanning that map, so it keeps returning the last candle
+     * cached before the strike went out of range: the position freezes at a stale
+     * price and its target / stop-loss can never trigger, no matter how far the
+     * option actually moves.</p>
+     *
+     * <p>Observed: an ATM-only config opened 24400CE at 09:15, spot fell through
+     * 24400 at ~09:30, and the position was then evaluated 73 more times against the
+     * 09:30 quote — exiting on a signal at 15:15 with a realised P&amp;L larger than
+     * the peak the monitor ever recorded.</p>
+     *
+     * <p>Only strikes matching this config's option type are added, so a CE config
+     * never starts pulling PE series. Widening the configured band reduces how often
+     * this happens; keeping open strikes pinned is what actually prevents it.</p>
+     */
+    private List<List<Integer>> withOpenPositionStrikes(List<List<Integer>> strikeList, TradeConfig tradeConfig) {
+        String optionType = resolveOptionType(tradeConfig);
+        if (optionType == null) {
+            return strikeList;
+        }
+
+        List<Integer> openStrikes = new ArrayList<>();
+        for (TradeOrder order : tradeOrderRepository.findByStatus("OPEN")) {
+            if (order.getOptionStrike() == null) continue;
+            if (!optionType.equalsIgnoreCase(order.getOptionType())) continue;
+            openStrikes.add(order.getOptionStrike());
+        }
+        if (openStrikes.isEmpty()) {
+            return strikeList;
+        }
+
+        // uniqueStrikes(...) de-dupes downstream, so overlap with the derived band
+        // costs nothing.
+        List<List<Integer>> merged = new ArrayList<>(strikeList);
+        merged.add(openStrikes);
+        logger.debug("[strikes] pinned {} open-position strike(s) {} for {}",
+                openStrikes.size(), openStrikes, optionType);
+        return merged;
     }
 
     private List<List<Integer>> calculateStrikesForCandles(List<MarketData> marketDataList, Instrument instrument, TradeConfig tradeConfig) {

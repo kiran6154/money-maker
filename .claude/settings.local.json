@@ -32,7 +32,10 @@
       "Bash(git push *)",
       "Bash(gh pr create --base main --title 'Test foundation + M1 reproducibility + M3 force-close + M4 polish + M5 ops + gap closure' --body ' *)",
       "PowerShell($out = mvn -DskipTests compile 2>&1; $out | Select-String -Pattern 'BUILD|ERROR' | Select-Object -Last 5; \"EXIT=$LASTEXITCODE\")",
-      "Bash(mvn -DskipTests compile)"
+      "Bash(mvn -DskipTests compile)",
+      "Bash(ls \"d:/office/stocks/workspace\")",
+      "Read(//d/office/stocks/workspace/**)",
+      "WebSearch"
     ],
     "additionalDirectories": [
       "d:\\office\\stocks\\workspace\\money-maker"

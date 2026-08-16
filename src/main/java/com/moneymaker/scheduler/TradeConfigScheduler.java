@@ -225,6 +225,19 @@ return tradeConfigCombinedDTOList;
         return sb.toString();
     }
 
+    // ------------------------------------------------------------------
+    // Positional mappers for TradeConfigRepository.fetchCombinedByTradingDate.
+    //
+    // The indices below are pinned by that query's explicit column list, NOT
+    // by the physical table layout. Keep the two in lockstep: if you add a
+    // column to the query, append it to the end of its block and extend the
+    // matching mapper. Never reorder.
+    //
+    //   0..16  trade_config    (source last)
+    //   17..21 instrument
+    //   22..33 instrument_details
+    // ------------------------------------------------------------------
+
     // Helper to safely convert to BigDecimal
     private TradeConfig mapToTradeConfig(Object[] row) {
         TradeConfig tc = new TradeConfig();
@@ -253,7 +266,7 @@ return tradeConfigCombinedDTOList;
     }
 
     private Instrument mapToInstrument(Object[] row, TradeConfig tc) {
-        // Instrument starts after TradeConfig fields (0..16 incl. source)
+        // Instrument starts after the 17 trade_config columns (0..16, source last)
         int i = 17;  // Starting index for Instrument fields
         Instrument ins = new Instrument();
         ins.setId(toInteger(row[i++])); // id
@@ -267,7 +280,7 @@ return tradeConfigCombinedDTOList;
     }
 
     private InstrumentDetails mapToInstrumentDetails(Object[] row, TradeConfig tc, Instrument ins) {
-        // InstrumentDetails starts after TradeConfig (17 incl. source) and Instrument (5) fields
+        // InstrumentDetails starts after trade_config (17) + instrument (5) columns
         int i = 22;  // Starting index for InstrumentDetails fields
         InstrumentDetails id = new InstrumentDetails();
         id.setInstrumentToken(toInteger(row[i++])); // instrument_token

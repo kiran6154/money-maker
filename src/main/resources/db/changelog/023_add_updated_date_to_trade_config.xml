@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      Records when a trade_config row was last written.
+
+      Purpose
+      =======
+      The bulk-delete UI needs two independent axes:
+
+        * trading_date  - "drop the configs that trade on 12 Aug"
+        * updated_date  - "undo whatever the detector just generated"
+
+      Only the second can identify a bad generation run, because one run of
+      EodDowntrendDetectionService writes rows spanning several trading dates.
+      Without this column the only way to undo a run is to delete by
+      source='AUTO_DOWNTREND' and lose every generated config, including good
+      ones from earlier runs.
+
+      Maintained by JPA (@PrePersist / @PreUpdate on TradeConfig), not by a DB
+      trigger, so the value is identical in live and backtest and shows up on
+      the entity without a re-read.
+    -->
+    <changeSet id="023_add_updated_date_to_trade_config" author="moneymaker">
+        <addColumn tableName="trade_config">
+            <column name="updated_date" type="DATETIME"/>
+        </addColumn>
+    </changeSet>
+
+    <!--
+      Backfill so the column is never NULL. Existing rows predate the feature, so
+      the timestamp is only "known to exist before now" - it is not a real write
+      time. Kept as a separate changeset so a re-run of the migration cannot
+      re-stamp rows that already carry a genuine value.
+    -->
+    <changeSet id="023_backfill_updated_date_on_trade_config" author="moneymaker">
+        <update tableName="trade_config">
+            <column name="updated_date" valueComputed="NOW()"/>
+            <where>updated_date IS NULL</where>
+        </update>
+    </changeSet>
+
+</databaseChangeLog>

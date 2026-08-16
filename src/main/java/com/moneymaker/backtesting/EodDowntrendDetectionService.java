@@ -64,12 +64,20 @@ public class EodDowntrendDetectionService {
     private static final LocalTime MARKET_CLOSE = LocalTime.of(15, 20);
     private static final LocalTime MARKET_OPEN  = LocalTime.of(9, 15);
 
+    /** Tradable minutes in one NSE session (09:15–15:30). Used only to size the
+     *  SMA lookback window — see {@link #lookbackCalendarDays(int)}. */
+    private static final int SESSION_MINUTES = 375;
+
     /** Fixed SMA grid the detector evaluates. Add a period here AND extend
      *  {@code SmaTrendCalculator} / {@code MarketData} to track its flag. */
     static final int[] SMA_PERIODS = {20, 50, 100, 200, 500};
 
     /** Fixed candle timeframes the detector evaluates (minutes). */
     static final int[] TIMEFRAMES_MINUTES = {5, 15};
+
+    /** Safety rails on the ATR-derived strike band — see {@link #strikeDepthFor}. */
+    private static final int MIN_STRIKE_DEPTH = 2;
+    private static final int MAX_STRIKE_DEPTH = 6;
 
     private final SmaDowntrendRuleRepository ruleRepository;
     private final TradeConfigRepository tradeConfigRepository;
@@ -161,12 +169,15 @@ public class EodDowntrendDetectionService {
             return 0;
         }
 
-        BigDecimal atr = computeAtr(instrument, tradingDay, rule.getAtrPeriods());
-        if (atr == null || atr.signum() <= 0) {
-            log.warn("[EOD-downtrend] rule id={} — ATR unavailable for {} on {}, skipping",
-                    rule.getId(), instrument.getInsName(), tradingDay);
-            return 0;
-        }
+        // Strike band width, from how far the underlying can plausibly travel in a
+        // session. This is not cosmetic: AnalysisScheduler only fetches candles for
+        // the strikes it derives from the live ATM, so a band narrower than the day's
+        // movement orphans an open position the moment spot crosses a strike boundary
+        // — its cached series stops refreshing and PositionService then evaluates
+        // target/SL against a frozen quote.
+        int strikeDepth = strikeDepthFor(
+                computeAtr(instrument.getInsId(), tradingDay, rule.getAtrPeriods()),
+                instrument.getStrikePoints());
 
         int written = 0;
         for (String side : new String[]{"CE", "PE"}) {
@@ -176,15 +187,29 @@ public class EodDowntrendDetectionService {
                         rule.getId(), side, atmStrike, expiry);
                 continue;
             }
+            String optionToken = option.getInstrumentToken().toString();
 
-            List<int[]> passing = scanSide(option.getInstrumentToken().toString(), tradingDay, rule);
+            List<int[]> passing = scanSide(optionToken, tradingDay, rule);
             if (passing.isEmpty()) {
                 log.debug("[EOD-downtrend] rule id={} {} ATM={} — nothing trending down",
                         rule.getId(), side, atmStrike);
                 continue;
             }
 
-            insertAutoTradeConfig(rule, defaults, nextDay, side, atr, passing);
+            // ATR is measured on the option leg, not the underlying, and is therefore
+            // per-side. target/stop_loss end up on trade_order and are compared by
+            // PositionService against per-share option-premium P&L, so an ATR taken on
+            // the index would be in the wrong unit entirely: NIFTY ATR(14) runs ~180
+            // points while an ATM premium is ~100, which made target unreachable for a
+            // short leg — max profit on a SELL is the premium itself.
+            BigDecimal atr = computeAtr(optionToken, tradingDay, rule.getAtrPeriods());
+            if (atr == null || atr.signum() <= 0) {
+                log.warn("[EOD-downtrend] rule id={} {} — ATR unavailable for token={} on {}, skipping side",
+                        rule.getId(), side, optionToken, tradingDay);
+                continue;
+            }
+
+            insertAutoTradeConfig(rule, defaults, nextDay, side, atr, passing, instrument, strikeDepth);
             written++;
         }
         return written;
@@ -195,15 +220,40 @@ public class EodDowntrendDetectionService {
      * down-trend flag is on for the given strike on {@code tradingDay}.
      * <p>The strike series is fetched <i>once per timeframe</i> and all SMAs are
      * computed on it before {@link SmaTrendCalculator} runs.</p>
+     *
+     * <p><b>The fetch spans {@link #lookbackCalendarDays(int)} calendar days, not
+     * just {@code tradingDay}.</b> SMAs must be continuous across sessions to match
+     * what the trader sees on a chart — a 15-minute chart carries ~25 candles per
+     * session, so a single day cannot even produce SMA(50), let alone SMA(500), and
+     * {@code SMAIndicatorImpl} returns null whenever {@code period > series.size()}.
+     * Fetching one day silently reduced the whole grid to SMA(20) (plus SMA(50) at
+     * 5-minute) and made every longer period permanently unreachable.
+     * {@code AnalysisScheduler} already fetches with a lookback for exactly this
+     * reason; this method now matches it.</p>
+     *
+     * <p>Widening the window does <i>not</i> leak prior sessions into the verdict:
+     * the {@code startTime} trim below is a time-of-day filter, and
+     * {@link SmaTrendCalculator} resets its deviation counters on every new day, so
+     * the flags read off the final candle still describe {@code tradingDay} alone —
+     * only the SMA values themselves now carry the correct history.</p>
+     *
+     * <p><b>A period the broker cannot cover is dropped, not approximated.</b> The
+     * fetch window is only a request; what matters is how much history actually came
+     * back for this leg. Each period is admitted only if a full {@code period}-wide
+     * window has already closed by the first judged candle. A newly listed strike, a
+     * thin leg, or a broker that trims history therefore contributes fewer combos —
+     * or none — instead of a trend read off a partial average.</p>
      */
     private List<int[]> scanSide(String optionToken, LocalDate tradingDay, SmaDowntrendRule rule) {
         List<int[]> passing = new ArrayList<>();
 
-        LocalDateTime from = LocalDateTime.of(tradingDay, MARKET_OPEN);
-        LocalDateTime to   = LocalDateTime.of(tradingDay, MARKET_CLOSE);
+        LocalDateTime to = LocalDateTime.of(tradingDay, MARKET_CLOSE);
 
         for (int tfMinutes : TIMEFRAMES_MINUTES) {
             String interval = tfMinutes + "minute";
+
+            LocalDateTime from = LocalDateTime.of(tradingDay, MARKET_OPEN)
+                    .minusDays(lookbackCalendarDays(tfMinutes));
 
             List<MarketData> series = marketDataService.fetchHistoricalData(optionToken, from, to, interval);
             if (series == null || series.isEmpty()) {
@@ -220,6 +270,24 @@ public class EodDowntrendDetectionService {
                 }
             }
 
+            // First candle that actually gets judged: on tradingDay, at/after start_time.
+            // Its index is also the count of candles preceding it, i.e. the warm-up the
+            // broker actually supplied — which is what decides SMA sufficiency below.
+            int evalStartIdx = -1;
+            for (int i = 0; i < series.size(); i++) {
+                MarketData c = series.get(i);
+                if (c.getTimestamp() == null) continue;
+                if (!c.getTimestamp().toLocalDate().equals(tradingDay)) continue;
+                if (c.getTimestamp().toLocalTime().isBefore(rule.getStartTime())) continue;
+                evalStartIdx = i;
+                break;
+            }
+            if (evalStartIdx < 0) {
+                log.debug("[EOD-downtrend] token={} tf={} — no candles on {} at/after {}",
+                        optionToken, interval, tradingDay, rule.getStartTime());
+                continue;
+            }
+
             // Trim to candles at/after start_time — deviation counting starts there.
             List<MarketData> windowed = new ArrayList<>();
             for (MarketData c : series) {
@@ -234,12 +302,54 @@ public class EodDowntrendDetectionService {
             MarketData last = windowed.get(windowed.size() - 1);
 
             for (int period : SMA_PERIODS) {
+                // Sufficiency gate. ta4j's SMAIndicator averages however many bars it
+                // has rather than returning null, so a period with too little history
+                // still yields a number — a partial average that looks like a real SMA
+                // and would be silently trend-tested. Require a full period-wide window
+                // to already be closed at the first judged candle; if the broker did not
+                // return that much history for this leg, the period contributes no combo.
+                if (evalStartIdx < period - 1) {
+                    log.debug("[EOD-downtrend] token={} tf={} SMA{} — insufficient history: "
+                                    + "{} candles before {} {}, need {}; period dropped",
+                            optionToken, interval, period, evalStartIdx, tradingDay,
+                            rule.getStartTime(), period - 1);
+                    continue;
+                }
                 if (smaDownFlag(last, period)) {
                     passing.add(new int[]{period, tfMinutes});
                 }
             }
         }
         return passing;
+    }
+
+    /**
+     * How far back to ask the broker so the longest period in {@link #SMA_PERIODS}
+     * has a full window for every judged candle at {@code tfMinutes}.
+     *
+     * <p>Stated in candles first, because that is the real requirement:
+     * {@code maxPeriod} candles of warm-up (SMA(500) at 15-minute needs 500) plus
+     * one session's worth, so the SMA is already full-window at the day's first
+     * candle and stays full-window to its last. That count is converted to calendar
+     * days via {@link #SESSION_MINUTES}, the 7/5 factor for weekends, and {@code +5}
+     * for holidays.</p>
+     *
+     * <p>This only sizes the <i>request</i>. It is deliberately generous and never
+     * decides anything: whether a period is actually usable is settled in
+     * {@code scanSide} by counting the candles the broker really returned. A short
+     * fetch drops that period rather than trend-testing a partial average. This is
+     * a data-sufficiency calculation, not a trading-behaviour knob.</p>
+     */
+    private int lookbackCalendarDays(int tfMinutes) {
+        int maxPeriod = 0;
+        for (int p : SMA_PERIODS) {
+            maxPeriod = Math.max(maxPeriod, p);
+        }
+        int candlesPerSession = Math.max(1, SESSION_MINUTES / tfMinutes);
+        int candlesNeeded = maxPeriod + candlesPerSession;
+
+        double tradingDays = (double) candlesNeeded / candlesPerSession;
+        return (int) Math.ceil(tradingDays * 7.0 / 5.0) + 5;
     }
 
     private boolean smaDownFlag(MarketData c, int period) {
@@ -300,15 +410,25 @@ public class EodDowntrendDetectionService {
     // ATR — daily true range over the last N completed trading days
     // ------------------------------------------------------------------
 
-    private BigDecimal computeAtr(Instrument instrument, LocalDate tradingDay, Integer periods) {
-        if (instrument.getInsId() == null) return null;
+    /**
+     * ATR(N) over daily candles of {@code token}.
+     *
+     * <p><b>Pass the option leg's token, not the underlying's.</b> The result lands
+     * on {@code trade_config.target} / {@code stop_loss}, which
+     * {@code PositionService.thresholdBreach} compares against per-share option
+     * <i>premium</i> P&amp;L. An ATR taken on the index is denominated in index
+     * points and is not comparable: NIFTY ATR(14) sits near 180 while an ATM
+     * premium is nearer 100, so the target exceeded the most a short leg can ever
+     * earn (premium decaying to zero) and could never trigger.</p>
+     */
+    private BigDecimal computeAtr(String token, LocalDate tradingDay, Integer periods) {
+        if (token == null || token.isBlank()) return null;
         int n = periods == null || periods <= 0 ? 14 : periods;
 
         LocalDateTime from = LocalDateTime.of(tradingDay.minusDays(Math.max(n * 2L + 10, 30)), LocalTime.MIDNIGHT);
         LocalDateTime to   = LocalDateTime.of(tradingDay, LocalTime.of(23, 59));
 
-        List<MarketData> daily = marketDataService.fetchHistoricalData(
-                instrument.getInsId(), from, to, "day");
+        List<MarketData> daily = marketDataService.fetchHistoricalData(token, from, to, "day");
         if (daily == null || daily.size() < 2) return null;
 
         int startIdx = Math.max(1, daily.size() - n);
@@ -322,6 +442,31 @@ public class EodDowntrendDetectionService {
         }
         if (count == 0) return null;
         return sum.divide(BigDecimal.valueOf(count), 4, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Strike-band half-width in strikes, derived from the underlying's ATR:
+     * {@code ceil(ATR / strikePoints)}, clamped to
+     * {@link #MIN_STRIKE_DEPTH}..{@link #MAX_STRIKE_DEPTH}.
+     *
+     * <p>Sizing this from ATR is what keeps an open position observable. The band
+     * is recomputed from the live ATM on every tick, so if the underlying moves
+     * further than the band is wide, the strike a position was opened on drops out
+     * of the fetch set and its cached candles stop advancing — the monitor then
+     * reads a frozen quote and target/SL can never trigger. A band as wide as a
+     * typical day's travel keeps the entry strike covered.</p>
+     *
+     * <p>The clamp is a safety rail, not a trading rule: the floor keeps a band
+     * around ATM on unusually quiet days, and the ceiling stops a volatility spike
+     * from fanning out into dozens of broker fetches per tick.</p>
+     */
+    private int strikeDepthFor(BigDecimal underlyingAtr, BigDecimal strikePoints) {
+        if (underlyingAtr == null || underlyingAtr.signum() <= 0
+                || strikePoints == null || strikePoints.signum() <= 0) {
+            return MIN_STRIKE_DEPTH;
+        }
+        int depth = underlyingAtr.divide(strikePoints, 0, RoundingMode.CEILING).intValue();
+        return Math.max(MIN_STRIKE_DEPTH, Math.min(MAX_STRIKE_DEPTH, depth));
     }
 
     private BigDecimal trueRange(MarketData curr, MarketData prev) {
@@ -373,7 +518,9 @@ public class EodDowntrendDetectionService {
                                        LocalDate nextDay,
                                        String side,
                                        BigDecimal atr,
-                                       List<int[]> passing) {
+                                       List<int[]> passing,
+                                       Instrument instrument,
+                                       int strikeDepth) {
         TradeConfig tc = new TradeConfig();
         tc.setTradingDate(nextDay);
         tc.setTradingSide(side);
@@ -381,18 +528,31 @@ public class EodDowntrendDetectionService {
         tc.setStratergyId(rule.getStrategyId());
         tc.setSource(SOURCE_AUTO);
 
+        // ATR is the option leg's, so these are premium points — the same unit
+        // PositionService compares against. See computeAtr.
         tc.setTarget(atr.multiply(rule.getTargetMultiplier()).setScale(2, RoundingMode.HALF_UP));
         tc.setStopLoss(atr.multiply(rule.getSlMultiplier()).setScale(2, RoundingMode.HALF_UP));
 
         tc.setTransactionType(defaults.transactionType());
-        tc.setLotQuantity(defaults.lotQuantity());
         tc.setMaxLoss(defaults.maxLoss());
         tc.setNumberOfTradesPerDay(defaults.noOfTrades());
         tc.setNumberOfParallelTrades(defaults.noOfParallelTrades());
 
-        // ATM always — leave all three depth columns at 0.
-        tc.setItmDepth(0);
-        tc.setOtmDepth(0);
+        // Order quantity goes to the broker verbatim, and NFO only accepts whole
+        // lots — so it comes from the contract, not from a strategy constant.
+        // strategyDefaults' value is a last-resort fallback.
+        Integer lotQty = instrument == null ? null : instrument.getLotQty();
+        tc.setLotQuantity(lotQty != null && lotQty > 0 ? lotQty : defaults.lotQuantity());
+
+        // Symmetric band around ATM, sized by strikeDepthFor(...).
+        //
+        // NOTE: 0 does NOT mean "ATM" — AnalysisScheduler.calculateStrikesForCandles
+        // builds a strike list only when itmDepth > 0 or otmDepth > 0, and never reads
+        // atmDepth at all, so 0/0/0 yields an EMPTY strike list and the config can
+        // never trade. The ITM loop starts at i=0, whose first element is the base
+        // (ATM) strike, so itmDepth already includes ATM.
+        tc.setItmDepth(strikeDepth);
+        tc.setOtmDepth(strikeDepth);
         tc.setAtmDepth(0);
 
         TradeConfig saved = tradeConfigRepository.save(tc);

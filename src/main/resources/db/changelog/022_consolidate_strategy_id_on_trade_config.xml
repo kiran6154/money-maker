@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      Collapse the duplicate strategy column on trade_config back to the single
+      column the JPA entity actually maps: stratergy_id (sic).
+
+      How the duplicate happened
+      ==========================
+      A changeset '020_rename_stratergy_id_to_strategy_id' was applied to at
+      least one database (recorded in DATABASECHANGELOG on 2026-06-02) and its
+      file was later removed from the repo. It renamed stratergy_id ->
+      strategy_id, but entity TradeConfig kept @Column(name="stratergy_id").
+      With spring.jpa.hibernate.ddl-auto=update, Hibernate then re-created
+      stratergy_id as a fresh NULL column. Result on those databases:
+
+        strategy_id   (renamed, holds the real values)
+        stratergy_id  (Hibernate-made, entirely NULL)
+
+      Every JPA read/write went to the NULL column, so TradeConfig.getStratergyId()
+      returned null and StrategyFactory.execute() could not route. The native
+      combined query only worked by accident, because SELECT tc.* happened to
+      expose the old column at the ordinal the mapper expected.
+
+      Why stratergy_id wins
+      =====================
+      It is what 003_create_trade_config_table.xml creates on a fresh database,
+      what entity TradeConfig maps, and what every Java call site uses
+      (StrategyFactory, OrderService, TradeConfigAdminService,
+      EodDowntrendDetectionService). Renaming to the correct spelling is a
+      separate, larger cleanup - it must move the entity field and all call
+      sites together, and this changeset deliberately does not attempt it.
+
+      Conditional by design
+      =====================
+      On a fresh database strategy_id never existed, so there is nothing to
+      merge. The precondition marks this changeset as ran in that case instead
+      of failing.
+    -->
+    <changeSet id="022_consolidate_strategy_id_on_trade_config" author="moneymaker">
+        <preConditions onFail="MARK_RAN">
+            <columnExists tableName="trade_config" columnName="strategy_id"/>
+        </preConditions>
+
+        <!-- Carry the real values over before the orphan column is removed.
+             Only fills holes; never clobbers a non-null stratergy_id. -->
+        <update tableName="trade_config">
+            <column name="stratergy_id" valueComputed="strategy_id"/>
+            <where>stratergy_id IS NULL AND strategy_id IS NOT NULL</where>
+        </update>
+
+        <dropColumn tableName="trade_config" columnName="strategy_id"/>
+    </changeSet>
+
+</databaseChangeLog>

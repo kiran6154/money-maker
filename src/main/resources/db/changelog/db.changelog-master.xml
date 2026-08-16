@@ -26,5 +26,7 @@
     <include file="db/changelog/020_drop_unused_sma_downtrend_rule_columns.xml"/>
     <include file="db/changelog/021_create_index_data_table.xml"/>
     <include file="db/changelog/018_create_historical_chart_tables.xml"/>
+    <include file="db/changelog/022_consolidate_strategy_id_on_trade_config.xml"/>
+    <include file="db/changelog/023_add_updated_date_to_trade_config.xml"/>
 
 </databaseChangeLog>

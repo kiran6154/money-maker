@@ -6,6 +6,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "trade_config")
@@ -70,5 +71,23 @@ public class TradeConfig {
      */
     @Column(name = "source", nullable = false)
     private String source;
+
+    /**
+     * When this row was last written. Stamped automatically on every insert and
+     * update — never set it by hand.
+     *
+     * <p>This is the axis the bulk-delete uses to undo a generation <i>run</i>. One
+     * run of {@code EodDowntrendDetectionService} writes rows for several different
+     * {@code tradingDate}s within a few seconds, so {@code tradingDate} cannot
+     * identify a run while this can.</p>
+     */
+    @Column(name = "updated_date")
+    private LocalDateTime updatedDate;
+
+    @PrePersist
+    @PreUpdate
+    void stampUpdatedDate() {
+        this.updatedDate = LocalDateTime.now();
+    }
 }
 
