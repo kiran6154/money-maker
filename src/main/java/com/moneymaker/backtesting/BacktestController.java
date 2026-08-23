@@ -1,6 +1,7 @@
 package com.moneymaker.backtesting;
 
 import com.moneymaker.login.service.BrokerLoginManager;
+import com.moneymaker.market.exception.HistoricalDataMissingException;
 import com.moneymaker.login.service.LoginOrchestrator;
 import com.moneymaker.login.service.LoginOrchestrator.Outcome;
 import com.moneymaker.scheduler.TradeConfigScheduler;
@@ -77,12 +78,22 @@ public class BacktestController {
     }
 
     @PostMapping("/analysis")
-    public ResponseEntity<BacktestAnalysisService.BacktestRunResult> runAnalysis(
+    public ResponseEntity<?> runAnalysis(
             @RequestParam("fromDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
             @RequestParam("toDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
-        BacktestAnalysisService.BacktestRunResult result = backtestAnalysisService.run(fromDate, toDate);
-        log.info("[Backtest] /analysis {} -> {} completed in {}ms", fromDate, toDate, result.durationMs());
-        return ResponseEntity.ok(result);
+        try {
+            BacktestAnalysisService.BacktestRunResult result = backtestAnalysisService.run(fromDate, toDate);
+            log.info("[Backtest] /analysis {} -> {} completed in {}ms", fromDate, toDate, result.durationMs());
+            return ResponseEntity.ok(result);
+        } catch (HistoricalDataMissingException ex) {
+            // The run was aborted on purpose — the imported data set does not
+            // cover this window. Report it as a client-fixable problem with the
+            // missing series named, not as an opaque 500.
+            log.error("[Backtest] /analysis {} -> {} aborted: {}", fromDate, toDate, ex.getMessage());
+            return ResponseEntity.unprocessableEntity().body(Map.of(
+                    "error", "Backtest aborted — historical data missing",
+                    "detail", ex.getMessage()));
+        }
     }
 
 }

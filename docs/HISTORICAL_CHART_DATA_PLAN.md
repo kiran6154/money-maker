@@ -68,13 +68,21 @@ Example:
 
 ## Format Rules
 
-- `datetime` must be `YYYY-MM-DD HH:mm:ss`
-- `expiry_date` must be `YYYY-MM-DD`
+The importer is deliberately tolerant, because the upstream exporter is not
+consistent — the sample files under `docs/` ship in both shapes:
+
+- `datetime` may be `yyyy-MM-dd HH:mm[:ss]` **or** `dd-MM-yyyy HH:mm[:ss]`
+- `expiry_date` may be `yyyy-MM-dd` **or** `dd-MM-yyyy`
+- the CE/PE column may be headed `right` **or** `option_right`
 - `stock_code` should be canonical, for example `NIFTY` or `BANKNIFTY`
-- `right` must be `CE` or `PE`
+- the CE/PE value must be `CE` or `PE`
 - candles must be 5-minute candles
 - OHLC values must be numeric
 - `volume` and `open_interest` should be numeric when present
+
+Anything the parser cannot read is rejected with a `400` naming the column, the
+line number, and the offending value. Rows are upserted on the natural key in
+chunks, resolving each chunk's existing rows one *series* at a time.
 
 ---
 
@@ -188,7 +196,7 @@ DATE(datetime) = selected date
 
 SMA:
 
-- compute at runtime from spot 5-minute closes
+- compute at runtime from spot candle lows and highs (paired SMA)
 - include prior-day lookback
 
 ### ATM Strike
@@ -236,7 +244,7 @@ DATE(datetime) = selected date
 
 SMA:
 
-- compute at runtime from PE 5-minute closes
+- compute at runtime from PE candle lows and highs (paired SMA)
 - include prior-day lookback for the same option series
 
 ### CE Chart
@@ -253,7 +261,7 @@ DATE(datetime) = selected date
 
 SMA:
 
-- compute at runtime from CE 5-minute closes
+- compute at runtime from CE candle lows and highs (paired SMA)
 - include prior-day lookback for the same option series
 
 ---
@@ -276,7 +284,8 @@ Aggregation:
 - high = max high
 - low = min low
 - close = last candle close
-- SMA = last available runtime 5-minute SMA inside the bucket
+- indicators are NOT carried through buckets — they are computed after
+  aggregation, on the bars actually drawn (see CHART_DASHBOARD.md)
 
 ---
 
@@ -301,8 +310,9 @@ service should read from historical natural-key tables.
 The other project does not need structural changes if it keeps exporting the
 current CSV formats.
 
-Note: CSV files keep the header `right`. The database column is named
-`option_right` to avoid SQL keyword conflicts.
+Note: the database column is named `option_right` to avoid SQL keyword
+conflicts. The CSV header may be either `right` or `option_right` — the importer
+accepts both, so an exporter change is not required either way.
 
 It must continue to guarantee:
 
@@ -325,6 +335,21 @@ It must continue to guarantee:
 - Import controller: `HistoricalChartImportController`
 - Historical chart service: `HistoricalIciciChartDashboardService`
 - Existing chart API response shape remains unchanged
+
+## Second consumer: backtesting
+
+These tables are no longer dashboard-only. With
+`backtest.data-source=HISTORICAL_ICICI`, the backtest pipeline reads its candles
+from them too, via `HistoricalIciciMarketDataProvider` and
+`HistoricalOptionInstrumentResolver`. The natural-key design carries over intact —
+no tokens are introduced; the keys are simply encoded into the pipeline's
+`symbol` string by `HistoricalSymbol` (`HIST:NIFTY:NFO:2024-01-04:21700:CE`).
+
+The expiry rule this document recommends — nearest available `expiry_date >=`
+selected date, no weekday filter — is exactly what the backtest resolver uses, so
+the 2024 Thursday weeklies in the sample files work unchanged.
+
+See [`BACKTESTING.md` → Data source](BACKTESTING.md#data-source).
 
 ---
 

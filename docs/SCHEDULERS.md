@@ -10,13 +10,26 @@ Every `@Scheduled` bean in the app, what it does, when it runs, and what it depe
 
 | Scheduler | Package | Cadence (live) | Replays in backtest? | Reads | Writes |
 |---|---|---|---|---|---|
-| [`LoginScheduler`](#loginscheduler) | `com.moneymaker.scheduler` | `0 0 8 * * MON-FRI` (08:00 IST) + `fixedDelay=60s` heartbeat | No (controller-driven) | `AppState`, `BrokerLoginManager` | `broker_session`, Telegram |
+| [`LoginScheduler`](#loginscheduler) | `com.moneymaker.scheduler` | `0 0 8 * * MON-FRI` (08:00 IST) + `fixedDelay=60s` heartbeat + `0 15 9 * * MON-FRI` (09:15 IST) options fetch | No (controller-driven) | `AppState`, `BrokerLoginManager` | `broker_session`, `market_data`/`options_data`, Telegram |
 | [`TradeConfigScheduler`](#tradeconfigscheduler) | `com.moneymaker.scheduler` | `ApplicationReadyEvent` (live, weekday) + `0 16 9 * * MON-FRI` | Yes (per-day fetch) | `trade_config`, `instrument`, `sma_timeframe` | `SharedData.combinedDto` |
-| [`AnalysisScheduler`](#analysisscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI` | Yes (every backtest tick) | Broker historical data | `SharedData.strikeMarketDataByInstrumentAndInterval`, `SharedData.tradeSignals` |
-| [`OrderScheduler`](#orderscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI` | Yes (after `AnalysisScheduler` each tick) | `SharedData.tradeSignals` | `trade_order`, broker order endpoints, Telegram |
-| [`PositionScheduler`](#positionscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI` | Yes (after `OrderScheduler` each tick) | OPEN `trade_order` rows, broker LTP | `trade_order` (peak/last-monitored/exit), Telegram |
+| [`AnalysisScheduler`](#analysisscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI`, gated by [`MarketHoursService.isOpenNow()`](#market-hours-gating) | Yes (every backtest tick) | Broker historical data | `SharedData.strikeMarketDataByInstrumentAndInterval`, `SharedData.tradeSignals` |
+| [`OrderScheduler`](#orderscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI`, gated by [`MarketHoursService.isOpenNow()`](#market-hours-gating) | Yes (after `AnalysisScheduler` each tick) | `SharedData.tradeSignals` | `trade_order`, broker order endpoints, Telegram |
+| [`PositionScheduler`](#positionscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI`, gated by [`MarketHoursService.isOpenNow()`](#market-hours-gating) | Yes (after `OrderScheduler` each tick) | OPEN `trade_order` rows, broker LTP | `trade_order` (peak/last-monitored/exit), Telegram |
+| [`DaySummaryScheduler`](#daysummaryscheduler) | `com.moneymaker.scheduler` | `0 31 15 * * MON-FRI` (15:31 IST), live only | No (`BacktestAnalysisService` force-closes per day itself) | `trade_order`, `MarketHoursService` | Force-closed `trade_order` rows, Telegram digest |
 
 Live cadence stays inside NSE trading hours (`9-16` Mon-Fri). Off-hours the cron just doesn't fire.
+
+### Market-hours gating
+
+Since the trade-config-admin / day-summary work landed, `AnalysisScheduler`, `OrderScheduler`, and `PositionScheduler` each take a `MarketHoursService` dependency and short-circuit their tick body with the same guard:
+
+```java
+if ("live".equalsIgnoreCase(appMode) && !marketHours.isOpenNow()) {
+    return; // outside the configured trading window — no-op
+}
+```
+
+[`MarketHoursService`](../src/main/java/com/moneymaker/market/service/MarketHoursService.java) is the single source of truth for the trading window — default `09:15–15:30 IST, MON-FRI`, overridable via `app.market.open` / `app.market.close` / `app.market.timezone`. The guard only applies in live mode; in backtest the three services are called directly by `BacktestAnalysisService` regardless of wall-clock time (the simulated day supplies its own time axis). `DaySummaryScheduler` also depends on `MarketHoursService` — not for gating (its own cron already only fires once a day) but to anchor `marketCloseToday()` / `marketOpenToday()` in the summary text.
 
 ---
 
@@ -60,6 +73,8 @@ Mode gating: live only. In `app.mode=backtest` the bean is registered (so manual
 
 Detailed state machine and alert-rule matrix live in [HEARTBEAT.md](HEARTBEAT.md).
 
+**`fetchOptionsData()` — `0 15 9 * * MON-FRI` (09:15 IST).** Bulk-downloads the day's NIFTY and BANKNIFTY options chain via `ZerodhaMarketDataService.fetchAndSaveOptionsData(...)`, writing to `market_data`/`options_data`. Hardcodes `session.getBroker() != Broker.ZERODHA` as a skip condition — Groww/Angel One sessions never trigger this fetch, a known gap (see `docs/GAPS.md` #12). **This data is not read by the live/backtest trading pipeline** (`MarketDataService.fetchHistoricalData` always hits the broker fresh) — its only consumer today is the chart dashboard's `TOKEN_BASED` source (see [CHART_DASHBOARD.md](CHART_DASHBOARD.md) and [WORKFLOWS.md](WORKFLOWS.md)).
+
 ---
 
 ## TradeConfigScheduler
@@ -97,6 +112,35 @@ Inside `MarketDataService.fetchHistoricalData` the call is wrapped by Resilience
 
 In backtest mode, `BacktestAnalysisService.runForDateTime` calls `analysisScheduler.calculateIndicator(currentDateTime)` and then `analysisScheduler.runStrategies()` directly per tick — bypassing the cron.
 
+### Symbol + expiry resolution
+
+`AnalysisScheduler` does not resolve instruments itself. It delegates to an
+[`OptionInstrumentResolver`](../src/main/java/com/moneymaker/market/instrument/OptionInstrumentResolver.java),
+which supplies three things: the underlying symbol, the expiry, and each option
+leg's symbol.
+
+| Implementation | Active when | Symbols | Expiry from |
+|---|---|---|---|
+| `TokenOptionInstrumentResolver` | default | Zerodha instrument tokens, from `instrument_details` | `expiry_dates` (nearest `>=` the analysis date) |
+| `HistoricalOptionInstrumentResolver` | `backtest.data-source=HISTORICAL_ICICI` | `HistoricalSymbol` natural keys, e.g. `HIST:NIFTY:NFO:2024-01-04:21700:CE` | `historical_option_candles` (nearest available `expiry_date >=` the date) |
+
+Two consequences worth knowing:
+
+- **`Strategy1` uses the same resolver.** Its cache-key prefix filter must match
+  what the scheduler wrote at position 0 of the key. Deriving that prefix from
+  `instrumentDetails` independently — as it once did — matches nothing the moment
+  the symbol is not a broker token, and the strategy silently evaluates zero
+  strikes.
+- **Neither resolver distinguishes weekly from monthly expiry.** Both take the
+  *nearest* expiry available; which one that is depends entirely on the data
+  seeded into `expiry_dates` (or imported into `historical_option_candles`). See
+  [BACKTESTING.md → Expiry](BACKTESTING.md#expiry).
+
+`SharedData.optionTokenMap` caches the resolved leg symbol per **contract**
+(`expiry|strike|optionType`), not per strike — a CE and a PE config on the same
+day walk identical strikes, so a strike-only key made the second config reuse the
+first one's leg. Use `SharedData.optionTokenKey(...)` when touching it.
+
 ---
 
 ## OrderScheduler
@@ -130,6 +174,21 @@ In backtest, `BacktestAnalysisService` calls `orderScheduler.processOrders()` di
 Fields and SL/target semantics documented in [ORDERS_AND_POSITIONS.md](ORDERS_AND_POSITIONS.md).
 
 In backtest, `BacktestAnalysisService` calls `positionScheduler.processPositions()` directly after `orderScheduler.processOrders()` each tick.
+
+---
+
+## DaySummaryScheduler
+
+[`com.moneymaker.scheduler.DaySummaryScheduler`](../src/main/java/com/moneymaker/scheduler/DaySummaryScheduler.java)
+
+- **Cron `0 31 15 * * MON-FRI`** (configurable via `app.market.summary-cron`) — one minute after the configured close, giving the last 15:30 `PositionScheduler` tick time to settle first.
+- **Live only.** `runEndOfDay()` returns immediately unless `app.mode=live`; skipped on Sat/Sun.
+- Guarded by [`DailyEventGuard.firstTime("day-summary", today)`](../src/main/java/com/moneymaker/state/DailyEventGuard.java) (same `alert_state`-backed mechanism as `TradeConfigScheduler.reportConfigsForDay`) — a JVM restart at 17:00 will **not** re-fire the summary.
+- Steps, in order:
+  1. `OrderService.forceCloseOpenPositions(today, marketHours.marketCloseToday())` — closes any `trade_order` row still `OPEN` at close, so the ledger is complete before summarizing. Exceptions are caught and logged; a force-close failure does not stop the summary from being built.
+  2. `buildSummary(today, forceClosed)` — aggregates the day's `trade_order` rows into a compact text digest: trade/closed/open-left counts, win/loss/scratch counts, total per-share P&L, biggest winner/loser, exit-reason breakdown, per-config P&L.
+  3. `NotificationService.alertDaySummary(body)` — one Telegram message, no dedupe beyond the guard in step 0.
+- **Not replayed in backtest.** `BacktestAnalysisService` already calls `orderService.forceCloseOpenPositions(date, dateEnd)` at the end of every simulated day (see below), so a second live-style digest per backtest day isn't needed — and would spam Telegram on every backtest boot if it were wired the same way.
 
 ---
 

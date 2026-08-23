@@ -138,19 +138,6 @@ Legend for effort:
 | Effort | **M** (per broker that wants it). |
 | Priority | _TBD_ |
 
-<<<<<<< Updated upstream
-## 13. Documentation lag from this session's changes
-=======
-## 17. M10 strike caching — design premise contradicted by actual code
-
-| | |
-|---|---|
-| Where | [`AnalysisScheduler.calculateStrikesForCandles:222`](../src/main/java/com/moneymaker/scheduler/AnalysisScheduler.java#L222) |
-| Why | M10 in MILESTONE_DETAILS proposed per-(date, configId) caching, justified by "strikes anchored on first candle of the day → stable intraday." The implementation actually anchors on `marketDataList.get(marketDataList.size()-1)` — the LAST candle (latest tick's close). Spot moves intraday → ATM base shifts → strike set shifts. Naively caching would change live behavior, not just performance. |
-| Decision needed | Three paths: **(a)** Change anchor to first-of-day candle — real behavior change (strikes fixed at 09:15 spot for the day; matches the M10 spec but needs strategy-owner sign-off because it alters what gets traded). **(b)** Memoise by `(date, configId, lastCandleTimestamp)` — pure caching but the inner key changes per tick so there's no real saving. **(c)** Skip M10 entirely — accept that strike compute is intentionally per-tick and the "stable within day" claim was wrong. |
-| Recommendation | (a) is the right move IF the strategy owner agrees to the locked-anchor semantics. (c) is the cheap close. Don't ship without that decision. |
-| Surfaced | While trying to implement M10 in the "complete all" session — the architect-engineer debate during planning had assumed (a) but neither party verified against code. |
-
 ## 13. Orphan Liquibase changesets — 016 and 017
 
 | | |
@@ -168,12 +155,12 @@ Legend for effort:
 | | |
 |---|---|
 | Where | Build pipeline (none exists) |
-| Why | The 005 / 016 / 017 orphans (Gaps #14) prove the team is forgetting to add new changesets to `db.changelog-master.xml`. A linter / unit test that scans `db/changelog/*.xml` and asserts every file (except master itself) is `<include>`d somewhere would catch this at build time, before tests or production. |
+| Why | The 005 / 016 / 017 orphans (Gaps #13) prove the team is forgetting to add new changesets to `db.changelog-master.xml`. A linter / unit test that scans `db/changelog/*.xml` and asserts every file (except master itself) is `<include>`d somewhere would catch this at build time, before tests or production. |
 | Fix sketch | Small Java test: glob `db/changelog/00*.xml`, parse master, assert every changeset file is referenced. ArchUnit-style. |
 | Effort | **S** |
 | Priority | _TBD_ |
 
-> Companion to Gap #14. Together these are the "stop the next orphan from happening" fix.
+> Companion to Gap #13. Together these are the "stop the next orphan from happening" fix.
 
 ## 15. EMA and RSI indicator implementations are stubs returning 0.0 — **RESOLVED 2026-05-28**
 
@@ -185,18 +172,46 @@ Legend for effort:
 | Test outcome | `IndicatorFactoryTest.EMA_and_RSI_no_longer_registered_after_gap_15_resolution` pins the new contract so anyone re-registering without removing this test gets a clear failure. |
 | Shipped | Commit `_M1.5_` (see CHANGELOG). |
 
-## 16. Documentation lag from this session's changes
->>>>>>> Stashed changes
+## 16. M10 strike caching — design premise contradicted by actual code
 
 | | |
 |---|---|
-| Where | `docs/SCHEDULERS.md`, `docs/NOTIFICATIONS.md`, `docs/ORDERS_AND_POSITIONS.md`, `Readme.md`, `CLAUDE.md` |
+| Where | [`AnalysisScheduler.calculateStrikesForCandles:222`](../src/main/java/com/moneymaker/scheduler/AnalysisScheduler.java#L222) |
+| Why | M10 in MILESTONE_DETAILS proposed per-(date, configId) caching, justified by "strikes anchored on first candle of the day → stable intraday." The implementation actually anchors on `marketDataList.get(marketDataList.size()-1)` — the LAST candle (latest tick's close). Spot moves intraday → ATM base shifts → strike set shifts. Naively caching would change live behavior, not just performance. |
+| Decision needed | Three paths: **(a)** Change anchor to first-of-day candle — real behavior change (strikes fixed at 09:15 spot for the day; matches the M10 spec but needs strategy-owner sign-off because it alters what gets traded). **(b)** Memoise by `(date, configId, lastCandleTimestamp)` — pure caching but the inner key changes per tick so there's no real saving. **(c)** Skip M10 entirely — accept that strike compute is intentionally per-tick and the "stable within day" claim was wrong. |
+| Recommendation | (a) is the right move IF the strategy owner agrees to the locked-anchor semantics. (c) is the cheap close. Don't ship without that decision. |
+| Surfaced | While trying to implement M10 in the "complete all" session — the architect-engineer debate during planning had assumed (a) but neither party verified against code. |
+
+## 17. Documentation lag from this session's changes — **RESOLVED 2026-08-16**
+
+| | |
+|---|---|
+| Where | `docs/SCHEDULERS.md`, `docs/NOTIFICATIONS.md`, `docs/ORDERS_AND_POSITIONS.md`, `Readme.md`, `CLAUDE.md`, `AGENTS.md` |
 | Why | New work added: `DaySummaryScheduler`, `MarketHoursService`, `alertDaySummary`, the trade-config admin endpoints + service. Per the doc-hygiene rule in `CLAUDE.md`, each should be reflected in its respective doc. |
-| Fix sketch | One PR per doc, or a single docs-update commit. Specifically: |
-| | • `SCHEDULERS.md` — add `DaySummaryScheduler` entry + the market-hours gate on the three pipeline schedulers. |
-| | • `NOTIFICATIONS.md` — add `alertDaySummary` to the alert catalogue. |
-| | • `ORDERS_AND_POSITIONS.md` — short "Trade-config admin" section pointing at the CRUD endpoints + cache invalidation contract. |
-| | • `Readme.md` — endpoints table + `app.market.*` config block. |
-| | • `CLAUDE.md` — invariant: "trade-config writes go through `TradeConfigAdminService`; never call `tradeConfigRepository.save()` directly from a controller". |
+| Resolution | All five bullets below landed in the same documentation pass that also resolved this merge conflict and added [`docs/WORKFLOWS.md`](WORKFLOWS.md): |
+| | • `SCHEDULERS.md` — added `DaySummaryScheduler` entry + the market-hours gate on the three pipeline schedulers. |
+| | • `NOTIFICATIONS.md` — added `alertDaySummary` + `alertNoActiveSession` to the alert catalogue. |
+| | • `ORDERS_AND_POSITIONS.md` — added a "Trade-config admin" section pointing at the CRUD endpoints + cache invalidation contract. |
+| | • `Readme.md` — refreshed the endpoints table, package map, and feature list to match current code. |
+| | • `CLAUDE.md` / `AGENTS.md` — added the invariant: "trade-config writes go through `TradeConfigAdminService`; never call `tradeConfigRepository.save()` directly from a controller". |
 | Effort | **S** per doc; **M** as a bundle. |
+
+## 18. `SharedData.optionTokenMap` was keyed by strike alone — **RESOLVED 2026-08-22**
+
+| | |
+|---|---|
+| Where | [`SharedData.optionTokenMap`](../src/main/java/com/moneymaker/shared/data/SharedData.java), consumed by [`AnalysisScheduler.fetchAndShareStrikeMarketData`](../src/main/java/com/moneymaker/scheduler/AnalysisScheduler.java) |
+| Why | The map cached `strike → optionToken` with `Map<Integer, String>`. A strike is not a contract. On any day that has both a CE and a PE `trade_config` — which is the normal shape, and exactly what `AUTO_DOWNTREND` generates in pairs — both configs walk the same strike list, so whichever ran first populated the entry and the second silently reused it. The result was a CE config analysing PE candles: `[strikes]` showed `21800 CE` and `21800 PE` at an identical premium. It also collided across expiries on a multi-day run, and the map was never cleared between backtest days. |
+| Impact | Pre-existing in broker mode too, not introduced by the historical data source — that source only made it obvious, because the two legs' prices are visibly wrong side-by-side. Any multi-config backtest or live day before this fix could have entered on the wrong leg's signal. |
+| Resolution | Key is now `expiry\|strike\|optionType` via `SharedData.optionTokenKey(...)`, and `BacktestAnalysisService` clears the map in its day-end `finally` block alongside the other per-day caches. |
+| Effort | **S** |
+
+## 19. `MarketDataProviderFactory.java` is an empty file
+
+| | |
+|---|---|
+| Where | [`market/provider/MarketDataProviderFactory.java`](../src/main/java/com/moneymaker/market/provider/MarketDataProviderFactory.java) — 0 bytes, no class |
+| Why | Provider selection is currently spread across `@ConditionalOnProperty` annotations on each provider, with `ZerodhaMarketDataProvider` declaring `matchIfMissing = true`. That makes the single-provider injection point in `KiteHistoricalFetcher` fragile: any second `MarketDataProvider` bean is ambiguous unless it is `@Primary`. `HistoricalIciciMarketDataProvider` has to carry `@Primary` for exactly this reason. `GrowwMarketDataProvider` and `CustomMarketDataProvider` are both gated on `market.data.provider`, a key that is not in `application.properties` at all, so neither can ever register. |
+| Fix sketch | Fill the factory: inject `List<MarketDataProvider>`, select by an explicit property, and have `KiteHistoricalFetcher` depend on the factory rather than on a single bean. Then drop `matchIfMissing` and the `@Primary` workaround, and either wire up or delete the two dead providers. |
+| Effort | **M** — touches provider wiring; needs a live-mode start-up check. |
 | Priority | _TBD_ |

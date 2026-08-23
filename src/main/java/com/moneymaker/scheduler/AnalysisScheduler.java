@@ -3,16 +3,16 @@ package com.moneymaker.scheduler;
 import com.moneymaker.dto.AllTimeFramedto;
 import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.entity.Instrument;
-import com.moneymaker.entity.InstrumentDetails;
 import com.moneymaker.entity.MarketData;
 import com.moneymaker.entity.TradeConfig;
 import com.moneymaker.indicator.IndicatorConfig;
 import com.moneymaker.indicator.IndicatorService;
+import com.moneymaker.market.exception.HistoricalDataMissingException;
+import com.moneymaker.market.instrument.OptionInstrumentResolver;
+import com.moneymaker.market.instrument.UnderlyingSymbols;
 import com.moneymaker.market.service.MarketDataService;
 import com.moneymaker.market.service.MarketHoursService;
 import com.moneymaker.entity.TradeOrder;
-import com.moneymaker.repository.ExpiryDatesRepository;
-import com.moneymaker.repository.InstrumentDetailsRepository;
 import com.moneymaker.repository.TradeOrderRepository;
 import com.moneymaker.shared.data.SharedData;
 import com.moneymaker.strategy.StrategyFactory;
@@ -22,7 +22,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -32,29 +31,33 @@ public class AnalysisScheduler {
     private static final Logger logger = LoggerFactory.getLogger(AnalysisScheduler.class);
     private final MarketDataService marketDataService;
     private final IndicatorService indicatorService;
-    private final InstrumentDetailsRepository instrumentDetailsRepository;
-    private final ExpiryDatesRepository expiryDatesRepository;
     private final StrategyFactory strategyFactory;
     private final MarketHoursService marketHours;
     private final TradeOrderRepository tradeOrderRepository;
+
+    /**
+     * Supplies the underlying / option {@code symbol} strings and the expiry.
+     * Broker tokens in normal operation; natural-key strings when the backtest
+     * reads from the imported historical tables.
+     */
+    private final OptionInstrumentResolver instrumentResolver;
 
     @Value("${app.mode:live}")
     private String appMode;
 
     public AnalysisScheduler(MarketDataService marketDataService,
                              IndicatorService indicatorService,
-                             InstrumentDetailsRepository instrumentDetailsRepository,
-                             ExpiryDatesRepository expiryDatesRepository,
                              StrategyFactory strategyFactory,
                              MarketHoursService marketHours,
-                             TradeOrderRepository tradeOrderRepository) {
+                             TradeOrderRepository tradeOrderRepository,
+                             OptionInstrumentResolver instrumentResolver) {
         this.marketDataService = Objects.requireNonNull(marketDataService, "marketDataService must not be null");
         this.indicatorService = Objects.requireNonNull(indicatorService, "indicatorService must not be null");
-        this.instrumentDetailsRepository = Objects.requireNonNull(instrumentDetailsRepository, "instrumentDetailsRepository must not be null");
-        this.expiryDatesRepository = Objects.requireNonNull(expiryDatesRepository, "expiryDatesRepository must not be null");
         this.strategyFactory = Objects.requireNonNull(strategyFactory, "strategyFactory must not be null");
         this.marketHours = Objects.requireNonNull(marketHours, "marketHours must not be null");
         this.tradeOrderRepository = Objects.requireNonNull(tradeOrderRepository, "tradeOrderRepository must not be null");
+        this.instrumentResolver = Objects.requireNonNull(instrumentResolver, "instrumentResolver must not be null");
+        logger.info("AnalysisScheduler initialized with instrument resolver: {}", instrumentResolver.getName());
     }
 
     @Scheduled(cron = "0 0/5 9-16 * * MON-FRI")
@@ -93,18 +96,22 @@ public class AnalysisScheduler {
             }
 
             for (TradeConfigCombinedDTO dto : combinedDtoList) {
-                if (dto.getInstrumentDetails() == null || dto.getInstrumentDetails().getInstrumentToken() == null) {
-                    logger.warn("Skipping trade config without instrument token: {}", dto.getTradeConfig());
+                // The resolver owns what a "symbol" is: a broker instrument token
+                // normally, a historical natural key when replaying imported CSVs
+                // (where no instrument_details row exists at all).
+                String symbol = instrumentResolver.underlyingSymbol(dto);
+                if (symbol == null) {
+                    logger.warn("Skipping trade config — {} resolver could not resolve an underlying symbol: {}",
+                            instrumentResolver.getName(), dto.getTradeConfig());
                     continue;
                 }
 
                 Map<Integer, List<Integer>>  timeframes = SharedData.allTimeFrameMap;
                 if (timeframes == null || timeframes.isEmpty()) {
-                    logger.warn("No timeframes configured for instrument token: {}", dto.getInstrumentDetails().getInstrumentToken());
+                    logger.warn("No timeframes configured for symbol: {}", symbol);
                     continue;
                 }
 
-                String symbol = dto.getInstrumentDetails().getInstrumentToken().toString();
                 boolean indexLineEmitted = false;
                 for (Integer timeframe : timeframes.keySet()) {
                     String interval = toMarketDataInterval(timeframe);
@@ -147,6 +154,12 @@ public class AnalysisScheduler {
 
             logger.debug("Indicator analysis completed for date-time: {}", analysisDateTime);
 
+        } catch (HistoricalDataMissingException ex) {
+            // Propagate unwrapped: BacktestAnalysisService matches on this exact
+            // type to abort the run. Rewrapping it in a plain RuntimeException
+            // would demote a missing data set to a per-tick warning and let the
+            // run "succeed" having traded on nothing.
+            throw ex;
         } catch (Exception ex) {
             logger.error("Error calculating indicators for date-time: {}", analysisDateTime, ex);
             throw new RuntimeException("Indicator calculation failed for date-time: " + analysisDateTime, ex);
@@ -310,22 +323,25 @@ public class AnalysisScheduler {
             return;
         }
 
-        LocalDate expiryDate = resolveExpiryDate(instrument, analysisDate);
+        LocalDate expiryDate = instrumentResolver.resolveExpiry(instrument, analysisDate);
         if (expiryDate == null) {
             logger.warn("No expiry date found for instrument: {}, analysis date: {}", instrument.getInsName(), analysisDate);
             return;
         }
 
         for (Integer strike : uniqueStrikes(strikeList)) {
-            String optionToken =SharedData.optionTokenMap.get(strike);
+            // Cache per contract, not per strike — a CE and a PE config on the
+            // same day walk identical strikes.
+            String optionTokenCacheKey = SharedData.optionTokenKey(expiryDate, strike, optionType);
+            String optionToken = SharedData.optionTokenMap.get(optionTokenCacheKey);
             if(optionToken==null) {
-                InstrumentDetails optionInstrument = resolveOptionInstrument(strike, optionType, instrument, expiryDate);
-                if (optionInstrument == null || optionInstrument.getInstrumentToken() == null) {
-                    logger.warn("No option instrument found for strike: {}, type: {}", strike, optionType);
+                optionToken = instrumentResolver.optionSymbol(instrument, expiryDate, strike, optionType);
+                if (optionToken == null) {
+                    logger.warn("No option instrument found for strike: {}, type: {}, expiry: {}",
+                            strike, optionType, expiryDate);
                     continue;
                 }
-                optionToken=optionInstrument.getInstrumentToken().toString();
-                SharedData.optionTokenMap.put(strike,optionToken);
+                SharedData.optionTokenMap.put(optionTokenCacheKey, optionToken);
 
             }
 
@@ -368,7 +384,7 @@ public class AnalysisScheduler {
         }
 
         String optionType = resolveOptionType(tradeConfig);
-        LocalDate expiryDate = resolveExpiryDate(instrument, analysisDate);
+        LocalDate expiryDate = instrumentResolver.resolveExpiry(instrument, analysisDate);
         if (optionType == null || expiryDate == null) {
             return;
         }
@@ -391,92 +407,6 @@ public class AnalysisScheduler {
         return strikes;
     }
 
-    private LocalDate resolveExpiryDate(Instrument instrument, LocalDate analysisDate) {
-        if (instrument == null || analysisDate == null) {
-            return null;
-        }
-        return expiryDatesRepository
-                .findFirstByInstrumentAndExpiryDateGreaterThanEqualOrderByExpiryDateAsc(instrument, analysisDate)
-                .map(com.moneymaker.entity.ExpiryDates::getExpiryDate)
-                .orElse(null);
-    }
-
-    private InstrumentDetails resolveOptionInstrument(Integer strike, String optionType, Instrument instrument, LocalDate expiryDate) {
-        if (strike == null || optionType == null || instrument == null || expiryDate == null) {
-            return null;
-        }
-
-       // String tradingSymbol = buildOptionTradingSymbol(instrument, expiryDate, strike, optionType);
-        // Convert LocalDate to String format (YYYY-MM-DD) and Integer to BigDecimal for repository query
-        String expiryString = expiryDate.toString();
-        BigDecimal strikeBigDecimal = new BigDecimal(strike);
-        List<InstrumentDetails> matches = instrumentDetailsRepository.findByCriteria(
-                instrument.getInsName(),
-                expiryString,
-                strikeBigDecimal,
-                optionType
-        );
-
-        if (matches.isEmpty()) {
-            logger.warn("No InstrumentDetails for {}, expiry={}, strike={}, type={}",
-                    instrument.getInsName(), expiryString, strikeBigDecimal, optionType);
-            return null;
-        }
-        if (matches.size() > 1) {
-            // Same expiry / strike / type on two listings (e.g. NSE + BSE) — pick
-            // the lowest-id row deterministically and warn so the data can be cleaned.
-            logger.warn("Multiple InstrumentDetails ({}) for {}, expiry={}, strike={}, type={} — picking id={}",
-                    matches.size(), instrument.getInsName(), expiryString, strikeBigDecimal,
-                    optionType, matches.get(0).getInstrumentToken());
-        }
-        return matches.get(0);
-    }
-
-/*    private String buildOptionTradingSymbol(Instrument instrument, LocalDate expiryDate, Integer strike, String optionType) {
-        int day = expiryDate.getDayOfMonth();
-        int monthValue = expiryDate.getMonthValue();
-        int year = expiryDate.getYear();
-        String cepe = optionType.equalsIgnoreCase("C") ? "CE" : optionType;
-        String symbolPrefix = toOptionSymbolPrefix(instrument);
-
-        LocalDate firstOfMonth = expiryDate.withDayOfMonth(1);
-        LocalDate lastOfMonth = expiryDate.withDayOfMonth(expiryDate.lengthOfMonth());
-        List<com.moneymaker.entity.ExpiryDates> expiriesInMonth = expiryDatesRepository
-                .findByInstrumentAndExpiryDateBetween(instrument, firstOfMonth, lastOfMonth);
-        boolean isLastExpiry = expiriesInMonth.stream()
-                .map(com.moneymaker.entity.ExpiryDates::getExpiryDate)
-                .max(LocalDate::compareTo)
-                .orElse(expiryDate)
-                .equals(expiryDate);
-
-        String yy = String.valueOf(year).substring(2);
-        if (isLastExpiry) {
-            String monthAbbr = expiryDate.getMonth().toString().substring(0, 3).toUpperCase();
-            return String.format("%s%s%s%s%s", symbolPrefix, yy, monthAbbr, strike, cepe);
-        }
-
-        String mm = (monthValue < 10 ? "0" : "") + monthValue;
-        String dd = (day < 10 ? "0" : "") + day;
-        return String.format("%s%s%s%s%s%s", symbolPrefix, yy, mm, dd, strike, cepe);
-    }*/
-
-    private String toOptionSymbolPrefix(Instrument instrument) {
-        if (instrument.getInsName() == null || instrument.getInsName().isBlank()) {
-            return "";
-        }
-        String name = instrument.getInsName().toUpperCase();
-        if (name.contains("BANKNIFTY")) {
-            return "BANKNIFTY";
-        }
-        if (name.contains("FINNIFTY")) {
-            return "FINNIFTY";
-        }
-        if (name.contains("NIFTY")) {
-            return "NIFTY";
-        }
-        return name.replaceAll("[^A-Z]", "");
-    }
-
     private String resolveOptionType(TradeConfig tradeConfig) {
         if (tradeConfig == null || tradeConfig.getTradingSide() == null) {
             return null;
@@ -492,7 +422,7 @@ public class AnalysisScheduler {
     }
 
     private String toStrikeKey(Instrument instrument, LocalDate expiryDate, Integer strike, String optionType, String interval) {
-        return toOptionSymbolPrefix(instrument) + "|" + expiryDate + "|" + optionType + "|" + strike + "|" + interval;
+        return UnderlyingSymbols.canonicalName(instrument) + "|" + expiryDate + "|" + optionType + "|" + strike + "|" + interval;
     }
 
     private String toStrikeMarketDataKey(String parentMarketDataKey, Integer strike, String optionType, String optionToken, TradeConfig tradeConfig) {

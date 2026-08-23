@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Money Maker Workflows</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%AD%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #F2F4F7;
+    --surface: #FFFFFF;
+    --surface-2: #E9ECF2;
+    --ink: #171B24;
+    --ink-soft: #545F70;
+    --ink-faint: #8993A4;
+    --line: #D6DBE3;
+    --line-strong: #B7BFCC;
+    --accent: #B87817;
+    --accent-ink: #6E4610;
+    --accent-soft: #F3E3C8;
+    --store: #1E7D74;
+    --store-soft: #DCEEEC;
+    --warn: #A5432F;
+    --warn-soft: #F5E1DC;
+    --g-setup: #4C5F8A;
+    --g-setup-soft: #E1E5EF;
+    --g-pipeline: #A15A2E;
+    --g-pipeline-soft: #F0E1D4;
+    --g-eod: #7A4A63;
+    --g-eod-soft: #ECDFE6;
+    --g-charts: #3F7A52;
+    --g-charts-soft: #DEEBE1;
+    --shadow: 0 1px 2px rgba(23,27,36,0.06), 0 6px 20px -8px rgba(23,27,36,0.18);
+    --font-display: "Charter", "Iowan Old Style", Georgia, "Cambria", serif;
+    --font-body: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "Cascadia Code", "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11151D;
+      --surface: #171C26;
+      --surface-2: #1E2531;
+      --ink: #ECEEF3;
+      --ink-soft: #A7B0C0;
+      --ink-faint: #6B7688;
+      --line: #2B3341;
+      --line-strong: #3A4457;
+      --accent: #E3A857;
+      --accent-ink: #F6D9A6;
+      --accent-soft: #3A2E17;
+      --store: #5FBDB0;
+      --store-soft: #16302C;
+      --warn: #E08469;
+      --warn-soft: #3A2019;
+      --g-setup: #8FA3D6;
+      --g-setup-soft: #232B42;
+      --g-pipeline: #D89A6A;
+      --g-pipeline-soft: #33261A;
+      --g-eod: #C293AC;
+      --g-eod-soft: #302332;
+      --g-charts: #85C199;
+      --g-charts-soft: #1B2E22;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 10px 30px -10px rgba(0,0,0,0.55);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 48px 28px 96px; }
+
+  a { color: var(--accent-ink); }
+  a:focus-visible, summary:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px;
+  }
+
+  code, .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  code {
+    background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: 4px; padding: 0.05em 0.4em; font-size: 0.86em; color: var(--ink);
+  }
+
+  /* ---------- header ---------- */
+  .eyebrow {
+    font-family: var(--font-mono); font-size: 12.5px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--accent-ink); display: flex; align-items: center; gap: 8px;
+  }
+  .eyebrow::before { content: ""; width: 22px; height: 1px; background: var(--accent); display: inline-block; }
+  h1 {
+    font-family: var(--font-display); font-weight: 600; font-size: clamp(32px, 4.4vw, 46px);
+    line-height: 1.1; margin: 10px 0 14px; text-wrap: balance; letter-spacing: -0.01em;
+  }
+  .dek {
+    font-size: 18px; color: var(--ink-soft); max-width: 62ch; text-wrap: pretty; margin-bottom: 28px;
+  }
+  .stat-row { display: flex; flex-wrap: wrap; gap: 10px 28px; padding: 18px 0 8px; border-top: 1px solid var(--line); }
+  .stat { display: flex; flex-direction: column; gap: 2px; }
+  .stat b { font-family: var(--font-display); font-size: 22px; font-weight: 600; }
+  .stat span { font-size: 12.5px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.05em; }
+
+  /* ---------- legend ---------- */
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 18px 26px; align-items: center;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 20px; margin: 34px 0 30px; box-shadow: var(--shadow);
+    font-size: 13.5px; color: var(--ink-soft);
+  }
+  .legend-group { display: flex; align-items: center; gap: 8px; }
+  .legend-title { font-family: var(--font-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); margin-right: 4px; }
+  .swatch-line { width: 22px; height: 0; border-top: 2px solid var(--ink); display: inline-block; }
+  .swatch-line.reads { border-top-style: dashed; }
+  .swatch-line.trigger { border-top-color: var(--accent); border-top-width: 2.5px; }
+  .swatch-dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .swatch-store { width: 16px; height: 12px; border-radius: 2px; border: 1.5px dashed var(--store); display: inline-block; }
+
+  /* ---------- figures ---------- */
+  figure { margin: 0 0 44px; }
+  .fig-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 4px; }
+  .fig-head h2 { font-family: var(--font-display); font-size: 21px; font-weight: 600; margin: 0; }
+  .fig-num { font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); }
+  .fig-panel {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: var(--shadow); padding: 10px; overflow-x: auto;
+  }
+  svg.diagram { display: block; width: 100%; height: auto; min-width: 640px; }
+  figcaption { font-size: 14.5px; color: var(--ink-soft); margin-top: 10px; max-width: 78ch; }
+  figcaption b { color: var(--ink); font-weight: 600; }
+
+  .node rect.shell { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1.4; }
+  .node rect.tab { stroke: none; }
+  .node text.title { font-family: var(--font-display); font-weight: 600; font-size: 14.5px; fill: var(--ink); }
+  .node text.badge { font-family: var(--font-mono); font-size: 12px; font-weight: 700; }
+  .node.g-setup rect.tab { fill: var(--g-setup); } .node.g-setup text.badge { fill: var(--g-setup); }
+  .node.g-pipeline rect.tab { fill: var(--g-pipeline); } .node.g-pipeline text.badge { fill: var(--g-pipeline); }
+  .node.g-eod rect.tab { fill: var(--g-eod); } .node.g-eod text.badge { fill: var(--g-eod); }
+  .node.g-charts rect.tab { fill: var(--g-charts); } .node.g-charts text.badge { fill: var(--g-charts); }
+
+  .store rect { fill: var(--store-soft); stroke: var(--store); stroke-width: 1.4; stroke-dasharray: 4 3; }
+  .store text { font-family: var(--font-mono); font-size: 12.5px; fill: var(--store); font-weight: 600; }
+
+  .ghost rect { fill: none; stroke: var(--ink-faint); stroke-width: 1.2; stroke-dasharray: 3 4; opacity: 0.75; }
+  .ghost text { font-family: var(--font-display); font-size: 13.5px; fill: var(--ink-faint); font-style: italic; }
+
+  .edge { fill: none; stroke: var(--ink); stroke-width: 1.6; }
+  .edge.reads { stroke-dasharray: 5 4; }
+  .edge.trigger { stroke: var(--accent); stroke-width: 2.2; }
+  .edge.warn { stroke: var(--warn); stroke-width: 1.6; stroke-dasharray: 3 3; }
+  .mk-ink { fill: var(--ink); }
+  .mk-accent { fill: var(--accent); }
+  .mk-warn { fill: var(--warn); }
+  .edge-label { font-family: var(--font-mono); font-size: 11.5px; fill: var(--ink-soft); }
+  .edge-label.accent { fill: var(--accent-ink); font-weight: 700; }
+  .edge-label.warn { fill: var(--warn); font-weight: 700; }
+  .edge-label-bg { fill: var(--surface); opacity: 0.92; }
+
+  /* ---------- cards ---------- */
+  .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 56px 0 18px; }
+  .section-head h2 { font-family: var(--font-display); font-size: 24px; font-weight: 600; margin: 0; }
+  .section-head p { color: var(--ink-soft); font-size: 14.5px; margin: 4px 0 0; max-width: 60ch; }
+
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  details.card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  details.card summary {
+    list-style: none; cursor: pointer; padding: 16px 18px; display: flex; gap: 12px; align-items: flex-start;
+  }
+  details.card summary::-webkit-details-marker { display: none; }
+  .card-badge {
+    font-family: var(--font-mono); font-weight: 700; font-size: 13px; flex: 0 0 auto;
+    width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    border: 1.5px solid currentColor;
+  }
+  .card-body-top { flex: 1 1 auto; min-width: 0; }
+  .card-title { font-family: var(--font-display); font-weight: 600; font-size: 16px; line-height: 1.3; }
+  .card-trigger { font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); margin-top: 3px; }
+  .card-chevron { font-size: 12px; color: var(--ink-faint); margin-left: auto; flex: 0 0 auto; transition: transform 0.15s ease; }
+  details[open] .card-chevron { transform: rotate(90deg); }
+  @media (prefers-reduced-motion: reduce) { .card-chevron { transition: none; } }
+
+  .tag {
+    display: inline-block; font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase;
+    letter-spacing: 0.04em; padding: 2px 8px; border-radius: 999px; margin-top: 8px;
+  }
+  .g-setup .card-badge, .g-setup .tag { color: var(--g-setup); }
+  .g-setup .tag { background: var(--g-setup-soft); }
+  .g-pipeline .card-badge, .g-pipeline .tag { color: var(--g-pipeline); }
+  .g-pipeline .tag { background: var(--g-pipeline-soft); }
+  .g-eod .card-badge, .g-eod .tag { color: var(--g-eod); }
+  .g-eod .tag { background: var(--g-eod-soft); }
+  .g-charts .card-badge, .g-charts .tag { color: var(--g-charts); }
+  .g-charts .tag { background: var(--g-charts-soft); }
+  .g-sink .card-badge, .g-sink .tag { color: var(--ink-soft); }
+  .g-sink .tag { background: var(--surface-2); }
+
+  .card-detail { padding: 0 18px 18px; border-top: 1px solid var(--line); }
+  .card-detail dl { margin: 14px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; font-size: 13.5px; }
+  .card-detail dt { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); padding-top: 2px; }
+  .card-detail dd { margin: 0; color: var(--ink-soft); }
+  .card-detail dd code { font-size: 0.82em; }
+
+  /* ---------- data map table ---------- */
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); }
+  table.datamap { width: 100%; border-collapse: collapse; background: var(--surface); font-size: 13.5px; min-width: 760px; }
+  table.datamap th, table.datamap td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.datamap thead th {
+    font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--ink-faint); background: var(--surface-2); position: sticky; top: 0;
+  }
+  table.datamap tbody tr:last-child td { border-bottom: none; }
+  table.datamap tbody tr:hover { background: var(--surface-2); }
+  table.datamap td.resource code { color: var(--store); border-color: var(--store); background: var(--store-soft); }
+  table.datamap td.catch { color: var(--ink); }
+
+  /* ---------- callouts ---------- */
+  .callouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 40px; }
+  .callout {
+    background: var(--accent-soft); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+    border-radius: 10px; padding: 18px 20px; box-shadow: var(--shadow);
+  }
+  .callout .num { font-family: var(--font-mono); font-size: 12px; color: var(--accent-ink); font-weight: 700; }
+  .callout h3 { font-family: var(--font-display); font-size: 16px; margin: 4px 0 8px; }
+  .callout p { font-size: 14px; color: var(--ink); margin: 0; }
+
+  footer {
+    margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line);
+    font-size: 13px; color: var(--ink-faint); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">com.moneymaker — system map</div>
+  <h1>Every workflow, and what it hands to the next one</h1>
+  <p class="dek">
+    Money Maker runs eleven mostly-independent workflows — login, config production, the trading
+    pipeline, backtesting, EOD housekeeping, and chart data ingestion. This page is the one place
+    that shows what each does <em>and</em> what data one workflow writes that another reads —
+    including the one-day delay and the pipeline that never sees the data it looks like it should.
+  </p>
+
+  <div class="stat-row">
+    <div class="stat"><b>11</b><span>workflows</span></div>
+    <div class="stat"><b>8</b><span>shared resources</span></div>
+    <div class="stat"><b>1</b><span>day-delayed feed</span></div>
+    <div class="stat"><b>2</b><span>ingestion paths that never reach the pipeline</span></div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-group"><span class="legend-title">Edges</span></div>
+    <div class="legend-group"><span class="swatch-line"></span> writes</div>
+    <div class="legend-group"><span class="swatch-line reads"></span> reads</div>
+    <div class="legend-group"><span class="swatch-line trigger"></span> triggers / same-tick effect</div>
+    <div class="legend-group"><span class="swatch-store"></span> shared data store</div>
+    <div class="legend-group"><span class="legend-title">Groups</span></div>
+    <div class="legend-group"><span class="swatch-dot" style="background:var(--g-setup)"></span> setup / config</div>
+    <div class="legend-group"><span class="swatch-dot" style="background:var(--g-pipeline)"></span> trading pipeline</div>
+    <div class="legend-group"><span class="swatch-dot" style="background:var(--g-eod)"></span> EOD / ops</div>
+    <div class="legend-group"><span class="swatch-dot" style="background:var(--g-charts)"></span> market data &amp; charts</div>
+  </div>
+
+  <!-- ============ FIGURE 1 ============ -->
+  <figure>
+    <div class="fig-head">
+      <h2>Two producers write <code>trade_config</code> — only one of them can act the same day</h2>
+      <span class="fig-num">fig. 1 of 2</span>
+    </div>
+    <div class="fig-panel">
+      <svg class="diagram" viewBox="0 0 1160 600" role="img"
+           aria-label="Trade-config admin and the EOD downtrend generator both write trade_config, which the daily loader turns into SharedData.combinedDto for the live and backtest pipeline to consume; the pipeline writes trade_order, which day summary reads and force-closes. The EOD generator's write only reaches the loader the next day; trade-config admin's live edits reach the pipeline the same tick via a direct refresh.">
+        <defs>
+          <marker id="arrow-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path class="mk-ink" d="M0,0 L10,5 L0,10 z"></path>
+          </marker>
+          <marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path class="mk-accent" d="M0,0 L10,5 L0,10 z"></path>
+          </marker>
+          <marker id="arrow-warn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path class="mk-warn" d="M0,0 L10,5 L0,10 z"></path>
+          </marker>
+        </defs>
+
+        <!-- edges (drawn first, under nodes) -->
+        <path class="edge" marker-end="url(#arrow-ink)" d="M240,66 L275,66 L275,188 L296,188" />
+        <path class="edge trigger" marker-end="url(#arrow-accent)" d="M130,250 L130,322" />
+        <path class="edge warn" marker-end="url(#arrow-warn)" d="M240,362 L255,362 L255,188 L296,188" />
+        <path class="edge reads" marker-end="url(#arrow-ink)" d="M484,188 L556,188" />
+        <path class="edge" marker-end="url(#arrow-ink)" d="M770,188 L800,188 L800,122 L846,122" />
+        <path class="edge trigger" marker-end="url(#arrow-accent)" d="M240,66 L820,66 L820,122 L846,122" />
+        <path class="edge reads" marker-end="url(#arrow-ink)" d="M960,146 L960,218" />
+        <path class="edge" marker-end="url(#arrow-ink)" d="M960,302 L960,374" />
+        <path class="edge reads" marker-end="url(#arrow-ink)" d="M960,434 L960,474" />
+
+        <!-- edge labels -->
+        <rect class="edge-label-bg" x="140" y="268" width="185" height="34" rx="4"></rect>
+        <text class="edge-label accent" x="146" y="281">⑥ triggers ④</text>
+        <text class="edge-label" x="146" y="296">end of each backtest day</text>
+
+        <rect class="edge-label-bg" x="272" y="322" width="66" height="18" rx="4"></rect>
+        <text class="edge-label warn" x="277" y="335">+1 day</text>
+
+        <rect class="edge-label-bg" x="520" y="40" width="164" height="34" rx="4"></rect>
+        <text class="edge-label accent" x="524" y="53">same tick, live only</text>
+        <text class="edge-label" x="524" y="68">bypasses ② — see ③</text>
+
+        <rect class="edge-label-bg" x="895" y="440" width="120" height="18" rx="4"></rect>
+        <text class="edge-label" x="900" y="453">reads, force-closes</text>
+
+        <!-- nodes -->
+        <g class="node g-setup">
+          <rect class="tab" x="20" y="30" width="6" height="72" rx="2"></rect>
+          <rect class="shell" x="26" y="30" width="214" height="72" rx="12"></rect>
+          <text class="badge" x="42" y="52">③</text>
+          <text class="title" x="42" y="76">Trade-config admin</text>
+        </g>
+
+        <g class="node g-pipeline">
+          <rect class="tab" x="20" y="178" width="6" height="72" rx="2"></rect>
+          <rect class="shell" x="26" y="178" width="214" height="72" rx="12"></rect>
+          <text class="badge" x="42" y="200">⑥</text>
+          <text class="title" x="42" y="224">Backtest orchestration</text>
+        </g>
+
+        <g class="node g-pipeline">
+          <rect class="tab" x="20" y="326" width="6" height="72" rx="2"></rect>
+          <rect class="shell" x="26" y="326" width="214" height="72" rx="12"></rect>
+          <text class="badge" x="42" y="348">④</text>
+          <text class="title" x="42" y="372">EOD downtrend generator</text>
+        </g>
+
+        <g class="store">
+          <rect x="300" y="160" width="184" height="56" rx="4"></rect>
+          <text x="392" y="193" text-anchor="middle">trade_config</text>
+        </g>
+
+        <g class="node g-setup">
+          <rect class="tab" x="560" y="152" width="6" height="72" rx="2"></rect>
+          <rect class="shell" x="566" y="152" width="204" height="72" rx="12"></rect>
+          <text class="badge" x="582" y="174">②</text>
+          <text class="title" x="582" y="198">Trade-config daily load</text>
+        </g>
+
+        <g class="store">
+          <rect x="846" y="90" width="220" height="56" rx="4"></rect>
+          <text x="956" y="118" text-anchor="middle">SharedData</text>
+          <text x="956" y="134" text-anchor="middle">.combinedDto</text>
+        </g>
+
+        <g class="node g-pipeline">
+          <rect class="tab" x="846" y="222" width="6" height="80" rx="2"></rect>
+          <rect class="shell" x="852" y="222" width="216" height="80" rx="12"></rect>
+          <text class="badge" x="868" y="246">⑤ ⑥</text>
+          <text class="title" x="868" y="270">Live pipeline /</text>
+          <text class="title" x="868" y="288">backtest tick</text>
+        </g>
+
+        <g class="store">
+          <rect x="846" y="378" width="220" height="56" rx="4"></rect>
+          <text x="956" y="411" text-anchor="middle">trade_order</text>
+        </g>
+
+        <g class="node g-eod">
+          <rect class="tab" x="846" y="474" width="6" height="72" rx="2"></rect>
+          <rect class="shell" x="852" y="474" width="216" height="72" rx="12"></rect>
+          <text class="badge" x="868" y="496">⑦</text>
+          <text class="title" x="868" y="520">Day summary</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption>
+      <b>③ (trade-config admin)</b> and <b>④ (the EOD downtrend generator)</b> both write to
+      <code>trade_config</code>, the table <b>② daily load</b> is the sole reader of. ③'s edits to
+      <em>today's</em> configs reach the pipeline within one tick via a direct
+      <code>SharedData.combinedDto</code> refresh; ④'s output — only produced by ⑥'s backtest runner,
+      once per simulated day — can't reach the pipeline until ② loads the <em>next</em> trading day.
+      From there, ⑤/⑥ write the same <code>trade_order</code> ledger, which ⑦ reads and force-closes
+      at end of day.
+    </figcaption>
+  </figure>
+
+  <!-- ============ FIGURE 2 ============ -->
+  <figure>
+    <div class="fig-head">
+      <h2>Two ingestion paths feed the chart dashboard — neither reaches the trading pipeline</h2>
+      <span class="fig-num">fig. 2 of 2</span>
+    </div>
+    <div class="fig-panel">
+      <svg class="diagram" viewBox="0 0 1000 380" role="img"
+           aria-label="Options bulk download writes market_data and historical CSV import writes historical spot and option candles; both feed only the chart dashboard. Neither is read by the live or backtest trading pipeline shown in figure one, which always fetches OHLC live from the broker instead.">
+        <defs>
+          <marker id="arrow-ink-2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path class="mk-ink" d="M0,0 L10,5 L0,10 z"></path>
+          </marker>
+          <marker id="arrow-warn-2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path class="mk-warn" d="M0,0 L10,5 L0,10 z"></path>
+          </marker>
+        </defs>
+
+        <path class="edge" marker-end="url(#arrow-ink-2)" d="M240,65 L296,65" />
+        <path class="edge reads" marker-end="url(#arrow-ink-2)" d="M484,65 L560,65 L560,175 L616,175" />
+        <path class="edge" marker-end="url(#arrow-ink-2)" d="M240,305 L296,305" />
+        <path class="edge reads" marker-end="url(#arrow-ink-2)" d="M484,305 L560,305 L560,201 L616,201" />
+        <path class="edge warn" marker-end="url(#arrow-warn-2)" d="M395,38 L395,14 L730,14 L730,26" />
+
+        <rect class="edge-label-bg" x="430" y="4" width="196" height="18" rx="4"></rect>
+        <text class="edge-label warn" x="435" y="17">✗ never read by the pipeline</text>
+
+        <g class="node g-charts">
+          <rect class="tab" x="20" y="30" width="6" height="70" rx="2"></rect>
+          <rect class="shell" x="26" y="30" width="214" height="70" rx="12"></rect>
+          <text class="badge" x="42" y="52">⑨</text>
+          <text class="title" x="42" y="76">Options bulk download</text>
+        </g>
+
+        <g class="store">
+          <rect x="300" y="38" width="184" height="54" rx="4"></rect>
+          <text x="392" y="70" text-anchor="middle">market_data</text>
+        </g>
+
+        <g class="node g-charts">
+          <rect class="tab" x="20" y="270" width="6" height="70" rx="2"></rect>
+          <rect class="shell" x="26" y="270" width="214" height="70" rx="12"></rect>
+          <text class="badge" x="42" y="292">⑩</text>
+          <text class="title" x="42" y="316">Historical CSV import</text>
+        </g>
+
+        <g class="store">
+          <rect x="300" y="278" width="184" height="54" rx="4"></rect>
+          <text x="392" y="300" text-anchor="middle">historical_spot /</text>
+          <text x="392" y="316" text-anchor="middle">option_candles</text>
+        </g>
+
+        <g class="node g-charts">
+          <rect class="tab" x="620" y="150" width="6" height="76" rx="2"></rect>
+          <rect class="shell" x="626" y="150" width="214" height="76" rx="12"></rect>
+          <text class="badge" x="642" y="174">⑧</text>
+          <text class="title" x="642" y="198">Chart dashboard</text>
+          <text class="title" x="642" y="216" style="font-size:11.5px;font-style:italic;fill:var(--ink-faint)">read-only</text>
+        </g>
+
+        <g class="ghost">
+          <rect x="626" y="26" width="214" height="70" rx="12"></rect>
+          <text x="733" y="56" text-anchor="middle">Trading pipeline</text>
+          <text x="733" y="72" text-anchor="middle">(fig. 1) — broker-live only</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption>
+      <b>⑨ (options bulk download)</b> and <b>⑩ (historical ICICI CSV import)</b> look like they should
+      feed the trading pipeline — they're both labeled "market data." They don't. <code>market_data</code>
+      and the <code>historical_*_candles</code> tables are read only by the chart dashboard's two data-source
+      modes; <code>MarketDataService.fetchHistoricalData</code>, the pipeline's actual OHLC source, always
+      fetches live from the broker and never reads either table. A real gap, already flagged in
+      <code>ARCHITECTURE_REVIEW.md</code> §4 — shown here because it's easy to assume otherwise.
+    </figcaption>
+  </figure>
+
+  <!-- ============ WORKFLOW CARDS ============ -->
+  <div class="section-head">
+    <div>
+      <h2>Every workflow, in detail</h2>
+      <p>Trigger, what it reads and writes, and what depends on it. Expand any card.</p>
+    </div>
+  </div>
+
+  <div class="card-grid">
+
+    <details class="card g-setup">
+      <summary>
+        <span class="card-badge">①</span>
+        <span class="card-body-top">
+          <span class="card-title">Login &amp; Heartbeat</span>
+          <span class="card-trigger">08:00 cron · 60s heartbeat · 09:15 options fetch</span>
+          <span class="tag">setup / config</span>
+        </span>
+        <span class="card-chevron">▸</span>
+      </summary>
+      <div class="card-detail">
+        <dl>
+          <dt>Code</dt><dd><code>LoginScheduler</code> → <code>LoginOrchestrator</code> → per-broker <code>BrokerLoginService</code></dd>
+          <dt>Reads</dt><dd><code>broker.active</code>, <code>AppState.currentSession()</code></dd>
+          <dt>Writes</dt><dd><code>broker_session</code>, <code>AppState</code>, <code>market_data</code>/<code>options_data</code> (09:15 fetch, Zerodha only)</dd>
+          <dt>Downstream</dt><dd>Every live-mode workflow needs a valid session first. The 09:15 fetch feeds ⑨ → ⑧.</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="card g-setup">
+      <summary>
+        <span class="card-badge">②</span>
+        <span class="card-body-top">
+          <span class="card-title">Trade-config daily load</span>
+          <span class="card-trigger">09:16 cron + app boot (live, weekday)</span>
+          <span class="tag">setup / config</span>
+        </span>
+        <span class="card-chevron">▸</span>
+      </summary>
+      <div class="card-detail">
+        <dl>
+          <dt>Code</dt><dd><code>TradeConfigScheduler.getConfigsForDate(date)</code></dd>
+          <dt>Reads</dt><dd><code>trade_config</code>, <code>instrument</code>, <code>instrument_details</code>, <code>sma_timeframe</code></dd>
+          <dt>Writes</dt><dd><code>SharedData.combinedDto</code> + once-daily Telegram report</dd>
+          <dt>Downstream</dt><dd>Sole input gate for ⑤/⑥ — empty means the pipeline silently trades nothing.</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="card g-setup">
+      <summary>
+        <span class="card-badge">③</span>
+        <span class="card-body-top">
+          <span class="card-title">Trade-config admin (CRUD)</span>
+          <span class="card-trigger">HTTP · /trade-configs UI</span>
+          <span class="tag">setup / config</span>
+        </span>
+        <span class="card-chevron">▸</span>
+      </summary>
+      <div class="card-detail">
+        <dl>
+          <dt>Code</dt><dd><code>TradeConfigAdminController</code> → <code>TradeConfigAdminService</code></dd>
+          <dt>Reads</dt><dd><code>trade_config</code>, <code>sma_timeframe</code>, <code>trade_order</code> (delete guard)</dd>
+          <dt>Writes</dt><dd><code>trade_config</code>, <code>sma_timeframe</code></dd>
+          <dt>Downstream</dt><dd>Invalidates ②'s cache always; refreshes <code>combinedDto</code> immediately for today's live edits.</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="card g-pipeline">
+      <summary>
+        <span class="card-badge">④</span>
+        <span class="card-body-top">
+          <span class="card-title">EOD downtrend auto-config</span>
+          <span class="card-trigger">Called by ⑥, once per simulated day</span>
+          <span class="tag">trading pipeline</span>
+        </span>
+        <span class="card-chevron">▸</span>
+      </summary>
+      <div class="card-detail">
+        <dl>
+          <dt>Code</dt><dd><code>EodDowntrendDetectionService.runForDay(date)</code></dd>
+          <dt>Reads</dt><dd><code>sma_downtrend_rule</code>, option-leg candles via <code>MarketDataService</code></dd>
+          <dt>Writes</dt><dd><code>trade_config</code> (<code>source='AUTO_DOWNTREND'</code>) + <code>sma_timeframe</code>, for the <em>next</em> day only</dd>
+          <dt>Downstream</dt><dd>Delayed by design — can't bootstrap a config chain, only extend one. Reachable via ③'s bulk-delete API.</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="card g-pipeline">
+      <summary>
+        <span class="card-badge">⑤</span>
+        <span class="card-body-top">
+          <span class="card-title">Analysis → Order → Position</span>
+          <span class="card-trigger">Every 5 min, market-hours gated</span>
+          <span class="tag">trading pipeline</span>
+        </span>
+        <span class="card-chevron">▸</span>
+      </summary>
+      <div class="card-detail">
+        <dl>
+          <dt>Code</dt><dd><code>AnalysisScheduler</code> → <code>OrderScheduler</code> → <code>PositionScheduler</code></dd>
+          <dt>Reads</dt><dd><code>SharedData.combinedDto</code>, live broker OHLC, OPEN <code>trade_order</code> rows</dd>
+          <dt>Writes</dt><dd><code>SharedData.tradeSignals</code>, <code>trade_order</code>, broker orders, Telegram</dd>
+          <dt>Downstream</dt><dd>The workflow every config producer (②③④) ultimately feeds. Output feeds ⑦.</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="card g-pipeline">
+      <summary>
+        <span class="card-badge">⑥</span>
+        <span class="card-body-top">
+          <span class="card-title">Backtest orchestration</span>
+          <span class="card-trigger">HTTP · POST /api/backtest/analysis</span>
+          <span class="tag">trading pipeline</span>
+        </span>
+        <span class="card-chevron">▸</span>
+      </summary>
+      <div class="card-detail">
+        <dl>
+          <dt>Code</dt><dd><code>BacktestAnalysisService</code> / <code>BacktestController</code></dd>
+          <dt>Reads/Writes</dt><dd>Drives the <em>same</em> service methods as ②/⑤, per simulated day/tick. Calls ④ once per day.</dd>
+          <dt>Writes</dt><dd><code>trade_order</code> via no-op broker adapters — nothing hits a real broker</dd>
+          <dt>Downstream</dt><dd>Telegram suppressed by default (<code>telegram.backtest-enabled=false</code>).</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="card g-eod">
+      <summary>
+        <span class="card-badge">⑦</span>
+        <span class="card-body-top">
+          <span class="card-title">Day summary (EOD)</span>
+          <span class="card-trigger">15:31 IST, live only</span>
+          <span class="tag">EOD / ops</span>
+        </span>
+        <span class="card-chevron">▸</span>
+      </summary>
+      <div class="card-detail">
+        <dl>
+          <dt>Code</dt><dd><code>DaySummaryScheduler</code></dd>
+          <dt>Reads</dt><dd>Today's <code>trade_order</code> rows, <code>MarketHoursService</code></dd>
+          <dt>Writes</dt><dd>Force-closes leftover OPEN <code>trade_order</code> rows, then one Telegram digest</dd>
+          <dt>Downstream</dt><dd>Terminal. Shares the <code>DailyEventGuard</code>/<code>alert_state</code> mechanism with ②'s report.</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="card g-charts">
+      <summary>
+        <span class="card-badge">⑧</span>
+        <span class="card-body-top">
+          <span class="card-title">Chart dashboard</span>
+          <span class="card-trigger">HTTP · /charts/dashboard</span>
+          <span class="tag">market data &amp; charts</span>
+        </span>
+        <span class="card-chevron">▸</span>
+      </summary>
+      <div class="card-detail">
+        <dl>
+          <dt>Code</dt><dd><code>ChartDashboardApiController</code> → token-based or historical ICICI service</dd>
+          <dt>Reads</dt><dd><code>market_data</code> <em>or</em> <code>historical_*_candles</code>, plus <code>instrument*</code>/<code>expiry_dates</code></dd>
+          <dt>Writes</dt><dd>Nothing — read-only</dd>
+          <dt>Downstream</dt><dd>Pure consumer of ⑨/⑩. No effect on any other workflow.</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="card g-charts">
+      <summary>
+        <span class="card-badge">⑨</span>
+        <span class="card-body-top">
+          <span class="card-title">Options bulk data download</span>
+          <span class="card-trigger">09:15 IST (Zerodha only) + manual</span>
+          <span class="tag">market data &amp; charts</span>
+        </span>
+        <span class="card-chevron">▸</span>
+      </summary>
+      <div class="card-detail">
+        <dl>
+          <dt>Code</dt><dd><code>ZerodhaMarketDataService</code>, <code>OptionsBulkDownloadService</code></dd>
+          <dt>Reads</dt><dd>Broker options-chain API</dd>
+          <dt>Writes</dt><dd><code>market_data</code>, <code>options_data</code></dd>
+          <dt>Downstream</dt><dd><b>Feeds ⑧ only.</b> Never read by the trading pipeline — see fig. 2.</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="card g-charts">
+      <summary>
+        <span class="card-badge">⑩</span>
+        <span class="card-body-top">
+          <span class="card-title">Historical ICICI CSV import</span>
+          <span class="card-trigger">HTTP · manual CSV upload</span>
+          <span class="tag">market data &amp; charts</span>
+        </span>
+        <span class="card-chevron">▸</span>
+      </summary>
+      <div class="card-detail">
+        <dl>
+          <dt>Code</dt><dd><code>HistoricalChartImportController</code> → <code>HistoricalChartCsvImportService</code></dd>
+          <dt>Reads</dt><dd>Uploaded CSV files</dd>
+          <dt>Writes</dt><dd><code>historical_spot_candles</code>, <code>historical_option_candles</code> (natural-key upsert)</dd>
+          <dt>Downstream</dt><dd>Feeds ⑧ only, isolated from <code>market_data</code>/<code>instrument*</code> entirely.</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="card g-sink">
+      <summary>
+        <span class="card-badge">⑪</span>
+        <span class="card-body-top">
+          <span class="card-title">Notifications fan-in</span>
+          <span class="card-trigger">Called from feature code, never scheduled</span>
+          <span class="tag">shared sink</span>
+        </span>
+        <span class="card-chevron">▸</span>
+      </summary>
+      <div class="card-detail">
+        <dl>
+          <dt>Code</dt><dd><code>NotificationService</code> → <code>TelegramNotifier</code></dd>
+          <dt>Reads</dt><dd>Whatever the calling workflow passes in</dd>
+          <dt>Writes</dt><dd>Telegram messages, or nothing if disabled/suppressed</dd>
+          <dt>Downstream</dt><dd>Terminal sink for ①, ⑤, ⑦, and ②'s report. One chokepoint enforces backtest suppression.</dd>
+        </dl>
+      </div>
+    </details>
+
+  </div>
+
+  <!-- ============ DATA MAP TABLE ============ -->
+  <div class="section-head">
+    <div>
+      <h2>Cross-workflow data map</h2>
+      <p>One row per shared resource — who writes it, who reads it, and the catch.</p>
+    </div>
+  </div>
+
+  <div class="table-scroll">
+    <table class="datamap">
+      <thead>
+        <tr><th>Resource</th><th>Written by</th><th>Read by</th><th>Catch</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="resource"><code>trade_config</code></td>
+          <td>③ admin UI · ④ auto-downtrend (backtest)</td>
+          <td>② daily loader → ⑤/⑥</td>
+          <td class="catch">③'s same-day edits reach ⑤ within one tick. ④'s writes reach ② only the <b>next</b> day.</td>
+        </tr>
+        <tr>
+          <td class="resource"><code>SharedData.combinedDto</code></td>
+          <td>② (cron/boot) · ③ (same-day live refresh)</td>
+          <td>⑤, ⑥</td>
+          <td class="catch">The pipeline's only input gate — empty means zero trades, silently.</td>
+        </tr>
+        <tr>
+          <td class="resource"><code>SharedData.tradeSignals</code></td>
+          <td>⑤'s <code>AnalysisScheduler</code></td>
+          <td>⑤'s <code>OrderScheduler</code> (same tick)</td>
+          <td class="catch">Drained to empty every tick — never a durable, cross-day store.</td>
+        </tr>
+        <tr>
+          <td class="resource"><code>trade_order</code></td>
+          <td>⑤ and ⑥ (same code, different broker adapters)</td>
+          <td>⑤'s position monitor · ⑦ · ③ (delete guard)</td>
+          <td class="catch">⑥ writes a ledger that looks identical to a live day's — no real order was placed.</td>
+        </tr>
+        <tr>
+          <td class="resource"><code>market_data</code></td>
+          <td>⑨ bulk download (Zerodha only)</td>
+          <td>⑧ (<code>TOKEN_BASED</code> only)</td>
+          <td class="catch"><b>Never read by ⑤/⑥.</b> The pipeline always fetches OHLC live from the broker.</td>
+        </tr>
+        <tr>
+          <td class="resource"><code>historical_*_candles</code></td>
+          <td>⑩ CSV import</td>
+          <td>⑧ (<code>HISTORICAL_ICICI</code> only)</td>
+          <td class="catch">Fully isolated, natural-key only — never touches the trading pipeline either.</td>
+        </tr>
+        <tr>
+          <td class="resource"><code>alert_state</code></td>
+          <td>② report · ⑦ digest</td>
+          <td>Same two, via <code>DailyEventGuard</code></td>
+          <td class="catch">Restart-safe — a JVM restart between write and check can't double-fire either alert.</td>
+        </tr>
+        <tr>
+          <td class="resource"><code>broker_session</code></td>
+          <td>①</td>
+          <td>⑤, ⑦'s force-close, ⑨</td>
+          <td class="catch">⑥ (backtest) doesn't need a valid one past its own login preflight.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============ CALLOUTS ============ -->
+  <div class="callouts">
+    <div class="callout">
+      <div class="num">Worth internalizing — 01</div>
+      <h3>"Market data" means three different things</h3>
+      <p>
+        The trading pipeline's live broker fetch, the <code>market_data</code> table (⑨), and the
+        <code>historical_*_candles</code> tables (⑩) are all called "market data" somewhere in this
+        codebase. None of the three feed each other. Only the pipeline's live fetch drives trades.
+      </p>
+    </div>
+    <div class="callout">
+      <div class="num">Worth internalizing — 02</div>
+      <h3>Two producers, one consumer, one delay</h3>
+      <p>
+        ③ and ④ both write <code>trade_config</code>, the table ② is the sole reader of. ③ can act
+        the same day; ④ never can — it's backtest-only and next-day-only by design, so it can extend
+        a config chain but never start one from nothing.
+      </p>
+    </div>
+  </div>
+
+  <footer>
+    <span>Companion to <code>docs/WORKFLOWS.md</code> in the money-maker repo — this page renders the same map, that doc is the durable reference.</span>
+    <span>Generated from the codebase, not the roadmap docs (<code>GAPS.md</code> et al. describe proposed work, not current behavior).</span>
+  </footer>
+
+</div>
+</body>
+</html>

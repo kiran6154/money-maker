@@ -19,16 +19,11 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.time.OffsetDateTime;
 import java.time.ZoneId;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -51,6 +46,7 @@ public class ChartDashboardService {
     private final InstrumentDetailsRepository instrumentDetailsRepository;
     private final ChartExpiryResolver chartExpiryResolver;
     private final ChartTimeframeAggregator chartTimeframeAggregator;
+    private final ChartIndicatorService chartIndicatorService;
     private final HistoricalIciciChartDashboardService historicalIciciChartDashboardService;
 
     public MarketChartResponse getMarketChartData(MarketChartRequest request) {
@@ -71,11 +67,11 @@ public class ChartDashboardService {
             return emptyResponse(request, null, null);
         }
 
-        List<ChartCandleResponse> intradayCandles = fetchIntradayCandlesWithRuntimeSma(
-                instrument.get().getInsId(),
+        List<ChartCandleResponse> data = finish(
+                fetchIntradayCandles(instrument.get().getInsId(), request.getDate()),
+                request.getTimeframe(),
                 request.getDate()
         );
-        List<ChartCandleResponse> data = chartTimeframeAggregator.aggregate(intradayCandles, request.getTimeframe());
         return buildResponse(request, null, null, data);
     }
 
@@ -85,8 +81,9 @@ public class ChartDashboardService {
             return emptyResponse(request, null, null);
         }
 
-        List<ChartCandleResponse> underlyingRaw = fetchIntradayCandlesWithRuntimeSma(
-                instrument.get().getInsId(),
+        // ATM is resolved off the selected day's underlying candles; no overlays needed.
+        List<ChartCandleResponse> underlyingRaw = onSelectedDate(
+                fetchIntradayCandles(instrument.get().getInsId(), request.getDate()),
                 request.getDate()
         );
         if (underlyingRaw.isEmpty()) {
@@ -116,12 +113,33 @@ public class ChartDashboardService {
             return emptyResponse(request, expiryDate.get(), atmStrike);
         }
 
-        List<ChartCandleResponse> optionRaw = fetchIntradayCandlesWithRuntimeSma(
-                optionInstrument.get().getInstrumentToken().toString(),
+        List<ChartCandleResponse> data = finish(
+                fetchIntradayCandles(optionInstrument.get().getInstrumentToken().toString(), request.getDate()),
+                request.getTimeframe(),
                 request.getDate()
         );
-        List<ChartCandleResponse> data = chartTimeframeAggregator.aggregate(optionRaw, request.getTimeframe());
         return buildResponse(request, expiryDate.get(), atmStrike, data);
+    }
+
+    /**
+     * Aggregate to the requested timeframe, compute overlays on that series, then
+     * trim to the visible day. Indicators need the lookback candles to warm up,
+     * and must be computed on the bars actually drawn.
+     */
+    private List<ChartCandleResponse> finish(List<ChartCandleResponse> lookbackCandles,
+                                             ChartTimeframe timeframe,
+                                             LocalDate tradingDate) {
+        List<ChartCandleResponse> aggregated =
+                chartTimeframeAggregator.aggregate(lookbackCandles, timeframe);
+        chartIndicatorService.applyIndicators(aggregated);
+        return onSelectedDate(aggregated, tradingDate);
+    }
+
+    private List<ChartCandleResponse> onSelectedDate(List<ChartCandleResponse> candles, LocalDate tradingDate) {
+        return candles.stream()
+                .filter(candle -> candle.getTime() != null
+                        && tradingDate.equals(candle.getTime().toLocalDate()))
+                .toList();
     }
 
     private void validateRequest(MarketChartRequest request) {
@@ -167,7 +185,8 @@ public class ChartDashboardService {
                 .findFirst();
     }
 
-    private List<ChartCandleResponse> fetchIntradayCandlesWithRuntimeSma(String instrumentToken, LocalDate tradingDate) {
+    /** Full lookback window, ascending, OHLC only. */
+    private List<ChartCandleResponse> fetchIntradayCandles(String instrumentToken, LocalDate tradingDate) {
         LocalDateTime dayEnd = tradingDate.atTime(MARKET_CLOSE);
         int lookbackSize = MAX_SMA_PERIOD + LOOKBACK_BUFFER_CANDLES;
 
@@ -181,31 +200,20 @@ public class ChartDashboardService {
             return List.of();
         }
 
-        List<ChartCandleResponse> chronologicalCandles = recentCandles.stream()
+        return recentCandles.stream()
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(MarketData::getTimestamp))
-                .map(this::toChartCandleWithoutSma)
-                .toList();
-
-        List<ChartCandleResponse> candlesWithRuntimeSma = applyRuntimeSma(chronologicalCandles);
-        return candlesWithRuntimeSma.stream()
-                .filter(candle -> candle.getTime() != null
-                        && tradingDate.equals(candle.getTime().toLocalDate()))
+                .map(this::toChartCandle)
                 .toList();
     }
 
-    private ChartCandleResponse toChartCandleWithoutSma(MarketData marketData) {
-        return new ChartCandleResponse(
+    private ChartCandleResponse toChartCandle(MarketData marketData) {
+        return ChartCandleResponse.ohlc(
                 marketData.getTimestamp().atZone(INDIA_ZONE).toOffsetDateTime(),
                 marketData.getOpen(),
                 marketData.getHigh(),
                 marketData.getLow(),
-                marketData.getClose(),
-                null,
-                null,
-                null,
-                null,
-                null
+                marketData.getClose()
         );
     }
 
@@ -234,43 +242,6 @@ public class ChartDashboardService {
         );
     }
 
-    private List<ChartCandleResponse> applyRuntimeSma(List<ChartCandleResponse> candles) {
-        if (candles.isEmpty()) {
-            return List.of();
-        }
-
-        RollingSma rolling20 = new RollingSma(20);
-        RollingSma rolling50 = new RollingSma(50);
-        RollingSma rolling100 = new RollingSma(100);
-        RollingSma rolling200 = new RollingSma(200);
-        RollingSma rolling500 = new RollingSma(500);
-
-        List<ChartCandleResponse> out = new ArrayList<>(candles.size());
-        for (ChartCandleResponse candle : candles) {
-            BigDecimal close = candle.getClose();
-
-            BigDecimal sma20 = rolling20.add(close);
-            BigDecimal sma50 = rolling50.add(close);
-            BigDecimal sma100 = rolling100.add(close);
-            BigDecimal sma200 = rolling200.add(close);
-            BigDecimal sma500 = rolling500.add(close);
-
-            out.add(new ChartCandleResponse(
-                    candle.getTime(),
-                    candle.getOpen(),
-                    candle.getHigh(),
-                    candle.getLow(),
-                    candle.getClose(),
-                    sma20,
-                    sma50,
-                    sma100,
-                    sma200,
-                    sma500
-            ));
-        }
-        return out;
-    }
-
     private MarketChartResponse emptyResponse(MarketChartRequest request,
                                               LocalDate expiryDate,
                                               BigDecimal atmStrike) {
@@ -292,35 +263,4 @@ public class ChartDashboardService {
         );
     }
 
-    private static final class RollingSma {
-        private final int period;
-        private final Deque<BigDecimal> window = new ArrayDeque<>();
-        private BigDecimal sum = BigDecimal.ZERO;
-
-        private RollingSma(int period) {
-            this.period = period;
-        }
-
-        private BigDecimal add(BigDecimal value) {
-            if (value == null) {
-                return window.size() >= period
-                        ? sum.divide(BigDecimal.valueOf(period), 4, RoundingMode.HALF_UP)
-                        : null;
-            }
-
-            window.addLast(value);
-            sum = sum.add(value);
-
-            if (window.size() > period) {
-                BigDecimal removed = window.removeFirst();
-                sum = sum.subtract(removed);
-            }
-
-            if (window.size() < period) {
-                return null;
-            }
-
-            return sum.divide(BigDecimal.valueOf(period), 4, RoundingMode.HALF_UP);
-        }
-    }
 }

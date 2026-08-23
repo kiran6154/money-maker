@@ -86,4 +86,18 @@ public class MarketHoursService {
     public ZoneId zone() {
         return zone;
     }
+
+    /**
+     * Configured session open. Used as the anchor when candles are aggregated to
+     * a coarser timeframe, so a bar boundary falls on the open exactly as the
+     * broker's own intraday bars do.
+     */
+    public LocalTime open() {
+        return open;
+    }
+
+    /** Configured session close. */
+    public LocalTime close() {
+        return close;
+    }
 }

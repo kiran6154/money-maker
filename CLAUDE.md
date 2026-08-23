@@ -18,6 +18,7 @@ This is a **Spring Boot 3 / Java 17** broker-automation app. The architecture is
 7. **`trade_order` is the order ledger.** Every entry / exit / force-close persists a row before any broker call. `OrderService` is the single owner of order lifecycle — feature code calls it, not the placement service directly.
 8. **Schedulers run identically in live and backtest.** `BacktestAnalysisService` calls the same `analysisScheduler.runStrategies()` / `orderScheduler.processOrders()` / `positionScheduler.processPositions()` methods the cron does. Do not put work inside the `@Scheduled` method that backtest can't replay.
 9. **No hardcoded trading-behaviour rules.** Caps, thresholds, lifecycle rules, and any number/boolean that controls *when to enter, when to exit, how many trades* must come from `TradeConfig` (or equivalent config). Idempotency guards and correctness invariants (e.g. "don't insert the same row twice", "don't monitor the candle that opened the trade") are technical and may stay in code. If a needed parameter has no `TradeConfig` field, **ask the user** before hardcoding — don't guess at a default. See ["Hardcoded vs config-driven" in ORDERS_AND_POSITIONS.md](docs/ORDERS_AND_POSITIONS.md#hardcoded-vs-config-driven).
+10. **Trade-config writes go through `TradeConfigAdminService`.** Controllers and feature code never call `TradeConfigRepository.save(...)` / `.delete(...)` directly — the service owns the `sma_timeframe` child-row sync and the `TradeConfigScheduler` cache-invalidation contract (and, for today's live edits, the `SharedData.combinedDto` refresh). Skipping it produces a config that's persisted but invisible to the running pipeline until the next restart. See ["Trade-config admin" in ORDERS_AND_POSITIONS.md](docs/ORDERS_AND_POSITIONS.md#trade-config-admin).
 
 ---
 
@@ -83,8 +84,15 @@ When changing anything in these areas, **read the relevant doc first**:
 | Broker rate limiting + retry | [`docs/RATE_LIMITING.md`](docs/RATE_LIMITING.md) | Resilience4j wiring, the cache / reshape PR roadmap |
 | Telegram alerts + dedupe | [`docs/NOTIFICATIONS.md`](docs/NOTIFICATIONS.md) | `NotificationService` facade, `sendIfChanged` / `sendThrottled`, backtest gate |
 | EOD downtrend auto-config | [`docs/EOD_DOWNTREND.md`](docs/EOD_DOWNTREND.md) | `sma_downtrend_rule` table, end-of-day detector, `trade_config.source` marker, extension hooks |
+| Chart dashboard | [`docs/CHART_DASHBOARD.md`](docs/CHART_DASHBOARD.md) | Kite-style dashboard: frontend flow, ATM/expiry resolution, both chart data sources, debugging checklist |
+| Historical ICICI chart data | [`docs/HISTORICAL_CHART_DATA_PLAN.md`](docs/HISTORICAL_CHART_DATA_PLAN.md) | CSV import format, natural-key historical tables, dual-source chart design |
+| Cross-workflow system map | [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md) | Every workflow end-to-end (trigger → steps → reads/writes), plus which workflows feed each other's data — the view none of the per-feature docs above gives on its own |
 
 If you add a doc, link it here. If you change behaviour described in a doc, update the doc in the same PR — see the next section.
+
+### Roadmap / proposal docs (not current behavior)
+
+`docs/GAPS.md`, `docs/ARCHITECTURE_REVIEW.md`, `docs/SEQUENCING_AND_CACHE.md`, `docs/IMPLEMENTATION_PLAN.md`, `docs/MILESTONE_DETAILS.md`, and `docs/EXECUTION_PLAN.md` describe a proposed M0–M10 architecture roadmap (test-harness reproducibility, `IndicatorComputeService`, `RunSession` replacing `SharedData`, …) that **has not started** — see the status table at the top of `IMPLEMENTATION_PLAN.md`. They're kept for the design rationale (real trade-offs were debated) but are a separate lineage from the trade-config-admin / day-summary / market-hours-gate work that's already shipped and documented above. `GAPS.md` also doubles as a live backlog of smaller, independent follow-ups (some already resolved and marked as such). Don't treat any of these six as a description of what's currently running — cross-check against the table above or the code before relying on a claim in them.
 
 ---
 

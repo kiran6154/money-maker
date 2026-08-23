@@ -29,12 +29,28 @@
         minute: '2-digit',
         hour12: false
     });
+    // Each period draws TWO lines — SMA over candle lows and SMA over candle highs —
+    // in one shared colour, so a period reads as an envelope rather than as two
+    // unrelated averages. The low line is the one the strategy actually gates on
+    // (see SMAIndicatorImpl, which averages lows deliberately).
     const SMA_CONFIG = {
-        20: { fields: ['sma20', 'smaValue20', 'sma_value20'], color: '#2f80ed' },
-        50: { fields: ['sma50', 'smaValue50', 'sma_value50'], color: '#27ae60' },
-        100: { fields: ['sma100', 'smaValue100', 'sma_value100'], color: '#f2994a' },
-        200: { fields: ['sma200', 'smaValue200', 'sma_value200'], color: '#eb5757' },
-        500: { fields: ['sma500', 'smaValue500', 'sma_value500'], color: '#6c5ce7' }
+        20: { lowFields: ['sma20Low'], highFields: ['sma20High'], color: '#2f80ed' },
+        50: { lowFields: ['sma50Low'], highFields: ['sma50High'], color: '#27ae60' },
+        100: { lowFields: ['sma100Low'], highFields: ['sma100High'], color: '#f2994a' },
+        200: { lowFields: ['sma200Low'], highFields: ['sma200High'], color: '#eb5757' },
+        500: { lowFields: ['sma500Low'], highFields: ['sma500High'], color: '#6c5ce7' }
+    };
+
+    // SuperTrend(7, 3). Colours follow the candle body semantics already used on
+    // this chart rather than the SMA palette: the line is a trend state, not
+    // another average, so it borrows the up/down teal-red pair and sits thicker.
+    const SUPERTREND_CONFIG = {
+        field: 'supertrend',
+        directionField: 'supertrendUp',
+        upColor: '#26a69a',
+        downColor: '#ef5350',
+        lineWidth: 3,
+        label: 'SuperTrend 7,3'
     };
 
     const CHART_TYPES = {
@@ -439,11 +455,22 @@
                 const item = document.createElement('span');
                 item.className = 'chart-sma-legend-item';
                 item.style.color = config.color;
+                // One entry per period: the low and high lines share this colour.
                 item.innerHTML =
                     '<span class="chart-sma-legend-swatch"></span>' +
-                    '<span>SMA ' + escapeHtml(String(period)) + '</span>';
+                    '<span>SMA ' + escapeHtml(String(period)) + ' H/L</span>';
                 pane.legend.appendChild(item);
             });
+
+            const supertrendItem = document.createElement('span');
+            supertrendItem.className = 'chart-sma-legend-item';
+            supertrendItem.style.color = SUPERTREND_CONFIG.upColor;
+            supertrendItem.innerHTML =
+                '<span class="chart-sma-legend-swatch"></span>' +
+                '<span style="color:' + SUPERTREND_CONFIG.downColor + '">' +
+                '<span class="chart-sma-legend-swatch"></span></span>' +
+                '<span>' + escapeHtml(SUPERTREND_CONFIG.label) + '</span>';
+            pane.legend.appendChild(supertrendItem);
         });
     }
 
@@ -478,19 +505,25 @@
                 const config = SMA_CONFIG[period];
                 if (!config) return;
 
-                const lineData = mapSmaData(response.data, config.fields);
-                if (!lineData.length) return;
+                // Low and high share the colour and the styling — the pair is
+                // meant to read as one band per period.
+                [config.lowFields, config.highFields].forEach(fields => {
+                    const lineData = mapSmaData(response.data, fields);
+                    if (!lineData.length) return;
 
-                const lineSeries = chart.addLineSeries({
-                    color: config.color,
-                    lineWidth: 2,
-                    priceLineVisible: false,
-                    lastValueVisible: false,
-                    crosshairMarkerVisible: false,
-                    lineStyle: window.LightweightCharts.LineStyle.Solid
+                    const lineSeries = chart.addLineSeries({
+                        color: config.color,
+                        lineWidth: 2,
+                        priceLineVisible: false,
+                        lastValueVisible: false,
+                        crosshairMarkerVisible: false,
+                        lineStyle: window.LightweightCharts.LineStyle.Solid
+                    });
+                    lineSeries.setData(lineData);
                 });
-                lineSeries.setData(lineData);
             });
+
+            renderSupertrend(chart, response.data);
 
             chart.timeScale().fitContent();
             attachResizeHandler(chartType, chart, pane.chart);
@@ -645,6 +678,72 @@
                 value: getSmaValue(candle, fields)
             }))
             .filter(point => point.time != null && Number.isFinite(point.value));
+    }
+
+    /**
+     * SuperTrend is one line that changes colour when the trend flips, which a
+     * single lightweight-charts line series cannot express. So it is drawn as two
+     * series — one green, one red — where each carries whitespace points
+     * ({time} with no value) for the bars belonging to the other. Whitespace
+     * breaks the line instead of connecting across it, so the two series
+     * interleave into what looks like one colour-changing line.
+     */
+    function renderSupertrend(chart, candles) {
+        if (!Array.isArray(candles) || !candles.length) return;
+
+        const sorted = [...candles].sort(compareCandlesByTime);
+        const upPoints = [];
+        const downPoints = [];
+        let hasUp = false;
+        let hasDown = false;
+
+        sorted.forEach(candle => {
+            const time = toChartTime(candle.time);
+            if (time == null) return;
+
+            const value = toNumber(candle[SUPERTREND_CONFIG.field]);
+            const isUp = candle[SUPERTREND_CONFIG.directionField];
+
+            if (!Number.isFinite(value) || isUp == null) {
+                upPoints.push({ time });
+                downPoints.push({ time });
+                return;
+            }
+
+            if (isUp === true) {
+                upPoints.push({ time, value });
+                downPoints.push({ time });
+                hasUp = true;
+            } else {
+                upPoints.push({ time });
+                downPoints.push({ time, value });
+                hasDown = true;
+            }
+        });
+
+        if (!hasUp && !hasDown) return;
+
+        const baseOptions = {
+            lineWidth: SUPERTREND_CONFIG.lineWidth,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            crosshairMarkerVisible: false,
+            lineStyle: window.LightweightCharts.LineStyle.Solid
+        };
+
+        if (hasUp) {
+            const upSeries = chart.addLineSeries(
+                Object.assign({}, baseOptions, { color: SUPERTREND_CONFIG.upColor })
+            );
+            upSeries.setData(upPoints);
+        }
+
+        if (hasDown) {
+            const downSeries = chart.addLineSeries(
+                Object.assign({}, baseOptions, { color: SUPERTREND_CONFIG.downColor })
+            );
+            downSeries.setData(downPoints);
+        }
     }
 
     function compareCandlesByTime(left, right) {

@@ -3,6 +3,8 @@ package com.moneymaker.backtesting;
 import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.entity.SmaTimeframe;
 import com.moneymaker.login.service.BrokerSessionStore;
+import com.moneymaker.market.exception.HistoricalDataMissingException;
+import com.moneymaker.market.service.MarketDataService;
 import com.moneymaker.order.service.OrderService;
 import com.moneymaker.repository.TradeOrderRepository;
 import com.moneymaker.scheduler.AnalysisScheduler;
@@ -41,6 +43,7 @@ public class BacktestAnalysisService {
     private final NotificationService notifier;
     private final BacktestMarketDataCache marketDataCache;
     private final EodDowntrendDetectionService eodDowntrendDetectionService;
+    private final MarketDataService marketDataService;
 
     public BacktestAnalysisService(
             TradeConfigScheduler tradeConfigScheduler,
@@ -53,7 +56,8 @@ public class BacktestAnalysisService {
             @Qualifier("sharedKiteConnect") KiteConnect sharedKiteConnect,
             NotificationService notifier,
             BacktestMarketDataCache marketDataCache,
-            EodDowntrendDetectionService eodDowntrendDetectionService) {
+            EodDowntrendDetectionService eodDowntrendDetectionService,
+            MarketDataService marketDataService) {
         this.tradeConfigScheduler = tradeConfigScheduler;
         this.analysisScheduler = analysisScheduler;
         this.orderScheduler = orderScheduler;
@@ -65,6 +69,7 @@ public class BacktestAnalysisService {
         this.notifier = notifier;
         this.marketDataCache = marketDataCache;
         this.eodDowntrendDetectionService = eodDowntrendDetectionService;
+        this.marketDataService = marketDataService;
     }
 
     public BacktestRunResult run(LocalDate fromDate, LocalDate toDate) {
@@ -139,6 +144,12 @@ public class BacktestAnalysisService {
                     try {
                         BacktestDayResult result = runForDateTime(tickAt, combinedDto);
                         results.add(result);
+                    } catch (HistoricalDataMissingException ex) {
+                        // Deliberately not caught below: replaying an incomplete
+                        // data set silently is worse than not replaying it. Abort
+                        // the run so the gap is fixed rather than averaged over.
+                        log.error("[Backtest] {} — aborting run: {}", tickAt, ex.getMessage());
+                        throw ex;
                     } catch (Exception ex) {
                         // Surface the exception unambiguously and keep the loop alive
                         // so one bad tick doesn't abort the whole day — the run will
@@ -164,10 +175,19 @@ public class BacktestAnalysisService {
                 // trade_config rows for every sma_downtrend_rule that passes.
                 // Backtest-only today (no live scheduler wired). Idempotent:
                 // skipped if AUTO_DOWNTREND rows already exist for the next day.
-                try {
-                    eodDowntrendDetectionService.runForDay(currentDate);
-                } catch (Exception ex) {
-                    log.error("[Backtest] {} — EOD downtrend detection failed", currentDate, ex);
+                //
+                // Its ATR needs "day" candles, which the historical tables cannot
+                // provide (they store 5-minute rows only), so it is skipped rather
+                // than left to silently produce null ATRs and drop every rule.
+                if (marketDataService.isHistoricalSource()) {
+                    log.info("[Backtest] {} — EOD downtrend detection skipped: the historical data source has no "
+                            + "'day' candles for its ATR", currentDate);
+                } else {
+                    try {
+                        eodDowntrendDetectionService.runForDay(currentDate);
+                    } catch (Exception ex) {
+                        log.error("[Backtest] {} — EOD downtrend detection failed", currentDate, ex);
+                    }
                 }
 
                 rowsAfter = countTradeOrdersOnDate(currentDate);
@@ -184,7 +204,11 @@ public class BacktestAnalysisService {
                 SharedData.strikeMarketDataByInstrumentAndInterval.clear();
                 SharedData.marketDataByInstrumentAndInterval.clear();
                 SharedData.tradeSignals.clear();
-                log.debug("[Backtest] day={} — caches wiped (strikeMarketData, marketData, tradeSignals)",
+                // strike → option symbol, and the symbol encodes the expiry. Left
+                // uncleared, a multi-day run that crosses an expiry keeps serving
+                // the *previous* expiry's series for the same strike.
+                SharedData.optionTokenMap.clear();
+                log.debug("[Backtest] day={} — caches wiped (strikeMarketData, marketData, tradeSignals, optionTokenMap)",
                         currentDate);
             }
             long dayMs = Duration.between(dayStart, Instant.now()).toMillis();
@@ -294,6 +318,11 @@ public class BacktestAnalysisService {
             try {
                 analysisScheduler.calculateIndicator(date);
             }
+            catch (HistoricalDataMissingException e) {
+                // Never swallowed: a run replaying an incomplete data set would
+                // produce a plausible but meaningless P&L. Abort the whole run.
+                throw e;
+            }
             catch(Exception e){
                 log.error("[Backtest] calculateIndicator failed at {}", date, e);
             }
@@ -314,6 +343,8 @@ public class BacktestAnalysisService {
                     date, signalsEmitted, opened, closed, durationMs);
 
             return new BacktestDayResult(date, true, combinedDto.size(), durationMs, "Analysis completed.");
+        } catch (HistoricalDataMissingException ex) {
+            throw ex;
         } catch (Exception ex) {
             log.error("[Backtest] analysis failed for date {}", date, ex);
             long durationMs = Duration.between(startedAt, Instant.now()).toMillis();

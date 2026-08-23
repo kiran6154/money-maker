@@ -56,4 +56,47 @@ public interface HistoricalOptionCandleRepository extends JpaRepository<Historic
             BigDecimal strikePrice,
             String optionRight,
             LocalDateTime dateTime);
+
+    /**
+     * Ascending candle range for one option series. Backs the DB-backed backtest
+     * market-data provider.
+     *
+     * <p>Ascending order is load-bearing: {@code BacktestMarketDataCache.slice}
+     * stops at the first candle after its upper bound, and {@code Strategy1}
+     * treats {@code list.get(size - 1)} as the latest candle.
+     *
+     * <p>{@code strikePrice} is compared numerically, so a {@code 21700} literal
+     * matches a stored {@code 21700.0000}.
+     */
+    @Query("""
+        SELECT c
+        FROM HistoricalOptionCandle c
+        WHERE UPPER(c.stockCode) = UPPER(:stockCode)
+          AND UPPER(c.exchangeCode) = UPPER(:exchangeCode)
+          AND c.expiryDate = :expiryDate
+          AND c.strikePrice = :strikePrice
+          AND UPPER(c.optionRight) = UPPER(:optionRight)
+          AND c.dateTime >= :from
+          AND c.dateTime <= :to
+        ORDER BY c.dateTime ASC
+    """)
+    List<HistoricalOptionCandle> findRangeAsc(
+            @Param("stockCode") String stockCode,
+            @Param("exchangeCode") String exchangeCode,
+            @Param("expiryDate") LocalDate expiryDate,
+            @Param("strikePrice") BigDecimal strikePrice,
+            @Param("optionRight") String optionRight,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
+
+    /**
+     * All rows of a series within a datetime window, used by the CSV importer to
+     * resolve a whole chunk's natural keys in one query instead of one SELECT
+     * per row.
+     */
+    List<HistoricalOptionCandle> findByStockCodeIgnoreCaseAndExchangeCodeIgnoreCaseAndDateTimeBetween(
+            String stockCode,
+            String exchangeCode,
+            LocalDateTime from,
+            LocalDateTime to);
 }

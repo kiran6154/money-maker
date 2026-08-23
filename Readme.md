@@ -2,7 +2,7 @@
 
 A Spring Boot 3 / Java 17 broker-automation backend that authenticates with Indian retail brokers (Zerodha Kite Connect, Groww, Angel One SmartAPI), keeps the session alive via a two-tier heartbeat, exposes a glassmorphism UI, and runs a sequenced backtest pipeline whose preflight is byte-for-byte identical to live trading.
 
-> **Status:** active development. Login + heartbeat + Telegram alerting + a single-step backtest pipeline are implemented. Strategy / order placement / P&L stages are intentionally not wired yet.
+> **Status:** active development. Login + heartbeat + Telegram alerting, the full analysis → order → position trading pipeline, a multi-day backtest runner (with EOD downtrend auto-config generation), a trade-config admin UI, an end-of-day summary, and a chart dashboard (live token-based + imported historical ICICI data) are all implemented and wired identically in live and backtest. Zerodha is the most complete broker adapter; Groww and Angel One order placement / position monitoring are still skeletons — see [`docs/ORDERS_AND_POSITIONS.md`](docs/ORDERS_AND_POSITIONS.md#things-that-are-still-pending) for the exact remaining gaps.
 
 ---
 
@@ -57,7 +57,12 @@ java -jar target/money-maker-1.0.0.jar
 | Two-tier heartbeat (auth + market-data probe) | `scheduler.LoginScheduler` + `BrokerLoginService.fetchHeartbeatQuote` |
 | Telegram alerting on state transitions | `com.moneymaker.telegram` (`TelegramNotifier`, `NotificationService`) |
 | Global runtime state (logged-in flag, heartbeat, cached configs) | `com.moneymaker.state.AppState` |
-| Backtest pipeline (login-only today; runner discovers more steps automatically) | `com.moneymaker.backtesting` |
+| Multi-day backtest runner — replays the same scheduler services the live cron uses, tick by tick | `com.moneymaker.backtesting.BacktestAnalysisService` |
+| End-of-day auto-generation of next-day `trade_config` rows from a sustained SMA downtrend | `com.moneymaker.backtesting.EodDowntrendDetectionService` — see [`docs/EOD_DOWNTREND.md`](docs/EOD_DOWNTREND.md) |
+| 5-min analysis → order → position pipeline, market-hours gated | `com.moneymaker.scheduler.{AnalysisScheduler,OrderScheduler,PositionScheduler}` — see [`docs/SCHEDULERS.md`](docs/SCHEDULERS.md) |
+| Trade-config admin UI (CRUD + bulk delete for auto-generated configs) | `com.moneymaker.tradeconfig.*`, page at `/trade-configs` — see [`docs/ORDERS_AND_POSITIONS.md`](docs/ORDERS_AND_POSITIONS.md#trade-config-admin) |
+| End-of-day force-close + Telegram digest | `com.moneymaker.scheduler.DaySummaryScheduler` |
+| Chart dashboard — live token-based candles or imported historical ICICI CSV data | `com.moneymaker.chart.*`, page at `/charts/dashboard` — see [`docs/CHART_DASHBOARD.md`](docs/CHART_DASHBOARD.md) |
 | Glassmorphism UI (Thymeleaf + plain CSS/JS) | `src/main/resources/templates/*` and `static/css/app.css` |
 
 ---
@@ -123,30 +128,50 @@ com.moneymaker
 ├── MoneyMakerApplication           Spring Boot entry point (@EnableScheduling)
 │
 ├── broker
-│   ├── angelone                    Angel One SmartAPI adapter (TOTP login)
-│   ├── groww                       Groww adapter (TOTP login)
-│   └── zerodha                     Zerodha Kite Connect adapter (OAuth)
+│   ├── angelone                    Angel One SmartAPI adapter (TOTP login; order/position monitor still skeletons)
+│   ├── groww                       Groww adapter (TOTP login; order/position monitor still skeletons)
+│   └── zerodha                     Zerodha Kite Connect adapter (OAuth) — most complete: login + order placement + position monitor
 │
 ├── controller
 │   └── LoginController             /, /login, /login/start, /login/callback,
 │                                   /login/manual, /logout, /api/session
 │
+├── tradeconfig
+│   ├── controller/TradeConfigAdminController   /trade-configs UI + /api/trade-configs CRUD + bulk-delete/calendar/runs
+│   ├── service/TradeConfigAdminService         Single owner of trade-config writes — see CLAUDE.md invariant #10
+│   └── dto                                     Form/View DTOs, AutoConfigCalendarDTO, AutoDelete{Request,Result}DTO
+│
+├── chart
+│   ├── controller   ChartDashboardViewController (/charts/dashboard), ChartDashboardApiController
+│   │                (/api/charts/market-data), HistoricalChartImportController (CSV import)
+│   ├── service      ChartDashboardService, HistoricalIciciChartDashboardService, ChartExpiryResolver,
+│   │                ChartTimeframeAggregator, HistoricalChartCsvImportService
+│   └── dto          MarketChartRequest/Response, ChartCandleResponse, ChartType/IndexSymbol/ChartTimeframe/ChartDataSource
+│
 ├── backtesting
-│   ├── BacktestStep (interface)    Pipeline stage contract
-│   ├── BacktestRunner              Auto-discovers steps, sorts by order(), runs in sequence
-│   ├── BacktestContext             Shared mutable bag passed between steps
-│   ├── BacktestReport / StepResult JSON-friendly outcomes
-│   ├── BacktestController          POST /api/backtest/run
+│   ├── BacktestController          POST /api/backtest/login, /api/backtest/analysis
 │   ├── BacktestViewController      GET /backtest (Thymeleaf)
-│   └── steps
-│       └── LoginStep               order=0; the only step today
+│   ├── BacktestAnalysisService     Drives Analysis→Order→Position per simulated day/tick; force-closes EOD
+│   ├── EodDowntrendDetectionService  Auto-generates next-day trade_config rows from a sustained SMA downtrend
+│   ├── BacktestMarketDataCache     Per-day in-memory candle cache
+│   └── Backtesting{OrderPlacement,PositionMonitor}Service   No-op broker adapters used for replay
+│
+├── data/download
+│   ├── OptionsDataController / OptionsBulkDownloadService / ZerodhaMarketDataService   Bulk options_data / market_data ingestion (Zerodha-only)
+│   └── IndexDataController / IndexDataDownloadService / IndexDataPersistService        Index candle ingestion
 │
 ├── dto
-│   └── TradeConfigCombinedDTO      Aggregated trade-config view
+│   └── TradeConfigCombinedDTO, TradeAction, TradeSignal, FillSnapshot, AllTimeFramedto, …
 │
 ├── entity
 │   ├── BrokerSessionEntity         broker_session table
-│   ├── Instrument / InstrumentDetails / TradeConfig / SmaTimeframe
+│   ├── Instrument / InstrumentDetails / TradeConfig / SmaTimeframe / SmaDowntrendRule
+│   ├── TradeOrder                  trade_order — the order ledger
+│   ├── MarketData / HistoricalSpotCandle / HistoricalOptionCandle
+│   └── AlertState                  alert_state — once-per-day Telegram gating
+│
+├── indicator
+│   └── SMAIndicatorImpl (ta4j, SMA computed on candle lows), IndicatorFactory / IndicatorService
 │
 ├── login
 │   ├── config
@@ -168,24 +193,42 @@ com.moneymaker
 │   └── util
 │       └── TotpGenerator           RFC 6238 TOTP from Base32 secret
 │
+├── market
+│   ├── provider     MarketDataProvider abstraction + per-broker implementations
+│   └── service      MarketDataService (Resilience4j-wrapped fetch), MarketHoursService (trading-window gate)
+│
+├── order
+│   ├── controller/OrderController  GET /api/orders, POST /api/orders/{id}/sync
+│   └── service      OrderService (single owner of order lifecycle), OrderPlacementService + OrderPlacementFactory
+│
+├── position
+│   └── service      PositionService, PositionMonitorService + PositionMonitorFactory
+│
 ├── repository
-│   ├── BrokerSessionRepository
-│   └── TradeConfigRepository
+│   └── BrokerSessionRepository, TradeConfigRepository, TradeOrderRepository, SmaTimeframeRepository, …
 │
 ├── scheduler
 │   ├── LoginScheduler              08:00 cron + 1-min heartbeat
-│   ├── IndicatorScheduler          (placeholder — strategy work)
-│   ├── PositionScheduler           (placeholder)
-│   └── TradeConfigScheduler        (placeholder)
+│   ├── TradeConfigScheduler        09:16 cron + ApplicationReadyEvent — loads SharedData.combinedDto
+│   ├── AnalysisScheduler           5-min cron — OHLC fetch, SMA compute, strategy run (market-hours gated)
+│   ├── OrderScheduler              5-min cron — drains trade signals into trade_order (market-hours gated)
+│   ├── PositionScheduler           5-min cron — monitors OPEN trade_order rows, SL/target close (market-hours gated)
+│   └── DaySummaryScheduler         15:31 cron — EOD force-close + Telegram digest (live only)
+│
+├── shared/data/SharedData          Static caches: combinedDto, strikeMarketData…, tradeSignals
 │
 ├── state
-│   └── AppState                    Global runtime facade (loggedIn flag, heartbeat,
-│                                   trade-config cache, orders cache)
+│   ├── AppState                    Global runtime facade (loggedIn flag, heartbeat, cached configs)
+│   └── DailyEventGuard             Once-per-day gating backed by alert_state
+│
+├── strategy
+│   ├── Strategy1 (active) / Strategy2, StrategyFactory
+│   └── rules/{RuleEngine, CommonRules, SmaTrendCalculator, TradeRule, TradeRules, RuleContext}
 │
 ├── telegram
 │   ├── TelegramProperties          telegram.* binder
-│   ├── TelegramNotifier            Low-level /sendMessage client
-│   └── NotificationService         alertLoginSuccess/Failed/SessionLost/NoData/Recovered
+│   ├── TelegramNotifier            Low-level /sendMessage client (throttled)
+│   └── NotificationService         alertLoginSuccess/Failed/SessionLost/NoData/Recovered/Order*/DaySummary/…
 │
 └── util
     └── ConverterUtility
@@ -250,12 +293,21 @@ spring.liquibase.change-log=classpath:db/changelog/db.changelog-master.xml
 | POST | `/login/manual`    | Submit TOTP form |
 | POST | `/logout`          | Clear session + invalidate broker-side |
 | GET  | `/backtest`        | Backtest console |
+| GET  | `/trade-configs`   | Trade-config admin (CRUD + bulk delete for `AUTO_DOWNTREND` rows) |
+| GET  | `/charts/dashboard`| Zerodha Kite-style chart dashboard |
 
 ### JSON
 | Method | Path | Purpose |
 |---|---|---|
 | GET  | `/api/session`       | `{ activeBroker, loggedIn, dataHealthy, lastHeartbeatStatus, lastHeartbeatAt, lastDataAt, session: {...} }` |
-| POST | `/api/backtest/run`  | Run the backtest pipeline; returns `BacktestReport` |
+| POST | `/api/backtest/login`  | Backtest-mode login preflight (same `LoginOrchestrator` as live) |
+| POST | `/api/backtest/analysis?fromDate=&toDate=` | Run the multi-day analysis→order→position replay; returns per-day summary |
+| GET/POST/PUT/DELETE | `/api/trade-configs[...]` | Trade-config CRUD — see [`docs/ORDERS_AND_POSITIONS.md`](docs/ORDERS_AND_POSITIONS.md#trade-config-admin) |
+| GET/POST | `/api/trade-configs/auto/{calendar,runs,delete}` | Bulk operations on `AUTO_DOWNTREND` configs — see [`docs/EOD_DOWNTREND.md`](docs/EOD_DOWNTREND.md#deleting-generated-configs) |
+| GET  | `/api/orders`        | Persisted `trade_order` rows |
+| POST | `/api/orders/{id}/sync` | Re-fetch broker fill status for one order |
+| GET  | `/api/charts/market-data` | Chart candle data (token-based or historical ICICI) — see [`docs/CHART_DASHBOARD.md`](docs/CHART_DASHBOARD.md) |
+| POST | `/api/charts/historical/import/{spot,options}` | Import ICICI-style historical CSV — see [`docs/HISTORICAL_CHART_DATA_PLAN.md`](docs/HISTORICAL_CHART_DATA_PLAN.md) |
 
 ---
 
@@ -265,6 +317,13 @@ spring.liquibase.change-log=classpath:db/changelog/db.changelog-master.xml
 |---|---|---|
 | `0 0 8 * * MON-FRI` (08:00 IST) | First-of-day login: `LoginOrchestrator.ensureLoggedIn()`. Silent if already valid. | `LoginScheduler.ensureSessionAtMarketOpen` |
 | `fixedDelay = 60_000ms` | Heartbeat: auth probe + data probe; updates `broker_session`, drives Telegram on state transitions. | `LoginScheduler.heartbeat` |
+| `0 16 9 * * MON-FRI` (09:16 IST) + `ApplicationReadyEvent` | Loads `trade_config` (+ instrument + `sma_timeframe`) for today into `SharedData.combinedDto`. | `TradeConfigScheduler` |
+| `0 0/5 9-16 * * MON-FRI` (every 5 min, market-hours gated) | Fetch OHLC, compute SMAs, run strategies → trade signals. | `AnalysisScheduler` |
+| `0 0/5 9-16 * * MON-FRI` (same tick, after Analysis) | Drain trade signals into `trade_order` rows + broker order calls. | `OrderScheduler` |
+| `0 0/5 9-16 * * MON-FRI` (same tick, after Order) | Monitor OPEN `trade_order` rows; SL/target close. | `PositionScheduler` |
+| `0 31 15 * * MON-FRI` (15:31 IST, live only) | Force-close leftover OPEN trades + Telegram end-of-day digest. | `DaySummaryScheduler` |
+
+Full detail — including the market-hours gate that all three 5-min schedulers share, and how the backtest runner replays the exact same service methods — lives in [`docs/SCHEDULERS.md`](docs/SCHEDULERS.md).
 
 ### Heartbeat state machine
 ```
@@ -305,11 +364,17 @@ Schema is managed by Liquibase; changesets in [`src/main/resources/db/changelog`
 |---|---|
 | `instrument`         | Tradable instruments / symbols |
 | `instrument_details` | Per-instrument metadata |
-| `trade_config`       | User-defined trade rules |
+| `trade_config`       | User-defined (or auto-generated, `source='AUTO_DOWNTREND'`) trade rules |
 | `sma_timeframe`      | SMA settings per trade config |
+| `sma_downtrend_rule` | Detection thresholds for the EOD downtrend auto-config generator |
+| `trade_order`        | The order ledger — one row per open-and-close trade lifecycle |
 | `broker_session`     | Persisted broker session + heartbeat (UNIQUE on `broker`) |
+| `alert_state`        | Once-per-day Telegram gating (`DailyEventGuard`) |
+| `market_data`        | Token-based candle store — written by the bulk options download, read by the chart dashboard's `TOKEN_BASED` source |
+| `historical_spot_candles` / `historical_option_candles` | Natural-key candle store for imported ICICI CSV data, read by the chart dashboard's `HISTORICAL_ICICI` source |
+| `options_data`       | Raw bulk-downloaded options metadata (Zerodha-only ingestion) |
 
-To add a table, drop a new `00X_create_*.xml` file in the `db/changelog` folder and `<include>` it from `db.changelog-master.xml`.
+To add a table, drop a new `00X_create_*.xml` file in the `db/changelog` folder and `<include>` it from `db.changelog-master.xml`. Current head is `023`; check the directory before picking the next number — `018` is already used twice.
 
 ---
 
@@ -384,9 +449,18 @@ If nothing arrives:
 
 ## Further reading
 
+- [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md) – every workflow end-to-end and which ones feed each other's data — start here for the system-level view.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) – package interactions, data flow.
 - [`docs/LOGIN_FLOW.md`](docs/LOGIN_FLOW.md) – broker-by-broker auth sequences.
 - [`docs/HEARTBEAT.md`](docs/HEARTBEAT.md) – two-tier probe + alert state machine.
 - [`docs/BACKTESTING.md`](docs/BACKTESTING.md) – pipeline contract & extension recipe.
-- [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) – instructions for AI coding agents working on this repo.
+- [`docs/BACKTEST_PERFORMANCE.md`](docs/BACKTEST_PERFORMANCE.md) – speed-up phases & live-parity checklist.
+- [`docs/SCHEDULERS.md`](docs/SCHEDULERS.md) – every `@Scheduled` bean, cadence, and mode-gating.
+- [`docs/ORDERS_AND_POSITIONS.md`](docs/ORDERS_AND_POSITIONS.md) – order lifecycle, dedupe rules, trade-config admin.
+- [`docs/NOTIFICATIONS.md`](docs/NOTIFICATIONS.md) – Telegram alert facade, dedupe strategies, backtest gate.
+- [`docs/RATE_LIMITING.md`](docs/RATE_LIMITING.md) – Resilience4j wiring for broker calls.
+- [`docs/EOD_DOWNTREND.md`](docs/EOD_DOWNTREND.md) – end-of-day SMA-downtrend auto-config generator.
+- [`docs/CHART_DASHBOARD.md`](docs/CHART_DASHBOARD.md) – chart dashboard flow (both data sources).
+- [`docs/HISTORICAL_CHART_DATA_PLAN.md`](docs/HISTORICAL_CHART_DATA_PLAN.md) – historical ICICI CSV import format & tables.
+- [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) – instructions for AI coding agents working on this repo (also lists the proposed-but-not-started architecture roadmap docs).
 

@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -n \"HistoricalDataMissing\\\\|No historical candles\\\\|Error calculating indicators\" /tmp/mm-run3.log | sed 's/\\\\r//' | head -5)",
+      "Read(//tmp/**)",
+      "Bash(cd \"d:/office/stocks/workspace/money-maker\" && taskkill //F //IM java.exe 2>/dev/null | head -2; sleep 3; mvn -q -DskipTests package 2>&1 | tail -12; echo \"BUILD_EXIT=$?\"; nohup \"/c/Program Files/Java/jdk-17/bin/java\" -jar target/money-maker-1.0.0.jar --backtest.data-source=HISTORICAL_ICICI \"--logging.pattern.console=%d{HH:mm:ss} %-5level %logger{40} - %msg%n%ex{full}\" > /tmp/mm-run4.log 2>&1 & *)",
+      "Bash(curl.exe -s -X POST \"http://localhost:8080/api/backtest/analysis?fromDate=2025-06-02&toDate=2025-06-02\" -w \"\\\\nHTTP=%{http_code}\\\\n\")",
+      "Bash(\"/c/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe\" -uroot -proot moneymath -e \"DELETE FROM trade_order WHERE DATE\\(entry_time\\) BETWEEN '2024-01-02' AND '2024-01-04';\")",
+      "Bash(curl.exe -s -X POST \"http://localhost:8080/api/backtest/analysis?fromDate=2024-01-02&toDate=2024-01-04\" -o /tmp/bt5.json -w \"HTTP=%{http_code} time=%{time_total}s\\\\n\")",
+      "Bash(\"/c/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe\" -uroot -proot moneymath -e \"SELECT COUNT\\(*\\) orders, SUM\\(status='CLOSED'\\) closed FROM trade_order WHERE DATE\\(entry_time\\) BETWEEN '2024-01-02' AND '2024-01-04';\")",
+      "Bash(nohup \"/c/Program Files/Java/jdk-17/bin/java\" -jar target/money-maker-1.0.0.jar --backtest.data-source=BROKER \"--logging.pattern.console=%d{HH:mm:ss} %-5level %logger{40} - %msg%n%ex{full}\")",
+      "Bash(timeout 150 \"/c/Program Files/Java/jdk-17/bin/java\" -jar target/money-maker-1.0.0.jar --app.mode=live --backtest.data-source=HISTORICAL_ICICI --server.port=8099 \"--logging.pattern.console=%d{HH:mm:ss} %-5level %logger{40} - %msg%n%ex{full}\")",
+      "Bash(echo \"COMPILE_EXIT=$?\")",
+      "Bash(wmic process *)",
+      "Bash(grep -v '^$')",
+      "Bash(awk '/function mapSmaData/,/^    }$/' src/main/resources/static/js/chart-dashboard.js)",
+      "Bash(awk '/function getSmaValue/,/^    }$/' src/main/resources/static/js/chart-dashboard.js)",
+      "Bash(node --check src/main/resources/static/js/chart-dashboard.js)",
+      "Bash(curl.exe -s \"http://localhost:8080/api/charts/market-data?date=2024-01-04&indexSymbol=NIFTY&chartType=UNDERLYING&timeframe=5m&smaPeriods=20,50&dataSource=HISTORICAL_ICICI\" -o /tmp/chart5m.json -w \"HTTP=%{http_code}\\\\n\")",
+      "Bash(python -c ' *)",
+      "Bash(curl.exe -s \"http://localhost:8080/api/charts/market-data?date=2024-01-04&indexSymbol=NIFTY&chartType=UNDERLYING&timeframe=5m&smaPeriods=20,50&dataSource=HISTORICAL_ICICI\")",
+      "Bash(\"/c/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe\" -uroot -proot moneymath -e \"SELECT MIN\\(datetime\\) mn, MAX\\(datetime\\) mx, COUNT\\(*\\) c FROM historical_spot_candles WHERE DATE\\(datetime\\)='2024-01-04';\")",
+      "Bash(curl.exe -s \"http://localhost:8080/api/charts/market-data?date=2024-01-04&indexSymbol=NIFTY&chartType=UNDERLYING&timeframe=15m&smaPeriods=20&dataSource=HISTORICAL_ICICI\")",
+      "Bash(curl.exe -s \"http://localhost:8080/api/charts/market-data?date=2024-01-04&indexSymbol=NIFTY&chartType=UNDERLYING&timeframe=15m&smaPeriods=20&dataSource=TOKEN_BASED\" -w \"\\\\nHTTP=%{http_code}\\\\n\")"
+    ]
+  }
+}

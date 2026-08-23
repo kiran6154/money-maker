@@ -230,6 +230,38 @@ Backtest mode is gated at `TelegramNotifier.send()` — `telegram.backtest-enabl
 
 ---
 
+## Trade-config admin
+
+`com.moneymaker.tradeconfig` is the CRUD surface behind the `/trade-configs` UI — the mechanism CLAUDE.md invariant #9 ("no hardcoded trading-behaviour rules — they come from `TradeConfig`") depends on actually being usable day to day.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/trade-configs` | Thymeleaf admin page |
+| GET | `/api/trade-configs?date=&page=&size=` | Paged list, optionally filtered by trading date |
+| GET | `/api/trade-configs/{id}` | Single config + its `sma_timeframe` rows |
+| POST | `/api/trade-configs` | Create |
+| PUT | `/api/trade-configs/{id}` | Update |
+| DELETE | `/api/trade-configs/{id}` | Delete — `409` if any `trade_order` references the config |
+| GET | `/api/trade-configs/instruments` | Instrument dropdown source |
+| GET | `/api/trade-configs/strategies` | Strategy dropdown source |
+
+[`TradeConfigAdminController`](../src/main/java/com/moneymaker/tradeconfig/controller/TradeConfigAdminController.java) is a thin HTTP layer; [`TradeConfigAdminService`](../src/main/java/com/moneymaker/tradeconfig/service/TradeConfigAdminService.java) is the **single owner** of trade-config writes — controllers and other feature code must call it rather than `TradeConfigRepository` directly (see the CLAUDE.md / AGENTS.md invariant).
+
+### The cache-invalidation contract
+
+Every create / update / delete runs through `afterMutation(affectedDate)`, which:
+
+1. **Always** calls `TradeConfigScheduler.invalidateConfigsCache()` — the date-keyed cache described in [SCHEDULERS.md](SCHEDULERS.md#single-entry-point-getconfigsfordatedate) would otherwise keep serving the pre-edit snapshot for the rest of the JVM's life.
+2. **If** the affected date is *today* and `app.mode=live`, additionally rebuilds `SharedData.combinedDto` synchronously by calling `tradeConfigScheduler.getConfigsForDate(today)` and reassigning it — so the next 5-min `AnalysisScheduler` tick sees the edit immediately, without waiting for tomorrow's 09:16 cron or a JVM restart.
+
+Edits to a *past* or *future* date, or any edit while `app.mode=backtest`, only invalidate the cache — there's no live `SharedData.combinedDto` to refresh outside of today.
+
+### Auto-generated (`AUTO_DOWNTREND`) configs
+
+Bulk operations scoped to `source='AUTO_DOWNTREND'` rows — the calendar view, the "which generation run was this" grouping, and the bulk-delete endpoint — are a separate, more specialized part of the same controller/service. They're documented in full in [EOD_DOWNTREND.md](EOD_DOWNTREND.md#deleting-generated-configs) rather than duplicated here, since they only make sense alongside the detector that produces those rows.
+
+---
+
 ## Adding a new broker
 
 1. Per existing convention (see [Readme](../Readme.md)), add `BrokerLoginService` impl in `com.moneymaker.broker.<name>` first.

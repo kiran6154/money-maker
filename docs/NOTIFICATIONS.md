@@ -44,6 +44,8 @@ Other packages depend on `NotificationService`, never on `TelegramNotifier` or t
 | Order force-closed at EOD | `alertOrderForceClosed(TradeOrder)` | None | **Suppressed** |
 | Broker rejected an order | `alertOrderRejected(broker, orderId, reason)` | `sendIfChanged("order-rejected:<broker>", …)` — identical-reason loops stay quiet | **Suppressed** |
 | Trade configs active for the trading day | `TradeConfigScheduler.reportConfigsForDay(date, configs)` | Once per `(alertKey, date)` via **persisted** `DailyEventGuard` (row in `alert_state`). Survives JVM restart. `sendIfChanged("trade-configs:<date>", …)` backstops the actual send. | Fires (one per backtest date) |
+| End-of-day digest | `alertDaySummary(body)` | None inside the notifier — `DaySummaryScheduler` already gates to once/day via the same persisted `DailyEventGuard` before it ever calls this method | Never invoked — `DaySummaryScheduler` doesn't run in backtest |
+| No active broker session mid-tick | `alertNoActiveSession(reason)` | `sendThrottled("no-session", 5min, …)` — at most one message per 5-minute window regardless of how many callers hit it | **Suppressed** (only call site today is `BacktestAnalysisService`, same backtest gate as market-data / order alerts) |
 
 The "backtest behaviour" column reflects `app.mode=backtest`. Login and heartbeat alerts still fire because they're rare and useful in both modes; the noisy event types (per-order, market-data spam) are off so a multi-day replay can't blow up the chat.
 
@@ -136,6 +138,8 @@ This means feature code calls alert methods unconditionally. The decision of whe
 - [`OrderService.forceCloseOpenPositions`](../src/main/java/com/moneymaker/order/service/OrderService.java) → `alertOrderForceClosed` per row.
 - [`MarketDataService.fetchHistoricalData`](../src/main/java/com/moneymaker/market/service/MarketDataService.java) → `alertMarketDataUp` on success, `alertMarketDataDown` on non-rate-limit failure (after Resilience4j retries — see [RATE_LIMITING.md](RATE_LIMITING.md)).
 - [`ZerodhaOrderPlacementService.place`](../src/main/java/com/moneymaker/broker/zerodha/ZerodhaOrderPlacementService.java) → `alertOrderRejected` on `KiteException` / `IOException`.
+- [`DaySummaryScheduler.runEndOfDay`](../src/main/java/com/moneymaker/scheduler/DaySummaryScheduler.java) → `alertDaySummary` once per trading day (live only) — see [SCHEDULERS.md](SCHEDULERS.md#daysummaryscheduler).
+- [`BacktestAnalysisService`](../src/main/java/com/moneymaker/backtesting/BacktestAnalysisService.java) → `alertNoActiveSession` when a backtest tick finds no broker session (currently the only caller).
 
 Groww and Angel One adapters are still skeletons; when their REST clients land, add the same `notifier.alertOrderRejected(NAME, orderId, reason)` call in the catch block — same shape, same key, automatic dedupe.
 

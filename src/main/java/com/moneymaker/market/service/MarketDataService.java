@@ -2,7 +2,9 @@ package com.moneymaker.market.service;
 
 import com.moneymaker.backtesting.BacktestMarketDataCache;
 import com.moneymaker.entity.MarketData;
+import com.moneymaker.market.provider.HistoricalIciciMarketDataProvider;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -35,11 +37,38 @@ public class MarketDataService {
     private final KiteHistoricalFetcher fetcher;
     private final BacktestMarketDataCache cache;
 
+    /**
+     * Present only when {@code backtest.data-source=HISTORICAL_ICICI}. When set,
+     * every candle comes from the imported historical tables instead of the
+     * broker; when absent (live, or {@code BROKER}) this field is {@code null}
+     * and the fetch path is exactly what it was before.
+     */
+    private final HistoricalIciciMarketDataProvider historicalProvider;
+
     public MarketDataService(KiteHistoricalFetcher fetcher,
-                             BacktestMarketDataCache cache) {
+                             BacktestMarketDataCache cache,
+                             ObjectProvider<HistoricalIciciMarketDataProvider> historicalProvider) {
         this.fetcher = Objects.requireNonNull(fetcher, "fetcher must not be null");
         this.cache = Objects.requireNonNull(cache, "cache must not be null");
-        log.info("MarketDataService initialized with provider: {}", fetcher.getActiveProvider());
+        this.historicalProvider = historicalProvider.getIfAvailable();
+        log.info("MarketDataService initialized with provider: {}", getActiveProvider());
+    }
+
+    /** True when candles are served from the imported historical tables. */
+    public boolean isHistoricalSource() {
+        return historicalProvider != null;
+    }
+
+    /**
+     * Single hop to whichever source is active. The historical source is called
+     * directly rather than through {@link KiteHistoricalFetcher}: the
+     * {@code kiteHistorical} rate limiter and retry exist to protect the broker
+     * API, and applying them to local DB reads would only slow the replay.
+     */
+    private List<MarketData> fetchFromSource(String symbol, LocalDateTime from, LocalDateTime to, String interval) {
+        return historicalProvider != null
+                ? historicalProvider.fetchHistoricalData(symbol, from, to, interval)
+                : fetcher.fetch(symbol, from, to, interval);
     }
 
     public List<MarketData> fetchHistoricalData(String symbol, LocalDateTime from, LocalDateTime to, String interval) {
@@ -61,7 +90,7 @@ public class MarketDataService {
             // this (symbol, interval) hit the cache.
             LocalDateTime wideFrom = cache.dayFrom() != null ? cache.dayFrom() : from;
             LocalDateTime wideTo   = cache.dayTo()   != null ? cache.dayTo()   : to;
-            List<MarketData> wide = fetcher.fetch(symbol, wideFrom, wideTo, interval);
+            List<MarketData> wide = fetchFromSource(symbol, wideFrom, wideTo, interval);
             cache.put(symbol, interval, wide);
 
             List<MarketData> sliced = cache.slice(symbol, interval, from, to);
@@ -69,7 +98,7 @@ public class MarketDataService {
         }
 
         // Live path — exact same call shape as before Phase 1.
-        return fetcher.fetch(symbol, from, to, interval);
+        return fetchFromSource(symbol, from, to, interval);
     }
 
     public List<Double> extractClosePrices(List<MarketData> marketDataList) {
@@ -86,6 +115,6 @@ public class MarketDataService {
     }
 
     public String getActiveProvider() {
-        return fetcher.getActiveProvider();
+        return historicalProvider != null ? historicalProvider.getName() : fetcher.getActiveProvider();
     }
 }

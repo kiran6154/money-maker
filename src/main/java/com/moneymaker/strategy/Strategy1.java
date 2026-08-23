@@ -5,6 +5,7 @@ import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.dto.TradeSignal;
 import com.moneymaker.entity.MarketData;
 import com.moneymaker.entity.SmaTimeframe;
+import com.moneymaker.market.instrument.OptionInstrumentResolver;
 import com.moneymaker.shared.data.SharedData;
 import com.moneymaker.strategy.rules.CommonRules;
 import com.moneymaker.strategy.rules.RuleContext;
@@ -25,6 +26,18 @@ import java.util.Map;
 public class Strategy1 implements Strategy {
 
     public static final int ID = 1;
+
+    /**
+     * Same resolver {@code AnalysisScheduler} used to build the cache keys, so
+     * the prefix matched here is guaranteed to be the prefix that was written.
+     * Deriving it from {@code instrumentDetails} instead would silently match
+     * nothing whenever the symbol is not a broker token.
+     */
+    private final OptionInstrumentResolver instrumentResolver;
+
+    public Strategy1(OptionInstrumentResolver instrumentResolver) {
+        this.instrumentResolver = instrumentResolver;
+    }
 
     @Override
     public int getId() {
@@ -47,10 +60,10 @@ public class Strategy1 implements Strategy {
             return;
         }
 
-        String instrumentToken = (config.getInstrumentDetails() != null
-                && config.getInstrumentDetails().getInstrumentToken() != null)
-                ? config.getInstrumentDetails().getInstrumentToken().toString()
-                : null;
+        // Must match what AnalysisScheduler put at position 0 of the cache key —
+        // a broker instrument token normally, a historical natural-key symbol
+        // when replaying imported candles.
+        String instrumentToken = instrumentResolver.underlyingSymbol(config);
 
         // CE → ascending strike (lowest = deepest ITM = highest premium).
         // PE → descending strike (highest = deepest ITM = highest premium).

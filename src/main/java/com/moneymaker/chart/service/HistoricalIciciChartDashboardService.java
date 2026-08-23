@@ -1,6 +1,7 @@
 package com.moneymaker.chart.service;
 
 import com.moneymaker.chart.dto.ChartCandleResponse;
+import com.moneymaker.chart.dto.ChartTimeframe;
 import com.moneymaker.chart.dto.ChartType;
 import com.moneymaker.chart.dto.IndexSymbol;
 import com.moneymaker.chart.dto.MarketChartRequest;
@@ -14,15 +15,11 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -42,6 +39,7 @@ public class HistoricalIciciChartDashboardService {
     private final HistoricalSpotCandleRepository spotCandleRepository;
     private final HistoricalOptionCandleRepository optionCandleRepository;
     private final ChartTimeframeAggregator chartTimeframeAggregator;
+    private final ChartIndicatorService chartIndicatorService;
 
     public MarketChartResponse getMarketChartData(MarketChartRequest request) {
         return switch (request.getChartType()) {
@@ -51,17 +49,19 @@ public class HistoricalIciciChartDashboardService {
     }
 
     private MarketChartResponse getUnderlyingChart(MarketChartRequest request) {
-        List<ChartCandleResponse> candles = fetchSpotCandlesWithRuntimeSma(
-                request.getIndexSymbol(),
+        List<ChartCandleResponse> data = finish(
+                fetchSpotCandles(request.getIndexSymbol(), request.getDate()),
+                request.getTimeframe(),
                 request.getDate()
         );
-        List<ChartCandleResponse> data = chartTimeframeAggregator.aggregate(candles, request.getTimeframe());
         return buildResponse(request, null, null, data);
     }
 
     private MarketChartResponse getOptionChart(MarketChartRequest request) {
-        List<ChartCandleResponse> spotCandles = fetchSpotCandlesWithRuntimeSma(
-                request.getIndexSymbol(),
+        // ATM is resolved off the *selected day's* spot candles, so this one is
+        // filtered to the day without needing indicators.
+        List<ChartCandleResponse> spotCandles = onSelectedDate(
+                fetchSpotCandles(request.getIndexSymbol(), request.getDate()),
                 request.getDate()
         );
         if (spotCandles.isEmpty()) {
@@ -79,18 +79,42 @@ public class HistoricalIciciChartDashboardService {
             return buildResponse(request, null, atmStrike, List.of());
         }
 
-        List<ChartCandleResponse> optionCandles = fetchOptionCandlesWithRuntimeSma(
-                request.getIndexSymbol(),
-                expiryDate.get(),
-                atmStrike,
-                request.getChartType(),
+        List<ChartCandleResponse> data = finish(
+                fetchOptionCandles(
+                        request.getIndexSymbol(),
+                        expiryDate.get(),
+                        atmStrike,
+                        request.getChartType(),
+                        request.getDate()),
+                request.getTimeframe(),
                 request.getDate()
         );
-        List<ChartCandleResponse> data = chartTimeframeAggregator.aggregate(optionCandles, request.getTimeframe());
         return buildResponse(request, expiryDate.get(), atmStrike, data);
     }
 
-    private List<ChartCandleResponse> fetchSpotCandlesWithRuntimeSma(IndexSymbol indexSymbol, LocalDate tradingDate) {
+    /**
+     * Aggregate to the requested timeframe, compute overlays on that series, then
+     * trim to the visible day. Order matters: indicators must see the lookback
+     * candles to warm up, and must be computed on the bars actually drawn.
+     */
+    private List<ChartCandleResponse> finish(List<ChartCandleResponse> lookbackCandles,
+                                             ChartTimeframe timeframe,
+                                             LocalDate tradingDate) {
+        List<ChartCandleResponse> aggregated =
+                chartTimeframeAggregator.aggregate(lookbackCandles, timeframe);
+        chartIndicatorService.applyIndicators(aggregated);
+        return onSelectedDate(aggregated, tradingDate);
+    }
+
+    private List<ChartCandleResponse> onSelectedDate(List<ChartCandleResponse> candles, LocalDate tradingDate) {
+        return candles.stream()
+                .filter(candle -> candle.getTime() != null
+                        && tradingDate.equals(candle.getTime().toLocalDate()))
+                .toList();
+    }
+
+    /** Full lookback window, ascending, OHLC only. */
+    private List<ChartCandleResponse> fetchSpotCandles(IndexSymbol indexSymbol, LocalDate tradingDate) {
         LocalDateTime dayEnd = tradingDate.atTime(MARKET_CLOSE);
         List<HistoricalSpotCandle> recentCandles = spotCandleRepository.findRecentCandlesUpTo(
                 indexSymbol.name(),
@@ -99,23 +123,19 @@ public class HistoricalIciciChartDashboardService {
                 PageRequest.of(0, MAX_SMA_PERIOD + LOOKBACK_BUFFER_CANDLES)
         );
 
-        List<ChartCandleResponse> chronological = recentCandles.stream()
+        return recentCandles.stream()
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(HistoricalSpotCandle::getDateTime))
                 .map(this::toChartCandle)
                 .toList();
-
-        return applyRuntimeSma(chronological).stream()
-                .filter(candle -> candle.getTime() != null
-                        && tradingDate.equals(candle.getTime().toLocalDate()))
-                .toList();
     }
 
-    private List<ChartCandleResponse> fetchOptionCandlesWithRuntimeSma(IndexSymbol indexSymbol,
-                                                                       LocalDate expiryDate,
-                                                                       BigDecimal strikePrice,
-                                                                       ChartType chartType,
-                                                                       LocalDate tradingDate) {
+    /** Full lookback window, ascending, OHLC only. */
+    private List<ChartCandleResponse> fetchOptionCandles(IndexSymbol indexSymbol,
+                                                         LocalDate expiryDate,
+                                                         BigDecimal strikePrice,
+                                                         ChartType chartType,
+                                                         LocalDate tradingDate) {
         LocalDateTime dayEnd = tradingDate.atTime(MARKET_CLOSE);
         List<HistoricalOptionCandle> recentCandles = optionCandleRepository.findRecentCandlesUpTo(
                 indexSymbol.name(),
@@ -127,15 +147,10 @@ public class HistoricalIciciChartDashboardService {
                 PageRequest.of(0, MAX_SMA_PERIOD + LOOKBACK_BUFFER_CANDLES)
         );
 
-        List<ChartCandleResponse> chronological = recentCandles.stream()
+        return recentCandles.stream()
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(HistoricalOptionCandle::getDateTime))
                 .map(this::toChartCandle)
-                .toList();
-
-        return applyRuntimeSma(chronological).stream()
-                .filter(candle -> candle.getTime() != null
-                        && tradingDate.equals(candle.getTime().toLocalDate()))
                 .toList();
     }
 
@@ -150,32 +165,22 @@ public class HistoricalIciciChartDashboardService {
     }
 
     private ChartCandleResponse toChartCandle(HistoricalSpotCandle candle) {
-        return new ChartCandleResponse(
+        return ChartCandleResponse.ohlc(
                 candle.getDateTime().atZone(INDIA_ZONE).toOffsetDateTime(),
                 candle.getOpen(),
                 candle.getHigh(),
                 candle.getLow(),
-                candle.getClose(),
-                null,
-                null,
-                null,
-                null,
-                null
+                candle.getClose()
         );
     }
 
     private ChartCandleResponse toChartCandle(HistoricalOptionCandle candle) {
-        return new ChartCandleResponse(
+        return ChartCandleResponse.ohlc(
                 candle.getDateTime().atZone(INDIA_ZONE).toOffsetDateTime(),
                 candle.getOpen(),
                 candle.getHigh(),
                 candle.getLow(),
-                candle.getClose(),
-                null,
-                null,
-                null,
-                null,
-                null
+                candle.getClose()
         );
     }
 
@@ -202,36 +207,6 @@ public class HistoricalIciciChartDashboardService {
         return BigDecimal.valueOf(Math.round(referencePrice.doubleValue() / step) * step);
     }
 
-    private List<ChartCandleResponse> applyRuntimeSma(List<ChartCandleResponse> candles) {
-        if (candles.isEmpty()) {
-            return List.of();
-        }
-
-        RollingSma rolling20 = new RollingSma(20);
-        RollingSma rolling50 = new RollingSma(50);
-        RollingSma rolling100 = new RollingSma(100);
-        RollingSma rolling200 = new RollingSma(200);
-        RollingSma rolling500 = new RollingSma(500);
-
-        List<ChartCandleResponse> out = new ArrayList<>(candles.size());
-        for (ChartCandleResponse candle : candles) {
-            BigDecimal close = candle.getClose();
-            out.add(new ChartCandleResponse(
-                    candle.getTime(),
-                    candle.getOpen(),
-                    candle.getHigh(),
-                    candle.getLow(),
-                    candle.getClose(),
-                    rolling20.add(close),
-                    rolling50.add(close),
-                    rolling100.add(close),
-                    rolling200.add(close),
-                    rolling500.add(close)
-            ));
-        }
-        return out;
-    }
-
     private MarketChartResponse buildResponse(MarketChartRequest request,
                                               LocalDate expiryDate,
                                               BigDecimal atmStrike,
@@ -247,34 +222,4 @@ public class HistoricalIciciChartDashboardService {
         );
     }
 
-    private static final class RollingSma {
-        private final int period;
-        private final Deque<BigDecimal> window = new ArrayDeque<>();
-        private BigDecimal sum = BigDecimal.ZERO;
-
-        private RollingSma(int period) {
-            this.period = period;
-        }
-
-        private BigDecimal add(BigDecimal value) {
-            if (value == null) {
-                return window.size() >= period
-                        ? sum.divide(BigDecimal.valueOf(period), 4, RoundingMode.HALF_UP)
-                        : null;
-            }
-
-            window.addLast(value);
-            sum = sum.add(value);
-
-            if (window.size() > period) {
-                sum = sum.subtract(window.removeFirst());
-            }
-
-            if (window.size() < period) {
-                return null;
-            }
-
-            return sum.divide(BigDecimal.valueOf(period), 4, RoundingMode.HALF_UP);
-        }
-    }
 }

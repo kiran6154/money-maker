@@ -37,9 +37,22 @@ from those 5-minute rows.
 For the historical ICICI storage/import design, see
 [`HISTORICAL_CHART_DATA_PLAN.md`](HISTORICAL_CHART_DATA_PLAN.md).
 
-SMA overlays are computed at runtime from 5-minute candle closes using prior-day
-lookback candles, then projected onto aggregated `10m` and `15m` buckets by
-carrying forward the last available 5-minute SMA inside each bucket.
+Overlays are computed at runtime by `ChartIndicatorService`, on the **aggregated**
+series, using prior-day lookback candles to warm up:
+
+- **Paired SMA over low and high.** Each period yields `sma{N}Low` and
+  `sma{N}High` — there is no close-based SMA. The low series is the one the
+  trading strategy gates on (`SMAIndicatorImpl` averages candle lows
+  deliberately), so the chart and the strategy now agree.
+- **SuperTrend(7, 3)** — ATR period 7, band multiplier 3, Wilder-smoothed ATR.
+  Emitted as `supertrend` plus a `supertrendUp` direction flag.
+
+> **Order changed:** indicators used to be computed on the 5-minute series and
+> then carried through aggregation buckets, which meant "SMA20" on the 15m chart
+> was really a 100-minute average. Now the series is aggregated *first* and
+> indicators are computed on the bars actually drawn. SuperTrend requires this —
+> it is path-dependent (its band ratchets and its direction flips off the previous
+> bar) so it cannot be down-sampled after the fact.
 
 ---
 
@@ -145,13 +158,20 @@ which response is rendered in each pane.
 The frontend sends the selected SMA list to the backend as `smaPeriods`, but
 the backend response still includes all SMA fields.
 
-The selected SMA list is used on the frontend to decide which overlays to draw:
+The selected SMA list is used on the frontend to decide which overlays to draw.
+Each period draws **two** lines, in one shared colour:
 
-- `20 -> sma20`
-- `50 -> sma50`
-- `100 -> sma100`
-- `200 -> sma200`
-- `500 -> sma500`
+- `20 -> sma20Low` + `sma20High` — `#2f80ed`
+- `50 -> sma50Low` + `sma50High` — `#27ae60`
+- `100 -> sma100Low` + `sma100High` — `#f2994a`
+- `200 -> sma200Low` + `sma200High` — `#eb5757`
+- `500 -> sma500Low` + `sma500High` — `#6c5ce7`
+
+SuperTrend is always drawn and is not part of `smaPeriods`. It renders as two
+line series — `#26a69a` for uptrend bars, `#ef5350` for downtrend bars, matching
+the candle up/down colours — each carrying whitespace points for the other's
+bars, so the pair reads as one line that changes colour at a flip. A single
+`lightweight-charts` line series cannot change colour mid-series, hence the split.
 
 ### Chart rendering
 
@@ -259,10 +279,10 @@ When `chartType = UNDERLYING`:
 1. resolve the underlying instrument from `instrument`
 2. read the underlying token from `instrument.ins_id`
 3. query `market_data` for that token and selected date
-4. map each `MarketData` row to `ChartCandleResponse`
-5. compute runtime SMA values from 5-minute closes using prior-day lookback
-6. apply timeframe aggregation
-7. return `MarketChartResponse`
+4. map each `MarketData` row to `ChartCandleResponse` (OHLC only)
+5. apply timeframe aggregation over the whole lookback window
+6. compute overlays on the aggregated series (`ChartIndicatorService`)
+7. trim to the selected date and return `MarketChartResponse`
 
 ### Underlying token resolution
 
@@ -295,8 +315,8 @@ Query rules:
 ### Timeframe behavior
 
 - `5m`: returned as-is after sort
-- `10m`: grouped into consecutive 2-candle buckets
-- `15m`: grouped into consecutive 3-candle buckets
+- `10m`: 10-minute buckets anchored on the 09:15 session open
+- `15m`: 15-minute buckets anchored on the 09:15 session open
 
 Aggregation rules:
 
@@ -304,15 +324,30 @@ Aggregation rules:
 - high = max high
 - low = min low
 - close = last candle close
-- SMA fields = last non-null runtime 5-minute SMA in the bucket
+- no indicator values are read or carried — overlays are computed afterwards
 
-### SMA mapping
+Buckets are keyed on `(trading date, elapsed minutes since the session open)`,
+not on list position. Position-based chunking breaks once the input spans more
+than one day: an NSE session is 75 five-minute candles, which is not divisible
+by 2, so 10-minute buckets drift and eventually merge one day's last candle with
+the next day's first. It also shifts every later bar whenever an illiquid option
+series has a gap. Anchoring on the open puts boundaries where a broker puts them
+(09:15, 09:30, …), and pre-open candles — the ICICI spot exports carry flat
+09:05/09:10 rows — land in their own bucket instead of polluting the first
+session bar.
 
-- `sma20` is computed from 5-minute closes with period `20`
-- `sma50` is computed from 5-minute closes with period `50`
-- `sma100` is computed from 5-minute closes with period `100`
-- `sma200` is computed from 5-minute closes with period `200`
-- `sma500` is computed from 5-minute closes with period `500`
+### Indicator mapping
+
+Computed by `ChartIndicatorService` on the aggregated series:
+
+- `sma{N}Low` — mean of the last `N` candle **lows**
+- `sma{N}High` — mean of the last `N` candle **highs**
+- `supertrend` / `supertrendUp` — SuperTrend with ATR period `7` and multiplier
+  `3`; ATR uses Wilder smoothing seeded from a simple mean of the first 7 true
+  ranges, and the bands ratchet in the standard way
+
+All are `null` until the relevant window warms up, which is why the lookback
+candles are aggregated and fed through before the visible day is trimmed out.
 
 Lookback candles from prior trading dates are included so the selected day can
 show SMA values from its opening candles when enough history exists.
