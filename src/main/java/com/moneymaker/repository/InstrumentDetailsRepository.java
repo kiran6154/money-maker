@@ -67,4 +67,24 @@ public interface InstrumentDetailsRepository extends JpaRepository<InstrumentDet
             @Param("strike") BigDecimal strike,
             @Param("instrumentType") String instrumentType
     );
+
+    /**
+     * Distinct strikes listed for one underlying + expiry + option type. Backs
+     * the dashboard's strike picker on the token-based data source. Uses the
+     * same prefix match as {@link #findByCriteria} so sibling indices
+     * (BANKNIFTY, FINNIFTY, MIDCPNIFTY) do not leak into a NIFTY list.
+     */
+    @Query("""
+        SELECT DISTINCT i.strike
+        FROM InstrumentDetails i
+        WHERE LOWER(i.tradingSymbol) LIKE LOWER(CONCAT(:symbol, '%'))
+          AND i.expiry = :expiry
+          AND i.instrumentType = :instrumentType
+        ORDER BY i.strike ASC
+    """)
+    List<BigDecimal> findAvailableStrikes(
+            @Param("symbol") String symbol,
+            @Param("expiry") String expiry,
+            @Param("instrumentType") String instrumentType
+    );
 }

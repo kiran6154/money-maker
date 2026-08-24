@@ -23,7 +23,7 @@
 
     <section class="chart-toolbar-card" id="chartToolbarCard">
         <div class="chart-toolbar-grid">
-            <div class="form-row">
+            <div class="form-row chart-field chart-field-date">
                 <label for="chartDate">Date</label>
                 <div class="chart-date-control">
                     <button id="prevDateBtn" class="btn btn-ghost chart-step-btn" type="button" title="Previous day">&lt;</button>
@@ -33,7 +33,7 @@
                 </div>
             </div>
 
-            <div class="form-row">
+            <div class="form-row chart-field chart-field-source">
                 <label for="chartDataSource">Data Source</label>
                 <select id="chartDataSource" class="form-control">
                     <option value="HISTORICAL_ICICI" selected>Historical ICICI</option>
@@ -41,7 +41,7 @@
                 </select>
             </div>
 
-            <div class="form-row">
+            <div class="form-row chart-field chart-field-index">
                 <label for="chartIndexSymbol">Index</label>
                 <select id="chartIndexSymbol" class="form-control">
                     <option value="NIFTY" selected>NIFTY</option>
@@ -49,7 +49,14 @@
                 </select>
             </div>
 
-            <div class="form-row">
+            <div class="form-row chart-field chart-field-strike">
+                <label for="chartStrike">Strike</label>
+                <select id="chartStrike" class="form-control">
+                    <option value="" selected>ATM (auto)</option>
+                </select>
+            </div>
+
+            <div class="form-row chart-field chart-field-timeframes">
                 <label>Timeframes</label>
                 <div id="chartTimeframes" class="chart-chip-group" role="group" aria-label="Timeframes">
                     <button class="chart-chip is-selected" type="button" data-value="5m">5m</button>
@@ -58,7 +65,7 @@
                 </div>
             </div>
 
-            <div class="form-row">
+            <div class="form-row chart-field chart-field-sma">
                 <label>SMA Periods</label>
                 <div id="chartSmaPeriods" class="chart-chip-group chart-chip-group-wide" role="group" aria-label="SMA periods">
                     <button class="chart-chip is-selected" type="button" data-value="20">20</button>
@@ -69,44 +76,21 @@
                 </div>
             </div>
 
+            <div class="form-row chart-field chart-field-overlays">
+                <label>Overlays</label>
+                <div id="chartOverlays" class="chart-chip-group" role="group" aria-label="Overlays">
+                    <button class="chart-chip is-selected" type="button" data-value="smaHigh">SMA High</button>
+                    <button class="chart-chip is-selected" type="button" data-value="supertrend">SuperTrend</button>
+                </div>
+            </div>
+
             <div class="chart-toolbar-actions">
                 <button id="refreshChartsBtn" class="btn btn-primary" type="button">Refresh</button>
             </div>
         </div>
     </section>
 
-    <section class="grid-3 chart-dashboard-grid" id="chartDashboardGrid">
-        <article class="glass-card chart-pane" id="pePane">
-            <div class="card-header">
-                <h3>ATM PE</h3>
-                <span class="badge badge-info pane-timeframe-badge" id="peActiveTimeframe">5m</span>
-            </div>
-
-            <div class="chart-pane-meta" id="peMeta">
-                <span><strong>Date</strong> <span id="peSelectedDate">-</span></span>
-                <span><strong>Index</strong> <span id="peSelectedIndex">NIFTY</span></span>
-                <span><strong>Expiry</strong> <span id="peExpiryDate">-</span></span>
-                <span><strong>ATM</strong> <span id="peAtmStrike">-</span></span>
-            </div>
-
-            <div class="chart-timeframe-tabs" id="peTimeframeTabs"></div>
-            <div class="chart-sma-legend" id="peSmaLegend"></div>
-
-            <div class="chart-state chart-loading-state" id="peLoadingState" style="display:none;">
-                Loading PE chart data...
-            </div>
-            <div class="chart-state chart-error-state" id="peErrorState" style="display:none;">
-                Unable to load PE chart data.
-            </div>
-            <div class="chart-state chart-empty-state" id="peNoDataState">
-                No PE chart data available for the selected filters.
-            </div>
-
-            <div class="chart-canvas-wrap" id="peChartWrap">
-                <div class="chart-canvas" id="peChart"></div>
-            </div>
-        </article>
-
+    <section class="chart-dashboard-grid" id="chartDashboardGrid">
         <article class="glass-card chart-pane chart-pane-primary" id="underlyingPane">
             <div class="card-header">
                 <h3 id="underlyingPaneTitle">NIFTY</h3>
@@ -137,9 +121,40 @@
             </div>
         </article>
 
+        <article class="glass-card chart-pane" id="pePane">
+            <div class="card-header">
+                <h3 id="pePaneTitle">ATM PE</h3>
+                <span class="badge badge-info pane-timeframe-badge" id="peActiveTimeframe">5m</span>
+            </div>
+
+            <div class="chart-pane-meta" id="peMeta">
+                <span><strong>Date</strong> <span id="peSelectedDate">-</span></span>
+                <span><strong>Index</strong> <span id="peSelectedIndex">NIFTY</span></span>
+                <span><strong>Expiry</strong> <span id="peExpiryDate">-</span></span>
+                <span><strong>Strike</strong> <span id="peAtmStrike">-</span></span>
+            </div>
+
+            <div class="chart-timeframe-tabs" id="peTimeframeTabs"></div>
+            <div class="chart-sma-legend" id="peSmaLegend"></div>
+
+            <div class="chart-state chart-loading-state" id="peLoadingState" style="display:none;">
+                Loading PE chart data...
+            </div>
+            <div class="chart-state chart-error-state" id="peErrorState" style="display:none;">
+                Unable to load PE chart data.
+            </div>
+            <div class="chart-state chart-empty-state" id="peNoDataState">
+                No PE chart data available for the selected filters.
+            </div>
+
+            <div class="chart-canvas-wrap" id="peChartWrap">
+                <div class="chart-canvas" id="peChart"></div>
+            </div>
+        </article>
+
         <article class="glass-card chart-pane" id="cePane">
             <div class="card-header">
-                <h3>ATM CE</h3>
+                <h3 id="cePaneTitle">ATM CE</h3>
                 <span class="badge badge-info pane-timeframe-badge" id="ceActiveTimeframe">5m</span>
             </div>
 
@@ -147,7 +162,7 @@
                 <span><strong>Date</strong> <span id="ceSelectedDate">-</span></span>
                 <span><strong>Index</strong> <span id="ceSelectedIndex">NIFTY</span></span>
                 <span><strong>Expiry</strong> <span id="ceExpiryDate">-</span></span>
-                <span><strong>ATM</strong> <span id="ceAtmStrike">-</span></span>
+                <span><strong>Strike</strong> <span id="ceAtmStrike">-</span></span>
             </div>
 
             <div class="chart-timeframe-tabs" id="ceTimeframeTabs"></div>

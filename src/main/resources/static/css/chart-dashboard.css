@@ -38,11 +38,33 @@
     color: rgba(28, 28, 30, 0.62);
 }
 
+/* Flex, not grid, on purpose. A fixed grid-template-columns list has to be
+   re-counted every time a control is added — adding the Strike picker to a
+   six-track grid pushed Refresh onto a second row and squeezed the SMA chips
+   into two lines. Flex lets each field size to its own content and wrap as a
+   unit, so new controls slot in without touching this rule. */
 .chart-toolbar-grid {
-    display: grid;
-    grid-template-columns: minmax(300px, 1.35fr) minmax(160px, 0.8fr) minmax(140px, 0.7fr) minmax(210px, 0.85fr) minmax(330px, 1.15fr) auto;
-    gap: 10px;
-    align-items: end;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    align-items: flex-end;
+}
+
+.chart-toolbar-grid > .chart-field {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+.chart-field-date { flex-basis: 300px; }
+.chart-field-source { flex-basis: 165px; }
+.chart-field-index { flex-basis: 135px; }
+.chart-field-strike { flex-basis: 185px; }
+.chart-field-timeframes { flex-basis: 180px; }
+.chart-field-overlays { flex-basis: 210px; }
+
+/* Absorbs the leftover width so the five SMA chips stay on one line. */
+.chart-field-sma {
+    flex: 1 1 340px;
 }
 
 .chart-toolbar-grid .form-row {
@@ -110,14 +132,20 @@
     color: var(--primary-strong);
 }
 
+/* margin-left:auto keeps Refresh pinned right on the last row it lands on,
+   whatever the wrap point turns out to be. */
 .chart-toolbar-actions {
     display: flex;
     justify-content: flex-end;
-    align-items: end;
+    align-items: flex-end;
+    margin-left: auto;
 }
 
+/* Two rows: the index chart across the top, ATM PE and ATM CE side by side
+   under it. DOM order is underlying -> PE -> CE so tab order matches. */
 .chart-dashboard-grid {
-    grid-template-columns: minmax(280px, 0.9fr) minmax(420px, 1.25fr) minmax(280px, 0.9fr);
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: stretch;
     gap: 12px;
     margin-top: 12px;
@@ -126,13 +154,20 @@
 .chart-pane {
     display: flex;
     flex-direction: column;
-    min-height: calc(100vh - 220px);
+    min-height: 0;
     padding: 12px;
     border-radius: 8px;
 }
 
+/* The index pane owns its whole row. */
 .chart-pane-primary {
+    grid-column: 1 / -1;
     border-color: rgba(0, 122, 255, 0.16);
+}
+
+.chart-pane-primary .chart-canvas,
+.chart-pane-primary .chart-canvas-wrap {
+    min-height: 420px;
 }
 
 .chart-pane .card-header h3 {
@@ -328,9 +363,9 @@
     color: var(--text-muted);
 }
 
-@media (max-width: 1180px) {
-    .chart-toolbar-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (max-width: 900px) {
+    .chart-toolbar-grid > .chart-field {
+        flex: 1 1 220px;
     }
 
     .chart-dashboard-grid {
@@ -348,12 +383,14 @@
         gap: 10px;
     }
 
-    .chart-toolbar-grid {
-        grid-template-columns: 1fr;
+    .chart-toolbar-grid > .chart-field {
+        flex: 1 1 100%;
     }
 
     .chart-toolbar-actions {
         justify-content: stretch;
+        margin-left: 0;
+        width: 100%;
     }
 
     .chart-toolbar-actions .btn {
@@ -386,11 +423,19 @@ body.chart-fullscreen .chart-toolbar-card {
     top: 8px;
 }
 
+/* Fullscreen has to fit BOTH rows on one screen, so the viewport budget is
+   split between them rather than given to each pane in full. ~130px per row
+   covers that row's header, meta strip, timeframe tabs and legend. */
 body.chart-fullscreen .chart-pane {
-    min-height: calc(100vh - 110px);
+    min-height: 0;
 }
 
 body.chart-fullscreen .chart-canvas,
 body.chart-fullscreen .chart-canvas-wrap {
-    min-height: calc(100vh - 250px);
+    min-height: calc((100vh - 320px) / 2);
+}
+
+body.chart-fullscreen .chart-pane-primary .chart-canvas,
+body.chart-fullscreen .chart-pane-primary .chart-canvas-wrap {
+    min-height: calc((100vh - 320px) / 2);
 }

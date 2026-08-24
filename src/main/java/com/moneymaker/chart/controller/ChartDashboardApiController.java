@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
@@ -36,7 +37,8 @@ public class ChartDashboardApiController {
             @RequestParam("chartType") ChartType chartType,
             @RequestParam("timeframe") String timeframe,
             @RequestParam("smaPeriods") String smaPeriods,
-            @RequestParam(value = "dataSource", defaultValue = "TOKEN_BASED") ChartDataSource dataSource) {
+            @RequestParam(value = "dataSource", defaultValue = "TOKEN_BASED") ChartDataSource dataSource,
+            @RequestParam(value = "strike", required = false) String strike) {
         try {
             MarketChartRequest request = new MarketChartRequest(
                     date,
@@ -44,13 +46,46 @@ public class ChartDashboardApiController {
                     chartType,
                     ChartTimeframe.fromValue(timeframe),
                     parseSmaPeriods(smaPeriods),
-                    dataSource
+                    dataSource,
+                    parseStrike(strike)
             );
             MarketChartResponse response = chartDashboardService.getMarketChartData(request);
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             log.warn("[chart-api] rejected request: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Strikes the dashboard's strike picker can offer. {@code chartType} selects
+     * the CE or PE side; anything else lists the CE side, which for index
+     * options carries the same strike ladder.
+     */
+    @GetMapping("/strikes")
+    public ResponseEntity<?> strikes(
+            @RequestParam("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam("indexSymbol") IndexSymbol indexSymbol,
+            @RequestParam(value = "chartType", required = false) ChartType chartType,
+            @RequestParam(value = "dataSource", defaultValue = "TOKEN_BASED") ChartDataSource dataSource) {
+        try {
+            return ResponseEntity.ok(
+                    chartDashboardService.getStrikeOptions(indexSymbol, date, chartType, dataSource));
+        } catch (IllegalArgumentException e) {
+            log.warn("[chart-api] rejected strikes request: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Blank / absent means "auto" — the service resolves ATM itself. */
+    private BigDecimal parseStrike(String strike) {
+        if (strike == null || strike.isBlank() || "AUTO".equalsIgnoreCase(strike.trim())) {
+            return null;
+        }
+        try {
+            return new BigDecimal(strike.trim());
+        } catch (NumberFormatException ex) {
+            throw new IllegalArgumentException("strike must be numeric, or blank for ATM");
         }
     }
 

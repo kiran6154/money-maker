@@ -6,6 +6,7 @@ import com.moneymaker.chart.dto.ChartType;
 import com.moneymaker.chart.dto.IndexSymbol;
 import com.moneymaker.chart.dto.MarketChartRequest;
 import com.moneymaker.chart.dto.MarketChartResponse;
+import com.moneymaker.chart.dto.StrikeOptionsResponse;
 import com.moneymaker.entity.HistoricalOptionCandle;
 import com.moneymaker.entity.HistoricalSpotCandle;
 import com.moneymaker.repository.HistoricalOptionCandleRepository;
@@ -73,23 +74,49 @@ public class HistoricalIciciChartDashboardService {
             return buildResponse(request, null, null, List.of());
         }
 
+        // An explicitly picked strike wins; otherwise fall back to ATM.
         BigDecimal atmStrike = calculateAtmStrike(request.getIndexSymbol(), referencePrice);
+        BigDecimal strike = request.getStrike() != null ? request.getStrike() : atmStrike;
         Optional<LocalDate> expiryDate = resolveExpiryDate(request.getIndexSymbol(), request.getDate());
         if (expiryDate.isEmpty()) {
-            return buildResponse(request, null, atmStrike, List.of());
+            return buildResponse(request, null, strike, List.of());
         }
 
         List<ChartCandleResponse> data = finish(
                 fetchOptionCandles(
                         request.getIndexSymbol(),
                         expiryDate.get(),
-                        atmStrike,
+                        strike,
                         request.getChartType(),
                         request.getDate()),
                 request.getTimeframe(),
                 request.getDate()
         );
-        return buildResponse(request, expiryDate.get(), atmStrike, data);
+        return buildResponse(request, expiryDate.get(), strike, data);
+    }
+
+    /**
+     * Strikes the picker can offer for this date/index, plus the auto (ATM)
+     * choice. Only strikes with candles for the resolved expiry are returned.
+     */
+    public StrikeOptionsResponse getStrikeOptions(IndexSymbol indexSymbol, LocalDate date, ChartType chartType) {
+        Optional<LocalDate> expiryDate = resolveExpiryDate(indexSymbol, date);
+        if (expiryDate.isEmpty()) {
+            return new StrikeOptionsResponse(null, null, List.of());
+        }
+
+        List<ChartCandleResponse> spotCandles = onSelectedDate(fetchSpotCandles(indexSymbol, date), date);
+        BigDecimal referencePrice = spotCandles.isEmpty() ? null : resolveReferencePrice(spotCandles);
+        BigDecimal atmStrike = referencePrice == null ? null : calculateAtmStrike(indexSymbol, referencePrice);
+
+        String optionRight = (chartType == null || chartType == ChartType.UNDERLYING)
+                ? ChartType.CE.name()
+                : chartType.name();
+
+        List<BigDecimal> strikes = optionCandleRepository.findAvailableStrikes(
+                indexSymbol.name(), OPTION_EXCHANGE, expiryDate.get(), optionRight);
+
+        return new StrikeOptionsResponse(expiryDate.get(), atmStrike, strikes);
     }
 
     /**

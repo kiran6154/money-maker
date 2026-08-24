@@ -7,6 +7,7 @@ import com.moneymaker.chart.dto.ChartType;
 import com.moneymaker.chart.dto.IndexSymbol;
 import com.moneymaker.chart.dto.MarketChartRequest;
 import com.moneymaker.chart.dto.MarketChartResponse;
+import com.moneymaker.chart.dto.StrikeOptionsResponse;
 import com.moneymaker.entity.Instrument;
 import com.moneymaker.entity.InstrumentDetails;
 import com.moneymaker.entity.MarketData;
@@ -95,22 +96,24 @@ public class ChartDashboardService {
             return emptyResponse(request, null, null);
         }
 
+        // An explicitly picked strike wins; otherwise fall back to ATM.
         BigDecimal atmStrike = calculateAtmStrike(request.getIndexSymbol(), referencePrice);
+        BigDecimal strike = request.getStrike() != null ? request.getStrike() : atmStrike;
         Optional<LocalDate> expiryDate = chartExpiryResolver.resolve(request.getDate(), request.getIndexSymbol());
         if (expiryDate.isEmpty()) {
-            return emptyResponse(request, null, atmStrike);
+            return emptyResponse(request, null, strike);
         }
 
         String optionType = request.getChartType().name();
         Optional<InstrumentDetails> optionInstrument = instrumentDetailsRepository.findFirstByCriteria(
                 request.getIndexSymbol().name(),
                 expiryDate.get().toString(),
-                atmStrike,
+                strike,
                 optionType
         );
 
         if (optionInstrument.isEmpty() || optionInstrument.get().getInstrumentToken() == null) {
-            return emptyResponse(request, expiryDate.get(), atmStrike);
+            return emptyResponse(request, expiryDate.get(), strike);
         }
 
         List<ChartCandleResponse> data = finish(
@@ -118,7 +121,43 @@ public class ChartDashboardService {
                 request.getTimeframe(),
                 request.getDate()
         );
-        return buildResponse(request, expiryDate.get(), atmStrike, data);
+        return buildResponse(request, expiryDate.get(), strike, data);
+    }
+
+    /**
+     * Strikes the picker can offer, for whichever data source is selected.
+     * Routed here so the frontend has a single endpoint regardless of source.
+     */
+    public StrikeOptionsResponse getStrikeOptions(IndexSymbol indexSymbol,
+                                                  LocalDate date,
+                                                  ChartType chartType,
+                                                  ChartDataSource dataSource) {
+        if (dataSource == ChartDataSource.HISTORICAL_ICICI) {
+            return historicalIciciChartDashboardService.getStrikeOptions(indexSymbol, date, chartType);
+        }
+
+        Optional<LocalDate> expiryDate = chartExpiryResolver.resolve(date, indexSymbol);
+        if (expiryDate.isEmpty()) {
+            return new StrikeOptionsResponse(null, null, List.of());
+        }
+
+        Optional<Instrument> instrument = resolveUnderlyingInstrument(indexSymbol);
+        BigDecimal atmStrike = null;
+        if (instrument.isPresent() && instrument.get().getInsId() != null && !instrument.get().getInsId().isBlank()) {
+            List<ChartCandleResponse> underlying =
+                    onSelectedDate(fetchIntradayCandles(instrument.get().getInsId(), date), date);
+            BigDecimal referencePrice = underlying.isEmpty() ? null : resolveReferencePrice(underlying);
+            atmStrike = referencePrice == null ? null : calculateAtmStrike(indexSymbol, referencePrice);
+        }
+
+        String optionType = (chartType == null || chartType == ChartType.UNDERLYING)
+                ? ChartType.CE.name()
+                : chartType.name();
+
+        List<BigDecimal> strikes = instrumentDetailsRepository.findAvailableStrikes(
+                indexSymbol.name(), expiryDate.get().toString(), optionType);
+
+        return new StrikeOptionsResponse(expiryDate.get(), atmStrike, strikes);
     }
 
     /**

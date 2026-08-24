@@ -90,6 +90,26 @@ public interface HistoricalOptionCandleRepository extends JpaRepository<Historic
             @Param("to") LocalDateTime to);
 
     /**
+     * Distinct strikes that actually have candles for one expiry and side.
+     * Backs the dashboard's strike picker, so the list can only ever offer
+     * strikes the chart can really draw.
+     */
+    @Query("""
+        SELECT DISTINCT c.strikePrice
+        FROM HistoricalOptionCandle c
+        WHERE UPPER(c.stockCode) = UPPER(:stockCode)
+          AND UPPER(c.exchangeCode) = UPPER(:exchangeCode)
+          AND c.expiryDate = :expiryDate
+          AND UPPER(c.optionRight) = UPPER(:optionRight)
+        ORDER BY c.strikePrice ASC
+    """)
+    List<BigDecimal> findAvailableStrikes(
+            @Param("stockCode") String stockCode,
+            @Param("exchangeCode") String exchangeCode,
+            @Param("expiryDate") LocalDate expiryDate,
+            @Param("optionRight") String optionRight);
+
+    /**
      * All rows of a series within a datetime window, used by the CSV importer to
      * resolve a whole chunk's natural keys in one query instead of one SELECT
      * per row.

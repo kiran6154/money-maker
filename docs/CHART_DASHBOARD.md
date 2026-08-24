@@ -74,14 +74,23 @@ The template contains:
 - index dropdown: `chartIndexSymbol`
 - timeframe chip group: `chartTimeframes`
 - SMA chip group: `chartSmaPeriods`
+- strike select: `chartStrike`
+- overlay toggle chips: `chartOverlays` (`SMA High`, `SuperTrend`)
 - refresh button: `refreshChartsBtn`
 - fullscreen toggle: `fullscreenChartsBtn`
 
-Three panes are rendered:
+Three panes are rendered across two rows — the index chart spans the full width
+on top, the two option charts share the row beneath it:
 
-- left: `pePane`
-- center: `underlyingPane`
-- right: `cePane`
+- row 1, full width: `underlyingPane`
+- row 2, left: `pePane`
+- row 2, right: `cePane`
+
+DOM order matches (underlying, PE, CE) so tab order follows the visual order.
+The toolbar is a flex row, not a fixed grid: a fixed `grid-template-columns`
+list has to be re-counted whenever a control is added, and adding the strike
+picker to a six-track grid pushed Refresh onto its own row and split the SMA
+chips over two lines.
 
 Each pane has:
 
@@ -98,7 +107,7 @@ Each pane has:
 
 - default control values
 - localStorage persistence for the last-used date, source, index, timeframe,
-  SMA, and active timeframe
+  SMA, strike, overlay toggles, and active timeframe
 - reading filter values
 - reacting to filter changes
 - previous / next / today date navigation
@@ -167,7 +176,30 @@ Each period draws **two** lines, in one shared colour:
 - `200 -> sma200Low` + `sma200High` — `#eb5757`
 - `500 -> sma500Low` + `sma500High` — `#6c5ce7`
 
-SuperTrend is always drawn and is not part of `smaPeriods`. It renders as two
+### Overlay toggles
+
+The `chartOverlays` chip group controls what is drawn on top of the candles.
+Both chips are on by default, so the untouched chart is unchanged:
+
+- **SMA High** — off hides the `sma{N}High` line of every selected period,
+  leaving only `sma{N}Low`. The low line is never toggleable, because it is the
+  series the strategy actually gates on. The legend suffix follows the state:
+  `SMA 50 H/L` when on, `SMA 50 L` when off.
+- **SuperTrend** — off hides both SuperTrend series and drops its legend entry.
+
+Two behaviours differ from the other chip groups and are deliberate:
+
+- The group may be emptied. `bindChipGroup` normally refuses to leave a group
+  with nothing selected — meaningless for timeframes or SMA periods — so it
+  takes an `allowEmpty` flag, and the overlays group reads through
+  `getToggledValues` / `readStoredListAllowEmpty` rather than the helpers that
+  substitute defaults for an empty list.
+- Toggling redraws from `state.responses` via `renderVisiblePanes` instead of
+  going through `refreshAllCharts`. Overlays are a pure render concern and every
+  response already carries all the fields, so refetching would fire nine
+  identical requests just to hide a line.
+
+SuperTrend is not part of `smaPeriods`. It renders as two
 line series — `#26a69a` for uptrend bars, `#ef5350` for downtrend bars, matching
 the candle up/down colours — each carrying whitespace points for the other's
 bars, so the pair reads as one line that changes colour at a flip. A single
@@ -221,6 +253,7 @@ The controller receives:
 - `chartType`
 - `timeframe`
 - `smaPeriods`
+- `strike` (optional)
 
 It converts them into `MarketChartRequest`:
 
@@ -230,6 +263,21 @@ It converts them into `MarketChartRequest`:
 - `chartType -> ChartType`
 - `timeframe -> ChartTimeframe`
 - `smaPeriods -> List<Integer>`
+- `strike -> BigDecimal` (blank or `AUTO` becomes `null`)
+
+### Strike selection
+
+`strike` is optional. When absent the service resolves ATM from the day's
+underlying price exactly as before, so the default behaviour is unchanged; when
+present it charts that strike instead. `MarketChartResponse.atmStrike` always
+reports the strike actually plotted, and the option pane headings switch from
+`ATM PE` / `ATM CE` to `PE <strike>` / `CE <strike>` once a strike is picked.
+
+`GET /api/charts/strikes?date=&indexSymbol=&chartType=&dataSource=` backs the
+picker, returning `{expiryDate, atmStrike, strikes}`. The strikes come from the
+same table the candles come from — `historical_option_candles` for
+HISTORICAL_ICICI, `instrument_details` for TOKEN_BASED — so the picker can only
+ever offer a strike that actually renders.
 
 ### DTOs used
 
@@ -569,9 +617,9 @@ Flow:
 16. backend fetches CE candles from `market_data`
 17. backend returns CE chart data
 18. frontend renders:
-    - left = ATM PE
-    - center = NIFTY
-    - right = ATM CE
+    - row 1 = NIFTY (full width)
+    - row 2 left = ATM PE
+    - row 2 right = ATM CE
 
 ---
 

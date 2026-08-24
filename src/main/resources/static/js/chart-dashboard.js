@@ -3,6 +3,12 @@
     const DEFAULT_DATA_SOURCE = 'HISTORICAL_ICICI';
     const DEFAULT_TIMEFRAME = '5m';
     const DEFAULT_SMA_PERIODS = ['20', '50', '100', '200', '500'];
+    // Overlay toggles. Both on by default, so the chart looks the same as before
+    // anyone touches them. Unlike timeframes/SMA periods, this group is allowed
+    // to be fully empty — "hide both" is a legitimate choice.
+    const OVERLAY_SMA_HIGH = 'smaHigh';
+    const OVERLAY_SUPERTREND = 'supertrend';
+    const DEFAULT_OVERLAYS = [OVERLAY_SMA_HIGH, OVERLAY_SUPERTREND];
     const NO_DATA_MESSAGE = 'No market data available for selected date.';
     const CHART_HEIGHT_FALLBACK = 360;
     const MARKET_TIMEZONE = 'Asia/Kolkata';
@@ -13,6 +19,8 @@
         indexSymbol: LS_PREFIX + 'indexSymbol',
         timeframes: LS_PREFIX + 'timeframes',
         smaPeriods: LS_PREFIX + 'smaPeriods',
+        strike: LS_PREFIX + 'strike',
+        overlays: LS_PREFIX + 'overlays',
         activeTimeframe: LS_PREFIX + 'activeTimeframe'
     };
     const timeLabelFormatter = new Intl.DateTimeFormat('en-IN', {
@@ -66,6 +74,8 @@
         timeframes: [DEFAULT_TIMEFRAME],
         smaPeriods: [...DEFAULT_SMA_PERIODS],
         activeTimeframe: DEFAULT_TIMEFRAME,
+        strike: '',
+        overlays: [...DEFAULT_OVERLAYS],
         responses: {
             PE: new Map(),
             UNDERLYING: new Map(),
@@ -89,6 +99,8 @@
         indexSymbol: document.getElementById('chartIndexSymbol'),
         timeframes: document.getElementById('chartTimeframes'),
         smaPeriods: document.getElementById('chartSmaPeriods'),
+        strike: document.getElementById('chartStrike'),
+        overlays: document.getElementById('chartOverlays'),
         refreshBtn: document.getElementById('refreshChartsBtn'),
         prevDateBtn: document.getElementById('prevDateBtn'),
         nextDateBtn: document.getElementById('nextDateBtn'),
@@ -97,7 +109,7 @@
 
         panes: {
             PE: {
-                title: null,
+                title: document.getElementById('pePaneTitle'),
                 activeBadge: document.getElementById('peActiveTimeframe'),
                 selectedDate: document.getElementById('peSelectedDate'),
                 selectedIndex: document.getElementById('peSelectedIndex'),
@@ -127,7 +139,7 @@
                 chart: document.getElementById('underlyingChart')
             },
             CE: {
-                title: null,
+                title: document.getElementById('cePaneTitle'),
                 activeBadge: document.getElementById('ceActiveTimeframe'),
                 selectedDate: document.getElementById('ceSelectedDate'),
                 selectedIndex: document.getElementById('ceSelectedIndex'),
@@ -152,7 +164,7 @@
         renderSmaLegends();
         renderAllPanesInstruction();
         if (state.date) {
-            refreshAllCharts();
+            reloadStrikeOptions().then(refreshAllCharts);
         }
     }
 
@@ -163,6 +175,8 @@
         const storedTimeframes = readStoredList(LS_KEYS.timeframes, [DEFAULT_TIMEFRAME]);
         const storedSmaPeriods = readStoredList(LS_KEYS.smaPeriods, DEFAULT_SMA_PERIODS);
         const storedActiveTimeframe = readStoredValue(LS_KEYS.activeTimeframe);
+        const storedStrike = readStoredValue(LS_KEYS.strike);
+        const storedOverlays = readStoredListAllowEmpty(LS_KEYS.overlays, DEFAULT_OVERLAYS);
 
         if (els.indexSymbol) {
             els.indexSymbol.value = storedIndex || els.indexSymbol.value || DEFAULT_INDEX;
@@ -173,6 +187,7 @@
 
         setMultiSelectValues(els.timeframes, storedTimeframes);
         setMultiSelectValues(els.smaPeriods, storedSmaPeriods);
+        setMultiSelectValues(els.overlays, storedOverlays);
         if (storedActiveTimeframe) {
             state.activeTimeframe = storedActiveTimeframe;
         }
@@ -180,14 +195,20 @@
         if (els.date && !els.date.value) {
             els.date.value = storedDate || localDateString(new Date());
         }
+
+        // The ladder itself loads async in init(); remember the choice so
+        // reloadStrikeOptions can re-select it if it is still available.
+        state.strike = storedStrike || '';
     }
 
     function bindEvents() {
-        if (els.date) els.date.addEventListener('change', onFiltersChanged);
-        if (els.dataSource) els.dataSource.addEventListener('change', onFiltersChanged);
-        if (els.indexSymbol) els.indexSymbol.addEventListener('change', onFiltersChanged);
+        if (els.date) els.date.addEventListener('change', onLadderFiltersChanged);
+        if (els.dataSource) els.dataSource.addEventListener('change', onLadderFiltersChanged);
+        if (els.indexSymbol) els.indexSymbol.addEventListener('change', onLadderFiltersChanged);
         bindChipGroup(els.timeframes, onFiltersChanged);
         bindChipGroup(els.smaPeriods, onFiltersChanged);
+        if (els.strike) els.strike.addEventListener('change', onFiltersChanged);
+        bindChipGroup(els.overlays, onOverlaysChanged, true);
         if (els.refreshBtn) els.refreshBtn.addEventListener('click', refreshAllCharts);
         if (els.prevDateBtn) els.prevDateBtn.addEventListener('click', () => stepDate(-1));
         if (els.nextDateBtn) els.nextDateBtn.addEventListener('click', () => stepDate(1));
@@ -196,13 +217,19 @@
         document.addEventListener('keydown', onKeyboardShortcut);
     }
 
-    function bindChipGroup(group, callback) {
+    /**
+     * @param allowEmpty when false (the default) the group refuses to go empty,
+     *        because a chart with zero timeframes or zero SMA periods is not a
+     *        meaningful state. Overlay toggles pass true — turning everything
+     *        off is exactly what "hide the overlays" means.
+     */
+    function bindChipGroup(group, callback, allowEmpty) {
         if (!group) return;
         Array.from(group.querySelectorAll('.chart-chip')).forEach(button => {
             button.setAttribute('aria-pressed', button.classList.contains('is-selected') ? 'true' : 'false');
             button.addEventListener('click', () => {
                 button.classList.toggle('is-selected');
-                if (!group.querySelector('.chart-chip.is-selected')) {
+                if (!allowEmpty && !group.querySelector('.chart-chip.is-selected')) {
                     button.classList.add('is-selected');
                 }
                 Array.from(group.querySelectorAll('.chart-chip')).forEach(chip => {
@@ -222,12 +249,114 @@
         refreshAllCharts();
     }
 
+    /**
+     * Overlays are a pure render concern — the responses already in
+     * state.responses carry every SMA and SuperTrend field regardless. So this
+     * redraws from cache instead of going through refreshAllCharts, which would
+     * fire nine identical requests just to hide a line.
+     */
+    function onOverlaysChanged() {
+        updateStateFromControls();
+        persistState();
+        renderSmaLegends();
+        renderVisiblePanes();
+    }
+
+    /** Filters that invalidate the strike ladder: reload it, then redraw. */
+    function onLadderFiltersChanged() {
+        updateStateFromControls();
+        persistState();
+        reloadStrikeOptions().then(onFiltersChanged);
+    }
+
+    /**
+     * Reloads the strike ladder whenever the date, index or data source changes,
+     * since each combination has its own expiry and therefore its own strikes.
+     * Keeps the current selection if it still exists, otherwise falls back to
+     * ATM (auto) rather than silently charting an unrelated strike.
+     */
+    function reloadStrikeOptions() {
+        if (!els.strike || !state.date) return Promise.resolve();
+
+        const params = new URLSearchParams({
+            date: state.date,
+            indexSymbol: state.indexSymbol,
+            dataSource: state.dataSource,
+            chartType: CHART_TYPES.CE
+        });
+
+        return fetch('/api/charts/strikes?' + params.toString())
+            .then(response => (response.ok ? response.json() : null))
+            .then(payload => {
+                const previous = state.strike;
+                const strikes = payload && Array.isArray(payload.strikes) ? payload.strikes : [];
+                const atm = payload && payload.atmStrike != null ? toNumber(payload.atmStrike) : null;
+
+                els.strike.innerHTML = '';
+
+                const autoOption = document.createElement('option');
+                autoOption.value = '';
+                autoOption.textContent = atm != null
+                    ? 'ATM (auto) - ' + formatStrike(atm)
+                    : 'ATM (auto)';
+                els.strike.appendChild(autoOption);
+
+                strikes.forEach(raw => {
+                    const value = toNumber(raw);
+                    if (!Number.isFinite(value)) return;
+                    const option = document.createElement('option');
+                    option.value = String(value);
+                    option.textContent = formatStrike(value) + (atm != null && value === atm ? ' (ATM)' : '');
+                    els.strike.appendChild(option);
+                });
+
+                const stillAvailable = previous
+                    && Array.prototype.some.call(els.strike.options, opt => opt.value === previous);
+                els.strike.value = stillAvailable ? previous : '';
+                state.strike = els.strike.value;
+                persistState();
+            })
+            .catch(() => {
+                // Ladder unavailable (offline, bad date, no data) — leave the
+                // picker on ATM so the charts still render their default.
+                els.strike.innerHTML = '<option value="" selected>ATM (auto)</option>';
+                state.strike = '';
+            });
+    }
+
+    /** Strikes are whole numbers in practice; drop a trailing .0 for readability. */
+    function formatStrike(value) {
+        return Number.isInteger(value) ? String(value) : String(value);
+    }
+
     function updateStateFromControls() {
         state.date = els.date ? els.date.value : '';
         state.dataSource = els.dataSource && els.dataSource.value ? els.dataSource.value : DEFAULT_DATA_SOURCE;
         state.indexSymbol = els.indexSymbol && els.indexSymbol.value ? els.indexSymbol.value : DEFAULT_INDEX;
         state.timeframes = getSelectedValues(els.timeframes, [DEFAULT_TIMEFRAME]);
         state.smaPeriods = getSelectedValues(els.smaPeriods, DEFAULT_SMA_PERIODS);
+        state.strike = els.strike && els.strike.value ? els.strike.value : '';
+        state.overlays = getToggledValues(els.overlays);
+    }
+
+    /** Chip values with no fallback, so an intentionally empty group stays empty. */
+    function getToggledValues(group) {
+        if (!group) return [];
+        return Array.from(group.querySelectorAll('.chart-chip.is-selected'))
+            .map(button => button.dataset.value)
+            .filter(Boolean);
+    }
+
+    /** Like readStoredList, but a stored empty array is honoured, not replaced. */
+    function readStoredListAllowEmpty(key, fallback) {
+        try {
+            const raw = localStorage.getItem(key);
+            if (!raw) return [...fallback];
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed.map(String) : [...fallback];
+        } catch (e) {
+            return [...fallback];
+        }
     }
 
     function getSelectedValues(select, fallback) {
@@ -338,6 +467,12 @@
             smaPeriods: state.smaPeriods.join(',')
         });
 
+        // Blank strike = ATM (auto); the backend resolves it. The underlying
+        // chart has no strike, so never send one for it.
+        if (state.strike && chartType !== CHART_TYPES.UNDERLYING) {
+            params.set('strike', state.strike);
+        }
+
         return fetch('/api/charts/market-data?' + params.toString(), { signal })
             .then(async response => {
                 if (!response.ok) {
@@ -399,6 +534,12 @@
 
         if (pane.title && chartType === CHART_TYPES.UNDERLYING) {
             pane.title.textContent = state.indexSymbol || DEFAULT_INDEX;
+        } else if (pane.title) {
+            // "ATM" is only honest while the picker is on auto — once a strike is
+            // chosen explicitly the heading has to name it instead.
+            pane.title.textContent = state.strike
+                ? chartType + ' ' + state.strike
+                : 'ATM ' + chartType;
         }
         if (pane.activeBadge) pane.activeBadge.textContent = state.activeTimeframe;
         if (pane.selectedDate) pane.selectedDate.textContent = state.date || '-';
@@ -455,23 +596,35 @@
                 const item = document.createElement('span');
                 item.className = 'chart-sma-legend-item';
                 item.style.color = config.color;
-                // One entry per period: the low and high lines share this colour.
+                // One entry per period: the low and high lines share this colour,
+                // so the suffix has to say which of them is actually drawn.
                 item.innerHTML =
                     '<span class="chart-sma-legend-swatch"></span>' +
-                    '<span>SMA ' + escapeHtml(String(period)) + ' H/L</span>';
+                    '<span>SMA ' + escapeHtml(String(period)) +
+                    (showSmaHigh() ? ' H/L' : ' L') + '</span>';
                 pane.legend.appendChild(item);
             });
 
-            const supertrendItem = document.createElement('span');
-            supertrendItem.className = 'chart-sma-legend-item';
-            supertrendItem.style.color = SUPERTREND_CONFIG.upColor;
-            supertrendItem.innerHTML =
-                '<span class="chart-sma-legend-swatch"></span>' +
-                '<span style="color:' + SUPERTREND_CONFIG.downColor + '">' +
-                '<span class="chart-sma-legend-swatch"></span></span>' +
-                '<span>' + escapeHtml(SUPERTREND_CONFIG.label) + '</span>';
-            pane.legend.appendChild(supertrendItem);
+            if (showSupertrend()) {
+                const supertrendItem = document.createElement('span');
+                supertrendItem.className = 'chart-sma-legend-item';
+                supertrendItem.style.color = SUPERTREND_CONFIG.upColor;
+                supertrendItem.innerHTML =
+                    '<span class="chart-sma-legend-swatch"></span>' +
+                    '<span style="color:' + SUPERTREND_CONFIG.downColor + '">' +
+                    '<span class="chart-sma-legend-swatch"></span></span>' +
+                    '<span>' + escapeHtml(SUPERTREND_CONFIG.label) + '</span>';
+                pane.legend.appendChild(supertrendItem);
+            }
         });
+    }
+
+    function showSmaHigh() {
+        return state.overlays.indexOf(OVERLAY_SMA_HIGH) !== -1;
+    }
+
+    function showSupertrend() {
+        return state.overlays.indexOf(OVERLAY_SUPERTREND) !== -1;
     }
 
     function renderChart(chartType, response) {
@@ -501,14 +654,20 @@
             const candlestickData = mapCandlestickData(response.data);
             candleSeries.setData(candlestickData);
 
+            // The low line is always drawn — it is the one the strategy gates
+            // on. The high line is the optional half of the pair.
+            const fieldSets = showSmaHigh()
+                ? ['lowFields', 'highFields']
+                : ['lowFields'];
+
             state.smaPeriods.forEach(period => {
                 const config = SMA_CONFIG[period];
                 if (!config) return;
 
                 // Low and high share the colour and the styling — the pair is
                 // meant to read as one band per period.
-                [config.lowFields, config.highFields].forEach(fields => {
-                    const lineData = mapSmaData(response.data, fields);
+                fieldSets.forEach(key => {
+                    const lineData = mapSmaData(response.data, config[key]);
                     if (!lineData.length) return;
 
                     const lineSeries = chart.addLineSeries({
@@ -523,7 +682,9 @@
                 });
             });
 
-            renderSupertrend(chart, response.data);
+            if (showSupertrend()) {
+                renderSupertrend(chart, response.data);
+            }
 
             chart.timeScale().fitContent();
             attachResizeHandler(chartType, chart, pane.chart);
@@ -958,6 +1119,8 @@
             localStorage.setItem(LS_KEYS.timeframes, JSON.stringify(state.timeframes || [DEFAULT_TIMEFRAME]));
             localStorage.setItem(LS_KEYS.smaPeriods, JSON.stringify(state.smaPeriods || DEFAULT_SMA_PERIODS));
             localStorage.setItem(LS_KEYS.activeTimeframe, state.activeTimeframe || DEFAULT_TIMEFRAME);
+            localStorage.setItem(LS_KEYS.strike, state.strike || '');
+            localStorage.setItem(LS_KEYS.overlays, JSON.stringify(state.overlays || []));
         } catch (e) {
             // localStorage can be disabled; the dashboard still works for this session.
         }
