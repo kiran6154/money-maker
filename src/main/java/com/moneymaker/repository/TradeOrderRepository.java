@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -101,4 +102,18 @@ public interface TradeOrderRepository extends JpaRepository<TradeOrder, Long> {
      * that already have an audit trail of executed trades.
      */
     boolean existsByTradeConfigId(Integer tradeConfigId);
+
+    /**
+     * Counts the trade rows attached to a set of configs. Used by the bulk
+     * auto-config delete to tell the user how much history a forced delete
+     * would take with it, before they confirm it.
+     */
+    long countByTradeConfigIdIn(Collection<Integer> tradeConfigIds);
+
+    /**
+     * Deletes every trade row belonging to the given configs and returns how
+     * many went. Only reachable from the bulk auto-config delete with
+     * {@code force=true} — the audit trail is otherwise immutable from the app.
+     */
+    long deleteByTradeConfigIdIn(Collection<Integer> tradeConfigIds);
 }

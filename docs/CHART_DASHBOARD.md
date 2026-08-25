@@ -95,7 +95,7 @@ chips over two lines.
 Each pane has:
 
 - metadata placeholders
-- timeframe tabs container
+- SMA legend container
 - loading state
 - error state
 - no-data state
@@ -111,12 +111,11 @@ Each pane has:
 - reading filter values
 - reacting to filter changes
 - previous / next / today date navigation
-- chip-style timeframe and SMA toggles
+- single-select chip timeframes, multi-select chip SMA periods and overlays
 - refresh button clicks
-- keyboard shortcuts for date stepping, refresh, active timeframe, and exiting
-  fullscreen mode
+- keyboard shortcuts for date stepping, refresh, timeframe selection, dismissing
+  a pinned readout, and exiting fullscreen mode
 - API calls
-- timeframe tab switching
 - loading, error, and no-data states
 - TradingView `lightweight-charts` rendering
 
@@ -159,8 +158,27 @@ Total: 9 requests
 
 Responses are stored by chart type and timeframe.
 
-Only one timeframe is displayed at a time. The active timeframe tab controls
-which response is rendered in each pane.
+**Timeframes is single-select.** The chip group is bound with
+`bindChipGroup(..., { single: true })`, so picking a chip clears its siblings and
+re-clicking the active one is a no-op — deliberately, since re-selecting an
+unchanged timeframe would otherwise fire a full nine-request refresh. Each
+refresh therefore issues one request per pane rather than one per pane per
+timeframe.
+
+Only one timeframe is displayed at a time. There is no per-pane timeframe tab
+strip — the toolbar chip group is the only timeframe control. (The strip existed
+to switch between several loaded timeframes; single-select left it rendering one
+always-active tab, so it was removed along with `renderTimeframeTabs()`.) Each
+pane's header badge and its `Timeframe` meta field still show the current
+choice.
+
+Keyboard `1` / `2` / `3` select `5m` / `10m` / `15m` outright. (Before the group
+became single-select these switched between the several loaded timeframes and
+did nothing for one that was not selected.)
+
+Sessions that predate single-select may still hold several values under
+`mm.chartDashboard.timeframes`; `hydrateDefaults` keeps only the first so the
+toolbar never restores multi-selected.
 
 ### SMA handling
 
@@ -224,6 +242,36 @@ The script also:
 - destroys old chart instances before re-rendering
 - resizes charts responsively
 - falls back to a summary placeholder if chart rendering fails
+
+### Click readout (pinned candle tooltip)
+
+Clicking a candle pins a floating readout inside the pane, driven by
+`chart.subscribeClick` in `attachCandleTooltip`:
+
+- candle timestamp (IST, same formatter as the axis labels)
+- `O` / `H` / `L` / `C`, with the close tinted green / red by close-vs-open
+- absolute and percent change for the candle
+- one row per selected SMA period, in the period's line colour:
+  `L <sma low>` always, plus `H <sma high>` when the **SMA High** overlay is on
+- a SuperTrend row (value + `UP` / `DOWN`) when the **SuperTrend** overlay is on
+
+Dismiss a pin by clicking the same candle again, clicking empty plot area, or
+pressing `Escape`. Escape is layered: it clears pinned readouts first and only
+leaves fullscreen once none are left.
+
+Each pane holds its own pin independently, so an underlying candle and its CE /
+PE counterparts at the same timestamp can be read side by side.
+
+The values come from the API payload looked up by click time, not from
+`param.seriesData`. `seriesData` only carries series that were actually drawn,
+so the SMA-high figures would disappear from the readout whenever the overlay
+is off — but those are exactly the numbers worth reading.
+
+The tooltip is `pointer-events: none`, so a pin sitting over the chart does not
+block the click that would replace it, and it flips to the other side of the
+click point near a pane edge because `.chart-canvas` clips its overflow. No
+teardown hook is needed: the tooltip node is a child of the container
+`renderChart` wipes, and the click subscription dies with the chart.
 
 ### UI states
 

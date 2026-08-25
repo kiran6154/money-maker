@@ -231,7 +231,26 @@
         }
         .bd-actions {
             display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px;
+            align-items: center;
         }
+        /* Opt-in that turns the delete destructive — visually separated from the
+           ordinary buttons so it cannot be ticked by muscle memory. */
+        .bd-force {
+            margin-right: auto; display: flex; align-items: center; gap: 8px;
+            font-size: 12px; color: #b15e00;
+        }
+        .bd-force input { accent-color: #b15e00; }
+
+        .bd-source { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+        .bd-source select { padding: 4px 8px; }
+        /* Loud, permanent banner while the panel is aimed at hand-written
+           configs — the one state where a mis-click costs real work. */
+        .bd-manual-warn {
+            display: none; margin-top: 12px; padding: 10px 14px; border-radius: 10px;
+            background: rgba(232,73,76,0.12); border: 1px solid var(--danger);
+            font-size: 13px; color: var(--danger);
+        }
+        .bd-card-manual .bd-manual-warn { display: block; }
 
         .bd-modal {
             position: fixed; inset: 0; z-index: 50;
@@ -289,8 +308,8 @@
     <div id="bd-card" class="glass-card bd-collapsed" style="margin-bottom: 18px;">
         <div class="bd-header" id="bd-toggle">
             <span class="bd-caret">▸</span>
-            <h3>🗑 Bulk delete auto-generated configs</h3>
-            <span class="badge badge-warn">AUTO_DOWNTREND</span>
+            <h3>🗑 Bulk delete configs</h3>
+            <span class="badge badge-warn" id="bd-source-badge">AUTO_DOWNTREND</span>
             <div class="spacer"></div>
             <span id="bd-hint" class="bd-hint">Manual configs are never affected</span>
         </div>
@@ -305,6 +324,19 @@
                     <input type="radio" name="bd-mode" value="UPDATED_RANGE" />
                     <span>Generation run</span>
                 </label>
+
+                <div class="bd-source" id="bd-source-wrap">
+                    <label for="bd-source">Source</label>
+                    <select id="bd-source" class="form-control">
+                        <option value="AUTO_DOWNTREND" selected>AUTO_DOWNTREND (generated)</option>
+                        <option value="MANUAL">MANUAL (hand-written)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="bd-manual-warn">
+                ⚠ Aimed at <b>MANUAL</b> configs — the ones you wrote by hand, including
+                anything live trading uses. Nothing here is regenerable.
             </div>
 
             <!-- Calendar picker -->
@@ -338,6 +370,10 @@
             <div id="bd-summary" class="bd-summary">Nothing selected.</div>
 
             <div class="bd-actions">
+                <label class="bd-force" title="Deletes the matching configs even when trade_order rows reference them — those trade rows are deleted too, permanently.">
+                    <input id="bd-force" type="checkbox" />
+                    <span>Also delete configs that have trades (removes their trade_order rows)</span>
+                </label>
                 <button id="bd-clear" class="btn btn-ghost" type="button">Clear</button>
                 <button id="bd-delete" class="btn btn-danger" type="button" disabled>🗑 Delete selected</button>
             </div>
@@ -968,6 +1004,11 @@
     const label    = document.getElementById('bd-month-label');
     const summary  = document.getElementById('bd-summary');
     const delBtn   = document.getElementById('bd-delete');
+    const forceBox = document.getElementById('bd-force');
+    const srcSel   = document.getElementById('bd-source');
+    const srcWrap  = document.getElementById('bd-source-wrap');
+    const hint     = document.getElementById('bd-hint');
+    const srcBadge = document.getElementById('bd-source-badge');
     const calPane  = document.getElementById('bd-calendar-pane');
     const runsPane = document.getElementById('bd-runs-pane');
     const runsList = document.getElementById('bd-runs-list');
@@ -976,6 +1017,7 @@
 
     const state = {
         mode: 'TRADING_DATE',
+        source: 'AUTO_DOWNTREND',
         month: startOfMonth(new Date()),
         days: new Map(),      // 'yyyy-MM-dd' -> {total, ce, pe, combos}
         selected: new Set(),  // 'yyyy-MM-dd'
@@ -1000,7 +1042,8 @@
     async function loadCalendar() {
         const from = startOfMonth(state.month);
         const to   = new Date(state.month.getFullYear(), state.month.getMonth() + 1, 0);
-        const res  = await fetch(`/api/trade-configs/auto/calendar?from=${iso(from)}&to=${iso(to)}`);
+        const res  = await fetch(`/api/trade-configs/auto/calendar?from=${iso(from)}`
+                                 + `&to=${iso(to)}&source=${state.source}`);
         if (!res.ok) { state.days = new Map(); renderCalendar(); return; }
         const data = await res.json();
         state.days = new Map((data.days || []).map(d => [d.date, d]));
@@ -1141,6 +1184,7 @@
         state.selected.clear();
         state.selectedRun = null;
         state.lastAnchor = null;
+        forceBox.checked = false;
         renderCalendar();
         renderRuns();
         renderSummary();
@@ -1161,9 +1205,30 @@
             const byDate = state.mode === 'TRADING_DATE';
             calPane.style.display  = byDate ? '' : 'none';
             runsPane.style.display = byDate ? 'none' : '';
+            // A generation run is detector output by definition; the server pins
+            // source=AUTO_DOWNTREND for this mode, so don't offer a choice.
+            srcWrap.style.display = byDate ? '' : 'none';
             if (!byDate && !state.runs.length) loadRuns();
             renderSummary();
         });
+    });
+
+    // Switching source changes what the calendar counts, so anything already
+    // ticked refers to the other source's days — drop it rather than carry it.
+    srcSel.addEventListener('change', async () => {
+        state.source = srcSel.value;
+        const manual = state.source === 'MANUAL';
+        card.classList.toggle('bd-card-manual', manual);
+        srcBadge.textContent = state.source;
+        srcBadge.className = 'badge ' + (manual ? 'badge-danger' : 'badge-warn');
+        hint.textContent = manual
+            ? 'Hand-written configs ARE affected'
+            : 'Manual configs are never affected';
+        state.selected.clear();
+        state.lastAnchor = null;
+        forceBox.checked = false;
+        await loadCalendar();
+        renderSummary();
     });
 
     toggle.addEventListener('click', () => {
@@ -1175,15 +1240,18 @@
 
     // ---------- delete ----------
     function buildRequest(dryRun) {
+        const force = forceBox.checked;
         if (state.mode === 'TRADING_DATE') {
-            return { mode: 'TRADING_DATE', dates: [...state.selected].sort(), dryRun };
+            return { mode: 'TRADING_DATE', dates: [...state.selected].sort(),
+                     source: state.source, dryRun, force };
         }
         const run = state.runs[state.selectedRun];
         return {
             mode: 'UPDATED_RANGE',
             updatedFrom: run.updatedFrom,
             updatedTo: run.updatedTo,
-            dryRun
+            dryRun,
+            force
         };
     }
 
@@ -1208,12 +1276,22 @@
         const dates = Object.entries(data.byDate || {})
             .map(([d, n]) => `${d} (${n})`).join('   ') || '—';
 
+        const src = state.pending.source || 'AUTO_DOWNTREND';
         let html = `<p>${data.message}</p>`
-                 + `<p class="bd-run-meta">${dates}</p>`;
+                 + `<p class="bd-run-meta">source: <b>${src}</b>   ${dates}</p>`;
+        if (src === 'MANUAL') {
+            html += `<p class="bd-warn">⚠ These are <b>hand-written</b> configs, not `
+                  + `regenerable detector output.</p>`;
+        }
         if (data.skippedWithTrades > 0) {
             html += `<p class="bd-warn">⚠ ${data.skippedWithTrades} config(s) will be kept `
-                  + `because trade_order rows reference them — deleting those would break `
-                  + `the audit trail.</p>`;
+                  + `because ${data.tradeOrders} trade_order row(s) reference them — deleting those `
+                  + `would break the audit trail. Tick <b>“Also delete configs that have trades”</b> `
+                  + `to remove them anyway.</p>`;
+        } else if (state.pending.force && data.configsWithTrades > 0) {
+            html += `<p class="bd-warn">⚠ ${data.configsWithTrades} of these config(s) have trades: `
+                  + `<b>${data.tradeOrders} trade_order row(s) will be permanently deleted</b> with `
+                  + `them. That history is not recoverable.</p>`;
         }
         html += `<p><b>This cannot be undone.</b></p>`;
         modalBody.innerHTML = html;
@@ -1234,6 +1312,7 @@
 
         state.selected.clear();
         state.selectedRun = null;
+        forceBox.checked = false;
         await loadCalendar();
         await loadRuns();
         renderSummary();

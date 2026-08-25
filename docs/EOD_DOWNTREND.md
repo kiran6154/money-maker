@@ -344,17 +344,81 @@ curl -X POST http://localhost:8080/api/trade-configs/auto/delete \
 curl -X POST http://localhost:8080/api/trade-configs/auto/delete \
      -H 'Content-Type: application/json' \
      -d '{"mode":"TRADING_DATE","dates":["2026-08-12"],"dryRun":false}'
+
+# commit, taking traded configs and their trade_order rows with it
+curl -X POST http://localhost:8080/api/trade-configs/auto/delete \
+     -H 'Content-Type: application/json' \
+     -d '{"mode":"TRADING_DATE","dates":["2026-08-12"],"dryRun":false,"force":true}'
 ```
 
 Three guarantees worth knowing:
 
-- **`source='AUTO_DOWNTREND'` is pinned server-side.** MANUAL configs cannot be
-  reached through this endpoint no matter what the request body says.
+- **`source` defaults to `AUTO_DOWNTREND`.** A request that omits it can only
+  reach regenerable detector output; MANUAL configs need an explicit opt-in —
+  see below. `mode=UPDATED_RANGE` stays pinned to AUTO either way.
 - **`dryRun` defaults to `true`.** The UI always previews first and shows the
   server's count, so the number you confirm is the number the server matched.
-- **Configs referenced by `trade_order` rows are skipped**, matching the audit
-  protection on the single-config delete. They are reported as
-  `skippedWithTrades` rather than failing the batch.
+- **Configs referenced by `trade_order` rows are skipped by default**, matching
+  the audit protection on the single-config delete. They are reported as
+  `skippedWithTrades` rather than failing the batch. `force` overrides this —
+  see below.
+
+### `force`: deleting configs that have trades
+
+`"Deleted 0 of 5 matched config(s); 5 kept because trades reference them."` is
+the expected result when the configs you are clearing have already produced
+trades — typically after a backtest ran against them. Re-running the delete
+will not change it: the skip is about `trade_order`, not about the configs.
+
+`force: true` deletes those configs **and the `trade_order` rows that reference
+them**. There is no FK between the two tables — only the lookup index from
+[`008_create_trade_order_table.xml`](../src/main/resources/db/changelog/008_create_trade_order_table.xml)
+— so leaving the trades behind would strand them on a `trade_config_id` that no
+longer resolves. Hence a cascade rather than an orphan. The trade rows go first,
+so an interrupted delete cannot lose the ids needed to find them again.
+
+| | `force: false` (default) | `force: true` |
+|---|---|---|
+| Configs without trades | deleted | deleted |
+| Configs with trades | skipped, counted in `skippedWithTrades` | deleted |
+| Their `trade_order` rows | untouched | **deleted, permanently** |
+
+The response reports `configsWithTrades` and `tradeOrders` either way, so a
+default preview already tells you what an opt-in would cost. In the UI it is a
+separate **"Also delete configs that have trades"** checkbox beside the delete
+button, cleared after every run and after *Clear* so it cannot carry over into
+the next delete. This is the only path in the app that removes `trade_order`
+history — the single-config delete still refuses outright with a 409.
+
+### `source`: aiming the panel at MANUAL configs
+
+The panel exists for detector output, and that stays the default. But the same
+calendar / preview / cascade machinery is what you want for clearing out
+hand-written configs too, so `source` selects which rows the selector may reach:
+
+```bash
+curl -X POST http://localhost:8080/api/trade-configs/auto/delete \
+     -H 'Content-Type: application/json' \
+     -d '{"mode":"TRADING_DATE","dates":["2024-01-02"],"source":"MANUAL","dryRun":false,"force":true}'
+```
+
+Only `AUTO_DOWNTREND` and `MANUAL` are accepted — it is an enum, not a string
+pasted into a query. Omit it and you get `AUTO_DOWNTREND`, so nothing reaches
+hand-written configs by accident.
+
+**`mode=UPDATED_RANGE` ignores it and stays on `AUTO_DOWNTREND`.** A generation
+run is recovered by clustering `updated_date`, which the detector stamps on every
+row it writes and hand-written configs mostly leave `NULL` — so the concept does
+not transfer, and the combination would delete a surprising set.
+
+In the UI the source is a dropdown beside the mode radios. Picking MANUAL
+repaints the calendar (the counts are per-source), clears the current selection —
+the ticked days referred to the other source's rows — and raises a standing red
+banner on the panel plus a line in the confirm dialog. The selector is hidden in
+*Generation run* mode, matching the server-side pin.
+
+Note the two opt-ins are independent and compose: `source: MANUAL` chooses
+*which* configs, `force` decides whether ones with trades are included.
 
 ---
 

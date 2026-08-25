@@ -37,6 +37,14 @@
         minute: '2-digit',
         hour12: false
     });
+    // The hover readout shares one formatter so O/H/L/C and the SMA values line
+    // up to the same 2 decimals - option premiums and index levels both read as
+    // prices here, not as raw doubles.
+    const priceFormatter = new Intl.NumberFormat('en-IN', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+
     // Each period draws TWO lines — SMA over candle lows and SMA over candle highs —
     // in one shared colour, so a period reads as an envelope rather than as two
     // unrelated averages. The low line is the one the strategy actually gates on
@@ -116,7 +124,6 @@
                 selectedTimeframe: document.getElementById('peSelectedTimeframe'),
                 expiryDate: document.getElementById('peExpiryDate'),
                 atmStrike: document.getElementById('peAtmStrike'),
-                tabs: document.getElementById('peTimeframeTabs'),
                 legend: document.getElementById('peSmaLegend'),
                 loading: document.getElementById('peLoadingState'),
                 error: document.getElementById('peErrorState'),
@@ -131,7 +138,6 @@
                 selectedTimeframe: document.getElementById('underlyingSelectedTimeframe'),
                 expiryDate: null,
                 atmStrike: null,
-                tabs: document.getElementById('underlyingTimeframeTabs'),
                 legend: document.getElementById('underlyingSmaLegend'),
                 loading: document.getElementById('underlyingLoadingState'),
                 error: document.getElementById('underlyingErrorState'),
@@ -146,7 +152,6 @@
                 selectedTimeframe: document.getElementById('ceSelectedTimeframe'),
                 expiryDate: document.getElementById('ceExpiryDate'),
                 atmStrike: document.getElementById('ceAtmStrike'),
-                tabs: document.getElementById('ceTimeframeTabs'),
                 legend: document.getElementById('ceSmaLegend'),
                 loading: document.getElementById('ceLoadingState'),
                 error: document.getElementById('ceErrorState'),
@@ -160,7 +165,6 @@
         hydrateDefaults();
         bindEvents();
         updateStateFromControls();
-        renderTimeframeTabs();
         renderSmaLegends();
         renderAllPanesInstruction();
         if (state.date) {
@@ -172,7 +176,10 @@
         const storedDate = readStoredValue(LS_KEYS.date);
         const storedDataSource = readStoredValue(LS_KEYS.dataSource);
         const storedIndex = readStoredValue(LS_KEYS.indexSymbol);
-        const storedTimeframes = readStoredList(LS_KEYS.timeframes, [DEFAULT_TIMEFRAME]);
+        // Timeframes is single-select, but sessions that predate that still have
+        // several values stored. Keep only the first, or the toolbar would come
+        // back multi-selected before the user has touched anything.
+        const storedTimeframes = readStoredList(LS_KEYS.timeframes, [DEFAULT_TIMEFRAME]).slice(0, 1);
         const storedSmaPeriods = readStoredList(LS_KEYS.smaPeriods, DEFAULT_SMA_PERIODS);
         const storedActiveTimeframe = readStoredValue(LS_KEYS.activeTimeframe);
         const storedStrike = readStoredValue(LS_KEYS.strike);
@@ -205,10 +212,10 @@
         if (els.date) els.date.addEventListener('change', onLadderFiltersChanged);
         if (els.dataSource) els.dataSource.addEventListener('change', onLadderFiltersChanged);
         if (els.indexSymbol) els.indexSymbol.addEventListener('change', onLadderFiltersChanged);
-        bindChipGroup(els.timeframes, onFiltersChanged);
+        bindChipGroup(els.timeframes, onFiltersChanged, { single: true });
         bindChipGroup(els.smaPeriods, onFiltersChanged);
         if (els.strike) els.strike.addEventListener('change', onFiltersChanged);
-        bindChipGroup(els.overlays, onOverlaysChanged, true);
+        bindChipGroup(els.overlays, onOverlaysChanged, { allowEmpty: true });
         if (els.refreshBtn) els.refreshBtn.addEventListener('click', refreshAllCharts);
         if (els.prevDateBtn) els.prevDateBtn.addEventListener('click', () => stepDate(-1));
         if (els.nextDateBtn) els.nextDateBtn.addEventListener('click', () => stepDate(1));
@@ -218,23 +225,45 @@
     }
 
     /**
-     * @param allowEmpty when false (the default) the group refuses to go empty,
-     *        because a chart with zero timeframes or zero SMA periods is not a
-     *        meaningful state. Overlay toggles pass true — turning everything
-     *        off is exactly what "hide the overlays" means.
+     * @param options.allowEmpty when false (the default) the group refuses to go
+     *        empty, because a chart with zero SMA periods is not a meaningful
+     *        state. Overlay toggles pass true — turning everything off is
+     *        exactly what "hide the overlays" means.
+     * @param options.single makes the group behave like a radio set: picking a
+     *        chip clears its siblings, and re-clicking the active one does
+     *        nothing rather than deselecting it. Implies allowEmpty:false, since
+     *        a radio set that can be emptied is just a checkbox set.
      */
-    function bindChipGroup(group, callback, allowEmpty) {
+    function bindChipGroup(group, callback, options) {
         if (!group) return;
-        Array.from(group.querySelectorAll('.chart-chip')).forEach(button => {
+
+        const settings = options || {};
+        const single = settings.single === true;
+        const allowEmpty = !single && settings.allowEmpty === true;
+        const chips = () => Array.from(group.querySelectorAll('.chart-chip'));
+
+        const syncPressed = () => {
+            chips().forEach(chip => {
+                chip.setAttribute('aria-pressed', chip.classList.contains('is-selected') ? 'true' : 'false');
+            });
+        };
+
+        chips().forEach(button => {
             button.setAttribute('aria-pressed', button.classList.contains('is-selected') ? 'true' : 'false');
             button.addEventListener('click', () => {
-                button.classList.toggle('is-selected');
-                if (!allowEmpty && !group.querySelector('.chart-chip.is-selected')) {
-                    button.classList.add('is-selected');
+                if (single) {
+                    // Bail before the callback when the active chip is clicked
+                    // again: the selection is unchanged, and onFiltersChanged
+                    // would otherwise fire a full nine-request refresh for it.
+                    if (button.classList.contains('is-selected')) return;
+                    chips().forEach(chip => chip.classList.toggle('is-selected', chip === button));
+                } else {
+                    button.classList.toggle('is-selected');
+                    if (!allowEmpty && !group.querySelector('.chart-chip.is-selected')) {
+                        button.classList.add('is-selected');
+                    }
                 }
-                Array.from(group.querySelectorAll('.chart-chip')).forEach(chip => {
-                    chip.setAttribute('aria-pressed', chip.classList.contains('is-selected') ? 'true' : 'false');
-                });
+                syncPressed();
                 callback();
             });
         });
@@ -244,7 +273,6 @@
         updateStateFromControls();
         normalizeActiveTimeframe();
         persistState();
-        renderTimeframeTabs();
         renderSmaLegends();
         refreshAllCharts();
     }
@@ -433,8 +461,7 @@
                 results.forEach(result => {
                     target.set(result.timeframe, result.response);
                 });
-                renderTimeframeTabs();
-                renderSmaLegends();
+                        renderSmaLegends();
                 renderPane(chartType);
             })
             .catch(error => {
@@ -547,32 +574,6 @@
         if (pane.selectedTimeframe) pane.selectedTimeframe.textContent = state.activeTimeframe;
         if (pane.expiryDate) pane.expiryDate.textContent = response && response.expiryDate ? response.expiryDate : '-';
         if (pane.atmStrike) pane.atmStrike.textContent = response && response.atmStrike != null ? response.atmStrike : '-';
-    }
-
-    function renderTimeframeTabs() {
-        Object.keys(CHART_TYPES).forEach(key => {
-            const chartType = CHART_TYPES[key];
-            const pane = els.panes[chartType];
-            if (!pane || !pane.tabs) return;
-
-            pane.tabs.innerHTML = '';
-            state.timeframes.forEach(timeframe => {
-                const btn = document.createElement('button');
-                btn.type = 'button';
-                btn.className = 'btn btn-ghost chart-timeframe-tab' +
-                    (timeframe === state.activeTimeframe ? ' is-active' : '');
-                btn.textContent = timeframe;
-                btn.dataset.timeframe = timeframe;
-                btn.addEventListener('click', () => {
-                    if (state.activeTimeframe === timeframe) return;
-                    state.activeTimeframe = timeframe;
-                    persistState();
-                    renderTimeframeTabs();
-                    renderVisiblePanes();
-                });
-                pane.tabs.appendChild(btn);
-            });
-        });
     }
 
     function renderVisiblePanes() {
@@ -688,6 +689,7 @@
 
             chart.timeScale().fitContent();
             attachResizeHandler(chartType, chart, pane.chart);
+            attachCandleTooltip(chartType, chart, pane.chart, response.data);
         } catch (error) {
             console.error('[chart-dashboard] render failed for', chartType, error);
             destroyPaneChart(chartType);
@@ -907,6 +909,208 @@
         }
     }
 
+    /**
+     * Kite-style click readout: O/H/L/C plus every SMA value behind the clicked
+     * candle. Click a candle to pin the readout; click it again, click empty
+     * plot area, or press Escape to dismiss it.
+     *
+     * <p>Pinning rather than tracking the pointer is the point of the gesture -
+     * the numbers stay put while you read across the three panes, and each pane
+     * holds its own pin so an underlying candle and its CE / PE counterparts can
+     * be compared side by side.</p>
+     *
+     * <p>The candle is looked up in the API payload by click time rather than
+     * read out of {@code param.seriesData}. seriesData only carries what was
+     * actually drawn, so the SMA highs would drop out of the readout whenever
+     * the smaHigh overlay is off - and the values a strategy gated on are
+     * exactly the ones worth seeing.</p>
+     */
+    function attachCandleTooltip(chartType, chart, container, candles) {
+        if (!container || !Array.isArray(candles) || !candles.length) return;
+
+        const byTime = new Map();
+        candles.forEach(candle => {
+            const time = toChartTime(candle.time);
+            if (time != null) byTime.set(time, candle);
+        });
+        if (!byTime.size) return;
+
+        const tooltip = document.createElement('div');
+        tooltip.className = 'chart-tooltip';
+        tooltip.style.display = 'none';
+        container.appendChild(tooltip);
+
+        let pinnedTime = null;
+
+        // Reports whether anything was actually dismissed, so Escape can fall
+        // through to the fullscreen toggle when no readout is open.
+        const hide = () => {
+            if (tooltip.style.display === 'none') return false;
+            pinnedTime = null;
+            tooltip.style.display = 'none';
+            return true;
+        };
+
+        chart.subscribeClick(param => {
+            const point = param ? param.point : null;
+            const candle = param && param.time != null ? byTime.get(param.time) : null;
+
+            // A click on empty plot area reports a null time, or a point outside
+            // the canvas - either way it means "dismiss".
+            if (!candle || !point ||
+                point.x < 0 || point.y < 0 ||
+                point.x > container.clientWidth || point.y > container.clientHeight) {
+                hide();
+                return;
+            }
+
+            // Clicking the pinned candle again toggles the readout off, so one
+            // gesture both opens and closes it.
+            if (pinnedTime === param.time) {
+                hide();
+                return;
+            }
+
+            pinnedTime = param.time;
+            tooltip.innerHTML = buildTooltipHtml(candle);
+            tooltip.style.display = '';
+            positionTooltip(tooltip, container, point);
+        });
+
+        // Exposed so Escape can dismiss a pin. No teardown hook is needed - the
+        // tooltip node is a child of the container renderChart wipes, and the
+        // click subscription dies with the chart.
+        const entry = state.charts[chartType];
+        if (entry) {
+            entry.hideTooltip = hide;
+        }
+    }
+
+    /** Dismisses every pinned readout. True if at least one was open. */
+    function hideAllTooltips() {
+        let dismissed = false;
+        Object.keys(CHART_TYPES).forEach(key => {
+            const entry = state.charts[CHART_TYPES[key]];
+            if (entry && typeof entry.hideTooltip === 'function' && entry.hideTooltip()) {
+                dismissed = true;
+            }
+        });
+        return dismissed;
+    }
+
+    function buildTooltipHtml(candle) {
+        const open = toNumber(candle.open);
+        const close = toNumber(candle.close);
+        const bothPrices = Number.isFinite(open) && Number.isFinite(close);
+        const directionClass = bothPrices ? (close >= open ? 'is-up' : 'is-down') : '';
+
+        let html = '<div class="chart-tooltip-time">' +
+            escapeHtml(formatChartDateTime(toChartTime(candle.time))) + '</div>';
+
+        html += '<div class="chart-tooltip-ohlc">' +
+            tooltipOhlcCell('O', candle.open, '') +
+            tooltipOhlcCell('H', candle.high, '') +
+            tooltipOhlcCell('L', candle.low, '') +
+            tooltipOhlcCell('C', candle.close, directionClass) +
+            '</div>';
+
+        if (bothPrices) {
+            const diff = close - open;
+            const pct = open !== 0 ? (diff / open) * 100 : null;
+            html += '<div class="chart-tooltip-change ' + directionClass + '">' +
+                escapeHtml((diff >= 0 ? '+' : '') + formatPrice(diff) +
+                    (pct == null ? '' : ' (' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%)')) +
+                '</div>';
+        }
+
+        const lines = [];
+        state.smaPeriods.forEach(period => {
+            const config = SMA_CONFIG[period];
+            if (!config) return;
+
+            const low = getSmaValue(candle, config.lowFields);
+            const high = getSmaValue(candle, config.highFields);
+            if (!Number.isFinite(low) && !Number.isFinite(high)) return;
+
+            // Mirrors the legend: the low half is always named because that is
+            // what the strategy gates on; the high half only when it is drawn.
+            let value = 'L ' + formatPrice(low);
+            if (showSmaHigh() && Number.isFinite(high)) {
+                value += '   H ' + formatPrice(high);
+            }
+
+            lines.push(tooltipLineRow(config.color, 'SMA ' + period, value));
+        });
+
+        if (showSupertrend()) {
+            const supertrend = toNumber(candle[SUPERTREND_CONFIG.field]);
+            if (Number.isFinite(supertrend)) {
+                const isUp = candle[SUPERTREND_CONFIG.directionField] === true;
+                lines.push(tooltipLineRow(
+                    isUp ? SUPERTREND_CONFIG.upColor : SUPERTREND_CONFIG.downColor,
+                    SUPERTREND_CONFIG.label,
+                    formatPrice(supertrend) + '   ' + (isUp ? 'UP' : 'DOWN')
+                ));
+            }
+        }
+
+        if (lines.length) {
+            html += '<div class="chart-tooltip-lines">' + lines.join('') + '</div>';
+        }
+
+        return html;
+    }
+
+    function tooltipOhlcCell(label, value, extraClass) {
+        return '<span class="chart-tooltip-ohlc-cell ' + extraClass + '">' +
+            '<span class="chart-tooltip-ohlc-label">' + label + '</span>' +
+            '<span class="chart-tooltip-ohlc-value">' + escapeHtml(formatPrice(value)) + '</span>' +
+            '</span>';
+    }
+
+    function tooltipLineRow(color, label, value) {
+        return '<div class="chart-tooltip-row">' +
+            '<span class="chart-tooltip-swatch" style="color:' + escapeHtml(color) + '"></span>' +
+            '<span class="chart-tooltip-label">' + escapeHtml(label) + '</span>' +
+            '<span class="chart-tooltip-value">' + escapeHtml(value) + '</span>' +
+            '</div>';
+    }
+
+    /**
+     * Keeps the tooltip beside the cursor and fully inside the pane - flipping
+     * to the other side of the crosshair when it would run past an edge.
+     * .chart-canvas clips its overflow, so an unclamped tooltip near the right
+     * or bottom edge would be cut in half rather than simply spilling out.
+     */
+    function positionTooltip(tooltip, container, point) {
+        const margin = 12;
+        const width = tooltip.offsetWidth;
+        const height = tooltip.offsetHeight;
+
+        let left = point.x + margin;
+        if (left + width > container.clientWidth - margin) {
+            left = point.x - width - margin;
+        }
+
+        let top = point.y + margin;
+        if (top + height > container.clientHeight - margin) {
+            top = point.y - height - margin;
+        }
+
+        tooltip.style.left = clampToPane(left, width, container.clientWidth, margin) + 'px';
+        tooltip.style.top = clampToPane(top, height, container.clientHeight, margin) + 'px';
+    }
+
+    function clampToPane(value, size, available, margin) {
+        const max = Math.max(margin, available - size - margin);
+        return Math.max(margin, Math.min(value, max));
+    }
+
+    function formatPrice(value) {
+        const num = toNumber(value);
+        return Number.isFinite(num) ? priceFormatter.format(num) : '-';
+    }
+
     function compareCandlesByTime(left, right) {
         const leftTime = toChartTime(left.time);
         const rightTime = toChartTime(right.time);
@@ -1074,6 +1278,13 @@
         const tagName = target && target.tagName ? target.tagName.toLowerCase() : '';
         const isTyping = tagName === 'input' || tagName === 'select' || tagName === 'textarea';
 
+        // Layered Escape: clear pinned readouts first, leave fullscreen only
+        // once there are none left to clear.
+        if (event.key === 'Escape' && hideAllTooltips()) {
+            event.preventDefault();
+            return;
+        }
+
         if (event.key === 'Escape' && document.body.classList.contains('chart-fullscreen')) {
             event.preventDefault();
             toggleFullscreenMode();
@@ -1100,14 +1311,17 @@
             return;
         }
 
+        // 1/2/3 now *pick* the timeframe rather than switching between several
+        // loaded ones. Under the old multi-select group this checked
+        // state.timeframes.includes(...), which since the group went
+        // single-select would have made two of the three keys silently dead.
         const timeframeByKey = { 1: '5m', 2: '10m', 3: '15m' };
         const timeframe = timeframeByKey[event.key];
-        if (timeframe && state.timeframes.includes(timeframe)) {
+        if (timeframe && els.timeframes &&
+            els.timeframes.querySelector('.chart-chip[data-value="' + timeframe + '"]')) {
             event.preventDefault();
-            state.activeTimeframe = timeframe;
-            persistState();
-            renderTimeframeTabs();
-            renderVisiblePanes();
+            setMultiSelectValues(els.timeframes, [timeframe]);
+            onFiltersChanged();
         }
     }
 

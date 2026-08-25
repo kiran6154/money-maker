@@ -172,10 +172,11 @@ public class TradeConfigAdminService {
     private static final Duration RUN_GAP = Duration.ofMinutes(2);
 
     /**
-     * Per-day counts of auto-generated configs for the calendar.
+     * Per-day counts for the bulk-delete calendar, for one {@code source}.
      * Days with no configs are simply absent from the response.
      */
-    public AutoConfigCalendarDTO autoCalendar(LocalDate from, LocalDate to) {
+    public AutoConfigCalendarDTO autoCalendar(LocalDate from, LocalDate to,
+                                              AutoDeleteRequestDTO.Source source) {
         if (from == null || to == null) {
             throw new IllegalArgumentException("from and to are required");
         }
@@ -183,8 +184,10 @@ public class TradeConfigAdminService {
             throw new IllegalArgumentException("to must not be before from");
         }
 
+        String sourceName = (source == null ? AutoDeleteRequestDTO.Source.AUTO_DOWNTREND : source).name();
+
         List<AutoConfigCalendarDTO.Day> days = new ArrayList<>();
-        for (Object[] row : tradeConfigRepository.autoCalendar(SOURCE_AUTO, from, to)) {
+        for (Object[] row : tradeConfigRepository.autoCalendar(sourceName, from, to)) {
             days.add(new AutoConfigCalendarDTO.Day(
                     toLocalDate(row[0]),
                     toLong(row[1]),
@@ -257,13 +260,21 @@ public class TradeConfigAdminService {
      *
      * <p>Three guarantees, in order of importance:</p>
      * <ol>
-     *   <li><b>MANUAL rows are unreachable.</b> {@code source} is pinned to
-     *       {@link #SOURCE_AUTO} here — the request object has no say.</li>
+     *   <li><b>MANUAL rows need an explicit opt-in.</b> {@code source} defaults to
+     *       {@link #SOURCE_AUTO}, so an incomplete or malformed request can only
+     *       ever reach disposable detector output. Selecting
+     *       {@link AutoDeleteRequestDTO.Source#MANUAL} is the only way to touch
+     *       hand-written configs, and {@code mode=UPDATED_RANGE} stays pinned to
+     *       AUTO regardless — a "generation run" is a detector concept, and most
+     *       MANUAL rows have no {@code updated_date} to match on anyway.</li>
      *   <li><b>{@code dryRun} reports without deleting</b>, and the UI always
      *       previews first so the confirmed number is the server's own count.</li>
      *   <li><b>Configs with trade_order rows are skipped, not deleted</b>, matching
      *       the audit protection on the single-config delete. They are reported
-     *       separately rather than failing the batch.</li>
+     *       separately rather than failing the batch — unless the caller opts in
+     *       with {@code force}, which deletes those configs <i>and their trade
+     *       rows</i>. That is the one path in the app that removes trade history,
+     *       so it is never the default and the UI requires a separate tick.</li>
      * </ol>
      */
     @Transactional
@@ -275,8 +286,13 @@ public class TradeConfigAdminService {
                 if (request.getDates() == null || request.getDates().isEmpty()) {
                     throw new IllegalArgumentException("dates is required when mode=TRADING_DATE");
                 }
-                yield tradeConfigRepository.findBySourceAndTradingDateIn(SOURCE_AUTO, request.getDates());
+                AutoDeleteRequestDTO.Source src = request.getSource() == null
+                        ? AutoDeleteRequestDTO.Source.AUTO_DOWNTREND
+                        : request.getSource();
+                yield tradeConfigRepository.findBySourceAndTradingDateIn(src.name(), request.getDates());
             }
+            // Pinned to AUTO: runs are recovered from updated_date, which the
+            // detector stamps and hand-written configs mostly leave null.
             case UPDATED_RANGE -> {
                 if (request.getUpdatedFrom() == null || request.getUpdatedTo() == null) {
                     throw new IllegalArgumentException(
@@ -287,15 +303,24 @@ public class TradeConfigAdminService {
             }
         };
 
+        boolean force = request.isForce();
+
         List<TradeConfig> deletable = new ArrayList<>();
-        List<Integer> skippedIds = new ArrayList<>();
+        List<Integer> tradedIds = new ArrayList<>();
         for (TradeConfig tc : matches) {
             if (tradeOrderRepository.existsByTradeConfigId(tc.getId())) {
-                skippedIds.add(tc.getId());
+                tradedIds.add(tc.getId());
+                if (force) deletable.add(tc);
             } else {
                 deletable.add(tc);
             }
         }
+        // Counted even when force is off, so the confirm dialog can state what an
+        // opt-in would cost before the user ticks the box.
+        long tradeOrders = tradedIds.isEmpty()
+                ? 0L
+                : tradeOrderRepository.countByTradeConfigIdIn(tradedIds);
+        List<Integer> skippedIds = force ? List.of() : List.copyOf(tradedIds);
 
         Map<LocalDate, Long> byDate = new TreeMap<>();
         for (TradeConfig tc : deletable) {
@@ -305,8 +330,17 @@ public class TradeConfigAdminService {
 
         if (request.isDryRun()) {
             return new AutoDeleteResultDTO(
-                    matches.size(), 0, 0, byDate, ids, skippedIds.size(), skippedIds, true,
-                    summary(matches.size(), deletable.size(), skippedIds.size(), true));
+                    matches.size(), 0, 0, byDate, ids,
+                    tradedIds.size(), tradeOrders, skippedIds.size(), skippedIds, true,
+                    summary(matches.size(), deletable.size(), skippedIds.size(),
+                            force ? tradeOrders : 0, true));
+        }
+
+        // Trade rows first: once the configs are gone their ids are unrecoverable,
+        // so an interrupted delete must not be able to strand the ledger.
+        long removedTradeOrders = 0;
+        if (force && !tradedIds.isEmpty()) {
+            removedTradeOrders = tradeOrderRepository.deleteByTradeConfigIdIn(tradedIds);
         }
 
         long removedTimeframes = 0;
@@ -319,25 +353,37 @@ public class TradeConfigAdminService {
         // Same cache refresh the single delete performs, once per affected date.
         byDate.keySet().forEach(this::afterMutation);
 
-        log.info("[trade-config] bulk-deleted {} AUTO_DOWNTREND config(s) + {} timeframe row(s); "
-                        + "skipped {} with trades; dates={}",
-                deletable.size(), removedTimeframes, skippedIds.size(), byDate.keySet());
+        log.info("[trade-config] bulk-deleted {} config(s) + {} timeframe row(s); "
+                        + "force={} tradeOrdersRemoved={} skipped={} with trades; dates={}",
+                deletable.size(), removedTimeframes, force, removedTradeOrders,
+                skippedIds.size(), byDate.keySet());
 
         return new AutoDeleteResultDTO(
                 matches.size(), deletable.size(), removedTimeframes, byDate, ids,
+                tradedIds.size(), force ? removedTradeOrders : tradeOrders,
                 skippedIds.size(), skippedIds, false,
-                summary(matches.size(), deletable.size(), skippedIds.size(), false));
+                summary(matches.size(), deletable.size(), skippedIds.size(),
+                        removedTradeOrders, false));
     }
 
-    private String summary(long matched, long deletable, long skipped, boolean dryRun) {
+    /**
+     * @param removedTradeOrders trade rows that went (or would go) with the configs;
+     *                           always 0 unless {@code force} was set.
+     */
+    private String summary(long matched, long deletable, long skipped,
+                           long removedTradeOrders, boolean dryRun) {
         if (matched == 0) {
             return "No auto-generated configs matched the selection.";
         }
         String verb = dryRun ? "Would delete" : "Deleted";
         String base = verb + " " + deletable + " of " + matched + " matched config(s)";
-        return skipped == 0
-                ? base + "."
-                : base + "; " + skipped + " kept because trades reference them.";
+        if (skipped > 0) {
+            return base + "; " + skipped + " kept because trades reference them.";
+        }
+        if (removedTradeOrders > 0) {
+            return base + " and " + removedTradeOrders + " linked trade_order row(s).";
+        }
+        return base + ".";
     }
 
     private static LocalDate toLocalDate(Object v) {

@@ -124,9 +124,10 @@ public class TradeConfigAdminController {
     @ResponseBody
     public ResponseEntity<?> autoCalendar(
             @RequestParam("from") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam("to") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+            @RequestParam("to") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(value = "source", required = false) AutoDeleteRequestDTO.Source source) {
         try {
-            return ResponseEntity.ok(service.autoCalendar(from, to));
+            return ResponseEntity.ok(service.autoCalendar(from, to, source));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }

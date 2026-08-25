@@ -194,6 +194,18 @@ Open `http://localhost:8080/backtest`, click **Run backtest**. Each step appears
 BacktestReport report = runner.run();
 ```
 
+### Clearing the ledger between runs
+
+Every replay **appends** to `trade_order`; re-running the same date range gives
+you two sets of rows for the same days, not one. The **Clear ledger** button on
+`/backtest` purges the rows the table is currently showing (the same date range
+the run form uses), previewing the count first. See
+[ORDERS_AND_POSITIONS.md](ORDERS_AND_POSITIONS.md#purging-the-ledger).
+
+Deleting trade configs does *not* clear the ledger — there is no FK between the
+two tables, and the bulk config delete only reaches trades belonging to configs
+it matched. Purge the ledger for trade rows; use the config panel for configs.
+
 ---
 
 ## Adding a new stage

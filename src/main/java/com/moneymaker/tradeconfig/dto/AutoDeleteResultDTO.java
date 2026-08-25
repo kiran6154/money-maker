@@ -30,10 +30,26 @@ public class AutoDeleteResultDTO {
     private List<Integer> ids;
 
     /**
+     * Matched configs that {@code trade_order} rows reference — reported whether
+     * or not {@code force} was set, so the confirm dialog can say what is at stake
+     * before the user opts in.
+     */
+    private long configsWithTrades;
+
+    /**
+     * Trade rows attached to {@link #configsWithTrades}. Deleted along with their
+     * configs when {@code force} is set; left untouched otherwise.
+     */
+    private long tradeOrders;
+
+    /**
      * Configs that matched the selector but were left alone because
      * {@code trade_order} rows reference them. The single-config delete refuses
      * these outright to preserve the audit trail; a bulk delete skips and reports
      * them instead, so one traded config cannot block the whole batch.
+     *
+     * <p>Zero when {@code force} was set — nothing is skipped then; look at
+     * {@link #configsWithTrades} / {@link #tradeOrders} for what went with them.</p>
      */
     private long skippedWithTrades;
     private List<Integer> skippedIds;

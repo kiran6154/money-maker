@@ -29,6 +29,22 @@
             border-collapse: collapse;
             font-size: 13px;
         }
+        /* Purge confirmation — the ledger is append-only everywhere else, so
+           the one destructive control gets an explicit dialog. */
+        .pg-modal {
+            position: fixed; inset: 0; z-index: 50;
+            background: rgba(0,0,0,0.35);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .pg-modal-card { max-width: 520px; width: calc(100% - 40px); }
+        .pg-body { font-size: 13px; line-height: 1.6; }
+        .pg-body .pg-warn { color: #b15e00; }
+        .pg-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+        .pg-open { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #b15e00; }
+        .pg-open input { accent-color: #b15e00; }
+        /* The ledger header carries controls, not just a title. */
+        .card-header { gap: 10px; }
+        .card-header .spacer { flex: 1; }
         .orders-table th,
         .orders-table td {
             padding: 8px 10px;
@@ -144,9 +160,16 @@
         <div class="card-header">
             <h3>Orders ledger</h3>
             <span class="badge badge-info" id="orders-count">0 rows</span>
+            <div class="spacer"></div>
+            <label class="pg-open" title="OPEN rows are live positions the position scheduler is still monitoring.">
+                <input id="pg-include-open" type="checkbox" />
+                <span>include OPEN</span>
+            </label>
+            <button id="pg-clear" class="btn btn-danger" type="button">🗑 Clear ledger</button>
         </div>
         <p style="color: var(--text-muted); margin: 0 0 12px;">
-            Filtered by the date range above. Click <b>↻ Sync</b> to resolve the broker fill price for live rows.
+            Filtered by the date range above — <b>Clear ledger</b> purges exactly the rows shown.
+            Click <b>↻ Sync</b> to resolve the broker fill price for live rows.
         </p>
         <div class="orders-scroll">
             <table class="orders-table" id="orders-table">
@@ -179,6 +202,18 @@
         </div>
         <div id="orders-empty" style="text-align:center; padding: 20px 0; color: var(--text-muted);">
             No orders yet. Run an analysis above to populate the ledger.
+        </div>
+    </div>
+
+    <!-- Confirm dialog: populated from the server's own dry-run count -->
+    <div id="pg-confirm" class="pg-modal" style="display:none;">
+        <div class="pg-modal-card glass-card">
+            <div class="card-header"><h3>Clear ledger</h3></div>
+            <div id="pg-confirm-body" class="pg-body"></div>
+            <div class="pg-actions">
+                <button id="pg-cancel" class="btn btn-ghost" type="button">Cancel</button>
+                <button id="pg-ok" class="btn btn-danger" type="button">Yes, delete</button>
+            </div>
         </div>
     </div>
 </main>
@@ -368,6 +403,79 @@
         } catch (e) {
             btn.textContent = 'failed';
         }
+    });
+
+    // -------- Purge --------
+    // Always previews first, so the number in the dialog is the server's count
+    // for the same range the table is showing — never one derived from the DOM.
+    const pgBtn    = document.getElementById('pg-clear');
+    const pgOpen   = document.getElementById('pg-include-open');
+    const pgModal  = document.getElementById('pg-confirm');
+    const pgBody   = document.getElementById('pg-confirm-body');
+    let pgPending  = null;
+
+    function pgRequest(dryRun) {
+        return {
+            fromDate: anFrom.value || null,
+            toDate:   anTo.value   || null,
+            includeOpen: pgOpen.checked,
+            dryRun
+        };
+    }
+
+    async function pgPost(body) {
+        const r = await fetch('/api/orders/purge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        return { ok: r.ok, data: await r.json() };
+    }
+
+    pgBtn.addEventListener('click', async () => {
+        pgBtn.disabled = true;
+        const { ok, data } = await pgPost(pgRequest(true));
+        pgBtn.disabled = false;
+        if (!ok) { alert(data.error || 'Preview failed'); return; }
+        if (!data.matched) { alert(data.message); return; }
+
+        pgPending = pgRequest(false);
+        const dates = Object.entries(data.byDate || {})
+            .map(([d, n]) => d + ' (' + n + ')').join('   ') || '—';
+        const scope = (anFrom.value || anTo.value)
+            ? ((anFrom.value || 'start') + ' → ' + (anTo.value || 'end'))
+            : 'the entire ledger';
+
+        let html = '<p>' + data.message + '</p>'
+                 + '<p style="color: var(--text-muted);">range: <b>' + scope + '</b></p>'
+                 + '<p style="color: var(--text-muted);">' + dates + '</p>';
+        if (data.skippedOpen > 0) {
+            html += '<p class="pg-warn">⚠ ' + data.skippedOpen + ' OPEN row(s) kept. Tick '
+                  + '<b>include OPEN</b> to delete those too — in live mode they are '
+                  + 'positions still being monitored.</p>';
+        } else if (pgPending.includeOpen && data.openRows > 0) {
+            html += '<p class="pg-warn">⚠ ' + data.openRows + ' OPEN row(s) are included. '
+                  + 'In live mode that leaves a real broker position untracked.</p>';
+        }
+        html += '<p><b>This cannot be undone.</b></p>';
+        pgBody.innerHTML = html;
+        pgModal.style.display = 'flex';
+    });
+
+    document.getElementById('pg-cancel').addEventListener('click', () => {
+        pgModal.style.display = 'none';
+        pgPending = null;
+    });
+
+    document.getElementById('pg-ok').addEventListener('click', async () => {
+        if (!pgPending) return;
+        const { ok, data } = await pgPost(pgPending);
+        pgModal.style.display = 'none';
+        pgPending = null;
+        if (!ok) { alert(data.error || 'Purge failed'); return; }
+        pgOpen.checked = false;
+        await loadOrders();
+        alert(data.message);
     });
 
     // Initial load

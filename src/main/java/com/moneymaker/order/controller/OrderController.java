@@ -1,6 +1,7 @@
 package com.moneymaker.order.controller;
 
 import com.moneymaker.entity.TradeOrder;
+import com.moneymaker.order.dto.OrderPurgeRequestDTO;
 import com.moneymaker.order.service.OrderService;
 import com.moneymaker.repository.TradeOrderRepository;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -16,6 +18,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -55,6 +58,21 @@ public class OrderController {
                         && !o.getEntryTime().isBefore(from)
                         && !o.getEntryTime().isAfter(to))
                 .toList();
+    }
+
+    /**
+     * Clear ledger rows by entry-date. POST rather than DELETE because the
+     * selector is a body and {@code dryRun} defaults to {@code true} — a caller
+     * that omits it gets a preview, not a wipe. Mirrors
+     * {@code /api/trade-configs/auto/delete}.
+     */
+    @PostMapping("/purge")
+    public ResponseEntity<?> purge(@RequestBody OrderPurgeRequestDTO request) {
+        try {
+            return ResponseEntity.ok(orderService.purge(request));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
     /**

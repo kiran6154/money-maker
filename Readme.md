@@ -198,7 +198,7 @@ com.moneymaker
 │   └── service      MarketDataService (Resilience4j-wrapped fetch), MarketHoursService (trading-window gate)
 │
 ├── order
-│   ├── controller/OrderController  GET /api/orders, POST /api/orders/{id}/sync
+│   ├── controller/OrderController  GET /api/orders, POST /api/orders/{id}/sync, POST /api/orders/purge
 │   └── service      OrderService (single owner of order lifecycle), OrderPlacementService + OrderPlacementFactory
 │
 ├── position
@@ -303,9 +303,10 @@ spring.liquibase.change-log=classpath:db/changelog/db.changelog-master.xml
 | POST | `/api/backtest/login`  | Backtest-mode login preflight (same `LoginOrchestrator` as live) |
 | POST | `/api/backtest/analysis?fromDate=&toDate=` | Run the multi-day analysis→order→position replay; returns per-day summary |
 | GET/POST/PUT/DELETE | `/api/trade-configs[...]` | Trade-config CRUD — see [`docs/ORDERS_AND_POSITIONS.md`](docs/ORDERS_AND_POSITIONS.md#trade-config-admin) |
-| GET/POST | `/api/trade-configs/auto/{calendar,runs,delete}` | Bulk operations on `AUTO_DOWNTREND` configs — see [`docs/EOD_DOWNTREND.md`](docs/EOD_DOWNTREND.md#deleting-generated-configs) |
+| GET/POST | `/api/trade-configs/auto/{calendar,runs,delete}` | Bulk config delete — `AUTO_DOWNTREND` by default, `MANUAL` on opt-in; see [`docs/EOD_DOWNTREND.md`](docs/EOD_DOWNTREND.md#deleting-generated-configs) |
 | GET  | `/api/orders`        | Persisted `trade_order` rows |
 | POST | `/api/orders/{id}/sync` | Re-fetch broker fill status for one order |
+| POST | `/api/orders/purge`  | Clear ledger rows by entry-date (`dryRun` defaults to true) — see [`docs/ORDERS_AND_POSITIONS.md`](docs/ORDERS_AND_POSITIONS.md#purging-the-ledger) |
 | GET  | `/api/charts/market-data` | Chart candle data (token-based or historical ICICI) — see [`docs/CHART_DASHBOARD.md`](docs/CHART_DASHBOARD.md) |
 | POST | `/api/charts/historical/import/{spot,options}` | Import ICICI-style historical CSV — see [`docs/HISTORICAL_CHART_DATA_PLAN.md`](docs/HISTORICAL_CHART_DATA_PLAN.md) |
 

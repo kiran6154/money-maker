@@ -21,7 +21,10 @@
       "Bash(curl.exe -s \"http://localhost:8080/api/charts/market-data?date=2024-01-04&indexSymbol=NIFTY&chartType=UNDERLYING&timeframe=5m&smaPeriods=20,50&dataSource=HISTORICAL_ICICI\")",
       "Bash(\"/c/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe\" -uroot -proot moneymath -e \"SELECT MIN\\(datetime\\) mn, MAX\\(datetime\\) mx, COUNT\\(*\\) c FROM historical_spot_candles WHERE DATE\\(datetime\\)='2024-01-04';\")",
       "Bash(curl.exe -s \"http://localhost:8080/api/charts/market-data?date=2024-01-04&indexSymbol=NIFTY&chartType=UNDERLYING&timeframe=15m&smaPeriods=20&dataSource=HISTORICAL_ICICI\")",
-      "Bash(curl.exe -s \"http://localhost:8080/api/charts/market-data?date=2024-01-04&indexSymbol=NIFTY&chartType=UNDERLYING&timeframe=15m&smaPeriods=20&dataSource=TOKEN_BASED\" -w \"\\\\nHTTP=%{http_code}\\\\n\")"
+      "Bash(curl.exe -s \"http://localhost:8080/api/charts/market-data?date=2024-01-04&indexSymbol=NIFTY&chartType=UNDERLYING&timeframe=15m&smaPeriods=20&dataSource=TOKEN_BASED\" -w \"\\\\nHTTP=%{http_code}\\\\n\")",
+      "Bash(awk '{o+=gsub\\(/{/,\"{\"\\); c+=gsub\\(/}/,\"}\"\\)} END{print \"open=\"o, \"close=\"c, \\(o==c?\"BALANCED\":\"UNBALANCED\"\\)}' src/main/resources/static/css/chart-dashboard.css)",
+      "Bash(awk '{o+=gsub\\(/{/,\"{\"\\); c+=gsub\\(/}/,\"}\"\\)} END{print \"css braces:\", \\(o==c?\"BALANCED\":\"UNBALANCED\"\\)}' src/main/resources/static/css/chart-dashboard.css)",
+      "Bash(awk '{o+=gsub\\(/{/,\"{\"\\); c+=gsub\\(/}/,\"}\"\\)} END{print \"CSS braces:\", \\(o==c?\"BALANCED\":\"UNBALANCED\"\\)}' src/main/resources/static/css/chart-dashboard.css)"
     ]
   }
 }

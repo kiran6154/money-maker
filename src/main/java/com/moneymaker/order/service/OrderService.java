@@ -7,20 +7,26 @@ import com.moneymaker.dto.TradeSignal;
 import com.moneymaker.entity.Instrument;
 import com.moneymaker.entity.MarketData;
 import com.moneymaker.entity.TradeOrder;
+import com.moneymaker.order.dto.OrderPurgeRequestDTO;
+import com.moneymaker.order.dto.OrderPurgeResultDTO;
 import com.moneymaker.repository.TradeOrderRepository;
 import com.moneymaker.shared.data.SharedData;
 import com.moneymaker.telegram.NotificationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
+import java.util.TreeMap;
 
 /**
  * Consumes {@link TradeSignal}s emitted by strategies, applies cross-signal
@@ -428,6 +434,81 @@ public class OrderService {
             closed++;
         }
         return closed;
+    }
+
+    /**
+     * Clears rows out of the {@code trade_order} ledger by {@code entry_time}
+     * date — the housekeeping counterpart to running a backtest, which appends
+     * to the same table every time it replays a range.
+     *
+     * <p>Lives here rather than on the controller because {@code OrderService} is
+     * the single owner of the order lifecycle; the ledger is its table.</p>
+     *
+     * <p>OPEN rows are skipped unless {@code includeOpen} is set. In live mode an
+     * OPEN row is a position {@code PositionScheduler} is still monitoring, and
+     * deleting it would leave a real broker position untracked — so the caller
+     * has to say so explicitly rather than discovering it afterwards.</p>
+     */
+    @Transactional
+    public OrderPurgeResultDTO purge(OrderPurgeRequestDTO request) {
+        if (request == null) throw new IllegalArgumentException("request payload missing");
+        if (request.getFromDate() != null && request.getToDate() != null
+                && request.getToDate().isBefore(request.getFromDate())) {
+            throw new IllegalArgumentException("toDate must not be before fromDate");
+        }
+
+        LocalDateTime from = request.getFromDate() != null
+                ? request.getFromDate().atStartOfDay()
+                : LocalDateTime.of(1970, 1, 1, 0, 0);
+        LocalDateTime to = request.getToDate() != null
+                ? request.getToDate().atTime(LocalTime.MAX)
+                : LocalDateTime.of(9999, 12, 31, 23, 59, 59);
+
+        List<TradeOrder> matches = tradeOrderRepository.findByEntryTimeBetween(from, to);
+
+        List<TradeOrder> deletable = new ArrayList<>();
+        List<Long> openIds = new ArrayList<>();
+        for (TradeOrder o : matches) {
+            if (STATUS_OPEN.equals(o.getStatus())) {
+                openIds.add(o.getId());
+                if (request.isIncludeOpen()) deletable.add(o);
+            } else {
+                deletable.add(o);
+            }
+        }
+        List<Long> skippedIds = request.isIncludeOpen() ? List.of() : List.copyOf(openIds);
+
+        Map<LocalDate, Long> byDate = new TreeMap<>();
+        for (TradeOrder o : deletable) {
+            byDate.merge(o.getEntryTime().toLocalDate(), 1L, Long::sum);
+        }
+
+        if (request.isDryRun()) {
+            return new OrderPurgeResultDTO(
+                    matches.size(), 0, deletable.size(), byDate,
+                    openIds.size(), skippedIds.size(), skippedIds, true,
+                    purgeSummary(matches.size(), deletable.size(), skippedIds.size(), true));
+        }
+
+        tradeOrderRepository.deleteAll(deletable);
+        log.info("[order] purged {} of {} ledger row(s) between {} and {}; skippedOpen={}",
+                deletable.size(), matches.size(), from, to, skippedIds.size());
+
+        return new OrderPurgeResultDTO(
+                matches.size(), deletable.size(), deletable.size(), byDate,
+                openIds.size(), skippedIds.size(), skippedIds, false,
+                purgeSummary(matches.size(), deletable.size(), skippedIds.size(), false));
+    }
+
+    private String purgeSummary(long matched, long deletable, long skippedOpen, boolean dryRun) {
+        if (matched == 0) {
+            return "No ledger rows matched the selection.";
+        }
+        String base = (dryRun ? "Would delete " : "Deleted ")
+                + deletable + " of " + matched + " ledger row(s)";
+        return skippedOpen == 0
+                ? base + "."
+                : base + "; " + skippedOpen + " kept because they are still OPEN.";
     }
 
     /**

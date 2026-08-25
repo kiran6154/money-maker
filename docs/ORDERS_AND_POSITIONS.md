@@ -216,6 +216,42 @@ Backtesting rows have `fill_status='BACKTEST'` and no broker id — sync is a no
 
 ---
 
+## Purging the ledger
+
+`POST /api/orders/purge` -> `OrderService.purge(request)`. The ledger is
+append-only everywhere else — every backtest replay of a range adds another set
+of rows — so this is the one supported way to clear it.
+
+```jsonc
+{ "fromDate": "2024-01-02",   // optional, inclusive, matched against entry_time
+  "toDate":   "2024-01-04",   // optional, inclusive; omit both to clear everything
+  "dryRun":   true,           // DEFAULT — a caller that omits it gets a preview
+  "includeOpen": false }      // DEFAULT — OPEN rows are skipped, see below
+```
+
+It lives on `OrderService` rather than the controller because that service is
+the single owner of the order lifecycle (CLAUDE.md invariant 7) — `trade_order`
+is its table.
+
+**OPEN rows are skipped unless `includeOpen` is set.** In live mode an OPEN row
+is a real broker position `PositionScheduler` is still walking each tick;
+deleting it makes the app forget a position that is still in the market, with no
+error anywhere to say so. Skipped ids come back as `skippedOpen` / `skippedIds`,
+so the caller finds out before rather than after.
+
+This is the mirror image of the bulk config delete: this one starts from
+`trade_order` and never touches configs; that one starts from `trade_config` and
+can take the trades with it (see
+[EOD_DOWNTREND.md](EOD_DOWNTREND.md#force-deleting-configs-that-have-trades)).
+Neither reaches the other's rows implicitly, so "the configs are gone but the
+ledger still has rows" is an expected state, not a bug — the two tables are only
+linked by `trade_config_id`, with no FK.
+
+The **Clear ledger** button on `/backtest` drives it, scoped to the same date
+range the ledger table is filtered by, previewing first.
+
+---
+
 ## Telegram alerts
 
 | Event | Method | Dedupe |
@@ -258,7 +294,9 @@ Edits to a *past* or *future* date, or any edit while `app.mode=backtest`, only 
 
 ### Auto-generated (`AUTO_DOWNTREND`) configs
 
-Bulk operations scoped to `source='AUTO_DOWNTREND'` rows — the calendar view, the "which generation run was this" grouping, and the bulk-delete endpoint — are a separate, more specialized part of the same controller/service. They're documented in full in [EOD_DOWNTREND.md](EOD_DOWNTREND.md#deleting-generated-configs) rather than duplicated here, since they only make sense alongside the detector that produces those rows.
+Bulk operations scoped by `source` — the calendar view, the "which generation run was this" grouping, and the bulk-delete endpoint — are a separate, more specialized part of the same controller/service. They're documented in full in [EOD_DOWNTREND.md](EOD_DOWNTREND.md#deleting-generated-configs) rather than duplicated here, since they only make sense alongside the detector that produces those rows.
+
+Two opt-ins there reach past the defaults, and both are off unless explicitly set: `force` also deletes configs that have `trade_order` rows (**and those trade rows**), and `source: MANUAL` aims the whole panel at hand-written configs instead of regenerable detector output. The single-config `DELETE /api/trade-configs/{id}` has neither and still refuses a traded config outright with a 409.
 
 ---
 

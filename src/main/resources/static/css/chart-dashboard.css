@@ -20,7 +20,7 @@
     position: sticky;
     top: 62px;
     z-index: 80;
-    padding: 12px 14px;
+    padding: 12px;
     border-radius: 12px;
 }
 
@@ -42,11 +42,18 @@
    re-counted every time a control is added — adding the Strike picker to a
    six-track grid pushed Refresh onto a second row and squeezed the SMA chips
    into two lines. Flex lets each field size to its own content and wrap as a
-   unit, so new controls slot in without touching this rule. */
+   unit, so new controls slot in without touching this rule.
+
+   Every flex-basis below is set to that field's real content minimum, because
+   the row has to fit inside a tight budget: .page caps at 1480px, so after its
+   side padding and this card's own padding there are ~1356px to spend. The
+   eight items total ~1282px, which is what keeps them on one line. Changing a
+   basis without re-checking that sum is what puts the toolbar back onto two
+   rows. */
 .chart-toolbar-grid {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px 14px;
+    gap: 10px 6px;
     align-items: flex-end;
 }
 
@@ -55,16 +62,37 @@
     min-width: 0;
 }
 
-.chart-field-date { flex-basis: 300px; }
-.chart-field-source { flex-basis: 165px; }
-.chart-field-index { flex-basis: 135px; }
-.chart-field-strike { flex-basis: 185px; }
-.chart-field-timeframes { flex-basis: 180px; }
-.chart-field-overlays { flex-basis: 210px; }
+/* Every per-field rule below is scoped under `.chart-toolbar-grid >` on purpose,
+   and the scope is load-bearing rather than cosmetic. The rule above is two
+   classes; a bare `.chart-field-date` is one. Since `flex` is a shorthand it
+   sets the `flex-basis` longhand too, so the more specific `flex: 0 1 auto`
+   beat every unscoped `flex-basis` here no matter the source order — the whole
+   block used to be dead code, and the toolbar was really laying out on raw
+   content widths. Matching the specificity is what makes these numbers apply. */
 
-/* Absorbs the leftover width so the five SMA chips stay on one line. */
-.chart-field-sma {
-    flex: 1 1 340px;
+/* The three selects are the only fields allowed to shrink. Their basis is a
+   comfortable width for the longest option ("Historical ICICI"); when the row
+   runs short they truncate, which is the one graceful degradation available
+   here. */
+.chart-toolbar-grid > .chart-field-source { flex-basis: 128px; }
+.chart-toolbar-grid > .chart-field-index { flex-basis: 100px; }
+.chart-toolbar-grid > .chart-field-strike { flex-basis: 96px; }
+
+/* The date field and the three chip fields size to their own content and never
+   shrink.
+   Hand-written basis numbers were the bug in the first attempt: guessing a chip
+   group's rendered width is guesswork, and when the guess came in low the field
+   held its declared width and wrapped the chips *inside* it — two lines tall,
+   ragged label baselines. `auto` asks the browser for the real number instead,
+   so this cannot drift when a chip label or the font changes. Paired with
+   flex-wrap:nowrap on .chart-chip-group below, a field is now always exactly
+   one line tall; when the row runs out of room the whole field wraps as a unit,
+   which is the intended fallback. */
+.chart-toolbar-grid > .chart-field-date,
+.chart-toolbar-grid > .chart-field-timeframes,
+.chart-toolbar-grid > .chart-field-sma,
+.chart-toolbar-grid > .chart-field-overlays {
+    flex: 0 0 auto;
 }
 
 .chart-toolbar-grid .form-row {
@@ -72,17 +100,23 @@
     gap: 5px;
 }
 
+/* 13px rather than the 14px base .form-control: three selects side by side is
+   where most of the toolbar's width goes, and one point of type size buys back
+   ~60px across them without hurting legibility. min-height stays at 36px so the
+   selects, chips and buttons all still line up. */
 .chart-toolbar-grid .form-control {
     min-height: 36px;
-    padding: 8px 10px;
+    padding: 7px;
     border-color: rgba(15, 23, 42, 0.10);
     background: rgba(255, 255, 255, 0.95);
+    font-size: 12px;
 }
 
+/* 100px still fits a native dd-mm-yyyy input plus its picker glyph. */
 .chart-date-control {
     display: grid;
-    grid-template-columns: 34px minmax(130px, 1fr) 34px auto;
-    gap: 6px;
+    grid-template-columns: 30px minmax(100px, 1fr) 30px auto;
+    gap: 4px;
     align-items: center;
 }
 
@@ -90,27 +124,39 @@
 .chart-today-btn,
 .chart-icon-btn {
     min-height: 36px;
-    padding: 8px 10px;
+    padding: 8px;
     border-radius: 8px;
     justify-content: center;
 }
 
 .chart-step-btn {
-    width: 34px;
+    width: 30px;
 }
 
+.chart-today-btn {
+    padding: 8px 6px;
+    font-size: 11px;
+}
+
+/* nowrap is what keeps a chip field one line tall no matter how narrow the row
+   gets. The field itself wraps as a unit instead — see .chart-field-* above. */
 .chart-chip-group {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    flex-wrap: nowrap;
+    gap: 3px;
     min-height: 36px;
     align-items: center;
 }
 
+/* 6px of horizontal padding rather than the original 10px: there are ten chips
+   across the three groups, so every pixel trimmed here is worth ~20px of row —
+   the cheapest width in the toolbar once labels and controls are all being
+   kept. min-width only equalises the narrow numeric chips; every chip wider
+   than it sizes to its own text. */
 .chart-chip {
-    min-width: 48px;
+    min-width: 34px;
     min-height: 34px;
-    padding: 7px 10px;
+    padding: 6px;
     border: 1px solid rgba(15, 23, 42, 0.10);
     border-radius: 8px;
     background: rgba(248, 250, 252, 0.96);
@@ -132,6 +178,12 @@
     color: var(--primary-strong);
 }
 
+/* The SMA chips are 2-3 digits, narrower still than the shared minimum. The
+   class is already on #chartSmaPeriods in the template. */
+.chart-chip-group-wide .chart-chip {
+    min-width: 30px;
+}
+
 /* margin-left:auto keeps Refresh pinned right on the last row it lands on,
    whatever the wrap point turns out to be. */
 .chart-toolbar-actions {
@@ -139,6 +191,14 @@
     justify-content: flex-end;
     align-items: flex-end;
     margin-left: auto;
+}
+
+/* Scoped so the global .btn (10px 18px) is untouched everywhere else. This is
+   the item that was landing on row two, so it carries the tightest padding in
+   the toolbar. */
+.chart-toolbar-actions .btn {
+    padding: 9px 10px;
+    font-size: 12px;
 }
 
 /* Two rows: the index chart across the top, ATM PE and ATM CE side by side
@@ -199,14 +259,6 @@
     font-weight: 600;
 }
 
-.chart-timeframe-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 8px;
-    min-height: 30px;
-}
-
 .chart-sma-legend {
     display: flex;
     flex-wrap: wrap;
@@ -233,27 +285,6 @@
     height: 0;
     border-top: 2px solid currentColor;
     border-radius: 999px;
-}
-
-.chart-timeframe-tab {
-    min-width: 48px;
-    padding: 6px 10px;
-    border-radius: 8px;
-    font-size: 12px;
-    font-weight: 600;
-    border-color: rgba(15, 23, 42, 0.08);
-    background: rgba(248, 250, 252, 0.95);
-}
-
-.chart-timeframe-tab:hover,
-.chart-timeframe-tab:focus {
-    background: rgba(226, 232, 240, 0.9);
-}
-
-.chart-timeframe-tab.is-active {
-    background: rgba(0, 122, 255, 0.12);
-    border-color: rgba(0, 122, 255, 0.22);
-    color: var(--primary-strong);
 }
 
 .chart-state {
@@ -424,18 +455,126 @@ body.chart-fullscreen .chart-toolbar-card {
 }
 
 /* Fullscreen has to fit BOTH rows on one screen, so the viewport budget is
-   split between them rather than given to each pane in full. ~130px per row
-   covers that row's header, meta strip, timeframe tabs and legend. */
+   split between them rather than given to each pane in full. ~110px per row
+   covers that row's header, meta strip and legend — down from ~130px since the
+   timeframe tab strip (30px + 8px margin) was removed from every pane. */
 body.chart-fullscreen .chart-pane {
     min-height: 0;
 }
 
 body.chart-fullscreen .chart-canvas,
 body.chart-fullscreen .chart-canvas-wrap {
-    min-height: calc((100vh - 320px) / 2);
+    min-height: calc((100vh - 280px) / 2);
 }
 
 body.chart-fullscreen .chart-pane-primary .chart-canvas,
 body.chart-fullscreen .chart-pane-primary .chart-canvas-wrap {
-    min-height: calc((100vh - 320px) / 2);
+    min-height: calc((100vh - 280px) / 2);
+}
+
+/* ---------------------------------------------------------------------------
+   Pinned candle readout
+
+   O/H/L/C plus the SMA and SuperTrend values behind the clicked candle. Lives
+   inside .chart-canvas (already position:relative). pointer-events:none matters
+   more now that the readout is pinned rather than following the pointer: a
+   click lands on the candle underneath it instead of on the panel, so a pin
+   sitting over the chart never blocks the next pin.
+   --------------------------------------------------------------------------- */
+.chart-tooltip {
+    position: absolute;
+    z-index: 3;
+    pointer-events: none;
+    min-width: 186px;
+    padding: 8px 10px;
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.97);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.14);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text);
+}
+
+.chart-tooltip-time {
+    margin-bottom: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.chart-tooltip-ohlc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px 12px;
+}
+
+.chart-tooltip-ohlc-cell {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.chart-tooltip-ohlc-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.chart-tooltip-ohlc-value {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+.chart-tooltip-change {
+    margin-top: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.chart-tooltip .is-up,
+.chart-tooltip-change.is-up {
+    color: #1e8e79;
+}
+
+.chart-tooltip .is-down,
+.chart-tooltip-change.is-down {
+    color: #d0453f;
+}
+
+.chart-tooltip-lines {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(15, 23, 42, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.chart-tooltip-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.chart-tooltip-swatch {
+    flex: none;
+    width: 14px;
+    height: 0;
+    border-top: 2px solid currentColor;
+    border-radius: 999px;
+}
+
+.chart-tooltip-label {
+    flex: none;
+    min-width: 64px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.chart-tooltip-value {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+    white-space: pre;
 }
