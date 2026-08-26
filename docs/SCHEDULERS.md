@@ -108,6 +108,20 @@ After the live cron stores configs into `SharedData`, and at the top of each bac
   4. Compute SMA columns on each list (50, 100, 200, 500 — see [`AllTimeFramedto`](../src/main/java/com/moneymaker/dto/AllTimeFramedto.java)).
 - Then `runStrategies()` invokes every `Strategy` bean — currently `Strategy1` — which writes `TradeSignal`s into `SharedData.tradeSignals`.
 
+> **Entry legs are also filtered by premium.** `Strategy1` drops an entry signal
+> whose leg premium falls outside `trade_config.min_option_price` /
+> `max_option_price` — see
+> [ORDERS_AND_POSITIONS.md](ORDERS_AND_POSITIONS.md#option-premium-band-min_option_price--max_option_price).
+> Exit-direction signals are never filtered.
+
+> **The cache is global; the key is the ownership record.** Every config for the
+> day writes into the same map, so a strategy reading it back must match *every*
+> segment the write pinned — `optionType` and the two depths included, not just
+> `<instrumentToken>|<interval>`. `Strategy1.keyMatches` does this. Matching only
+> the prefix makes a CE config scan the PE config's legs and vice versa, and
+> since a CE + PE pair per day is the normal shape, every signal then fires once
+> per config and the ledger records each trade twice.
+
 Inside `MarketDataService.fetchHistoricalData` the call is wrapped by Resilience4j RateLimiter + Retry — see [RATE_LIMITING.md](RATE_LIMITING.md) for the throttle / retry policy and the planned cache layers.
 
 In backtest mode, `BacktestAnalysisService.runForDateTime` calls `analysisScheduler.calculateIndicator(currentDateTime)` and then `analysisScheduler.runStrategies()` directly per tick — bypassing the cron.

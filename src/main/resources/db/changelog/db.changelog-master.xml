@@ -28,5 +28,7 @@
     <include file="db/changelog/018_create_historical_chart_tables.xml"/>
     <include file="db/changelog/022_consolidate_strategy_id_on_trade_config.xml"/>
     <include file="db/changelog/023_add_updated_date_to_trade_config.xml"/>
+    <include file="db/changelog/024_add_option_price_range_to_trade_config.xml"/>
+    <include file="db/changelog/025_default_option_price_range.xml"/>
 
 </databaseChangeLog>

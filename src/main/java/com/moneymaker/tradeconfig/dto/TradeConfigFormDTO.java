@@ -25,5 +25,9 @@ public class TradeConfigFormDTO {
     private Integer itmDepth;
     private Integer otmDepth;
     private Integer atmDepth;
+
+    /** Inclusive premium band a signal must fall inside to open a trade. Null = unbounded. */
+    private BigDecimal minOptionPrice;
+    private BigDecimal maxOptionPrice;
     private List<SmaTimeframeDTO> timeframes = new ArrayList<>();
 }

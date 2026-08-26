@@ -479,6 +479,14 @@
                 <input id="tc-atm" type="number" step="1" class="form-control" />
             </div>
             <div class="form-row">
+                <label for="tc-min-price" title="Lowest option premium at signal time that may open a trade. Blank = no lower bound.">Min option price</label>
+                <input id="tc-min-price" type="number" step="0.05" min="0" class="form-control" placeholder="no limit" />
+            </div>
+            <div class="form-row">
+                <label for="tc-max-price" title="Highest option premium at signal time that may open a trade. Blank = no upper bound.">Max option price</label>
+                <input id="tc-max-price" type="number" step="0.05" min="0" class="form-control" placeholder="no limit" />
+            </div>
+            <div class="form-row">
                 <label for="tc-otm">OTM depth</label>
                 <input id="tc-otm" type="number" step="1" class="form-control" />
             </div>
@@ -525,6 +533,7 @@
                         <th class="num">ITM</th>
                         <th class="num">ATM</th>
                         <th class="num">OTM</th>
+                        <th class="num" title="Premium band a signal must fall inside to open a trade; — = unbounded">Price band</th>
                         <th>Timeframes</th>
                         <th></th>
                     </tr>
@@ -561,6 +570,13 @@
     };
 
     // ---------- elements ----------
+    // Keep in step with TradeConfigAdminService.DEFAULT_MIN_OPTION_PRICE /
+    // DEFAULT_MAX_OPTION_PRICE and Liquibase 025. The server applies these when a
+    // field is left blank; the form shows them so the standing band is visible
+    // rather than looking like "no limit".
+    const DEFAULT_MIN_PRICE = 80;
+    const DEFAULT_MAX_PRICE = 250;
+
     const els = {
         filterDate:   document.getElementById('tc-filter-date'),
         prevDate:     document.getElementById('tc-prev-date'),
@@ -593,6 +609,8 @@
         itm:          document.getElementById('tc-itm'),
         atm:          document.getElementById('tc-atm'),
         otm:          document.getElementById('tc-otm'),
+        minPrice:     document.getElementById('tc-min-price'),
+        maxPrice:     document.getElementById('tc-max-price'),
         tfRows:       document.getElementById('tc-tf-rows'),
         tfEmpty:      document.getElementById('tc-tf-empty'),
         addTf:        document.getElementById('tc-add-tf'),
@@ -721,6 +739,8 @@
         els.id.value = '';
         [els.target, els.sl, els.maxLoss, els.lots, els.tradesDay, els.parallel,
          els.optionDepth, els.itm, els.atm, els.otm].forEach(e => e.value = '');
+        els.minPrice.value = DEFAULT_MIN_PRICE;
+        els.maxPrice.value = DEFAULT_MAX_PRICE;
         els.instrument.value = '';
         els.strategy.value = '';
         els.side.value = '';
@@ -751,6 +771,10 @@
         els.itm.value         = view.itmDepth ?? '';
         els.atm.value         = view.atmDepth ?? '';
         els.otm.value         = view.otmDepth ?? '';
+        // Blank falls back to the server's standing band, so show it rather than
+        // leaving the field empty and implying "no limit".
+        els.minPrice.value    = view.minOptionPrice ?? DEFAULT_MIN_PRICE;
+        els.maxPrice.value    = view.maxOptionPrice ?? DEFAULT_MAX_PRICE;
         els.tfRows.innerHTML = '';
         (view.timeframes || []).forEach(addTimeframeRow);
         updateTfEmpty();
@@ -813,6 +837,8 @@
             itmDepth:                 num(els.itm),
             atmDepth:                 num(els.atm),
             otmDepth:                 num(els.otm),
+            minOptionPrice:           num(els.minPrice),
+            maxOptionPrice:           num(els.maxPrice),
             timeframes:               collectTimeframes()
         };
     }
@@ -883,6 +909,16 @@
         renderList(data);
     }
 
+    // Compact premium band for the list: "50-200", "50+", "<=200", or an em dash.
+    function priceBand(v) {
+        const lo = v.minOptionPrice, hi = v.maxOptionPrice;
+        const none = (x) => x === null || x === undefined;
+        if (none(lo) && none(hi)) return '—';
+        if (none(lo)) return '≤' + hi;
+        if (none(hi)) return lo + '+';
+        return lo + '–' + hi;
+    }
+
     function renderList(data) {
         const items = data.items || [];
         els.rows.innerHTML = '';
@@ -915,6 +951,7 @@
                 '<td class="num">' + fmtNum(v.itmDepth) + '</td>' +
                 '<td class="num">' + fmtNum(v.atmDepth) + '</td>' +
                 '<td class="num">' + fmtNum(v.otmDepth) + '</td>' +
+                '<td class="num">' + priceBand(v) + '</td>' +
                 '<td>' + tfHtml + '</td>' +
                 '<td><span class="row-actions">' +
                     '<button class="icon-btn" data-edit="' + v.id + '">✎ Edit</button>' +

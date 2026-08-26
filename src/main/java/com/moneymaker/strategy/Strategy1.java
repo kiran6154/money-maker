@@ -16,6 +16,7 @@ import com.moneymaker.strategy.rules.TradeRules;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -65,13 +66,25 @@ public class Strategy1 implements Strategy {
         // when replaying imported candles.
         String instrumentToken = instrumentResolver.underlyingSymbol(config);
 
-        // CE → ascending strike (lowest = deepest ITM = highest premium).
-        // PE → descending strike (highest = deepest ITM = highest premium).
-        // Scanning most-ITM first means the most-expensive leg's signal is
-        // queued first; under TradeConfig.numberOfTradesPerDay / parallel-trade
-        // caps it wins the entry deterministically — re-running the same
-        // backtest now always picks the same strike.
-        final boolean isCe = isCallSide(config);
+        // Legs are scanned highest-premium first, so under the
+        // numberOfTradesPerDay / numberOfParallelTrades caps the most expensive
+        // leg wins the entry. This used to be approximated by sorting on strike
+        // (ascending for CE, descending for PE, on the assumption that deeper
+        // ITM is always dearer). Premium is now compared directly: the strike
+        // proxy breaks down near expiry and across the itm/otm span a single
+        // config scans, which is exactly where the price band matters.
+
+        // The exact segments AnalysisScheduler pinned into the keys this config
+        // wrote — see keyMatches. A null side means it fetched nothing at all
+        // (the writer refuses an unresolved trading_side), so there is nothing
+        // here for this config to scan.
+        final String optionType = resolveOptionType(config);
+        if (optionType == null) {
+            log.warn("[strategy1] tradeConfigId={} has no usable trading_side — nothing to scan", tradeConfigId);
+            return;
+        }
+        final String itmDepth = depthOf(config, true);
+        final String otmDepth = depthOf(config, false);
 
         for (SmaTimeframe tf : timeframes) {
             if (tf == null || tf.getTimePeriod() == null || tf.getSma() == null) continue;
@@ -82,9 +95,10 @@ public class Strategy1 implements Strategy {
             final TradeRules buyRules  = buyRulesFor(primarySma);
 
             List<Map.Entry<String, List<MarketData>>> sortedStrikes = strikeMarketData.entrySet().stream()
-                    .filter(e -> keyMatches(e.getKey(), instrumentToken, interval))
+                    .filter(e -> keyMatches(e.getKey(), instrumentToken, interval,
+                                            optionType, itmDepth, otmDepth))
                     .filter(e -> e.getValue() != null && !e.getValue().isEmpty())
-                    .sorted(strikeComparator(isCe))
+                    .sorted(premiumComparator())
                     .toList();
 
             // Diagnostic: show the SCAN ORDER explicitly with each strike's last
@@ -103,8 +117,8 @@ public class Strategy1 implements Strategy {
                     if (sb.length() > 0) sb.append(", ");
                     sb.append(strike).append("(").append(close).append(")");
                 }
-                log.debug("[strikes] tradeConfigId={} tf={} {} scan-order: {}",
-                        tradeConfigId, interval, isCe ? "CE" : "PE", sb);
+                log.debug("[strikes] tradeConfigId={} tf={} {} scan-order (premium desc): {}",
+                        tradeConfigId, interval, optionType, sb);
             }
 
             for (Map.Entry<String, List<MarketData>> entry : sortedStrikes) {
@@ -131,6 +145,13 @@ public class Strategy1 implements Strategy {
                         sellGate, buyGate, decision.action(), decision.reason());
 
                 if (decision.action() != TradeAction.NONE) {
+                    if (outsidePriceBand(config, decision.action(), lastCandle.getClose())) {
+                        log.debug("[signal] SUPPRESSED {} {} tf={} premium={} outside band [{}, {}] time={}",
+                                decision.action(), strikeLabel, interval, lastCandle.getClose(),
+                                priceBoundOf(config, true), priceBoundOf(config, false),
+                                lastCandle.getTimestamp());
+                        continue;
+                    }
                     log.info("[signal] {} {} tf={} sma{}={} open={} close={} time={}",
                             decision.action(), strikeLabel, interval,
                             primarySma, smaVal, open, close, lastCandle.getTimestamp());
@@ -143,44 +164,103 @@ public class Strategy1 implements Strategy {
         }
     }
 
-    /** True iff the trade config's side resolves to a CE (call) leg. */
-    private boolean isCallSide(TradeConfigCombinedDTO config) {
-        if (config == null || config.getTradeConfig() == null) return true;
-        String side = config.getTradeConfig().getTradingSide();
-        if (side == null) return true;
-        String up = side.toUpperCase();
-        if (up.contains("PE") || up.equals("P")) return false;
-        return true;
+    /**
+     * True when this signal would OPEN a trade on a leg whose premium falls
+     * outside the config's {@code minOptionPrice} / {@code maxOptionPrice} band.
+     *
+     * <p>Bounds are inclusive and independent — either may be null, meaning
+     * unbounded on that side, so a config that sets neither behaves exactly as
+     * before.</p>
+     *
+     * <p><b>Only entry signals are filtered.</b> A strategy here is one-sided:
+     * an entry carries the config's own {@code transactionType} and the opposite
+     * direction is exit-only — the same rule {@code OrderService} applies when it
+     * decides whether a signal opens or closes. Filtering exits too would be
+     * actively harmful on a SELL config, where a falling premium <i>is</i> the
+     * profit: a {@code minOptionPrice} would then suppress precisely the winning
+     * exits and strand the position until stop-loss or the end-of-day
+     * force-close.</p>
+     *
+     * <p>Evaluated against the premium at signal time rather than at strike
+     * selection, because a leg that is out of band in the morning can be in band
+     * by noon.</p>
+     */
+    private boolean outsidePriceBand(TradeConfigCombinedDTO config, TradeAction action, BigDecimal premium) {
+        if (config == null || config.getTradeConfig() == null || premium == null) return false;
+
+        String txn = config.getTradeConfig().getTransactionType();
+        boolean isEntry = txn == null || txn.isBlank()
+                || txn.trim().equalsIgnoreCase(action.name());
+        if (!isEntry) return false;
+
+        BigDecimal min = config.getTradeConfig().getMinOptionPrice();
+        BigDecimal max = config.getTradeConfig().getMaxOptionPrice();
+        if (min != null && premium.compareTo(min) < 0) return true;
+        return max != null && premium.compareTo(max) > 0;
+    }
+
+    /** Band edge for the suppression log; {@code null} renders as "-". */
+    private String priceBoundOf(TradeConfigCombinedDTO config, boolean lower) {
+        if (config == null || config.getTradeConfig() == null) return "-";
+        BigDecimal v = lower
+                ? config.getTradeConfig().getMinOptionPrice()
+                : config.getTradeConfig().getMaxOptionPrice();
+        return v == null ? "-" : v.toPlainString();
     }
 
     /**
-     * Comparator over strike-keyed entries. Most-ITM-first: ascending strike
-     * for CE, descending for PE. Falls back to key-string compare when strike
-     * can't be parsed (defensive — keys always carry an integer strike today).
+     * The config's leg type, {@code "CE"} / {@code "PE"}, or null when
+     * {@code trading_side} does not resolve.
+     *
+     * <p>Deliberately mirrors {@code AnalysisScheduler.resolveOptionType} — it is
+     * what produced the {@code optionType} segment of the cache keys, so any
+     * disagreement here would silently match nothing. Returning null rather than
+     * defaulting to CE matters: the writer skips the fetch entirely for an
+     * unresolved side, so a default would have this config scanning some other
+     * config's legs.</p>
      */
-    private Comparator<Map.Entry<String, List<MarketData>>> strikeComparator(boolean isCe) {
+    private String resolveOptionType(TradeConfigCombinedDTO config) {
+        if (config == null || config.getTradeConfig() == null) return null;
+        String side = config.getTradeConfig().getTradingSide();
+        if (side == null) return null;
+        String up = side.toUpperCase();
+        if (up.contains("CE") || up.contains("C")) return "CE";
+        if (up.contains("PE") || up.contains("P")) return "PE";
+        return null;
+    }
+
+    /**
+     * Scan order: highest current premium first, so the dearest leg gets the
+     * entry when a cap allows only one.
+     *
+     * <p>Premium is the last candle's close — the same value the signal carries
+     * and that becomes {@code entry_price}, so the ordering reflects what the
+     * trade would actually be worth rather than inferring it from strike
+     * distance.</p>
+     *
+     * <p>Ties break on the key string. Without an explicit tie-breaker a stable
+     * sort falls back to {@code ConcurrentHashMap} iteration order, which is not
+     * deterministic across runs — the original cause of "same config, different
+     * strike each run". Entries with no usable close sort last rather than
+     * throwing.</p>
+     */
+    private Comparator<Map.Entry<String, List<MarketData>>> premiumComparator() {
         return (a, b) -> {
-            Integer sa = parseStrikeOrNull(a.getKey());
-            Integer sb = parseStrikeOrNull(b.getKey());
-            if (sa == null || sb == null) return a.getKey().compareTo(b.getKey());
-            int strikeCmp = isCe ? Integer.compare(sa, sb) : Integer.compare(sb, sa);
-            if (strikeCmp != 0) return strikeCmp;
-            // Tie-breaker: lexicographic key. Two cache entries can share the
-            // same strike when sibling configs use different itmDepth/otmDepth
-            // values (the depths are part of the cache key). Without an
-            // explicit tie-breaker the stable sort falls back to ConcurrentHashMap
-            // iteration order — which is non-deterministic across runs and is
-            // the root cause of "same config, different strike each run".
-            return a.getKey().compareTo(b.getKey());
+            BigDecimal pa = lastClose(a.getValue());
+            BigDecimal pb = lastClose(b.getValue());
+            if (pa == null || pb == null) {
+                if (pa != null) return -1;
+                if (pb != null) return 1;
+                return a.getKey().compareTo(b.getKey());
+            }
+            int cmp = pb.compareTo(pa);            // descending premium
+            return cmp != 0 ? cmp : a.getKey().compareTo(b.getKey());
         };
     }
 
-    private Integer parseStrikeOrNull(String key) {
-        if (key == null) return null;
-        String[] parts = key.split("\\|");
-        if (parts.length < 4) return null;
-        try { return Integer.parseInt(parts[3]); }
-        catch (NumberFormatException ex) { return null; }
+    private BigDecimal lastClose(List<MarketData> candles) {
+        if (candles == null || candles.isEmpty()) return null;
+        return candles.get(candles.size() - 1).getClose();
     }
 
     /**
@@ -194,12 +274,46 @@ public class Strategy1 implements Strategy {
         return parts[3] + " " + parts[2];
     }
 
-    private boolean keyMatches(String key, String instrumentToken, String interval) {
+    /**
+     * True when this cache entry is one <i>this</i> config contributed.
+     *
+     * <p>{@code SharedData.strikeMarketDataByInstrumentAndInterval} is global —
+     * every config for the day writes its legs into the same map, keyed
+     * {@code instrumentToken|interval|optionType|strike|optionToken|itmDepth|otmDepth}
+     * by {@code AnalysisScheduler.toStrikeMarketDataKey}. The read therefore has
+     * to match every segment the write pinned, not just the first two.</p>
+     *
+     * <p>Matching only {@code instrumentToken|interval} let a CE config scan the
+     * PE config's legs and vice versa. Since a CE + PE config pair per day is the
+     * normal shape, every signal fired once under each config and the ledger
+     * recorded each trade <b>twice</b> — with half the rows carrying an option
+     * type that contradicts their own config's {@code trading_side}. The
+     * per-config {@code trading_side} reached this class only as the sort
+     * direction, never as a filter. Depths leak the same way between sibling
+     * configs that differ only in {@code itm_depth} / {@code otm_depth}.</p>
+     */
+    private boolean keyMatches(String key, String instrumentToken, String interval,
+                               String optionType, String itmDepth, String otmDepth) {
         if (key == null || interval == null) return false;
-        if (instrumentToken != null) {
-            return key.startsWith(instrumentToken + "|" + interval + "|");
-        }
-        return key.contains("|" + interval + "|");
+        String[] p = key.split("\\|");
+        if (p.length < 7) return false;
+        if (instrumentToken != null && !instrumentToken.equals(p[0])) return false;
+        return interval.equals(p[1])
+                && optionType.equals(p[2])
+                && itmDepth.equals(p[5])
+                && otmDepth.equals(p[6]);
+    }
+
+    /**
+     * Depth segment as the writer rendered it — plain string concatenation of the
+     * {@code Integer}, so a null depth becomes the literal {@code "null"} on both
+     * sides and still matches.
+     */
+    private String depthOf(TradeConfigCombinedDTO config, boolean itm) {
+        if (config == null || config.getTradeConfig() == null) return "null";
+        return String.valueOf(itm
+                ? config.getTradeConfig().getItmDepth()
+                : config.getTradeConfig().getOtmDepth());
     }
 
     // ------------------------------------------------------------------
@@ -210,7 +324,7 @@ public class Strategy1 implements Strategy {
     private TradeRules sellRulesFor(Integer primarySmaPeriod) {
         if (primarySmaPeriod == null) return TradeRules.empty();
         switch (primarySmaPeriod) {
-            case 20:  return sellRulesFor20();
+            //case 20:  return sellRulesFor20();
             case 50:  return sellRulesFor50();
             case 100: return sellRulesFor100();
             case 200: return sellRulesFor200();
@@ -222,7 +336,7 @@ public class Strategy1 implements Strategy {
     private TradeRules buyRulesFor(Integer primarySmaPeriod) {
         if (primarySmaPeriod == null) return TradeRules.empty();
         switch (primarySmaPeriod) {
-            case 20:  return buyRulesFor20();
+            //case 20:  return buyRulesFor20();
             case 50:  return buyRulesFor50();
             case 100: return buyRulesFor100();
             case 200: return buyRulesFor200();
@@ -233,8 +347,8 @@ public class Strategy1 implements Strategy {
 
     private TradeRules sellRulesFor20() {
         List<TradeRule> required = new ArrayList<>();
-        required.add(TradeRule.named("isSma50DownTrending",
-                ctx -> ctx.candle.isSma50DownTrending()));
+        required.add(TradeRule.named("isSma20DownTrending",
+                ctx -> ctx.candle.isSma20DownTrending()));
         List<TradeRule> anyOf = new ArrayList<>();
         return new TradeRules(required, anyOf);
     }
@@ -262,7 +376,13 @@ public class Strategy1 implements Strategy {
     }
 
     private TradeRules sellRulesFor100() {
-        return TradeRules.empty();
+
+        List<TradeRule> required = new ArrayList<>();
+        required.add(TradeRule.named("isSma100DownTrending",
+                ctx -> ctx.candle.isSma100DownTrending()));
+        List<TradeRule> anyOf = new ArrayList<>();
+        return new TradeRules(required, anyOf);
+
     }
 
     private TradeRules buyRulesFor100() {
@@ -272,7 +392,13 @@ public class Strategy1 implements Strategy {
         return new TradeRules(required, anyOf);
     }
 
-    private TradeRules sellRulesFor200() { return TradeRules.empty(); }
+    private TradeRules sellRulesFor200() {
+        List<TradeRule> required = new ArrayList<>();
+        required.add(TradeRule.named("isSma200DownTrending",
+                ctx -> ctx.candle.isSma200DownTrending()));
+        List<TradeRule> anyOf = new ArrayList<>();
+        return new TradeRules(required, anyOf);
+    }
 
     private TradeRules buyRulesFor200() {
         List<TradeRule> required = new ArrayList<>();
@@ -281,7 +407,13 @@ public class Strategy1 implements Strategy {
         return new TradeRules(required, anyOf);
     }
 
-    private TradeRules sellRulesFor500() { return TradeRules.empty(); }
+    private TradeRules sellRulesFor500() {
+        List<TradeRule> required = new ArrayList<>();
+        required.add(TradeRule.named("isSma500DownTrending",
+                ctx -> ctx.candle.isSma500DownTrending()));
+        List<TradeRule> anyOf = new ArrayList<>();
+        return new TradeRules(required, anyOf);
+    }
 
     private TradeRules buyRulesFor500() {
         List<TradeRule> required = new ArrayList<>();

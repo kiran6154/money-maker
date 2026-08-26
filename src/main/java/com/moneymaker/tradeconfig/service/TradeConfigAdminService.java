@@ -26,6 +26,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -167,6 +168,21 @@ public class TradeConfigAdminService {
 
     /** The only source this bulk API will ever touch. Never client-supplied. */
     public static final String SOURCE_AUTO = "AUTO_DOWNTREND";
+
+    /** Origin stamped on configs created through this service — i.e. by a human. */
+    public static final String SOURCE_MANUAL = "MANUAL";
+
+    /**
+     * Standing premium band applied when a config does not state one.
+     *
+     * <p>Mirrors the DB defaults in changeset {@code 025_default_option_price_range}
+     * and must be kept in step with them. Duplicated deliberately: Hibernate names
+     * every column in its INSERT, so a null field is written as an explicit NULL
+     * and the DB default never fires on a JPA insert — the same trap that made
+     * {@code source} break every create through this service.</p>
+     */
+    public static final BigDecimal DEFAULT_MIN_OPTION_PRICE = new BigDecimal("80");
+    public static final BigDecimal DEFAULT_MAX_OPTION_PRICE = new BigDecimal("250");
 
     /** Writes within this gap are treated as one generation run. */
     private static final Duration RUN_GAP = Duration.ofMinutes(2);
@@ -417,6 +433,20 @@ public class TradeConfigAdminService {
         if (!strategyFactory.availableStrategyIds().contains(form.getStrategyId())) {
             throw new IllegalArgumentException("Unknown strategyId=" + form.getStrategyId());
         }
+        // An inverted band matches nothing, so the config would silently never
+        // trade. Reject it here rather than let it look like a dead strategy.
+        BigDecimal min = form.getMinOptionPrice();
+        BigDecimal max = form.getMaxOptionPrice();
+        if (min != null && min.signum() < 0) {
+            throw new IllegalArgumentException("minOptionPrice must not be negative");
+        }
+        if (max != null && max.signum() < 0) {
+            throw new IllegalArgumentException("maxOptionPrice must not be negative");
+        }
+        if (min != null && max != null && max.compareTo(min) < 0) {
+            throw new IllegalArgumentException(
+                    "maxOptionPrice (" + max + ") must not be below minOptionPrice (" + min + ")");
+        }
     }
 
     private void applyForm(TradeConfig tc, TradeConfigFormDTO form) {
@@ -436,6 +466,22 @@ public class TradeConfigAdminService {
         tc.setItmDepth(form.getItmDepth());
         tc.setOtmDepth(form.getOtmDepth());
         tc.setAtmDepth(form.getAtmDepth());
+        // Unset means "use the standing band", not "unbounded" — an unbounded
+        // config is what produced 6-point entries with a 30-point target.
+        tc.setMinOptionPrice(form.getMinOptionPrice() != null
+                ? form.getMinOptionPrice() : DEFAULT_MIN_OPTION_PRICE);
+        tc.setMaxOptionPrice(form.getMaxOptionPrice() != null
+                ? form.getMaxOptionPrice() : DEFAULT_MAX_OPTION_PRICE);
+
+        // trade_config.source is NOT NULL (changeset 019) and Hibernate writes the
+        // column explicitly, so the DB's DEFAULT 'MANUAL' never applies — leaving
+        // it unset made every create through this service fail with a constraint
+        // violation. Only stamp it when absent: an edit of a generated config must
+        // keep its AUTO_DOWNTREND marker, or the detector loses its dedupe key and
+        // the bulk-delete panel stops seeing the row.
+        if (tc.getSource() == null || tc.getSource().isBlank()) {
+            tc.setSource(SOURCE_MANUAL);
+        }
     }
 
     /**
@@ -499,6 +545,8 @@ public class TradeConfigAdminService {
         v.setItmDepth(tc.getItmDepth());
         v.setOtmDepth(tc.getOtmDepth());
         v.setAtmDepth(tc.getAtmDepth());
+        v.setMinOptionPrice(tc.getMinOptionPrice());
+        v.setMaxOptionPrice(tc.getMaxOptionPrice());
         v.setSource(tc.getSource());
         v.setUpdatedDate(tc.getUpdatedDate());
 

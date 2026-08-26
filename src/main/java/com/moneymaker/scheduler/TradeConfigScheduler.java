@@ -233,9 +233,9 @@ return tradeConfigCombinedDTOList;
     // column to the query, append it to the end of its block and extend the
     // matching mapper. Never reorder.
     //
-    //   0..16  trade_config    (source last)
-    //   17..21 instrument
-    //   22..33 instrument_details
+    //   0..18  trade_config    (min/max_option_price last)
+    //   19..23 instrument
+    //   24..35 instrument_details
     // ------------------------------------------------------------------
 
     // Helper to safely convert to BigDecimal
@@ -259,6 +259,8 @@ return tradeConfigCombinedDTOList;
         tc.setOtmDepth(toInteger(row[i++]));
         tc.setAtmDepth(toInteger(row[i++]));
         tc.setSource(ConverterUtility.toString(row[i++])); // source (MANUAL / AUTO_DOWNTREND)
+        tc.setMinOptionPrice(toBigDecimal(row[i++])); // min_option_price (nullable)
+        tc.setMaxOptionPrice(toBigDecimal(row[i++])); // max_option_price (nullable)
 
 
         // Instrument will be set separately by mapToInstrument
@@ -266,8 +268,10 @@ return tradeConfigCombinedDTOList;
     }
 
     private Instrument mapToInstrument(Object[] row, TradeConfig tc) {
-        // Instrument starts after the 17 trade_config columns (0..16, source last)
-        int i = 17;  // Starting index for Instrument fields
+        // Instrument starts after the 19 trade_config columns (0..18, the option
+        // price band last). Bump this whenever a column is appended to the
+        // trade_config block of fetchCombinedByTradingDate.
+        int i = 19;  // Starting index for Instrument fields
         Instrument ins = new Instrument();
         ins.setId(toInteger(row[i++])); // id
         ins.setInsName(ConverterUtility.toString(row[i++])); // ins_name
@@ -280,8 +284,8 @@ return tradeConfigCombinedDTOList;
     }
 
     private InstrumentDetails mapToInstrumentDetails(Object[] row, TradeConfig tc, Instrument ins) {
-        // InstrumentDetails starts after trade_config (17) + instrument (5) columns
-        int i = 22;  // Starting index for InstrumentDetails fields
+        // InstrumentDetails starts after trade_config (19) + instrument (5) columns
+        int i = 24;  // Starting index for InstrumentDetails fields
         InstrumentDetails id = new InstrumentDetails();
         id.setInstrumentToken(toInteger(row[i++])); // instrument_token
         id.setExchangeToken(toInteger(row[i++])); // exchange_token

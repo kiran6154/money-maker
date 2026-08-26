@@ -84,6 +84,7 @@ Legend for effort:
 |---|---|
 | Where | [`TradeConfigAdminService.delete`](../src/main/java/com/moneymaker/tradeconfig/service/TradeConfigAdminService.java) → HTTP 409 |
 | Why | Configs that ever fired a trade can't be removed, ever. Operationally fine for audit but the list view will grow forever — and there's no way to mark a config as "retired, do not run anymore today" without changing its `trading_date` to a past day. |
+| Partly addressed 2026-08-25 | The bulk delete now takes `force`, which removes traded configs **and their `trade_order` rows** — see [EOD_DOWNTREND.md](EOD_DOWNTREND.md#force-deleting-configs-that-have-trades). That covers "clear out configs I no longer want", including `source: MANUAL` ones. It does **not** cover the retire-without-deleting case below: the single-config `DELETE` still 409s, and there is still no way to keep a config's history while stopping it from running. |
 | Fix sketch | New `is_active BOOLEAN` column on `trade_config` (Liquibase 018). `findByTradingDate` becomes `findByTradingDateAndIsActiveTrue`. UI gets a toggle in the row actions; hard delete stays for configs that never traded. |
 | Effort | **M** |
 | Priority | _TBD_ |
@@ -206,7 +207,18 @@ Legend for effort:
 | Resolution | Key is now `expiry\|strike\|optionType` via `SharedData.optionTokenKey(...)`, and `BacktestAnalysisService` clears the map in its day-end `finally` block alongside the other per-day caches. |
 | Effort | **S** |
 
-## 19. `MarketDataProviderFactory.java` is an empty file
+## 19. `Strategy1` scanned every config's legs, not its own — **RESOLVED 2026-08-25**
+
+| | |
+|---|---|
+| Where | [`Strategy1.keyMatches`](../src/main/java/com/moneymaker/strategy/Strategy1.java), reading [`SharedData.strikeMarketDataByInstrumentAndInterval`](../src/main/java/com/moneymaker/shared/data/SharedData.java) written by [`AnalysisScheduler.toStrikeMarketDataKey`](../src/main/java/com/moneymaker/scheduler/AnalysisScheduler.java) |
+| Why | The writer keys each entry `instrumentToken\|interval\|optionType\|strike\|optionToken\|itmDepth\|otmDepth` and contributes only the legs of the config that fetched them. The reader matched a `instrumentToken\|interval\|` **prefix** only — `optionType` and both depths were never compared. `trading_side` reached the strategy solely as the sort direction (`strikeComparator(isCe)`), never as a filter, so every config scanned the union of all configs' legs. |
+| Impact | On any day with the normal CE + PE config pair, each signal fired once under each config id and the ledger recorded **every trade twice**, with half the rows carrying an option type contradicting their own config's `trading_side` (e.g. a PE trade booked under a CE config). Realised P&L over such a run is doubled. The `existsByTradeConfigIdAndOptionTokenAndEntryDirectionAndEntryTime` dedupe guard could not catch it — it keys on `tradeConfigId`, so the pairs are legitimately distinct rows. Where several legs fired on one tick the two configs landed on *different* strikes instead of identical ones, because they sort in opposite directions and `no_of_parrellel_trades` cut the scan short at opposite ends — which is why the duplication was not uniform and read as "sometimes the wrong strike". |
+| Resolution | `keyMatches` now splits the key and compares `optionType` against the config's resolved `trading_side` plus both depth segments against the config's own. `isCallSide` became `resolveOptionType`, mirroring `AnalysisScheduler.resolveOptionType` including its null-on-unresolved behaviour — the writer skips the fetch for an unresolved side, so defaulting to CE would have made such a config scan someone else's legs. |
+| Related | Sibling of [#18](#18-shareddataoptiontokenmap-was-keyed-by-strike-alone--resolved-2026-08-22) — same root shape (a shared cache whose key was less specific than its contents), different map. |
+| Effort | **S** |
+
+## 20. `MarketDataProviderFactory.java` is an empty file
 
 | | |
 |---|---|

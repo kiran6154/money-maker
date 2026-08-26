@@ -300,6 +300,77 @@ Two opt-ins there reach past the defaults, and both are off unless explicitly se
 
 ---
 
+## Option premium band (`min_option_price` / `max_option_price`)
+
+`itm_depth` / `otm_depth` decide **which strikes are scanned**; this band decides
+**which of them are worth entering**. The two are not substitutes — a strike one
+step OTM can be worth 200 points in the morning and 6 near expiry.
+
+Both bounds are inclusive and independent (Liquibase
+[`024`](../src/main/resources/db/changelog/024_add_option_price_range_to_trade_config.xml)).
+`TradeConfigAdminService.validate` rejects a negative bound or `max < min` with a
+400, since an inverted band matches nothing and would read as a dead strategy.
+
+**The standing band is 80–250** ([`025`](../src/main/resources/db/changelog/025_default_option_price_range.xml)).
+A config that leaves a bound blank gets the default, not "unbounded" — an
+unbounded config is what produced 6-point entries against a 30-point target. The
+value lives in three places that must be kept in step: the DB default,
+`TradeConfigAdminService.DEFAULT_M{IN,AX}_OPTION_PRICE`, and the form's
+`DEFAULT_M{IN,AX}_PRICE`. The duplication is deliberate — Hibernate names every
+column in its INSERT, so a null field is written as an explicit NULL and the DB
+default never fires on a JPA insert (the same trap that made `source` break every
+create through the admin service).
+
+> The DB-level default does not survive on a live instance. `spring.jpa.hibernate.ddl-auto=update`
+> re-issues `MODIFY COLUMN` when the entity's declared precision differs from the
+> table's, and MySQL drops the column default as a side effect — observed here:
+> after startup the columns read `decimal(12,4)` with `Default: NULL`. This costs
+> nothing in practice, because JPA inserts never consult the DB default anyway;
+> the service constant is the one that decides. Do not "fix" it by removing the
+> entity precision — that just trades a dead default for a schema mismatch.
+
+A `NULL` in the column is still read as unbounded on that side, so rows predating
+this change keep working; the admin path just never writes one.
+
+### Why it exists
+
+`target` and `stop_loss` are **absolute per-share points**, compared straight
+against P&L in `PositionService.thresholdBreach`. That is incoherent across the
+premium range a single config scans. Selling a 6.35 option the entire possible
+gain is 6.35 — premium decaying to zero — so a 30-point target can never fire,
+while a 30-point stop is 472% of premium. On the same tick the deep-ITM leg at
+254 carries that same 30-point stop at 12%, i.e. ordinary noise. The band is the
+control that keeps a config on legs where its thresholds mean something.
+
+### Where it is enforced — and why not in `OrderService`
+
+In [`Strategy1.outsidePriceBand`](../src/main/java/com/moneymaker/strategy/Strategy1.java),
+at signal generation, against the leg's premium on that candle — the same value
+that becomes `entry_price`. Not at strike-selection time, because a leg out of
+band at 09:20 can be in band by noon.
+
+Legs are scanned **highest premium first** (`Strategy1.premiumComparator`), so
+when a cap allows only one entry the dearest in-band leg wins it. This replaced
+a strike-based proxy — ascending strike for CE, descending for PE, on the
+assumption that deeper ITM is always dearer — which breaks down near expiry and
+across the itm/otm span a single config scans. Ties break on the cache key, since
+without an explicit tie-breaker a stable sort falls back to `ConcurrentHashMap`
+iteration order and the same backtest picks a different strike each run.
+
+**Only entry signals are filtered.** A strategy here is one-sided: an entry
+carries the config's own `transactionType`, and the opposite direction is
+exit-only — the rule `OrderService` already applies when deciding whether a
+signal opens or closes. Filtering exits too would be actively harmful on a SELL
+config, where a *falling* premium is the profit: a `minOptionPrice` would then
+suppress precisely the winning exits and strand the position until stop-loss or
+the end-of-day force-close. The direction check is what makes the gate
+exit-safe by construction.
+
+Suppressed signals log at debug as `[signal] SUPPRESSED … outside band [min, max]`
+so a config that stops trading is diagnosable rather than silently idle.
+
+---
+
 ## Adding a new broker
 
 1. Per existing convention (see [Readme](../Readme.md)), add `BrokerLoginService` impl in `com.moneymaker.broker.<name>` first.
@@ -343,6 +414,8 @@ Trading-behaviour parameters — anything that controls *when* a trade enters, *
 | Profit target (per share) | `tradeConfig.target` → snapshotted to `target_at_entry` at open |
 | Stop loss (per share, positive) | `tradeConfig.stopLoss` → snapshotted to `stop_loss_at_entry` at open |
 | Lot quantity | `tradeConfig.lotQuantity` |
+| Tradeable premium band at signal time (default 80–250) | `tradeConfig.minOptionPrice` / `tradeConfig.maxOptionPrice` |
+| Which in-band leg wins when a cap allows one | highest premium first — `Strategy1.premiumComparator` |
 | Active broker | `broker.active` (application property) |
 | Backtest replay window | `fromDate` / `toDate` from the `/api/backtest/analysis` request |
 

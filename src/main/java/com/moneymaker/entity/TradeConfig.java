@@ -65,6 +65,27 @@ public class TradeConfig {
     private Integer atmDepth;
 
     /**
+     * Lowest option premium this config will open a trade at, inclusive.
+     * {@code null} = no lower bound.
+     *
+     * <p>Guards against entering legs so cheap that an absolute-points
+     * {@code target} cannot physically be reached — selling a 6-point option
+     * caps the gain at 6 — while the same {@code stopLoss} is several times the
+     * premium. Evaluated at signal generation against that leg's premium at that
+     * moment, not at strike-selection time, because a leg's premium moves
+     * through the day.</p>
+     */
+    @Column(name = "min_option_price", precision = 12, scale = 4)
+    private BigDecimal minOptionPrice;
+
+    /**
+     * Highest option premium this config will open a trade at, inclusive.
+     * {@code null} = no upper bound.
+     */
+    @Column(name = "max_option_price", precision = 12, scale = 4)
+    private BigDecimal maxOptionPrice;
+
+    /**
      * Origin marker. {@code MANUAL} = inserted by hand (default). {@code AUTO_DOWNTREND}
      * = inserted by {@code EodDowntrendDetectionService} for the next trading day.
      * Used by the EOD generator to dedupe its own output across repeated backtest runs.

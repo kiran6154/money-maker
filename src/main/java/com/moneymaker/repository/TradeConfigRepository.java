@@ -78,9 +78,9 @@ public interface TradeConfigRepository extends JpaRepository<TradeConfig, Intege
      *
      * <p>Index map consumed by the mappers:</p>
      * <ul>
-     *   <li>{@code 0..16}  — trade_config (source last)</li>
-     *   <li>{@code 17..21} — instrument</li>
-     *   <li>{@code 22..33} — instrument_details</li>
+     *   <li>{@code 0..18}  — trade_config (min/max_option_price last)</li>
+     *   <li>{@code 19..23} — instrument</li>
+     *   <li>{@code 24..35} — instrument_details</li>
      * </ul>
      *
      * <p>If you add a column here, append it to the <i>end</i> of its own
@@ -91,6 +91,7 @@ public interface TradeConfigRepository extends JpaRepository<TradeConfig, Intege
             "  tc.p_instrument, tc.max_loss, tc.option_depth, tc.transaction_type, " +
             "  tc.lot_quantity, tc.stratergy_id, tc.no_of_trades, tc.no_of_parrellel_trades, " +
             "  tc.itm_depth, tc.otm_depth, tc.atm_depth, tc.source, " +
+            "  tc.min_option_price, tc.max_option_price, " +
             "  i.id, i.ins_name, i.ins_id, i.lot_qty, i.strike_points, " +
             "  id.instrument_token, id.exchange_token, id.tradingsymbol, id.name, " +
             "  id.last_price, id.expiry, id.strike, id.tick_size, id.lot_size, " +
