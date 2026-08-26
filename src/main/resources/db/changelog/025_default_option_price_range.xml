@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      Standing premium band for new configs: 80 to 250.
+
+      Chosen by the desk, not derived - below ~80 an absolute-points target
+      stops being reachable (selling a 20-point option caps the gain at 20
+      against a 30-point target), and above ~250 the same absolute stop is
+      small enough relative to premium that ordinary noise closes the trade.
+
+      The DB default covers rows inserted by hand. It does NOT cover inserts
+      through JPA: Hibernate names every column in its INSERT, so a null field
+      is written as an explicit NULL and the default never applies - the same
+      trap that made trade_config.source fail every create through the admin
+      service. TradeConfigAdminService therefore applies the same two values
+      itself; this changeset and that constant must be kept in step.
+    -->
+    <changeSet id="025_default_option_price_range" author="moneymaker">
+        <addDefaultValue tableName="trade_config" columnName="min_option_price"
+                         columnDataType="DECIMAL(12,4)" defaultValueNumeric="80"/>
+        <addDefaultValue tableName="trade_config" columnName="max_option_price"
+                         columnDataType="DECIMAL(12,4)" defaultValueNumeric="250"/>
+    </changeSet>
+
+</databaseChangeLog>

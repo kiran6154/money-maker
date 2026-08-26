@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      Tradeable premium band for a config's option legs.
+
+      Purpose
+      =======
+      itm_depth / otm_depth decide WHICH strikes are scanned; these decide which
+      of them are worth entering. The two are not interchangeable: a strike that
+      is one step OTM in the morning can be worth 200 points, and the same strike
+      near expiry can be worth 6.
+
+      Without a band, a SELL config with target/stop_loss expressed as absolute
+      points behaves incoherently across the premium range it scans. Selling a
+      6.35 option, the most that can ever be earned is 6.35 - premium decaying to
+      zero - so a 30-point target can never fire, while a 30-point stop is 472%
+      of the premium. On the same tick the deep-ITM leg at 254 has that same
+      30-point stop sitting at 12%, i.e. ordinary noise.
+
+      Both bounds are nullable and independent: NULL means unbounded on that
+      side, so every config that predates this change keeps its exact behaviour.
+      Checked at signal generation against the leg's premium at that moment, and
+      only for signals that would OPEN a position - see Strategy1.
+    -->
+    <changeSet id="024_add_option_price_range_to_trade_config" author="moneymaker">
+        <addColumn tableName="trade_config">
+            <column name="min_option_price" type="DECIMAL(12,4)"/>
+            <column name="max_option_price" type="DECIMAL(12,4)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>
