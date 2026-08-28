@@ -1,13 +1,10 @@
 package com.moneymaker.chart.service;
 
-import com.moneymaker.entity.HistoricalOptionCandle;
-import com.moneymaker.entity.HistoricalSpotCandle;
-import com.moneymaker.repository.HistoricalOptionCandleRepository;
-import com.moneymaker.repository.HistoricalSpotCandleRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.BatchPreparedStatementSetter;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.BufferedReader;
@@ -15,13 +12,15 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.sql.Types;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -38,19 +37,72 @@ import java.util.Map;
  * own, both spellings and all four datetime layouts are accepted. The DB column
  * is {@code option_right} either way ({@code right} is a SQL keyword).
  *
- * <h3>Batching</h3>
- * Rows are processed in chunks of {@link #CHUNK_SIZE}. Each chunk resolves every
- * existing natural key in a single range query, then issues one {@code saveAll}.
- * The previous row-at-a-time SELECT+INSERT cost roughly two round trips per row —
- * about 56k for a 28k-row file.
+ * <h3>Why plain JDBC and not JPA</h3>
+ * Both entities key on {@code GenerationType.IDENTITY}, and Hibernate
+ * <b>disables JDBC insert batching entirely</b> for identity-generated ids —
+ * it has to round-trip each insert to read the generated key back. The previous
+ * {@code saveAll} implementation therefore issued one INSERT per row plus a
+ * resolving SELECT per chunk: tolerable for the ~100k rows the tables held when
+ * it was written, hours for the ~3.8M rows of the full ICICI CSV set.
+ *
+ * <p>So the write path here is a {@code JdbcTemplate.batchUpdate} of
+ * {@code INSERT … ON DUPLICATE KEY UPDATE}. Two consequences worth knowing:
+ * <ul>
+ *   <li>The resolving SELECT is gone — the unique natural key does the dedupe
+ *       the in-memory index used to do, including for a key repeated inside one
+ *       file, where the later row simply updates the earlier one. Re-importing
+ *       a file is still a no-op, so the endpoint stays idempotent.</li>
+ *   <li>{@code rewriteBatchedStatements=true} on the JDBC URL is what actually
+ *       makes this fast — without it Connector/J still round-trips per row. With
+ *       it, MySQL reports {@code Statement.SUCCESS_NO_INFO} per element, so the
+ *       old {@code inserted} / {@code updated} split is no longer knowable and
+ *       the response reports {@code rows} processed instead.</li>
+ * </ul>
+ *
+ * <h3>Transactions</h3>
+ * Deliberately none at method level. A 28k-row file in one transaction is a
+ * large undo log for no benefit, and per-chunk commit makes a failed or
+ * interrupted import resumable — re-running the file upserts the rows already
+ * in and continues.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class HistoricalChartCsvImportService {
 
-    /** Rows resolved and flushed per batch. */
-    private static final int CHUNK_SIZE = 1000;
+    /**
+     * Rows per batch. Sized against {@code max_allowed_packet}: 5000 rows of
+     * ~150 bytes rewrites into a ~750 KB multi-row INSERT, comfortably under
+     * the 64 MB default.
+     */
+    private static final int CHUNK_SIZE = 5000;
+
+    /**
+     * {@code VALUES(col)} rather than the 8.0.19+ row-alias form
+     * ({@code … AS new ON DUPLICATE KEY UPDATE open = new.open}). The alias form
+     * is the non-deprecated spelling, but {@code VALUES()} is understood by every
+     * MySQL from 5.7 through 9.x and this file should not pin the deployable
+     * server version.
+     */
+    private static final String SPOT_UPSERT = """
+            INSERT INTO historical_spot_candles
+                (datetime, stock_code, exchange_code, open, high, low, close, volume)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                open = VALUES(open), high = VALUES(high), low = VALUES(low),
+                close = VALUES(close), volume = VALUES(volume)
+            """;
+
+    private static final String OPTION_UPSERT = """
+            INSERT INTO historical_option_candles
+                (datetime, stock_code, exchange_code, expiry_date, strike_price, option_right,
+                 open, high, low, close, volume, open_interest)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                open = VALUES(open), high = VALUES(high), low = VALUES(low),
+                close = VALUES(close), volume = VALUES(volume),
+                open_interest = VALUES(open_interest)
+            """;
 
     /** Accepted {@code datetime} layouts, tried in order. */
     private static final List<DateTimeFormatter> DATE_TIME_FORMATTERS = List.of(
@@ -69,12 +121,10 @@ public class HistoricalChartCsvImportService {
     /** Header spellings accepted for the CE/PE column. */
     private static final List<String> OPTION_RIGHT_COLUMNS = List.of("right", "option_right");
 
-    private final HistoricalSpotCandleRepository spotCandleRepository;
-    private final HistoricalOptionCandleRepository optionCandleRepository;
+    private final JdbcTemplate jdbcTemplate;
 
-    @Transactional
     public Map<String, Integer> importSpot(MultipartFile file) throws IOException {
-        ImportCounter counter = new ImportCounter();
+        int rows = 0;
         try (BufferedReader reader = open(file)) {
             Map<String, Integer> header = readHeader(reader);
             List<SpotRow> chunk = new ArrayList<>(CHUNK_SIZE);
@@ -88,20 +138,18 @@ public class HistoricalChartCsvImportService {
                 }
                 chunk.add(parseSpotRow(line.split(",", -1), header, lineNumber));
                 if (chunk.size() >= CHUNK_SIZE) {
-                    flushSpot(chunk, counter);
+                    rows += flushSpot(chunk);
                     chunk.clear();
                 }
             }
-            flushSpot(chunk, counter);
+            rows += flushSpot(chunk);
         }
-        log.info("[historical-import] spot file={} inserted={} updated={}",
-                file.getOriginalFilename(), counter.inserted, counter.updated);
-        return counter.toMap();
+        log.info("[historical-import] spot file={} rows={}", file.getOriginalFilename(), rows);
+        return Map.of("rows", rows);
     }
 
-    @Transactional
     public Map<String, Integer> importOptions(MultipartFile file) throws IOException {
-        ImportCounter counter = new ImportCounter();
+        int rows = 0;
         try (BufferedReader reader = open(file)) {
             Map<String, Integer> header = readHeader(reader);
             String rightColumn = resolveOptionRightColumn(header);
@@ -116,147 +164,81 @@ public class HistoricalChartCsvImportService {
                 }
                 chunk.add(parseOptionRow(line.split(",", -1), header, rightColumn, lineNumber));
                 if (chunk.size() >= CHUNK_SIZE) {
-                    flushOptions(chunk, counter);
+                    rows += flushOptions(chunk);
                     chunk.clear();
                 }
             }
-            flushOptions(chunk, counter);
+            rows += flushOptions(chunk);
         }
-        log.info("[historical-import] options file={} inserted={} updated={}",
-                file.getOriginalFilename(), counter.inserted, counter.updated);
-        return counter.toMap();
+        log.info("[historical-import] options file={} rows={}", file.getOriginalFilename(), rows);
+        return Map.of("rows", rows);
     }
 
     // ---------------------------------------------------------------- flush
 
-    private void flushSpot(List<SpotRow> chunk, ImportCounter counter) {
+    private int flushSpot(List<SpotRow> chunk) {
         if (chunk.isEmpty()) {
-            return;
+            return 0;
         }
-
-        // One query resolves every natural key in the chunk. A single CSV always
-        // carries one (stock_code, exchange_code) pair, so the first row's series
-        // bounds the lookup; the in-memory index is still keyed by the full
-        // natural key so a mixed file cannot mis-match.
-        LocalDateTime from = chunk.get(0).dateTime;
-        LocalDateTime to = from;
-        for (SpotRow row : chunk) {
-            if (row.dateTime.isBefore(from)) from = row.dateTime;
-            if (row.dateTime.isAfter(to)) to = row.dateTime;
-        }
-
-        SpotRow first = chunk.get(0);
-        Map<String, HistoricalSpotCandle> existing = new HashMap<>();
-        for (HistoricalSpotCandle candle : spotCandleRepository
-                .findByStockCodeIgnoreCaseAndExchangeCodeIgnoreCaseAndDateTimeBetween(
-                        first.stockCode, first.exchangeCode, from, to)) {
-            existing.put(spotKey(candle.getStockCode(), candle.getExchangeCode(), candle.getDateTime()), candle);
-        }
-
-        List<HistoricalSpotCandle> toSave = new ArrayList<>(chunk.size());
-        for (SpotRow row : chunk) {
-            String key = spotKey(row.stockCode, row.exchangeCode, row.dateTime);
-            HistoricalSpotCandle candle = existing.get(key);
-            boolean isNew = candle == null;
-            if (isNew) {
-                candle = new HistoricalSpotCandle();
-                candle.setDateTime(row.dateTime);
-                candle.setStockCode(row.stockCode);
-                candle.setExchangeCode(row.exchangeCode);
-                // Guard against the same natural key appearing twice in one file.
-                existing.put(key, candle);
+        jdbcTemplate.batchUpdate(SPOT_UPSERT, new BatchPreparedStatementSetter() {
+            @Override
+            public void setValues(PreparedStatement ps, int i) throws SQLException {
+                SpotRow row = chunk.get(i);
+                ps.setObject(1, row.dateTime);
+                ps.setString(2, row.stockCode);
+                ps.setString(3, row.exchangeCode);
+                ps.setBigDecimal(4, row.open);
+                ps.setBigDecimal(5, row.high);
+                ps.setBigDecimal(6, row.low);
+                ps.setBigDecimal(7, row.close);
+                setNullableLong(ps, 8, row.volume);
             }
-            candle.setOpen(row.open);
-            candle.setHigh(row.high);
-            candle.setLow(row.low);
-            candle.setClose(row.close);
-            candle.setVolume(row.volume);
-            toSave.add(candle);
-            counter.record(isNew);
-        }
-        spotCandleRepository.saveAll(toSave);
+
+            @Override
+            public int getBatchSize() {
+                return chunk.size();
+            }
+        });
+        return chunk.size();
     }
 
-    private void flushOptions(List<OptionRow> chunk, ImportCounter counter) {
+    private int flushOptions(List<OptionRow> chunk) {
         if (chunk.isEmpty()) {
-            return;
+            return 0;
         }
-
-        // Resolve existing rows one *series* at a time, not by a bare datetime
-        // range. A range query would return every strike alive in that window —
-        // and since the CSV is ordered strike-major, a chunk spans days for a
-        // single strike, so the range would sweep the whole file's worth of rows
-        // on every chunk. Chunks normally touch one or two series, so this is one
-        // or two indexed lookups.
-        Map<String, HistoricalOptionCandle> existing = new HashMap<>();
-        for (SeriesBounds bounds : optionSeriesBounds(chunk).values()) {
-            for (HistoricalOptionCandle candle : optionCandleRepository.findRangeAsc(
-                    bounds.stockCode, bounds.exchangeCode, bounds.expiryDate,
-                    bounds.strikePrice, bounds.optionRight, bounds.from, bounds.to)) {
-                existing.put(optionKey(candle.getStockCode(), candle.getExchangeCode(), candle.getExpiryDate(),
-                        candle.getStrikePrice(), candle.getOptionRight(), candle.getDateTime()), candle);
+        jdbcTemplate.batchUpdate(OPTION_UPSERT, new BatchPreparedStatementSetter() {
+            @Override
+            public void setValues(PreparedStatement ps, int i) throws SQLException {
+                OptionRow row = chunk.get(i);
+                ps.setObject(1, row.dateTime);
+                ps.setString(2, row.stockCode);
+                ps.setString(3, row.exchangeCode);
+                ps.setObject(4, row.expiryDate);
+                ps.setBigDecimal(5, row.strikePrice);
+                ps.setString(6, row.optionRight);
+                ps.setBigDecimal(7, row.open);
+                ps.setBigDecimal(8, row.high);
+                ps.setBigDecimal(9, row.low);
+                ps.setBigDecimal(10, row.close);
+                setNullableLong(ps, 11, row.volume);
+                setNullableLong(ps, 12, row.openInterest);
             }
-        }
 
-        List<HistoricalOptionCandle> toSave = new ArrayList<>(chunk.size());
-        for (OptionRow row : chunk) {
-            String key = optionKey(row.stockCode, row.exchangeCode, row.expiryDate,
-                    row.strikePrice, row.optionRight, row.dateTime);
-            HistoricalOptionCandle candle = existing.get(key);
-            boolean isNew = candle == null;
-            if (isNew) {
-                candle = new HistoricalOptionCandle();
-                candle.setDateTime(row.dateTime);
-                candle.setStockCode(row.stockCode);
-                candle.setExchangeCode(row.exchangeCode);
-                candle.setExpiryDate(row.expiryDate);
-                candle.setStrikePrice(row.strikePrice);
-                candle.setOptionRight(row.optionRight);
-                existing.put(key, candle);
+            @Override
+            public int getBatchSize() {
+                return chunk.size();
             }
-            candle.setOpen(row.open);
-            candle.setHigh(row.high);
-            candle.setLow(row.low);
-            candle.setClose(row.close);
-            candle.setVolume(row.volume);
-            candle.setOpenInterest(row.openInterest);
-            toSave.add(candle);
-            counter.record(isNew);
-        }
-        optionCandleRepository.saveAll(toSave);
+        });
+        return chunk.size();
     }
 
-    /** Distinct option series in a chunk, each with the datetime window it spans. */
-    private Map<String, SeriesBounds> optionSeriesBounds(List<OptionRow> chunk) {
-        Map<String, SeriesBounds> bySeries = new LinkedHashMap<>();
-        for (OptionRow row : chunk) {
-            String seriesKey = row.stockCode + "|" + row.exchangeCode + "|" + row.expiryDate + "|"
-                    + row.strikePrice.stripTrailingZeros().toPlainString() + "|" + row.optionRight;
-            SeriesBounds bounds = bySeries.get(seriesKey);
-            if (bounds == null) {
-                bySeries.put(seriesKey, new SeriesBounds(row));
-            } else {
-                bounds.extend(row.dateTime);
-            }
+    /** {@code volume} / {@code open_interest} are optional in the CSV contract. */
+    private static void setNullableLong(PreparedStatement ps, int index, Long value) throws SQLException {
+        if (value == null) {
+            ps.setNull(index, Types.BIGINT);
+        } else {
+            ps.setLong(index, value);
         }
-        return bySeries;
-    }
-
-    /** Natural key of a spot row. */
-    private String spotKey(String stockCode, String exchangeCode, LocalDateTime dateTime) {
-        return stockCode.toUpperCase(Locale.ROOT) + "|" + exchangeCode.toUpperCase(Locale.ROOT) + "|" + dateTime;
-    }
-
-    /**
-     * Natural key of an option row. Strike is normalised via
-     * {@code stripTrailingZeros} so a {@code 21700} CSV literal indexes to the
-     * same key as a stored {@code 21700.0000}.
-     */
-    private String optionKey(String stockCode, String exchangeCode, LocalDate expiryDate,
-                             BigDecimal strikePrice, String optionRight, LocalDateTime dateTime) {
-        return stockCode.toUpperCase(Locale.ROOT) + "|" + exchangeCode.toUpperCase(Locale.ROOT) + "|"
-                + expiryDate + "|" + strikePrice.stripTrailingZeros().toPlainString() + "|"
-                + optionRight.toUpperCase(Locale.ROOT) + "|" + dateTime;
     }
 
     // ---------------------------------------------------------------- parse
@@ -335,6 +317,12 @@ public class HistoricalChartCsvImportService {
         return value;
     }
 
+    /**
+     * Upper-cases every keyed string column on the way in. Load-bearing: the
+     * historical repositories match with a plain {@code =} so the natural-key
+     * index stays usable, which relies on writers normalising rather than on a
+     * {@code UPPER(...)} in the query.
+     */
     private String normalize(String value) {
         return value.trim().toUpperCase(Locale.ROOT);
     }
@@ -402,32 +390,6 @@ public class HistoricalChartCsvImportService {
         private Long volume;
     }
 
-    /** One option series plus the datetime window a chunk covers for it. */
-    private static final class SeriesBounds {
-        private final String stockCode;
-        private final String exchangeCode;
-        private final LocalDate expiryDate;
-        private final BigDecimal strikePrice;
-        private final String optionRight;
-        private LocalDateTime from;
-        private LocalDateTime to;
-
-        private SeriesBounds(OptionRow row) {
-            this.stockCode = row.stockCode;
-            this.exchangeCode = row.exchangeCode;
-            this.expiryDate = row.expiryDate;
-            this.strikePrice = row.strikePrice;
-            this.optionRight = row.optionRight;
-            this.from = row.dateTime;
-            this.to = row.dateTime;
-        }
-
-        private void extend(LocalDateTime dateTime) {
-            if (dateTime.isBefore(from)) from = dateTime;
-            if (dateTime.isAfter(to)) to = dateTime;
-        }
-    }
-
     private static final class OptionRow {
         private LocalDateTime dateTime;
         private String stockCode;
@@ -441,22 +403,5 @@ public class HistoricalChartCsvImportService {
         private BigDecimal close;
         private Long volume;
         private Long openInterest;
-    }
-
-    private static final class ImportCounter {
-        private int inserted;
-        private int updated;
-
-        private void record(boolean isNew) {
-            if (isNew) {
-                inserted++;
-            } else {
-                updated++;
-            }
-        }
-
-        private Map<String, Integer> toMap() {
-            return Map.of("inserted", inserted, "updated", updated);
-        }
     }
 }

@@ -148,6 +148,26 @@ Unique key:
 stock_code, exchange_code, expiry_date, strike_price, option_right, datetime
 ```
 
+### Query these tables without `UPPER(...)`
+
+Both unique keys above are the *only* index on their table — `018` also created an
+`idx_*_lookup` on an identical column list, which could never win a plan the unique
+constraint didn't already serve, and `028_drop_duplicate_historical_indexes.xml`
+removes it.
+
+That makes the remaining index load-bearing, and a function on an indexed column
+throws it away. Measured on the same rows, the option range query planned as
+`type: ALL, key: NULL, rows: 103585` with `UPPER(stock_code) = UPPER(?)` and as
+`type: range, key: uk_historical_option_series_time, rows: 378` with a plain `=`.
+At full-export scale that is the difference between a usable backtest and an
+unusable one.
+
+Nothing is lost by dropping it: the table collation is `utf8mb4_0900_ai_ci`, so `=`
+already compares case-insensitively, and every writer upper-cases the keyed string
+columns before they reach the DB (`HistoricalChartCsvImportService.normalize`,
+`HistoricalSymbol.upper`). The same reasoning rules out Spring Data's
+`…IgnoreCase…` derived-query keywords here — they generate the same `upper()` call.
+
 ---
 
 ## Import Scope
@@ -391,12 +411,19 @@ Response:
 
 ```json
 {
-  "inserted": 100,
-  "updated": 0
+  "rows": 100
 }
 ```
 
-Existing rows with the same natural key are updated.
+`rows` is the number of CSV rows upserted. Existing rows with the same natural key
+are updated in place, so re-importing a file is a no-op on row count.
+
+> The response used to carry an `inserted` / `updated` split. The writer now uses
+> `INSERT … ON DUPLICATE KEY UPDATE` in JDBC batches with
+> `rewriteBatchedStatements=true` — without which the ~3.8M-row full export takes
+> hours, because `GenerationType.IDENTITY` disables Hibernate's insert batching
+> outright. MySQL reports `Statement.SUCCESS_NO_INFO` for a rewritten batch, so the
+> split is no longer knowable. Nothing consumed it.
 
 ---
 

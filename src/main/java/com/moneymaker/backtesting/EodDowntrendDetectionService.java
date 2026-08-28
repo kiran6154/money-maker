@@ -1,17 +1,15 @@
 package com.moneymaker.backtesting;
 
-import com.moneymaker.entity.ExpiryDates;
 import com.moneymaker.entity.Instrument;
-import com.moneymaker.entity.InstrumentDetails;
 import com.moneymaker.entity.MarketData;
 import com.moneymaker.entity.SmaDowntrendRule;
 import com.moneymaker.entity.SmaTimeframe;
 import com.moneymaker.entity.TradeConfig;
 import com.moneymaker.indicator.IndicatorConfig;
 import com.moneymaker.indicator.IndicatorService;
+import com.moneymaker.market.exception.HistoricalDataMissingException;
+import com.moneymaker.market.instrument.OptionInstrumentResolver;
 import com.moneymaker.market.service.MarketDataService;
-import com.moneymaker.repository.ExpiryDatesRepository;
-import com.moneymaker.repository.InstrumentDetailsRepository;
 import com.moneymaker.repository.SmaDowntrendRuleRepository;
 import com.moneymaker.repository.SmaTimeframeRepository;
 import com.moneymaker.repository.TradeConfigRepository;
@@ -35,15 +33,25 @@ import java.util.List;
  * {@link SmaDowntrendRule} we walk the fixed grid
  * {@link #SMA_PERIODS} × {@link #TIMEFRAMES_MINUTES} against the ATM
  * strike on both CE and PE. Per (side, timeframe) the strike's series is
- * fetched once, all five SMAs computed on it, and
+ * fetched once, every {@link #SMA_PERIODS} SMA computed on it, and
  * {@link SmaTrendCalculator} runs with {@code rule.maxDeviation} starting
  * at {@code rule.startTime}. Every SMA whose last-candle down-trend flag
  * is still on is recorded as a passing combo for that side.</p>
  *
  * <p>For each side with at least one passing combo we insert exactly one
  * {@link TradeConfig} (next trading day, {@code source='AUTO_DOWNTREND'},
- * fields from the {@link #strategyDefaults(int)} block + ATR-derived
- * target/SL) plus one {@link SmaTimeframe} child per passing combo.</p>
+ * fields from the {@link #strategyDefaults(int)} block) plus one
+ * {@link SmaTimeframe} child per passing combo.</p>
+ *
+ * <p><b>Exit bracket.</b> The generated config carries both shapes. The
+ * enforced one is premium-relative — {@code target_pct} / {@code sl_pct}
+ * copied off the rule, which {@code OrderService} turns into points against
+ * the premium each trade actually opens at. The absolute
+ * {@code target} / {@code stop_loss} are the fallback for a config with no
+ * percentage, and are what {@code CommonRules.profitTarget} reads as an
+ * entry gate; they come from {@link #averageIntradayRange} of the leg the
+ * config will trade, times the rule's multipliers, capped by
+ * {@link #clampToBandFloor}.</p>
  *
  * <p><b>Idempotency:</b> if any {@code trade_config} row with
  * {@code source='AUTO_DOWNTREND'} already exists for the next trading day,
@@ -53,6 +61,13 @@ import java.util.List;
  * <p>Backtest-only today. Service is a Spring bean and the public entry
  * {@link #runForDay(LocalDate)} takes nothing backtest-specific, so a
  * future 15:25 cron can call it unchanged for live mode.</p>
+ *
+ * <p><b>Data-source agnostic.</b> Every symbol comes from
+ * {@link OptionInstrumentResolver}, the same indirection {@code AnalysisScheduler}
+ * uses, so the detector works against broker instrument tokens and against the
+ * imported-CSV natural keys alike. It previously read {@code expiry_dates} /
+ * {@code instrument_details} directly and resolved nothing at all under
+ * {@code backtest.data-source=HISTORICAL_ICICI}, where neither table has rows.</p>
  *
  * <p>See {@code docs/EOD_DOWNTREND.md}.</p>
  */
@@ -70,7 +85,7 @@ public class EodDowntrendDetectionService {
 
     /** Fixed SMA grid the detector evaluates. Add a period here AND extend
      *  {@code SmaTrendCalculator} / {@code MarketData} to track its flag. */
-    static final int[] SMA_PERIODS = {20, 50, 100, 200, 500};
+    static final int[] SMA_PERIODS = {50, 100, 200, 500};
 
     /** Fixed candle timeframes the detector evaluates (minutes). */
     static final int[] TIMEFRAMES_MINUTES = {5, 15};
@@ -79,26 +94,27 @@ public class EodDowntrendDetectionService {
     private static final int MIN_STRIKE_DEPTH = 2;
     private static final int MAX_STRIKE_DEPTH = 6;
 
+    /** NSE F&O price step. Market structure, not a trading rule — it is only used
+     *  to land the clamped target one representable tick below the band floor. */
+    private static final BigDecimal TICK_SIZE = new BigDecimal("0.05");
+
     private final SmaDowntrendRuleRepository ruleRepository;
     private final TradeConfigRepository tradeConfigRepository;
     private final SmaTimeframeRepository smaTimeframeRepository;
-    private final InstrumentDetailsRepository instrumentDetailsRepository;
-    private final ExpiryDatesRepository expiryDatesRepository;
+    private final OptionInstrumentResolver instrumentResolver;
     private final MarketDataService marketDataService;
     private final IndicatorService indicatorService;
 
     public EodDowntrendDetectionService(SmaDowntrendRuleRepository ruleRepository,
                                         TradeConfigRepository tradeConfigRepository,
                                         SmaTimeframeRepository smaTimeframeRepository,
-                                        InstrumentDetailsRepository instrumentDetailsRepository,
-                                        ExpiryDatesRepository expiryDatesRepository,
+                                        OptionInstrumentResolver instrumentResolver,
                                         MarketDataService marketDataService,
                                         IndicatorService indicatorService) {
         this.ruleRepository = ruleRepository;
         this.tradeConfigRepository = tradeConfigRepository;
         this.smaTimeframeRepository = smaTimeframeRepository;
-        this.instrumentDetailsRepository = instrumentDetailsRepository;
-        this.expiryDatesRepository = expiryDatesRepository;
+        this.instrumentResolver = instrumentResolver;
         this.marketDataService = marketDataService;
         this.indicatorService = indicatorService;
     }
@@ -155,11 +171,26 @@ public class EodDowntrendDetectionService {
             return 0;
         }
 
-        LocalDate expiry = resolveExpiry(instrument, tradingDay);
+        if (!hasUsableBand(rule)) {
+            return 0;
+        }
+
+        LocalDate expiry = instrumentResolver.resolveExpiry(instrument, tradingDay);
         if (expiry == null) {
             log.warn("[EOD-downtrend] rule id={} — no expiry resolved for {} on {}",
                     rule.getId(), instrument.getInsName(), tradingDay);
             return 0;
+        }
+
+        // The contract the generated config will trade, which is not always the one
+        // we detect the trend on. resolveExpiry returns the first expiry on or after
+        // the date asked for, so on an expiry day `expiry` is the series dying at
+        // today's close while the config being written is for tomorrow. Measuring the
+        // exit bracket on the dying series is how a target ended up sized by the
+        // expiry-day premium collapse — a move the fresh contract cannot repeat.
+        LocalDate tradeExpiry = instrumentResolver.resolveExpiry(instrument, nextDay);
+        if (tradeExpiry == null) {
+            tradeExpiry = expiry;
         }
 
         Integer atmStrike = computeAtmStrike(instrument, tradingDay);
@@ -176,41 +207,77 @@ public class EodDowntrendDetectionService {
         // — its cached series stops refreshing and PositionService then evaluates
         // target/SL against a frozen quote.
         int strikeDepth = strikeDepthFor(
-                computeAtr(instrument.getInsId(), tradingDay, rule.getAtrPeriods()),
+                computeAtr(instrumentResolver.underlyingSymbol(instrument), tradingDay, rule.getAtrPeriods()),
                 instrument.getStrikePoints());
 
         int written = 0;
         for (String side : new String[]{"CE", "PE"}) {
-            InstrumentDetails option = resolveOptionInstrument(instrument, expiry, atmStrike, side);
-            if (option == null || option.getInstrumentToken() == null) {
+            String optionToken = instrumentResolver.optionSymbol(instrument, expiry, atmStrike, side);
+            if (optionToken == null) {
                 log.warn("[EOD-downtrend] rule id={} {} — no option instrument for ATM strike={} expiry={}",
                         rule.getId(), side, atmStrike, expiry);
                 continue;
             }
-            String optionToken = option.getInstrumentToken().toString();
 
-            List<int[]> passing = scanSide(optionToken, tradingDay, rule);
-            if (passing.isEmpty()) {
-                log.debug("[EOD-downtrend] rule id={} {} ATM={} — nothing trending down",
-                        rule.getId(), side, atmStrike);
-                continue;
+            // One absent leg must not cost the other its config. The historical
+            // source throws when a series is wholly missing (an un-imported strike),
+            // and letting that escape processRule would drop the whole rule — both
+            // sides — on a data gap that only affects this one.
+            try {
+                List<int[]> passing = scanSide(optionToken, tradingDay, rule);
+                if (passing.isEmpty()) {
+                    log.debug("[EOD-downtrend] rule id={} {} ATM={} — nothing trending down",
+                            rule.getId(), side, atmStrike);
+                    continue;
+                }
+
+                // Bracket basis. Measured on the option leg, not the underlying, and
+                // therefore per-side: target/stop_loss end up on trade_order and are
+                // compared by PositionService against per-share option-premium P&L, so
+                // an index-denominated number would be in the wrong unit entirely.
+                //
+                // Measured on the leg the config will TRADE (tradeExpiry), not the one
+                // the trend was detected on, and as intraday range rather than true
+                // range — see averageIntradayRange for why the difference matters.
+                String bracketToken = instrumentResolver.optionSymbol(
+                        instrument, tradeExpiry, atmStrike, side);
+
+                BigDecimal basis = null;
+                if (bracketToken != null && !bracketToken.equals(optionToken)) {
+                    try {
+                        basis = averageIntradayRange(
+                                bracketToken, tradingDay, tradeExpiry, rule.getAtrPeriods());
+                    } catch (HistoricalDataMissingException ex) {
+                        basis = null;
+                    }
+                }
+
+                // On an expiry day the contract the config will trade often has no
+                // history yet — it may not even be listed. Falling back to the leg
+                // we detected on keeps a config being written; the basis is then a
+                // dying series, but still gap-free and still excluding the expiry
+                // session itself, which is where the old ATR did its real damage.
+                if (basis == null || basis.signum() <= 0) {
+                    if (bracketToken != null && !bracketToken.equals(optionToken)) {
+                        log.debug("[EOD-downtrend] rule id={} {} — no history for traded contract {} "
+                                        + "as of {}, sizing the bracket off {} instead",
+                                rule.getId(), side, bracketToken, tradingDay, optionToken);
+                    }
+                    basis = averageIntradayRange(optionToken, tradingDay, expiry, rule.getAtrPeriods());
+                }
+
+                if (basis == null || basis.signum() <= 0) {
+                    log.warn("[EOD-downtrend] rule id={} {} — no range basis for token={} on {}, skipping side",
+                            rule.getId(), side, optionToken, tradingDay);
+                    continue;
+                }
+
+                insertAutoTradeConfig(rule, defaults, nextDay, side, basis, passing, instrument, strikeDepth);
+                written++;
+            } catch (HistoricalDataMissingException ex) {
+                log.warn("[EOD-downtrend] rule id={} {} — no imported series for token={} on {}, skipping side: {}",
+                        rule.getId(), side, optionToken, tradingDay, ex.getMessage());
             }
-
-            // ATR is measured on the option leg, not the underlying, and is therefore
-            // per-side. target/stop_loss end up on trade_order and are compared by
-            // PositionService against per-share option-premium P&L, so an ATR taken on
-            // the index would be in the wrong unit entirely: NIFTY ATR(14) runs ~180
-            // points while an ATM premium is ~100, which made target unreachable for a
-            // short leg — max profit on a SELL is the premium itself.
-            BigDecimal atr = computeAtr(optionToken, tradingDay, rule.getAtrPeriods());
-            if (atr == null || atr.signum() <= 0) {
-                log.warn("[EOD-downtrend] rule id={} {} — ATR unavailable for token={} on {}, skipping side",
-                        rule.getId(), side, optionToken, tradingDay);
-                continue;
-            }
-
-            insertAutoTradeConfig(rule, defaults, nextDay, side, atr, passing, instrument, strikeDepth);
-            written++;
         }
         return written;
     }
@@ -226,8 +293,8 @@ public class EodDowntrendDetectionService {
      * what the trader sees on a chart — a 15-minute chart carries ~25 candles per
      * session, so a single day cannot even produce SMA(50), let alone SMA(500), and
      * {@code SMAIndicatorImpl} returns null whenever {@code period > series.size()}.
-     * Fetching one day silently reduced the whole grid to SMA(20) (plus SMA(50) at
-     * 5-minute) and made every longer period permanently unreachable.
+     * Fetching one day silently reduced the whole grid to its shortest period and
+     * made every longer one permanently unreachable.
      * {@code AnalysisScheduler} already fetches with a lookback for exactly this
      * reason; this method now matches it.</p>
      *
@@ -260,7 +327,11 @@ public class EodDowntrendDetectionService {
                 continue;
             }
 
-            // Populate sma_value{20,50,100,200,500} on every candle in the series.
+            // Populate sma_value{50,100,200,500} on every candle in the series.
+            // sma_value20 is deliberately left null — SMA(20) is not in the grid, so
+            // SmaTrendCalculator leaves its flags false and no 20-period combo can be
+            // produced. The chart's own SMA20 comes from ChartIndicatorService and is
+            // unaffected.
             for (int period : SMA_PERIODS) {
                 try {
                     indicatorService.calculate("SMA", series, IndicatorConfig.of(period, "SMA"));
@@ -352,6 +423,12 @@ public class EodDowntrendDetectionService {
         return (int) Math.ceil(tradingDays * 7.0 / 5.0) + 5;
     }
 
+    /**
+     * Period → the entity's down-trend flag. Reached only for periods in
+     * {@link #SMA_PERIODS}; {@code case 20} is kept because this is a generic
+     * mapper over {@link MarketData}'s flags, and {@code default: false} makes an
+     * unmapped period fail closed either way.
+     */
     private boolean smaDownFlag(MarketData c, int period) {
         if (c == null) return false;
         switch (period) {
@@ -364,16 +441,58 @@ public class EodDowntrendDetectionService {
         }
     }
 
-    // ------------------------------------------------------------------
-    // Strike + expiry helpers (ATM only)
-    // ------------------------------------------------------------------
+    /**
+     * Rejects a rule whose premium band cannot produce a tradeable config.
+     *
+     * <p>Both columns are {@code NOT NULL} as of changeset 026, so a null here
+     * means the migration has not been applied — and writing the config anyway
+     * would hand {@code Strategy1} a null bound, which it reads as
+     * <i>unbounded</i>. Skipping loudly is better than silently generating the
+     * any-premium config the band exists to prevent.</p>
+     *
+     * <p>An inverted band (max below min) can never admit a signal, so it is
+     * treated the same way rather than producing a config that looks live and
+     * never trades.</p>
+     */
+    private boolean hasUsableBand(SmaDowntrendRule rule) {
+        BigDecimal min = rule.getMinOptionPrice();
+        BigDecimal max = rule.getMaxOptionPrice();
 
-    private LocalDate resolveExpiry(Instrument instrument, LocalDate tradingDay) {
-        return expiryDatesRepository
-                .findFirstByInstrumentAndExpiryDateGreaterThanEqualOrderByExpiryDateAsc(instrument, tradingDay)
-                .map(ExpiryDates::getExpiryDate)
-                .orElse(null);
+        if (min == null || max == null) {
+            log.warn("[EOD-downtrend] rule id={} — no premium band (min={}, max={}), skipping. "
+                            + "Apply changeset 026 or set min_option_price / max_option_price on the rule.",
+                    rule.getId(), min, max);
+            return false;
+        }
+        if (max.compareTo(min) < 0) {
+            log.warn("[EOD-downtrend] rule id={} — premium band is inverted (min={} > max={}), skipping",
+                    rule.getId(), min, max);
+            return false;
+        }
+
+        // A target of 100% of entry premium needs the leg to go to zero intraday,
+        // so anything at or above 1.0 is a config that can only ever stop out.
+        // Rejected rather than clamped: unlike the absolute target, this one is
+        // typed directly by whoever edits the rule, so silently rewriting it would
+        // hide the mistake.
+        BigDecimal targetPct = rule.getTargetPct();
+        BigDecimal slPct = rule.getSlPct();
+        if (targetPct != null && (targetPct.signum() <= 0 || targetPct.compareTo(BigDecimal.ONE) >= 0)) {
+            log.warn("[EOD-downtrend] rule id={} — target_pct={} is outside (0, 1); a short leg cannot "
+                    + "gain more than the premium it was sold at. Skipping.", rule.getId(), targetPct);
+            return false;
+        }
+        if (slPct != null && slPct.signum() <= 0) {
+            log.warn("[EOD-downtrend] rule id={} — sl_pct={} must be positive, skipping",
+                    rule.getId(), slPct);
+            return false;
+        }
+        return true;
     }
+
+    // ------------------------------------------------------------------
+    // Strike helper (ATM only)
+    // ------------------------------------------------------------------
 
     /**
      * Rounds the underlying's last 5-minute close on {@code tradingDay} to the
@@ -381,13 +500,15 @@ public class EodDowntrendDetectionService {
      */
     private Integer computeAtmStrike(Instrument instrument, LocalDate tradingDay) {
         if (instrument.getStrikePoints() == null || instrument.getStrikePoints().signum() <= 0) return null;
-        if (instrument.getInsId() == null) return null;
+
+        String underlyingSymbol = instrumentResolver.underlyingSymbol(instrument);
+        if (underlyingSymbol == null) return null;
 
         LocalDateTime from = LocalDateTime.of(tradingDay, MARKET_OPEN);
         LocalDateTime to   = LocalDateTime.of(tradingDay, MARKET_CLOSE);
 
         List<MarketData> underlying = marketDataService.fetchHistoricalData(
-                instrument.getInsId(), from, to, "5minute");
+                underlyingSymbol, from, to, "5minute");
         if (underlying == null || underlying.isEmpty()) return null;
 
         BigDecimal close = underlying.get(underlying.size() - 1).getClose();
@@ -396,14 +517,6 @@ public class EodDowntrendDetectionService {
         BigDecimal step = instrument.getStrikePoints();
         BigDecimal multiplier = close.divide(step, 0, RoundingMode.HALF_UP);
         return multiplier.multiply(step).intValueExact();
-    }
-
-    private InstrumentDetails resolveOptionInstrument(Instrument instrument, LocalDate expiry,
-                                                      Integer strike, String optionType) {
-        List<InstrumentDetails> matches = instrumentDetailsRepository.findByCriteria(
-                instrument.getInsName(), expiry.toString(), new BigDecimal(strike), optionType);
-        if (matches.isEmpty()) return null;
-        return matches.get(0);
     }
 
     // ------------------------------------------------------------------
@@ -442,6 +555,65 @@ public class EodDowntrendDetectionService {
         }
         if (count == 0) return null;
         return sum.divide(BigDecimal.valueOf(count), 4, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Mean daily {@code high - low} of {@code token} over the last {@code periods}
+     * sessions, skipping the contract's own expiry day. This is the basis for the
+     * absolute {@code target} / {@code stop_loss} the detector writes.
+     *
+     * <p><b>Why not {@link #computeAtr}.</b> True range takes
+     * {@code max(H-L, |H-prevClose|, |L-prevClose|)}, so it counts the overnight
+     * gap. On an index that gap is a real move a trade can capture the next day.
+     * On an option leg it is mostly re-pricing — the same strike is a different
+     * distance from spot, one day closer to expiry — and an intraday trade opening
+     * after the open can never capture it. Measured on the imported Jan-2024 NIFTY
+     * 21700 PE, the gap term dominated the range term on 2 of 4 days, and on
+     * expiry day contributed a true range of 156.90 against an intraday range of
+     * 116.35. Averaging those gave a 119.89-point target on a leg the config would
+     * enter between 80 and 250 — reachable only if the premium went to zero.</p>
+     *
+     * <p>The expiry-day bar is skipped rather than averaged in: a leg's last
+     * session is a one-way premium collapse, not a range the next contract will
+     * reproduce. Because the token passed here belongs to the contract the config
+     * will trade — whose expiry is still ahead — this normally excludes nothing;
+     * it is a guard for the case where the detector runs on that contract's own
+     * expiry day.</p>
+     *
+     * <p>This is still only the <i>basis</i>. What the generated config enforces is
+     * the premium-relative bracket ({@code target_pct} / {@code sl_pct}); the
+     * absolute value derived here is the fallback and the number
+     * {@code CommonRules.profitTarget} reads as an entry gate.</p>
+     */
+    private BigDecimal averageIntradayRange(String token, LocalDate tradingDay,
+                                            LocalDate contractExpiry, Integer periods) {
+        if (token == null || token.isBlank()) return null;
+        int n = periods == null || periods <= 0 ? 14 : periods;
+
+        LocalDateTime from = LocalDateTime.of(tradingDay.minusDays(Math.max(n * 2L + 10, 30)), LocalTime.MIDNIGHT);
+        LocalDateTime to   = LocalDateTime.of(tradingDay, LocalTime.of(23, 59));
+
+        List<MarketData> daily = marketDataService.fetchHistoricalData(token, from, to, "day");
+        if (daily == null || daily.isEmpty()) return null;
+
+        List<BigDecimal> ranges = new ArrayList<>();
+        for (MarketData bar : daily) {
+            if (bar == null || bar.getHigh() == null || bar.getLow() == null) continue;
+            if (contractExpiry != null && bar.getTimestamp() != null
+                    && contractExpiry.equals(bar.getTimestamp().toLocalDate())) {
+                continue;
+            }
+            BigDecimal range = bar.getHigh().subtract(bar.getLow());
+            if (range.signum() > 0) ranges.add(range);
+        }
+        if (ranges.isEmpty()) return null;
+
+        BigDecimal sum = BigDecimal.ZERO;
+        int startIdx = Math.max(0, ranges.size() - n);
+        for (int i = startIdx; i < ranges.size(); i++) {
+            sum = sum.add(ranges.get(i));
+        }
+        return sum.divide(BigDecimal.valueOf(ranges.size() - startIdx), 4, RoundingMode.HALF_UP);
     }
 
     /**
@@ -517,7 +689,7 @@ public class EodDowntrendDetectionService {
                                        StrategyDefaults defaults,
                                        LocalDate nextDay,
                                        String side,
-                                       BigDecimal atr,
+                                       BigDecimal basis,
                                        List<int[]> passing,
                                        Instrument instrument,
                                        int strikeDepth) {
@@ -528,10 +700,20 @@ public class EodDowntrendDetectionService {
         tc.setStratergyId(rule.getStrategyId());
         tc.setSource(SOURCE_AUTO);
 
-        // ATR is the option leg's, so these are premium points — the same unit
-        // PositionService compares against. See computeAtr.
-        tc.setTarget(atr.multiply(rule.getTargetMultiplier()).setScale(2, RoundingMode.HALF_UP));
-        tc.setStopLoss(atr.multiply(rule.getSlMultiplier()).setScale(2, RoundingMode.HALF_UP));
+        // The bracket that actually decides exits: a fraction of whatever premium
+        // the trade opens at, resolved by OrderService into target_at_entry /
+        // stop_loss_at_entry. Straight off the rule — see changeset 027.
+        tc.setTargetPct(rule.getTargetPct());
+        tc.setSlPct(rule.getSlPct());
+
+        // Absolute fallback, in premium points — the same unit PositionService
+        // compares against. Used when a config carries no percentage, and read by
+        // CommonRules.profitTarget as an SMA-separation gate at entry regardless.
+        // Basis is the traded leg's mean intraday range; see averageIntradayRange.
+        tc.setTarget(clampToBandFloor(
+                basis.multiply(rule.getTargetMultiplier()).setScale(2, RoundingMode.HALF_UP),
+                rule));
+        tc.setStopLoss(basis.multiply(rule.getSlMultiplier()).setScale(2, RoundingMode.HALF_UP));
 
         tc.setTransactionType(defaults.transactionType());
         tc.setMaxLoss(defaults.maxLoss());
@@ -555,6 +737,14 @@ public class EodDowntrendDetectionService {
         tc.setOtmDepth(strikeDepth);
         tc.setAtmDepth(0);
 
+        // Premium band, straight off the rule. Leaving these null is not "no
+        // opinion" — Strategy1.isOutsideBand skips a null bound entirely, so an
+        // unset band is an *unbounded* config, free to sell a 6-point leg against
+        // a 30-point target. Every generated config carries a band for the same
+        // reason every hand-made one does; see changesets 024-026.
+        tc.setMinOptionPrice(rule.getMinOptionPrice());
+        tc.setMaxOptionPrice(rule.getMaxOptionPrice());
+
         TradeConfig saved = tradeConfigRepository.save(tc);
 
         for (int[] combo : passing) {
@@ -565,8 +755,39 @@ public class EodDowntrendDetectionService {
             smaTimeframeRepository.save(tf);
         }
 
-        log.info("[EOD-downtrend] inserted AUTO_DOWNTREND trade_config id={} for {} side={} target={} sl={} combos={}",
-                saved.getId(), nextDay, side, tc.getTarget(), tc.getStopLoss(), summarise(passing));
+        log.info("[EOD-downtrend] inserted AUTO_DOWNTREND trade_config id={} for {} side={} "
+                        + "target={}%/{}pts sl={}%/{}pts basis={} band={}-{} combos={}",
+                saved.getId(), nextDay, side,
+                tc.getTargetPct(), tc.getTarget(), tc.getSlPct(), tc.getStopLoss(), basis,
+                tc.getMinOptionPrice(), tc.getMaxOptionPrice(), summarise(passing));
+    }
+
+    /**
+     * Caps an absolute target at one tick below the premium band's floor.
+     *
+     * <p>A short leg's maximum possible gain is the premium it was sold at, so a
+     * target at or above {@code min_option_price} cannot be reached by the cheapest
+     * entry the config is allowed to take — the trade is guaranteed to end at the
+     * stop or at force close. That is arithmetic about the payoff, not a view on
+     * what a good target is, so it is enforced here rather than left to the
+     * multiplier.</p>
+     *
+     * <p>Clamps rather than skipping the side: the down-trend that was detected is
+     * still real, and a config with a reachable target is more useful than no
+     * config. The warning names both numbers so a persistently clamped rule is
+     * visible as a multiplier that wants lowering.</p>
+     */
+    private BigDecimal clampToBandFloor(BigDecimal target, SmaDowntrendRule rule) {
+        BigDecimal floor = rule.getMinOptionPrice();
+        if (target == null || floor == null || floor.signum() <= 0) return target;
+
+        BigDecimal cap = floor.subtract(TICK_SIZE);
+        if (cap.signum() <= 0 || target.compareTo(cap) <= 0) return target;
+
+        log.warn("[EOD-downtrend] rule id={} — target {} is unreachable at the band floor {}; "
+                        + "clamped to {}. Lower target_multiplier to size it deliberately.",
+                rule.getId(), target, floor, cap);
+        return cap;
     }
 
     private String summarise(List<int[]> passing) {

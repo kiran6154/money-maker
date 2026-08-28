@@ -30,5 +30,8 @@
     <include file="db/changelog/023_add_updated_date_to_trade_config.xml"/>
     <include file="db/changelog/024_add_option_price_range_to_trade_config.xml"/>
     <include file="db/changelog/025_default_option_price_range.xml"/>
+    <include file="db/changelog/026_add_option_price_range_to_sma_downtrend_rule.xml"/>
+    <include file="db/changelog/027_add_pct_bracket.xml"/>
+    <include file="db/changelog/028_drop_duplicate_historical_indexes.xml"/>
 
 </databaseChangeLog>

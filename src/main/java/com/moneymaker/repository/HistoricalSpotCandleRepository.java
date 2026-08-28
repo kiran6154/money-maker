@@ -9,16 +9,28 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
+/**
+ * Reads over {@code historical_spot_candles} — the imported ICICI 5-minute
+ * underlying candles.
+ *
+ * <h3>Why no {@code UPPER(...)} in these queries</h3>
+ * Same reasoning as {@link HistoricalOptionCandleRepository}: a function on an
+ * indexed column makes {@code uk_historical_spot_series_time} unusable and turns
+ * every lookup into a full scan. The table collation
+ * ({@code utf8mb4_0900_ai_ci}) already compares case-insensitively, and both
+ * writers normalise to upper case before the value ever reaches the DB.
+ *
+ * <p><b>Do not "fix" a missing {@code UPPER} back in.</b>
+ */
 @Repository
 public interface HistoricalSpotCandleRepository extends JpaRepository<HistoricalSpotCandle, Integer> {
 
     @Query("""
         SELECT c
         FROM HistoricalSpotCandle c
-        WHERE UPPER(c.stockCode) = UPPER(:stockCode)
-          AND UPPER(c.exchangeCode) = UPPER(:exchangeCode)
+        WHERE c.stockCode = :stockCode
+          AND c.exchangeCode = :exchangeCode
           AND c.dateTime <= :toInclusive
         ORDER BY c.dateTime DESC
     """)
@@ -27,11 +39,6 @@ public interface HistoricalSpotCandleRepository extends JpaRepository<Historical
             @Param("exchangeCode") String exchangeCode,
             @Param("toInclusive") LocalDateTime toInclusive,
             Pageable pageable);
-
-    Optional<HistoricalSpotCandle> findByStockCodeIgnoreCaseAndExchangeCodeIgnoreCaseAndDateTime(
-            String stockCode,
-            String exchangeCode,
-            LocalDateTime dateTime);
 
     /**
      * Ascending candle range for one spot series. Backs the DB-backed backtest
@@ -44,8 +51,8 @@ public interface HistoricalSpotCandleRepository extends JpaRepository<Historical
     @Query("""
         SELECT c
         FROM HistoricalSpotCandle c
-        WHERE UPPER(c.stockCode) = UPPER(:stockCode)
-          AND UPPER(c.exchangeCode) = UPPER(:exchangeCode)
+        WHERE c.stockCode = :stockCode
+          AND c.exchangeCode = :exchangeCode
           AND c.dateTime >= :from
           AND c.dateTime <= :to
         ORDER BY c.dateTime ASC
@@ -55,15 +62,4 @@ public interface HistoricalSpotCandleRepository extends JpaRepository<Historical
             @Param("exchangeCode") String exchangeCode,
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to);
-
-    /**
-     * All rows of a series within a datetime window, used by the CSV importer to
-     * resolve a whole chunk's natural keys in one query instead of one SELECT
-     * per row.
-     */
-    List<HistoricalSpotCandle> findByStockCodeIgnoreCaseAndExchangeCodeIgnoreCaseAndDateTimeBetween(
-            String stockCode,
-            String exchangeCode,
-            LocalDateTime from,
-            LocalDateTime to);
 }

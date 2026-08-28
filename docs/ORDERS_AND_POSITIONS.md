@@ -61,13 +61,14 @@ How a strategy's `BUY` / `SELL` signal becomes a persisted `TradeOrder` row, get
 | `exit_reason` | close | `SIGNAL` / `TARGET` / `STOP_LOSS` / `FORCE_CLOSE`. |
 | `peak_profit` / `peak_loss` | each PositionScheduler tick while OPEN | High-water-mark / low-water-mark of unrealised per-share P&L. |
 | `last_monitored_price` / `last_monitored_at` | each PositionScheduler tick while OPEN | Most recent quote and tick time. |
-| `target_at_entry` / `stop_loss_at_entry` | open | Per-share thresholds **snapshotted from `tradeConfig.target` / `tradeConfig.stopLoss` at entry**. PositionService reads from the row, never from the live config — so a config edit mid-trade can't retroactively close existing positions, and SL/target works even when `SharedData.combinedDto` is stale or empty. |
+| `target_at_entry` / `stop_loss_at_entry` | open | Per-share thresholds **snapshotted at entry** by `OrderService.bracketAtEntry`: `entryPrice × tradeConfig.targetPct` when the config carries a percentage, else the absolute `tradeConfig.target` / `tradeConfig.stopLoss`. PositionService reads from the row, never from the live config — so a config edit mid-trade can't retroactively close existing positions, and SL/target works even when `SharedData.combinedDto` is stale or empty. |
 
 Liquibase changesets that built this:
 - 008 — initial table.
 - 009 — broker order ids + fill_status.
 - 010 — monitor columns (peak / last-monitored / exit_reason).
 - 011 — target / stop-loss snapshot columns.
+- 027 — `trade_config.target_pct` / `sl_pct`, the premium-relative bracket the snapshot resolves. Nullable: null keeps the absolute columns. See [EOD_DOWNTREND.md](EOD_DOWNTREND.md).
 
 Open-position lookup index (`idx_trade_order_open_lookup`) covers `(trade_config_id, instrument_token, option_type, status)` from changeset 008. The dedupe key in `OrderService` later moved to `option_token`, which doesn't have a dedicated index — currently a small-N filter, fine until thousands of trades land per day.
 
@@ -411,8 +412,8 @@ Trading-behaviour parameters — anything that controls *when* a trade enters, *
 | Entry direction allowed (BUY-only / SELL-only) | `tradeConfig.transactionType` |
 | Max trades per config per day (across all strikes, all statuses) | `tradeConfig.numberOfTradesPerDay` |
 | Max simultaneous OPEN trades per direction | `tradeConfig.numberOfParallelTrades` |
-| Profit target (per share) | `tradeConfig.target` → snapshotted to `target_at_entry` at open |
-| Stop loss (per share, positive) | `tradeConfig.stopLoss` → snapshotted to `stop_loss_at_entry` at open |
+| Profit target (per share) | `tradeConfig.targetPct` × entry premium, else `tradeConfig.target` → snapshotted to `target_at_entry` at open |
+| Stop loss (per share, positive) | `tradeConfig.slPct` × entry premium, else `tradeConfig.stopLoss` → snapshotted to `stop_loss_at_entry` at open |
 | Lot quantity | `tradeConfig.lotQuantity` |
 | Tradeable premium band at signal time (default 80–250) | `tradeConfig.minOptionPrice` / `tradeConfig.maxOptionPrice` |
 | Which in-band leg wins when a cap allows one | highest premium first — `Strategy1.premiumComparator` |

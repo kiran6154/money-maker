@@ -206,8 +206,12 @@ return tradeConfigCombinedDTOList;
             sb.append("  instrument  : ").append(ins != null ? ins.getInsName() : "-").append(nl);
             sb.append("  side        : ").append(tc.getTradingSide()).append(nl);
             sb.append("  txn         : ").append(tc.getTransactionType()).append(nl);
-            sb.append("  target      : ").append(tc.getTarget()).append(nl);
-            sb.append("  stop-loss   : ").append(tc.getStopLoss()).append(nl);
+            sb.append("  target      : ").append(tc.getTarget())
+                    .append(tc.getTargetPct() != null ? " (overridden by " + tc.getTargetPct() + " of entry)" : "")
+                    .append(nl);
+            sb.append("  stop-loss   : ").append(tc.getStopLoss())
+                    .append(tc.getSlPct() != null ? " (overridden by " + tc.getSlPct() + " of entry)" : "")
+                    .append(nl);
             sb.append("  lots        : ").append(tc.getLotQuantity()).append(nl);
             sb.append("  trades/day  : ").append(tc.getNumberOfTradesPerDay()).append(nl);
             sb.append("  parallel    : ").append(tc.getNumberOfParallelTrades()).append(nl);

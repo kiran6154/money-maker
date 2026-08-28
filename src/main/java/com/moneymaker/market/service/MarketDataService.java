@@ -54,11 +54,6 @@ public class MarketDataService {
         log.info("MarketDataService initialized with provider: {}", getActiveProvider());
     }
 
-    /** True when candles are served from the imported historical tables. */
-    public boolean isHistoricalSource() {
-        return historicalProvider != null;
-    }
-
     /**
      * Single hop to whichever source is active. The historical source is called
      * directly rather than through {@link KiteHistoricalFetcher}: the
@@ -85,13 +80,20 @@ public class MarketDataService {
                 return hit;
             }
 
-            // Backtest cache miss — fetch the entire day's [dayFrom, dayTo]
-            // superset once, cache it, then slice. All subsequent ticks for
-            // this (symbol, interval) hit the cache.
-            LocalDateTime wideFrom = cache.dayFrom() != null ? cache.dayFrom() : from;
-            LocalDateTime wideTo   = cache.dayTo()   != null ? cache.dayTo()   : to;
+            // Backtest cache miss — fetch a superset once, cache it, then slice.
+            // All subsequent ticks for this (symbol, interval) hit the cache.
+            //
+            // The superset is the UNION of the day window and what the caller
+            // asked for, never just the day window: EodDowntrendDetectionService
+            // wants ~30 days for its ATR and up to 35 for its SMA grid, and
+            // narrowing to [dayFrom, dayTo] silently handed it a few days and a
+            // partial average. For the tick loop, whose windows already sit
+            // inside the day window, the union *is* the day window — identical
+            // behaviour and the same single fetch per (symbol, interval).
+            LocalDateTime wideFrom = min(from, cache.dayFrom());
+            LocalDateTime wideTo   = max(to, cache.dayTo());
             List<MarketData> wide = fetchFromSource(symbol, wideFrom, wideTo, interval);
-            cache.put(symbol, interval, wide);
+            cache.put(symbol, interval, wide, wideFrom, wideTo);
 
             List<MarketData> sliced = cache.slice(symbol, interval, from, to);
             return sliced != null ? sliced : wide;
@@ -116,5 +118,19 @@ public class MarketDataService {
 
     public String getActiveProvider() {
         return historicalProvider != null ? historicalProvider.getName() : fetcher.getActiveProvider();
+    }
+
+    /** Earlier of the two bounds; tolerates a null cache bound (inactive day). */
+    private static LocalDateTime min(LocalDateTime a, LocalDateTime b) {
+        if (a == null) return b;
+        if (b == null) return a;
+        return a.isBefore(b) ? a : b;
+    }
+
+    /** Later of the two bounds; tolerates a null cache bound (inactive day). */
+    private static LocalDateTime max(LocalDateTime a, LocalDateTime b) {
+        if (a == null) return b;
+        if (b == null) return a;
+        return a.isAfter(b) ? a : b;
     }
 }

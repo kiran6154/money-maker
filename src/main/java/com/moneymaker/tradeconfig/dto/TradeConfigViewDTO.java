@@ -30,6 +30,10 @@ public class TradeConfigViewDTO {
     /** Inclusive premium band a signal must fall inside to open a trade. Null = unbounded. */
     private BigDecimal minOptionPrice;
     private BigDecimal maxOptionPrice;
+
+    /** Exit bracket as a fraction of entry premium; null = the absolute target / stopLoss applies. */
+    private BigDecimal targetPct;
+    private BigDecimal slPct;
     private List<SmaTimeframeDTO> timeframes;
 
     /** {@code MANUAL} or {@code AUTO_DOWNTREND} — drives the row badge. */

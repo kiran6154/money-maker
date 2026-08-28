@@ -56,6 +56,17 @@ public class TokenOptionInstrumentResolver implements OptionInstrumentResolver {
         return dto.getInstrumentDetails().getInstrumentToken().toString();
     }
 
+    /**
+     * The index's own token already lives on the instrument row as {@code ins_id},
+     * so no {@code instrument_details} hop is needed here — this is the value
+     * {@code EodDowntrendDetectionService} passed directly before it was routed
+     * through this resolver.
+     */
+    @Override
+    public String underlyingSymbol(Instrument instrument) {
+        return instrument == null ? null : instrument.getInsId();
+    }
+
     @Override
     public LocalDate resolveExpiry(Instrument instrument, LocalDate analysisDate) {
         if (instrument == null || analysisDate == null) {

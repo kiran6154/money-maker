@@ -29,5 +29,12 @@ public class TradeConfigFormDTO {
     /** Inclusive premium band a signal must fall inside to open a trade. Null = unbounded. */
     private BigDecimal minOptionPrice;
     private BigDecimal maxOptionPrice;
+
+    /**
+     * Exit bracket as a fraction of entry premium ({@code 0.20} = 20%). Null keeps
+     * the absolute {@link #target} / {@link #stopLoss}; set, it overrides them.
+     */
+    private BigDecimal targetPct;
+    private BigDecimal slPct;
     private List<SmaTimeframeDTO> timeframes = new ArrayList<>();
 }

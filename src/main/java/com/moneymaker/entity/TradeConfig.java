@@ -86,6 +86,27 @@ public class TradeConfig {
     private BigDecimal maxOptionPrice;
 
     /**
+     * Target as a fraction of the premium the trade opened at, e.g. {@code 0.2000}
+     * = 20%. {@code null} = fall back to the absolute {@link #target} column.
+     *
+     * <p>Takes precedence over {@link #target} when set. {@code OrderService}
+     * resolves it once at entry into {@code trade_order.target_at_entry}, so the
+     * bracket is frozen per trade and {@code PositionService} keeps comparing a
+     * plain points value.</p>
+     *
+     * <p>Exists because {@link #minOptionPrice}..{@link #maxOptionPrice} is a 3x
+     * spread (80-250 as standing values) and one absolute points target cannot
+     * serve both ends: it is a 12% move at the top of the band and a 38% move at
+     * the bottom. See changeset 027 for the measured hit rates.</p>
+     */
+    @Column(name = "target_pct", precision = 6, scale = 4)
+    private BigDecimal targetPct;
+
+    /** Stop-loss as a fraction of entry premium. See {@link #targetPct}. */
+    @Column(name = "sl_pct", precision = 6, scale = 4)
+    private BigDecimal slPct;
+
+    /**
      * Origin marker. {@code MANUAL} = inserted by hand (default). {@code AUTO_DOWNTREND}
      * = inserted by {@code EodDowntrendDetectionService} for the next trading day.
      * Used by the EOD generator to dedupe its own output across repeated backtest runs.

@@ -170,7 +170,9 @@ Every other doc in this folder explains one feature in depth. This one is differ
 | Writes | `historical_spot_candles`, `historical_option_candles` (natural-key upsert) |
 | Downstream | Feeds **workflow ⑧** when the dashboard's data-source selector is `HISTORICAL_ICICI`, and **the backtest workflow** when `backtest.data-source=HISTORICAL_ICICI` — in that mode these tables replace the broker as the candle source for the whole analysis→order→position pipeline. Still deliberately isolated from `market_data`/`instrument*`: no `instrumenttoken` anywhere in this path, and the backtest reaches the rows through `HistoricalSymbol` natural-key strings rather than tokens. |
 | Format | Tolerant importer — `datetime`/`expiry_date` in either `yyyy-MM-dd` or `dd-MM-yyyy` layout, CE/PE column headed `right` or `option_right`. |
-| Full detail | [HISTORICAL_CHART_DATA_PLAN.md](HISTORICAL_CHART_DATA_PLAN.md), [BACKTESTING.md → Data source](BACKTESTING.md#data-source) |
+| Writer | Plain JDBC `INSERT … ON DUPLICATE KEY UPDATE` in 5000-row batches, **not** JPA: both entities use `GenerationType.IDENTITY`, which disables Hibernate insert batching outright. Needs `rewriteBatchedStatements=true` on the JDBC URL to actually batch. Commits per chunk, so an interrupted import resumes by re-running. |
+| Response | `{"rows": N}` — rows upserted. Re-importing a file is a no-op on row count. |
+| Full detail | [HISTORICAL_CHART_DATA_PLAN.md](HISTORICAL_CHART_DATA_PLAN.md), [BACKTESTING.md → Data source](BACKTESTING.md#data-source), [BACKTESTING.md → Importing a full ICICI export](BACKTESTING.md#importing-a-full-icici-export) |
 
 ---
 

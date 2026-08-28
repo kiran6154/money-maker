@@ -43,8 +43,9 @@ import java.util.Objects;
  * <h3>Interval support</h3>
  * The tables store 5-minute candles only. {@code 10minute} / {@code 15minute}
  * are aggregated from consecutive 5-minute buckets, mirroring what
- * {@code ChartTimeframeAggregator} does for the dashboard. {@code day} is not
- * supported — see {@link #DAY_INTERVAL}.
+ * {@code ChartTimeframeAggregator} does for the dashboard. {@code day} is the
+ * same aggregation with a bucket wide enough to swallow a whole session — see
+ * {@link #DAY_INTERVAL}.
  */
 @Slf4j
 @Component
@@ -58,15 +59,26 @@ public class HistoricalIciciMarketDataProvider implements MarketDataProvider {
     private static final String BASE_INTERVAL = "5minute";
 
     /**
-     * Requested by {@code EodDowntrendDetectionService} for its ATR. Daily
-     * candles are not derivable from an intraday-only import in a way that
-     * matches broker daily bars, so this returns empty and the caller degrades
-     * — {@code BacktestAnalysisService} skips EOD downtrend detection entirely
-     * when this provider is active.
+     * Requested by {@code EodDowntrendDetectionService} for its ATR. Served by
+     * rolling the session's 5-minute rows into one bar per trading date, which
+     * is faithful for OHLC: a session's intraday high / low / last close
+     * <i>are</i> the day's high / low / close, and its first candle's open is
+     * the day's open. The one difference from a broker daily bar is the
+     * timestamp — the day's first candle (09:15) rather than midnight — and no
+     * caller reads it: {@code computeAtr} uses only high / low / close and the
+     * ascending order they arrive in.
      */
     private static final String DAY_INTERVAL = "day";
 
     private static final int BASE_INTERVAL_MINUTES = 5;
+
+    /**
+     * Bucket width for {@link #DAY_INTERVAL}. Any value wider than a session
+     * collapses the day into a single bar, because {@link #aggregate} keys its
+     * buckets on <em>(trading date, elapsed minutes since the session open)</em>
+     * and already breaks a bucket when the date changes.
+     */
+    private static final int MINUTES_PER_DAY = 1440;
 
     private final HistoricalSpotCandleRepository spotCandleRepository;
     private final HistoricalOptionCandleRepository optionCandleRepository;
@@ -95,13 +107,9 @@ public class HistoricalIciciMarketDataProvider implements MarketDataProvider {
         Objects.requireNonNull(to, "to must not be null");
         Objects.requireNonNull(interval, "interval must not be null");
 
-        if (DAY_INTERVAL.equalsIgnoreCase(interval)) {
-            log.warn("[historical] interval '{}' is not supported by the historical source (symbol={}) — returning empty",
-                    DAY_INTERVAL, symbol);
-            return List.of();
-        }
-
-        int intervalMinutes = intervalMinutesOf(interval, symbol);
+        int intervalMinutes = DAY_INTERVAL.equalsIgnoreCase(interval)
+                ? MINUTES_PER_DAY
+                : intervalMinutesOf(interval, symbol);
         HistoricalSymbol.Parsed parsed = HistoricalSymbol.parse(symbol);
 
         List<MarketData> base = parsed.isSpot()

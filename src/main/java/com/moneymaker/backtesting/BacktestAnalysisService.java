@@ -4,7 +4,6 @@ import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.entity.SmaTimeframe;
 import com.moneymaker.login.service.BrokerSessionStore;
 import com.moneymaker.market.exception.HistoricalDataMissingException;
-import com.moneymaker.market.service.MarketDataService;
 import com.moneymaker.order.service.OrderService;
 import com.moneymaker.repository.TradeOrderRepository;
 import com.moneymaker.scheduler.AnalysisScheduler;
@@ -43,7 +42,6 @@ public class BacktestAnalysisService {
     private final NotificationService notifier;
     private final BacktestMarketDataCache marketDataCache;
     private final EodDowntrendDetectionService eodDowntrendDetectionService;
-    private final MarketDataService marketDataService;
 
     public BacktestAnalysisService(
             TradeConfigScheduler tradeConfigScheduler,
@@ -56,8 +54,7 @@ public class BacktestAnalysisService {
             @Qualifier("sharedKiteConnect") KiteConnect sharedKiteConnect,
             NotificationService notifier,
             BacktestMarketDataCache marketDataCache,
-            EodDowntrendDetectionService eodDowntrendDetectionService,
-            MarketDataService marketDataService) {
+            EodDowntrendDetectionService eodDowntrendDetectionService) {
         this.tradeConfigScheduler = tradeConfigScheduler;
         this.analysisScheduler = analysisScheduler;
         this.orderScheduler = orderScheduler;
@@ -69,7 +66,6 @@ public class BacktestAnalysisService {
         this.notifier = notifier;
         this.marketDataCache = marketDataCache;
         this.eodDowntrendDetectionService = eodDowntrendDetectionService;
-        this.marketDataService = marketDataService;
     }
 
     public BacktestRunResult run(LocalDate fromDate, LocalDate toDate) {
@@ -176,18 +172,14 @@ public class BacktestAnalysisService {
                 // Backtest-only today (no live scheduler wired). Idempotent:
                 // skipped if AUTO_DOWNTREND rows already exist for the next day.
                 //
-                // Its ATR needs "day" candles, which the historical tables cannot
-                // provide (they store 5-minute rows only), so it is skipped rather
-                // than left to silently produce null ATRs and drop every rule.
-                if (marketDataService.isHistoricalSource()) {
-                    log.info("[Backtest] {} — EOD downtrend detection skipped: the historical data source has no "
-                            + "'day' candles for its ATR", currentDate);
-                } else {
-                    try {
-                        eodDowntrendDetectionService.runForDay(currentDate);
-                    } catch (Exception ex) {
-                        log.error("[Backtest] {} — EOD downtrend detection failed", currentDate, ex);
-                    }
+                // Runs against either data source: the detector resolves every
+                // symbol through OptionInstrumentResolver, and the historical
+                // provider now serves the "day" candles its ATR needs by rolling
+                // up the imported 5-minute rows.
+                try {
+                    eodDowntrendDetectionService.runForDay(currentDate);
+                } catch (Exception ex) {
+                    log.error("[Backtest] {} — EOD downtrend detection failed", currentDate, ex);
                 }
 
                 rowsAfter = countTradeOrdersOnDate(currentDate);
@@ -310,8 +302,14 @@ public class BacktestAnalysisService {
             // The block between START and END is the single tick: indicators →
             // strategy → orders → positions. Counters captured before/after so
             // the END line shows what *this* tick produced (delta), not totals.
-            long rowsBefore   = safeCount();
-            long closedBefore = safeCountClosed();
+            //
+            // Gated on the log level: these four counts exist only to render the
+            // END line's delta, and nothing else in this method reads them. At
+            // INFO — which is what a benchmark or a long run should use — they
+            // are four DB round trips per tick bought for nothing.
+            boolean narrate = log.isDebugEnabled();
+            long rowsBefore   = narrate ? safeCount() : 0L;
+            long closedBefore = narrate ? safeCountClosed() : 0L;
 
             log.debug("=== Analysis {} START ===", date);
 
@@ -333,14 +331,13 @@ public class BacktestAnalysisService {
             orderScheduler.processOrders();
             positionScheduler.processPositions();
 
-            long rowsAfter   = safeCount();
-            long closedAfter = safeCountClosed();
-            long opened = rowsAfter - rowsBefore;             // new trade_order rows
-            long closed = closedAfter - closedBefore;          // OPEN → CLOSED transitions
-
             long durationMs = Duration.between(startedAt, Instant.now()).toMillis();
-            log.debug("=== Analysis {} END (signals={}, opened={}, closed={}, dur={}ms) ===",
-                    date, signalsEmitted, opened, closed, durationMs);
+            if (narrate) {
+                long opened = safeCount() - rowsBefore;              // new trade_order rows
+                long closed = safeCountClosed() - closedBefore;      // OPEN → CLOSED transitions
+                log.debug("=== Analysis {} END (signals={}, opened={}, closed={}, dur={}ms) ===",
+                        date, signalsEmitted, opened, closed, durationMs);
+            }
 
             return new BacktestDayResult(date, true, combinedDto.size(), durationMs, "Analysis completed.");
         } catch (HistoricalDataMissingException ex) {
@@ -361,9 +358,7 @@ public class BacktestAnalysisService {
     /** Trade_order rows in CLOSED status; 0 on any error. */
     private long safeCountClosed() {
         try {
-            LocalDateTime min = LocalDateTime.of(1970, 1, 1, 0, 0);
-            LocalDateTime max = LocalDateTime.of(9999, 1, 1, 0, 0);
-            return tradeOrderRepository.findByStatusAndEntryTimeBetween("CLOSED", min, max).size();
+            return tradeOrderRepository.countByStatus("CLOSED");
         } catch (Exception ex) {
             return 0L;
         }
@@ -389,8 +384,8 @@ public class BacktestAnalysisService {
         try {
             LocalDateTime start = date.atStartOfDay();
             LocalDateTime end   = start.plusDays(1).minusNanos(1);
-            return tradeOrderRepository.findByStatusAndEntryTimeBetween("OPEN", start, end).size()
-                    + tradeOrderRepository.findByStatusAndEntryTimeBetween("CLOSED", start, end).size();
+            return tradeOrderRepository.countByStatusAndEntryTimeBetween("OPEN", start, end)
+                    + tradeOrderRepository.countByStatusAndEntryTimeBetween("CLOSED", start, end);
         } catch (Exception ex) {
             log.debug("[Backtest] failed to count trade_order rows for {}: {}", date, ex.getMessage());
             return 0L;

@@ -59,7 +59,7 @@ src/main/java/com/moneymaker/
 
 src/main/resources/
 ├── application.properties                 broker.* / telegram.* / app.mode / resilience4j.* keys
-├── db/changelog/                          Liquibase changesets (numbered NNN_*.xml, currently up to 023)
+├── db/changelog/                          Liquibase changesets (numbered NNN_*.xml, currently up to 028)
 ├── static/css/app.css                     Glassmorphism palette
 └── templates/                              Thymeleaf views (index, login, manual-login, backtest)
 ```
@@ -139,7 +139,7 @@ Follow the recipe in [`Readme.md` → Adding a new broker](Readme.md#adding-a-ne
 See [`docs/SCHEDULERS.md` → Adding a new scheduler](docs/SCHEDULERS.md#adding-a-new-scheduler). Put the work in a service so backtest can replay it.
 
 ### Adding a DB column / table
-1. Create `src/main/resources/db/changelog/NNN_<purpose>.xml`. Numbering is sequential — current head is 023. Check the directory before picking a number: `018` is already used twice (`018_create_sma_downtrend_rule_table.xml` and `018_create_historical_chart_tables.xml`), so confirm your number is actually free.
+1. Create `src/main/resources/db/changelog/NNN_<purpose>.xml`. Numbering is sequential — current head is 028. Check the directory before picking a number: `018` is already used twice (`018_create_sma_downtrend_rule_table.xml` and `018_create_historical_chart_tables.xml`), so confirm your number is actually free.
 2. Include it in `db.changelog-master.xml`.
 3. Add / update the JPA entity with `@Column(name="…")`.
 4. Update relevant repositories.

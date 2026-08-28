@@ -20,10 +20,14 @@ import java.util.concurrent.ConcurrentHashMap;
  *       {@code BacktestAnalysisService.run}. Resets the underlying map and
  *       marks the cache active.</li>
  *   <li>For each {@code (symbol, interval)}, the first request triggers a
- *       broker fetch covering the entire {@code [dayFrom, dayTo]} window via
- *       {@link #put}.</li>
+ *       broker fetch covering at least the entire {@code [dayFrom, dayTo]}
+ *       window — the union of that window and the caller's, so a caller with a
+ *       longer lookback still gets it — stored via {@link #put} alongside the
+ *       window it covers.</li>
  *   <li>Subsequent per-tick requests slice the cached list via
- *       {@link #slice}, never re-hitting the broker.</li>
+ *       {@link #slice}, never re-hitting the broker. A request reaching outside
+ *       the covered window is reported as a miss so the caller refetches wider
+ *       instead of being handed a truncated series.</li>
  *   <li>{@link #endDay()} clears state at day-end so the next iteration of
  *       the multi-day loop starts cold.</li>
  * </ol>
@@ -45,7 +49,21 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class BacktestMarketDataCache {
 
-    private final Map<String, List<MarketData>> seriesByKey = new ConcurrentHashMap<>();
+    /**
+     * A cached series plus the window it was fetched over. The window is what
+     * makes {@link #slice} honest: a series cached for the day window cannot
+     * answer a request that reaches further back, and serving it anyway returns
+     * a silently truncated history rather than a miss.
+     */
+    private record Series(List<MarketData> data, LocalDateTime from, LocalDateTime to) {
+
+        boolean covers(LocalDateTime reqFrom, LocalDateTime reqTo) {
+            if (reqFrom != null && from != null && reqFrom.isBefore(from)) return false;
+            return !(reqTo != null && to != null && reqTo.isAfter(to));
+        }
+    }
+
+    private final Map<String, Series> seriesByKey = new ConcurrentHashMap<>();
 
     private volatile LocalDateTime dayFrom;
     private volatile LocalDateTime dayTo;
@@ -79,29 +97,48 @@ public class BacktestMarketDataCache {
     public LocalDateTime dayTo() { return dayTo; }
 
     /**
-     * Store the full {@code [dayFrom, dayTo]} series for {@code (symbol, interval)}.
-     * Caller is responsible for fetching the wide window once; subsequent
-     * per-tick {@link #slice} calls return sub-ranges without re-hitting the broker.
+     * Store the series for {@code (symbol, interval)} together with the
+     * {@code [from, to]} window it was actually fetched over. Caller is
+     * responsible for fetching the wide window once; subsequent per-tick
+     * {@link #slice} calls return sub-ranges without re-hitting the broker.
+     *
+     * <p>A later {@code put} for the same key replaces the entry, so a wider
+     * refetch upgrades the coverage rather than accumulating entries.
      */
-    public void put(String symbol, String interval, List<MarketData> data) {
+    public void put(String symbol, String interval, List<MarketData> data,
+                    LocalDateTime from, LocalDateTime to) {
         if (symbol == null || interval == null || data == null) return;
-        seriesByKey.put(key(symbol, interval), data);
-        log.debug("[cache] put symbol={} interval={} size={}", symbol, interval, data.size());
+        seriesByKey.put(key(symbol, interval), new Series(data, from, to));
+        log.debug("[cache] put symbol={} interval={} size={} window={}..{}",
+                symbol, interval, data.size(), from, to);
     }
 
     /**
      * Return candles in the cached series for {@code (symbol, interval)} whose
      * timestamp lies in {@code [from, to]}. Returns {@code null} when the cache
-     * is inactive or the series isn't populated yet — the caller treats both as
-     * a miss and falls through to the throttled fetcher.
+     * is inactive, the series isn't populated yet, or the cached window does not
+     * cover the request — the caller treats all three as a miss and falls through
+     * to the throttled fetcher.
+     *
+     * <p>The coverage check is what lets a caller with a longer lookback than the
+     * day window — {@code EodDowntrendDetectionService}, whose ATR wants ~30 days
+     * and whose SMA grid wants up to 35 — get its history. Without it the day's
+     * already-cached series answers the request and the extra history is dropped
+     * on the floor with no miss and no log line.
      */
     public List<MarketData> slice(String symbol, String interval, LocalDateTime from, LocalDateTime to) {
         if (!active) return null;
-        List<MarketData> full = seriesByKey.get(key(symbol, interval));
-        if (full == null) return null;
+        Series series = seriesByKey.get(key(symbol, interval));
+        if (series == null) return null;
+        if (!series.covers(from, to)) {
+            log.debug("[cache] miss symbol={} interval={} — request {}..{} outside cached {}..{}",
+                    symbol, interval, from, to, series.from(), series.to());
+            return null;
+        }
 
         // Brokers return ascending-by-timestamp lists; we preserve that here so
         // strategy code can rely on list.get(size-1) being the latest candle.
+        List<MarketData> full = series.data();
         List<MarketData> result = new ArrayList<>(full.size());
         for (MarketData md : full) {
             LocalDateTime ts = md == null ? null : md.getTimestamp();

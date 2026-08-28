@@ -13,18 +13,55 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Reads over {@code historical_option_candles} — the imported ICICI 5-minute
+ * option candles, natural-keyed rather than token-keyed.
+ *
+ * <h3>Why no {@code UPPER(...)} in these queries</h3>
+ * Every query here matches {@code stock_code} / {@code exchange_code} /
+ * {@code option_right} with a plain {@code =}, deliberately. Wrapping an indexed
+ * column in a function makes the index unusable — MySQL cannot seek on
+ * {@code UPPER(stock_code)} when the B-tree holds {@code stock_code}. Measured on
+ * the same row set, the {@code UPPER}-wrapped form of {@link #findRangeAsc}
+ * planned as {@code type: ALL, key: NULL, rows: 103585} (full scan + filesort)
+ * where the plain form plans as {@code type: range,
+ * key: uk_historical_option_series_time, rows: 378}. At the ~3.8M rows the full
+ * CSV set imports, that difference is the backtest's whole runtime.
+ *
+ * <p>Case-insensitive matching is not lost by dropping it. The table collation is
+ * {@code utf8mb4_0900_ai_ci}, so {@code =} is already case-insensitive at the DB
+ * level, and both writers normalise to upper case anyway
+ * ({@code HistoricalChartCsvImportService.normalize} on import,
+ * {@code HistoricalSymbol.upper} when the backtest encodes a lookup symbol).
+ *
+ * <p><b>Do not "fix" a missing {@code UPPER} back in.</b>
+ */
 @Repository
 public interface HistoricalOptionCandleRepository extends JpaRepository<HistoricalOptionCandle, Integer> {
 
+    /**
+     * Nearest expiry present in the data on or after {@code selectedDate}, or
+     * empty when the imported set has none — the expiry rule described in
+     * {@code docs/HISTORICAL_CHART_DATA_PLAN.md}: driven by the data, with no
+     * weekday filter, so older Thursday weeklies resolve as readily as today's
+     * Tuesday ones.
+     *
+     * <p>Expressed as {@code MIN(expiryDate)} rather than
+     * {@code SELECT DISTINCT … ORDER BY … } precisely because both callers only
+     * ever wanted the first row. The {@code DISTINCT} form had to walk the whole
+     * index and sort it ({@code Using temporary; Using filesort}) to produce a
+     * list that was immediately narrowed to one element — and
+     * {@code AnalysisScheduler} asks for it once per (config × timeframe) on
+     * <em>every</em> tick, roughly 400 times per backtest day.
+     */
     @Query("""
-        SELECT DISTINCT c.expiryDate
+        SELECT MIN(c.expiryDate)
         FROM HistoricalOptionCandle c
-        WHERE UPPER(c.stockCode) = UPPER(:stockCode)
-          AND UPPER(c.exchangeCode) = UPPER(:exchangeCode)
+        WHERE c.stockCode = :stockCode
+          AND c.exchangeCode = :exchangeCode
           AND c.expiryDate >= :selectedDate
-        ORDER BY c.expiryDate ASC
     """)
-    List<LocalDate> findAvailableExpiriesOnOrAfter(
+    Optional<LocalDate> findNearestExpiryOnOrAfter(
             @Param("stockCode") String stockCode,
             @Param("exchangeCode") String exchangeCode,
             @Param("selectedDate") LocalDate selectedDate);
@@ -32,11 +69,11 @@ public interface HistoricalOptionCandleRepository extends JpaRepository<Historic
     @Query("""
         SELECT c
         FROM HistoricalOptionCandle c
-        WHERE UPPER(c.stockCode) = UPPER(:stockCode)
-          AND UPPER(c.exchangeCode) = UPPER(:exchangeCode)
+        WHERE c.stockCode = :stockCode
+          AND c.exchangeCode = :exchangeCode
           AND c.expiryDate = :expiryDate
           AND c.strikePrice = :strikePrice
-          AND UPPER(c.optionRight) = UPPER(:optionRight)
+          AND c.optionRight = :optionRight
           AND c.dateTime <= :toInclusive
         ORDER BY c.dateTime DESC
     """)
@@ -48,14 +85,6 @@ public interface HistoricalOptionCandleRepository extends JpaRepository<Historic
             @Param("optionRight") String optionRight,
             @Param("toInclusive") LocalDateTime toInclusive,
             Pageable pageable);
-
-    Optional<HistoricalOptionCandle> findByStockCodeIgnoreCaseAndExchangeCodeIgnoreCaseAndExpiryDateAndStrikePriceAndOptionRightIgnoreCaseAndDateTime(
-            String stockCode,
-            String exchangeCode,
-            LocalDate expiryDate,
-            BigDecimal strikePrice,
-            String optionRight,
-            LocalDateTime dateTime);
 
     /**
      * Ascending candle range for one option series. Backs the DB-backed backtest
@@ -71,11 +100,11 @@ public interface HistoricalOptionCandleRepository extends JpaRepository<Historic
     @Query("""
         SELECT c
         FROM HistoricalOptionCandle c
-        WHERE UPPER(c.stockCode) = UPPER(:stockCode)
-          AND UPPER(c.exchangeCode) = UPPER(:exchangeCode)
+        WHERE c.stockCode = :stockCode
+          AND c.exchangeCode = :exchangeCode
           AND c.expiryDate = :expiryDate
           AND c.strikePrice = :strikePrice
-          AND UPPER(c.optionRight) = UPPER(:optionRight)
+          AND c.optionRight = :optionRight
           AND c.dateTime >= :from
           AND c.dateTime <= :to
         ORDER BY c.dateTime ASC
@@ -97,10 +126,10 @@ public interface HistoricalOptionCandleRepository extends JpaRepository<Historic
     @Query("""
         SELECT DISTINCT c.strikePrice
         FROM HistoricalOptionCandle c
-        WHERE UPPER(c.stockCode) = UPPER(:stockCode)
-          AND UPPER(c.exchangeCode) = UPPER(:exchangeCode)
+        WHERE c.stockCode = :stockCode
+          AND c.exchangeCode = :exchangeCode
           AND c.expiryDate = :expiryDate
-          AND UPPER(c.optionRight) = UPPER(:optionRight)
+          AND c.optionRight = :optionRight
         ORDER BY c.strikePrice ASC
     """)
     List<BigDecimal> findAvailableStrikes(
@@ -108,15 +137,4 @@ public interface HistoricalOptionCandleRepository extends JpaRepository<Historic
             @Param("exchangeCode") String exchangeCode,
             @Param("expiryDate") LocalDate expiryDate,
             @Param("optionRight") String optionRight);
-
-    /**
-     * All rows of a series within a datetime window, used by the CSV importer to
-     * resolve a whole chunk's natural keys in one query instead of one SELECT
-     * per row.
-     */
-    List<HistoricalOptionCandle> findByStockCodeIgnoreCaseAndExchangeCodeIgnoreCaseAndDateTimeBetween(
-            String stockCode,
-            String exchangeCode,
-            LocalDateTime from,
-            LocalDateTime to);
 }

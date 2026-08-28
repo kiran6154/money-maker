@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -230,8 +231,14 @@ public class OrderService {
         // staying populated and so mid-trade config edits don't retroactively
         // close already-open trades.
         if (config != null && config.getTradeConfig() != null) {
-            order.setTargetAtEntry(config.getTradeConfig().getTarget());
-            order.setStopLossAtEntry(config.getTradeConfig().getStopLoss());
+            order.setTargetAtEntry(bracketAtEntry(
+                    config.getTradeConfig().getTargetPct(),
+                    config.getTradeConfig().getTarget(),
+                    signal.getPrice()));
+            order.setStopLossAtEntry(bracketAtEntry(
+                    config.getTradeConfig().getSlPct(),
+                    config.getTradeConfig().getStopLoss(),
+                    signal.getPrice()));
         }
         // Seed peak P&L tracking at the entry baseline (0). The position monitor
         // then reports max(0, observed P&L) and min(0, observed P&L) — which
@@ -254,6 +261,28 @@ public class OrderService {
                 order.getInstrumentName(), order.getOptionStrike(), order.getOptionType(), order.getEntryPrice(),
                 order.getEntryBrokerOrderId(), order.getFillStatus());
         notifier.alertOrderOpened(order);
+    }
+
+    /**
+     * Resolves one side of the exit bracket into the premium points that get
+     * frozen onto the order.
+     *
+     * <p>A percentage wins over the absolute column when the config carries one.
+     * The reason is the premium band: {@code min/max_option_price} spans 80-250 by
+     * default, so a fixed points bracket is a 12% move at the top of the band and
+     * a 38% move at the bottom — one of the two ends always gets a bracket that
+     * does not match the trade. A fraction of the entry premium is the same trade
+     * at either end. See changeset 027 for the measured difference.</p>
+     *
+     * <p>Resolved here, once, rather than in {@code PositionService}: the monitor
+     * must keep comparing a plain points value it can trust not to move, and the
+     * entry price it would need is only unambiguous at open.</p>
+     */
+    private BigDecimal bracketAtEntry(BigDecimal pct, BigDecimal absolute, BigDecimal entryPrice) {
+        if (pct != null && pct.signum() > 0 && entryPrice != null && entryPrice.signum() > 0) {
+            return entryPrice.multiply(pct).setScale(2, RoundingMode.HALF_UP);
+        }
+        return absolute;
     }
 
     private void closeOrder(TradeOrder open, TradeSignal signal, TradeConfigCombinedDTO config,

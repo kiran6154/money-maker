@@ -447,6 +447,19 @@ public class TradeConfigAdminService {
             throw new IllegalArgumentException(
                     "maxOptionPrice (" + max + ") must not be below minOptionPrice (" + min + ")");
         }
+        // A percentage bracket is a fraction, not a display percentage: 0.2 = 20%.
+        // A target at or above 1.0 needs the premium to reach zero intraday, which
+        // for a short leg means the trade can only ever stop out.
+        BigDecimal targetPct = form.getTargetPct();
+        BigDecimal slPct = form.getSlPct();
+        if (targetPct != null && (targetPct.signum() <= 0 || targetPct.compareTo(BigDecimal.ONE) >= 0)) {
+            throw new IllegalArgumentException(
+                    "targetPct (" + targetPct + ") must be between 0 and 1 exclusive — it is a fraction "
+                            + "of entry premium, and a short leg cannot gain more than the premium sold");
+        }
+        if (slPct != null && slPct.signum() <= 0) {
+            throw new IllegalArgumentException("slPct (" + slPct + ") must be positive");
+        }
     }
 
     private void applyForm(TradeConfig tc, TradeConfigFormDTO form) {
@@ -472,6 +485,12 @@ public class TradeConfigAdminService {
                 ? form.getMinOptionPrice() : DEFAULT_MIN_OPTION_PRICE);
         tc.setMaxOptionPrice(form.getMaxOptionPrice() != null
                 ? form.getMaxOptionPrice() : DEFAULT_MAX_OPTION_PRICE);
+
+        // Unlike the band, blank here really does mean "no percentage" — the
+        // absolute target / stopLoss above then apply, which is how every config
+        // predating changeset 027 behaves.
+        tc.setTargetPct(form.getTargetPct());
+        tc.setSlPct(form.getSlPct());
 
         // trade_config.source is NOT NULL (changeset 019) and Hibernate writes the
         // column explicitly, so the DB's DEFAULT 'MANUAL' never applies — leaving
@@ -547,6 +566,8 @@ public class TradeConfigAdminService {
         v.setAtmDepth(tc.getAtmDepth());
         v.setMinOptionPrice(tc.getMinOptionPrice());
         v.setMaxOptionPrice(tc.getMaxOptionPrice());
+        v.setTargetPct(tc.getTargetPct());
+        v.setSlPct(tc.getSlPct());
         v.setSource(tc.getSource());
         v.setUpdatedDate(tc.getUpdatedDate());
 

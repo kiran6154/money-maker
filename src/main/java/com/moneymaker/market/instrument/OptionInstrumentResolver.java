@@ -33,6 +33,13 @@ public interface OptionInstrumentResolver {
     /** Symbol for the config's underlying/index series, or {@code null} if unresolvable. */
     String underlyingSymbol(TradeConfigCombinedDTO dto);
 
+    /**
+     * Same as {@link #underlyingSymbol(TradeConfigCombinedDTO)} for callers that
+     * hold only the {@link Instrument} row — {@code EodDowntrendDetectionService}
+     * works off {@code sma_downtrend_rule.instrument_id}, never off a trade config.
+     */
+    String underlyingSymbol(Instrument instrument);
+
     /** Expiry to trade on {@code analysisDate}, or {@code null} if none is available. */
     LocalDate resolveExpiry(Instrument instrument, LocalDate analysisDate);
 

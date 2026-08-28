@@ -51,6 +51,24 @@ public interface TradeOrderRepository extends JpaRepository<TradeOrder, Long> {
     List<TradeOrder> findByStatus(String status);
 
     /**
+     * Row count for a status, without materialising the rows.
+     *
+     * <p>Exists because {@code BacktestAnalysisService} needs "how many CLOSED
+     * trades are there" twice per tick for its DEBUG delta line, and was getting
+     * it from {@code findByStatusAndEntryTimeBetween("CLOSED", 1970, 9999).size()}
+     * — which loads the entire ledger into the persistence context on every tick,
+     * growing more expensive the longer the run gets.
+     */
+    long countByStatus(String status);
+
+    /**
+     * Row count for a status within an entry-time window, without materialising
+     * the rows. Backs the per-day trade_order delta in the backtest summary.
+     */
+    long countByStatusAndEntryTimeBetween(
+            String status, LocalDateTime fromInclusive, LocalDateTime toInclusive);
+
+    /**
      * Counts trades in {@code status} for a given config and entry direction.
      * Used by {@code OrderService} to enforce the
      * {@code TradeConfig.numberOfParallelTrades} cap — i.e. "max simultaneous

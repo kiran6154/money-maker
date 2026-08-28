@@ -7,6 +7,13 @@ the day in a sustained downtrend.
 > public entry (`EodDowntrendDetectionService.runForDay(LocalDate)`) takes
 > nothing backtest-specific — a 15:25 cron can call it for live mode later
 > without code changes.
+>
+> **Both data sources.** It runs under `backtest.data-source=BROKER` and
+> `HISTORICAL_ICICI` alike: every symbol comes from `OptionInstrumentResolver`,
+> so the detector never needs to know whether it is holding a broker instrument
+> token or an imported-CSV natural key. Under `HISTORICAL_ICICI` the depth of
+> the ATR and the SMA grid is bounded by how many days have been imported —
+> see [`BACKTESTING.md`](BACKTESTING.md#limits-when-historical_icici-is-active).
 
 ---
 
@@ -21,8 +28,9 @@ For each trading day in a backtest run, after force-close at 15:20:
    - For each timeframe in `{5, 15}` minutes:
      - Pulls the option-leg's intraday series once via
        [`MarketDataService`](../src/main/java/com/moneymaker/market/service/MarketDataService.java).
-     - Computes `SMA(20)`, `SMA(50)`, `SMA(100)`, `SMA(200)`, `SMA(500)` on
-       the series (populates the `smaValueXX` fields on every candle).
+     - Computes `SMA(50)`, `SMA(100)`, `SMA(200)`, `SMA(500)` on the series
+       (populates the matching `smaValueXX` fields on every candle;
+       `smaValue20` stays null — SMA(20) is not part of the grid).
      - Trims to candles `>= rule.start_time`.
      - Runs
        [`SmaTrendCalculator`](../src/main/java/com/moneymaker/strategy/rules/SmaTrendCalculator.java#L25)
@@ -30,7 +38,8 @@ For each trading day in a backtest run, after force-close at 15:20:
      - Records every SMA period whose last-candle `smaXxDownTrending` flag is `true`.
 3. For each side with at least one passing `(sma, timeframe)` combo:
    - Inserts **one** `trade_config` row stamped `source='AUTO_DOWNTREND'`
-     for the next trading day (skip Sat/Sun).
+     for the next trading day (skip Sat/Sun), carrying the rule's
+     `min_option_price` / `max_option_price` as its premium band.
    - Inserts **one** `sma_timeframe` child row per passing combo.
 
 Once any `AUTO_DOWNTREND` row exists for the next day, the whole write is
@@ -54,18 +63,19 @@ code** so that the table doesn't duplicate fields that already exist on
 
 | Concern | Where it lives |
 |---|---|
-| Which SMAs are checked | `EodDowntrendDetectionService.SMA_PERIODS` (`{20, 50, 100, 200, 500}`) |
+| Which SMAs are checked | `EodDowntrendDetectionService.SMA_PERIODS` (`{50, 100, 200, 500}`) |
 | Which timeframes are checked | `EodDowntrendDetectionService.TIMEFRAMES_MINUTES` (`{5, 15}`) |
 | Which strike type | hardcoded ATM in `computeAtmStrike` |
 | `transaction_type`, `max_loss`, `no_of_trades`, `no_of_parrellel_trades` for the generated config | `EodDowntrendDetectionService.strategyDefaults(strategyId)` — one switch branch per strategy |
 | `lot_quantity` | `instrument.lot_qty` — the contract's lot size, not a strategy constant (`strategyDefaults` is only a fallback) |
 | Detection threshold (`max_deviation`, `start_time`) | `sma_downtrend_rule` |
-| Target/SL derivation (`atr_periods`, `target_multiplier`, `sl_multiplier`) | `sma_downtrend_rule` |
+| Target/SL derivation (`atr_periods`, `target_multiplier`, `sl_multiplier`, `target_pct`, `sl_pct`) | `sma_downtrend_rule` |
+| Premium band (`min_option_price`, `max_option_price`) | `sma_downtrend_rule` — copied verbatim onto the generated config |
 | Which strategy + underlying a rule applies to | `sma_downtrend_rule` |
 
-This split satisfies CLAUDE.md #9: detection thresholds and target/SL knobs
-are config-driven; the strategy conventions are *strategy identity*, not
-trading-behaviour knobs, and live on the strategy.
+This split satisfies CLAUDE.md #9: detection thresholds, target/SL knobs and the
+premium band are config-driven; the strategy conventions are *strategy identity*,
+not trading-behaviour knobs, and live on the strategy.
 
 ---
 
@@ -78,37 +88,52 @@ trading-behaviour knobs, and live on the strategy.
 | `instrument_id`           | Underlying (FK to `instrument`). Drives both ATM strike selection and ATR. |
 | `max_deviation`           | Max number of candles where `curr_sma >= prev_sma` before the day is no longer "downtrending". 0 = strictly monotonic. |
 | `start_time`              | The deviation counter only includes candles `>= start_time`. Default `09:20:00`. |
-| `atr_periods`             | N for ATR(N) of the underlying. Default 14. |
-| `target_multiplier`       | `target = ATR(N) × target_multiplier` for the generated config. |
-| `sl_multiplier`           | `stop_loss = ATR(N) × sl_multiplier`. |
+| `atr_periods`             | N sessions of lookback for the bracket basis. Default 14. |
+| `target_multiplier`       | `target = basis × target_multiplier` for the generated config, where `basis` is the traded leg's mean intraday range. Default `0.30` since changeset 027 (was `1.0`). |
+| `sl_multiplier`           | `stop_loss = basis × sl_multiplier`. Default `0.45` since changeset 027. |
+| `target_pct`              | Target as a fraction of entry premium — `0.2000` = 20%. Copied onto `trade_config.target_pct`, which **overrides** the absolute `target`. `NOT NULL`, default `0.20`. |
+| `sl_pct`                  | Stop loss as a fraction of entry premium. `NOT NULL`, default `0.30`. |
+| `min_option_price`        | Copied verbatim onto `trade_config.min_option_price`. `NOT NULL`, default `80`. |
+| `max_option_price`        | Copied verbatim onto `trade_config.max_option_price`. `NOT NULL`, default `250`. |
 | `enabled`                 | Toggle the rule on/off without deleting. |
+
+The band columns are `NOT NULL` on purpose. `Strategy1.isOutsideBand` skips a
+null bound entirely, so a config with no band is an **unbounded** config — free
+to sell a 6-point leg against a 30-point target, which is the exact case
+changeset 024 was written to prevent. A rule whose band is null or inverted is
+skipped with a warn rather than generating that config; see `hasUsableBand`.
 
 ### Sample row
 
 ```sql
 INSERT INTO sma_downtrend_rule
   (strategy_id, instrument_id, max_deviation, start_time, atr_periods,
-   target_multiplier, sl_multiplier, enabled)
+   target_multiplier, sl_multiplier, target_pct, sl_pct,
+   min_option_price, max_option_price, enabled)
 VALUES
-  (1, 1, 5, '09:20:00', 14, 1.0, 1.0, TRUE);
+  (1, 1, 5, '09:20:00', 14, 0.30, 0.45, 0.20, 0.30, 80, 250, TRUE);
 ```
 
 That single row says: *"for Strategy 1 on instrument id=1, walk the full
-{20,50,100,200,500} × {5min,15min} grid against ATM CE and PE; allow up
-to 5 deviations from 09:20 onwards; derive target/SL from ATR(14)."*
+{50,100,200,500} × {5min,15min} grid against ATM CE and PE; allow up
+to 5 deviations from 09:20 onwards; exit at 20% profit or 30% loss on the
+premium each trade opens at; and only enter legs priced between 80 and 250."*
 
 ---
 
 ## Schema changes
 
-Three changesets back this feature. **`sma_downtrend_rule` is created fat and
-then slimmed — read 018 and 020 together to get the table's current shape.**
+Four changesets back this feature. **`sma_downtrend_rule` is created fat, then
+slimmed, then given a premium band — read 018, 020 and 026 together to get the
+table's current shape.**
 
 | Changeset | Effect |
 |---|---|
 | [`018_create_sma_downtrend_rule_table.xml`](../src/main/resources/db/changelog/018_create_sma_downtrend_rule_table.xml) | Creates `sma_downtrend_rule` in its original **fat** shape, including `sma`, `time_period`, `moneyness`, `depth` and five `trade_config`-duplicate columns. |
 | [`019_add_source_to_trade_config.xml`](../src/main/resources/db/changelog/019_add_source_to_trade_config.xml) | Adds `trade_config.source` — `MANUAL` / `AUTO_DOWNTREND`, default `MANUAL`. |
 | [`020_drop_unused_sma_downtrend_rule_columns.xml`](../src/main/resources/db/changelog/020_drop_unused_sma_downtrend_rule_columns.xml) | Drops all nine of those columns, leaving the detection-only shape documented above. |
+| [`027_add_pct_bracket.xml`](../src/main/resources/db/changelog/027_add_pct_bracket.xml) | Adds `target_pct` / `sl_pct` to both `trade_config` (nullable — opt-in) and `sma_downtrend_rule` (`NOT NULL`, `0.20` / `0.30`), and retunes `target_multiplier` / `sl_multiplier` from `1.0` to `0.30` / `0.45` on rows still holding the original default. |
+| [`026_add_option_price_range_to_sma_downtrend_rule.xml`](../src/main/resources/db/changelog/026_add_option_price_range_to_sma_downtrend_rule.xml) | Adds `min_option_price` / `max_option_price`, `NOT NULL` defaulting to 80 / 250, so generated configs stop being written with an unbounded band. Existing rows are backfilled with the defaults. |
 
 Every existing `trade_config` row stays `MANUAL`. Auto-generated rows are
 stamped `AUTO_DOWNTREND` so the detector can dedupe its own output across
@@ -129,6 +154,7 @@ re-runs.
 | [`SmaDowntrendRule`](../src/main/java/com/moneymaker/entity/SmaDowntrendRule.java) | JPA entity for the rules table. |
 | [`SmaDowntrendRuleRepository`](../src/main/java/com/moneymaker/repository/SmaDowntrendRuleRepository.java) | Spring Data — exposes `findByEnabledTrue()`. |
 | [`EodDowntrendDetectionService`](../src/main/java/com/moneymaker/backtesting/EodDowntrendDetectionService.java) | Orchestrator. Public entry: `runForDay(LocalDate)`. Constants `SMA_PERIODS`, `TIMEFRAMES_MINUTES`. Per-strategy defaults: `strategyDefaults(int)`. |
+| [`OptionInstrumentResolver`](../src/main/java/com/moneymaker/market/instrument/OptionInstrumentResolver.java) | Supplies every symbol the detector fetches on — underlying, expiry, option leg. Same indirection `AnalysisScheduler` uses, which is what makes the detector work on both data sources. |
 | [`BacktestAnalysisService`](../src/main/java/com/moneymaker/backtesting/BacktestAnalysisService.java) | Calls `runForDay(currentDate)` after force-close, inside the per-day try-block. |
 | [`TradeConfigRepository`](../src/main/java/com/moneymaker/repository/TradeConfigRepository.java) | New `findByTradingDateAndSource` powers the idempotency probe. |
 
@@ -142,7 +168,7 @@ re-runs.
 | New SMA period beyond 20/50/100/200/500 | Add the period to `SMA_PERIODS`, extend [`MarketData`](../src/main/java/com/moneymaker/entity/MarketData.java) with the new `smaValueXX` field, update [`SmaTrendCalculator`](../src/main/java/com/moneymaker/strategy/rules/SmaTrendCalculator.java#L25) and the `smaDownFlag(...)` switch in `EodDowntrendDetectionService`. |
 | Additional timeframe (e.g. `30min`) | Add to `TIMEFRAMES_MINUTES`. That's it. |
 | Different strike type (ITM/OTM at depth N) | Replace `computeAtmStrike` with a `computeStrike(rule, side)` and add the depth columns back to the rule. |
-| Target/SL formula other than `ATR × mult` (fixed, daily-range, percentage of close) | Branch inside `insertAutoTradeConfig` on a new column like `target_mode`, or replace the multiplier columns with a single `target_formula` column. |
+| Target/SL formula other than the two shipped shapes (percentage of entry premium, or `mean intraday range × mult`) | Branch inside `insertAutoTradeConfig` on a new column like `target_mode`. A shape that is not a fixed points distance also needs `OrderService.bracketAtEntry` to know how to resolve it. |
 | Up-trend variant (for BUY strategies) | Add a `direction` column (`DOWN`/`UP`), branch in `scanSide` to read `smaXxUpTrending` instead. |
 | Promote to live mode | Add a new `@Scheduled(cron="0 25 15 * * MON-FRI")` method on a new scheduler that calls `eodDowntrendDetectionService.runForDay(LocalDate.now())`. No service changes required. |
 | Holiday-aware "next trading day" | Swap `nextTradingDay(...)` to consult a holiday table. Method is private; only caller is `runForDay`. |
@@ -168,9 +194,10 @@ These are easy to miss and each one silently produces "nothing happened":
    before the detector is reached, so **the feature cannot bootstrap a config
    chain from nothing** — it only ever extends an existing one. Symptom:
    `totalDays: 0` in the response and no `[EOD-downtrend]` lines at all.
-4. **An `expiry_dates` row on/after day 1** — `resolveExpiry` returns the first
-   expiry `>= tradingDay`; with none, the rule is skipped with
-   `no expiry resolved`.
+4. **An expiry on/after day 1** — the resolver returns the first expiry
+   `>= tradingDay`; with none, the rule is skipped with `no expiry resolved`.
+   Which table that comes from depends on `backtest.data-source`: `expiry_dates`
+   under `BROKER`, `historical_option_candles` under `HISTORICAL_ICICI`.
 
 ### Steps
 
@@ -219,10 +246,18 @@ Observed on a strike listed 2026-07-15, evaluated 2026-07-22:
 
 ```
 tf=15minute SMA50  — 43 candles, need  49; period dropped
+tf=15minute SMA100 — 43 candles, need  99; period dropped
+tf=15minute SMA200 — 43 candles, need 199; period dropped
 tf=15minute SMA500 — 43 candles, need 499; period dropped
 tf=5minute  SMA200 — 126 candles, need 199; period dropped
--> inserted combos=[5min/SMA50, 5min/SMA100, 15min/SMA20]
+tf=5minute  SMA500 — 126 candles, need 499; period dropped
+-> inserted combos=[5min/SMA50, 5min/SMA100]
 ```
+
+Note the 15-minute timeframe contributes nothing here. With SMA(20) removed
+from the grid, 50 is the shortest period, and a leg with 43 candles cannot
+cover it — so a newly listed strike now yields 5-minute combos only until it
+has ~49 candles of 15-minute history (about two sessions).
 
 Legs are judged independently — two strikes on the same day had 43 and 83
 candles of 15-minute history. Expect newly listed strikes to yield fewer
@@ -235,14 +270,17 @@ at 15min, and `SMAIndicatorImpl` returns `null` when
 grid to SMA(20) — plus SMA(50) at 5min — and made SMA(100)/(200)/(500)
 permanently unreachable at every timeframe. Worse, the surviving SMA(20)
 was computed from that day's candles alone, so it did not match the SMA(20)
-on a broker chart, which is continuous across sessions.
+on a broker chart, which is continuous across sessions. (SMA(20) was in
+`SMA_PERIODS` when this was diagnosed; it has since been removed. The
+sufficiency argument is unchanged — it now bites at SMA(50) instead.)
 
 Widening the window does not smear prior sessions into the verdict: the
 `start_time` trim is a time-of-day filter and `SmaTrendCalculator` resets
 its deviation counters per day, so the flags still describe the trading day
 — only the SMA values now carry the right history.
 
-Measured on ATM NIFTY 24400 CE/PE for 2026-08-13 at `max_deviation=5`:
+Measured on ATM NIFTY 24400 CE/PE for 2026-08-13 at `max_deviation=5`,
+while SMA(20) was still in the grid — expect fewer combos per config now:
 
 | Window | Result |
 |---|---|
@@ -292,7 +330,7 @@ table looking valid and never trades.
 ATM-only is `itm_depth=1` — the ITM loop starts at `i=0` and its first element
 is the base (ATM) strike. `atm_depth` is effectively a dead column.
 
-**`target` / `stop_loss` are option-premium points, so the ATR must be the
+**`target` / `stop_loss` are option-premium points, so the basis must be the
 option's.**
 `PositionService.thresholdBreach` compares them against `perShareProfit`, which
 is entry-minus-current on the **option leg**. Deriving them from an ATR on the
@@ -301,8 +339,71 @@ is ~100, so `target` exceeded the most a short leg can ever earn — premium
 decaying to zero — and could never fire. Every trade then exits on `STOP_LOSS`
 or `FORCE_CLOSE`, quietly skewing any backtest built on those configs.
 
-`computeAtr` therefore takes the option token and is evaluated per side; CE and
-PE legitimately get different target/SL.
+The bracket basis is therefore measured per side on an option token; CE and PE
+legitimately get different target/SL.
+
+### Why an option leg's ATR is not a usable basis
+
+Switching the ATR to the option leg fixed the *unit* but not the *magnitude*.
+Three properties of an option series make true range the wrong measure:
+
+1. **True range counts the overnight gap.** On an index that gap is a real move
+   the next session can extend. On an option leg it is mostly re-pricing — the
+   same strike sits a different distance from spot, one day closer to expiry —
+   and an intraday trade that opens after the open can never capture it.
+2. **`resolveExpiry` returns the first expiry on or after the date asked for**,
+   so on an expiry day the detector measured the series dying at that close,
+   whose final true range is a one-way premium collapse, while writing a config
+   for the next day that trades a different contract entirely.
+3. **An option leg's ATR is about the size of its own premium.** A short leg's
+   maximum gain *is* the premium, so a target at 1× ATR needs the premium to
+   reach zero intraday.
+
+Measured on the imported Jan-2024 NIFTY series, `ATR(14)` of the ATM 21700 PE on
+2024-01-04 was **119.89** — of which the 2024-01-03 term came from the gap
+(119.45 vs an intraday range of 113.25) and the 2024-01-04 term was the expiry
+collapse (156.90, close 197.95 → low 41.05). That 119.89 became both the target
+and the stop-loss of the config generated for 2024-01-05.
+
+Replaying every 5-min candle 09:20–14:30 as a hypothetical short entry inside the
+80–250 band, ATM ±3 strikes, front expiry, first touch on 5-min high/low:
+
+| bracket | TARGET | STOP_LOSS | ran to force close |
+|---|---|---|---|
+| 120/120 pts (1× ATR) | **3.6%** | 10.1% | **86.3%** |
+| 30/30 pts | 45.4% | 44.5% | 10.1% |
+| 20% / 30% of entry premium | 53.9% | 33.7% | 12.4% |
+
+At 1× ATR the bracket stops being an exit rule: the trade runs to force close
+86% of the time.
+
+### What the detector writes now
+
+`averageIntradayRange` replaces `computeAtr` for the bracket. It averages daily
+`high − low` — no gap term — over the leg **the generated config will trade**
+(`resolveExpiry(nextDay)`), skipping that contract's own expiry session. On an
+expiry day the next contract usually has no history yet, so it falls back to the
+detected leg, still gap-free and still excluding the expiry session.
+
+`computeAtr` stays, used only by `strikeDepthFor` on the underlying, where true
+range is the right measure and the number is never compared to a premium.
+
+The generated config then carries **both** bracket shapes:
+
+| | Source | Used for |
+|---|---|---|
+| `target_pct` / `sl_pct` | copied off the rule | The bracket that decides exits. `OrderService` resolves `entryPrice × pct` into `trade_order.target_at_entry` / `stop_loss_at_entry` at open. |
+| `target` / `stop_loss` | `basis × multiplier`, capped by `clampToBandFloor` | Fallback when a config has no percentage, and the SMA-separation gate `CommonRules.profitTarget` reads at entry. |
+
+A percentage is used because the premium band is a 3× spread: one absolute points
+target is a 12% move at 250 and a 38% move at 80, so one end of the band always
+gets a bracket that does not match the trade.
+
+`clampToBandFloor` caps the absolute target one tick below `min_option_price`. A
+short leg cannot gain more than the premium it sold, so a target at or above the
+band floor is unreachable by the cheapest entry the config permits. It clamps
+rather than skipping the side — the detected downtrend is still real — and warns,
+so a rule that clamps every day is visibly a multiplier that wants lowering.
 
 ---
 

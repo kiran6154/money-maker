@@ -95,6 +95,12 @@ public class AnalysisScheduler {
                 return;
             }
 
+            // Read once per tick, not once per (config × timeframe). Nothing
+            // between here and the end of this method writes to trade_order —
+            // orders are drained by OrderScheduler after calculateIndicator
+            // returns — so every one of those repeated reads saw the same rows.
+            List<TradeOrder> openOrders = tradeOrderRepository.findByStatus("OPEN");
+
             for (TradeConfigCombinedDTO dto : combinedDtoList) {
                 // The resolver owns what a "symbol" is: a broker instrument token
                 // normally, a historical natural key when replaying imported CSVs
@@ -135,7 +141,7 @@ public class AnalysisScheduler {
 
                     List<List<Integer>> strikeList = withOpenPositionStrikes(
                             calculateStrikesForCandles(marketDataList, dto.getInstrument(), dto.getTradeConfig()),
-                            dto.getTradeConfig());
+                            dto.getTradeConfig(), openOrders);
                     SharedData.strikeList = strikeList;
 
                     // One [index] line per config per tick — emitted on the first
@@ -241,14 +247,15 @@ public class AnalysisScheduler {
      * never starts pulling PE series. Widening the configured band reduces how often
      * this happens; keeping open strikes pinned is what actually prevents it.</p>
      */
-    private List<List<Integer>> withOpenPositionStrikes(List<List<Integer>> strikeList, TradeConfig tradeConfig) {
+    private List<List<Integer>> withOpenPositionStrikes(List<List<Integer>> strikeList, TradeConfig tradeConfig,
+                                                        List<TradeOrder> openOrders) {
         String optionType = resolveOptionType(tradeConfig);
         if (optionType == null) {
             return strikeList;
         }
 
         List<Integer> openStrikes = new ArrayList<>();
-        for (TradeOrder order : tradeOrderRepository.findByStatus("OPEN")) {
+        for (TradeOrder order : openOrders) {
             if (order.getOptionStrike() == null) continue;
             if (!optionType.equalsIgnoreCase(order.getOptionType())) continue;
             openStrikes.add(order.getOptionStrike());

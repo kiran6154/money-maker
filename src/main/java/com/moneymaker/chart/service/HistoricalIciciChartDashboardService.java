@@ -182,13 +182,11 @@ public class HistoricalIciciChartDashboardService {
     }
 
     private Optional<LocalDate> resolveExpiryDate(IndexSymbol indexSymbol, LocalDate selectedDate) {
-        return optionCandleRepository.findAvailableExpiriesOnOrAfter(
-                        indexSymbol.name(),
-                        OPTION_EXCHANGE,
-                        selectedDate
-                )
-                .stream()
-                .findFirst();
+        return optionCandleRepository.findNearestExpiryOnOrAfter(
+                indexSymbol.name(),
+                OPTION_EXCHANGE,
+                selectedDate
+        );
     }
 
     private ChartCandleResponse toChartCandle(HistoricalSpotCandle candle) {

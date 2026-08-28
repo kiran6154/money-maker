@@ -447,6 +447,14 @@
                 <input id="tc-sl" type="number" step="0.01" class="form-control" />
             </div>
             <div class="form-row">
+                <label for="tc-target-pct" title="Target as a percentage of the premium the trade opens at. Overrides the absolute target above. Blank = use the absolute target.">Target %</label>
+                <input id="tc-target-pct" type="number" step="0.5" min="0" max="99" class="form-control" placeholder="use points" />
+            </div>
+            <div class="form-row">
+                <label for="tc-sl-pct" title="Stop loss as a percentage of the premium the trade opens at. Overrides the absolute stop loss above. Blank = use the absolute stop loss.">Stop loss %</label>
+                <input id="tc-sl-pct" type="number" step="0.5" min="0" class="form-control" placeholder="use points" />
+            </div>
+            <div class="form-row">
                 <label for="tc-max-loss">Max loss / day</label>
                 <input id="tc-max-loss" type="number" step="0.01" class="form-control" />
             </div>
@@ -525,8 +533,8 @@
                         <th>Side</th>
                         <th>Txn</th>
                         <th>Strategy</th>
-                        <th class="num">Target</th>
-                        <th class="num">SL</th>
+                        <th class="num" title="Exit target. A % is of the premium at entry and overrides the points value.">Target</th>
+                        <th class="num" title="Exit stop loss. A % is of the premium at entry and overrides the points value.">SL</th>
                         <th class="num">Lots</th>
                         <th class="num">Trades/day</th>
                         <th class="num">Parallel</th>
@@ -601,6 +609,8 @@
         txn:          document.getElementById('tc-txn'),
         target:       document.getElementById('tc-target'),
         sl:           document.getElementById('tc-sl'),
+        targetPct:    document.getElementById('tc-target-pct'),
+        slPct:        document.getElementById('tc-sl-pct'),
         maxLoss:      document.getElementById('tc-max-loss'),
         lots:         document.getElementById('tc-lots'),
         tradesDay:    document.getElementById('tc-trades-day'),
@@ -737,8 +747,9 @@
     // ---------- form open/close ----------
     function clearForm() {
         els.id.value = '';
-        [els.target, els.sl, els.maxLoss, els.lots, els.tradesDay, els.parallel,
-         els.optionDepth, els.itm, els.atm, els.otm].forEach(e => e.value = '');
+        [els.target, els.sl, els.targetPct, els.slPct, els.maxLoss, els.lots,
+         els.tradesDay, els.parallel, els.optionDepth, els.itm, els.atm,
+         els.otm].forEach(e => e.value = '');
         els.minPrice.value = DEFAULT_MIN_PRICE;
         els.maxPrice.value = DEFAULT_MAX_PRICE;
         els.instrument.value = '';
@@ -763,6 +774,9 @@
         els.txn.value         = view.transactionType ?? '';
         els.target.value      = view.target ?? '';
         els.sl.value          = view.stopLoss ?? '';
+        // Stored as a fraction (0.20); the field is a percentage (20).
+        els.targetPct.value   = view.targetPct != null ? +(view.targetPct * 100).toFixed(2) : '';
+        els.slPct.value       = view.slPct != null ? +(view.slPct * 100).toFixed(2) : '';
         els.maxLoss.value     = view.maxLoss ?? '';
         els.lots.value        = view.lotQuantity ?? '';
         els.tradesDay.value   = view.numberOfTradesPerDay ?? '';
@@ -821,6 +835,9 @@
     // ---------- save ----------
     function collectPayload() {
         const num = (el) => el.value === '' ? null : Number(el.value);
+        // The field is a percentage, the column is a fraction. Blank stays null,
+        // which means "use the absolute points bracket".
+        const pctFraction = (el) => el.value === '' ? null : Number(el.value) / 100;
         return {
             instrumentId:             num(els.instrument),
             tradingDate:              els.date.value || null,
@@ -829,6 +846,8 @@
             transactionType:          els.txn.value  || null,
             target:                   num(els.target),
             stopLoss:                 num(els.sl),
+            targetPct:                pctFraction(els.targetPct),
+            slPct:                    pctFraction(els.slPct),
             maxLoss:                  num(els.maxLoss),
             lotQuantity:              num(els.lots),
             numberOfTradesPerDay:     num(els.tradesDay),
@@ -919,6 +938,16 @@
         return lo + '–' + hi;
     }
 
+    // The bracket the trade will actually exit on. A percentage overrides the
+    // points value, so show the percentage and keep the points in the tooltip.
+    function bracket(points, pct) {
+        if (pct === null || pct === undefined) return fmtNum(points);
+        const shown = +(pct * 100).toFixed(2) + '%';
+        return points === null || points === undefined
+            ? shown
+            : '<span title="' + points + ' pts if no % applied">' + shown + '</span>';
+    }
+
     function renderList(data) {
         const items = data.items || [];
         els.rows.innerHTML = '';
@@ -943,8 +972,8 @@
                 '<td>' + fmtNum(v.tradingSide) + '</td>' +
                 '<td>' + fmtNum(v.transactionType) + '</td>' +
                 '<td>' + fmtNum(v.strategyId) + '</td>' +
-                '<td class="num">' + fmtNum(v.target) + '</td>' +
-                '<td class="num">' + fmtNum(v.stopLoss) + '</td>' +
+                '<td class="num">' + bracket(v.target, v.targetPct) + '</td>' +
+                '<td class="num">' + bracket(v.stopLoss, v.slPct) + '</td>' +
                 '<td class="num">' + fmtNum(v.lotQuantity) + '</td>' +
                 '<td class="num">' + fmtNum(v.numberOfTradesPerDay) + '</td>' +
                 '<td class="num">' + fmtNum(v.numberOfParallelTrades) + '</td>' +

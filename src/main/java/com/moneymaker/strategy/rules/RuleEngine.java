@@ -82,13 +82,27 @@ public final class RuleEngine {
     /**
      * Evaluates {@link TradeRules} (required AND, anyOf OR) and returns both
      * the boolean and a one-line reason naming the first failing required rule
-     * or the matching anyOf rule. A null or fully-empty rules object returns
-     * {@code pass=true, reason="no rules"}.
+     * or the matching anyOf rule.
+     *
+     * <p><b>A null or fully-empty rules object fails closed</b> —
+     * {@code pass=false, reason="no rules"}. "The strategy has no opinion about
+     * this SMA period" must never mean "trade it unconditionally": a period that
+     * reaches {@code Strategy1.sellRulesFor}'s {@code default:} branch is one
+     * nobody wrote rules for, so the only safe answer is no signal. Returning
+     * true here previously made a commented-out {@code case} widen the strategy
+     * instead of disabling it — the SMA-cross gate fired with no trend filter,
+     * and the exit side emitted a BUY on every tick.
+     *
+     * <p>Only the <i>fully</i>-empty case is affected. An empty {@code anyOf}
+     * alongside non-empty {@code required} still short-circuits to true (that is
+     * the shape of every {@code sellRulesForNN}), and an empty {@code required}
+     * alongside non-empty {@code anyOf} still defers to the OR list (every
+     * {@code buyRulesForNN}).
      */
     private static EvalResult evaluateWithReason(RuleContext ctx, TradeRules rules) {
         if (rules == null
                 || (rules.required.isEmpty() && rules.anyOf.isEmpty())) {
-            return new EvalResult(true, "no rules");
+            return new EvalResult(false, "no rules");
         }
         for (int i = 0; i < rules.required.size(); i++) {
             TradeRule r = rules.required.get(i);

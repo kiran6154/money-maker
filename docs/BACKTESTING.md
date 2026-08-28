@@ -71,8 +71,12 @@ monthly deliberately — see the note in [`ORDERS_AND_POSITIONS.md`](ORDERS_AND_
   rows, bucketed by wall-clock from the session open (not by list position, which
   would drift across days — an NSE session is 75 five-minute candles, not
   divisible by 2).
-- **No `day` candles**, so `EodDowntrendDetectionService` is skipped for the run;
-  its ATR needs daily bars. Auto-downtrend config generation is `BROKER`-only.
+- **`day` candles are rolled up, not stored.** One bar per trading date —
+  open = the session's first candle, high/low = the session's extremes,
+  close = the last candle. `EodDowntrendDetectionService` runs against this
+  source (it did not before), but its ATR and SMA grid only see the days that
+  have actually been imported: expect `SMA(200)` / `SMA(500)` to keep being
+  dropped by the sufficiency gate until enough history is loaded.
 - **A wholly missing series aborts the run** with HTTP 422 and the series named,
   rather than quietly trading on partial data. Gaps *inside* a present series are
   normal (illiquid deep-ITM strikes start late) and do not trip it.
@@ -93,6 +97,10 @@ curl.exe -F "file=@docs/NIFTY_2024-01-11_PE_5minute.csv"   http://localhost:8080
 curl.exe -X POST "http://localhost:8080/api/backtest/analysis?fromDate=2024-01-02&toDate=2024-01-04"
 ```
 
+Each import call answers `{"rows": N}` — the number of CSV rows upserted. Re-running
+a file is a no-op on row count, because rows are written with
+`INSERT … ON DUPLICATE KEY UPDATE` on the natural key.
+
 `trade_order` rows come back with `fill_status='BACKTEST'` and an
 `option_token` like `HIST:NIFTY:NFO:2024-01-04:21700:CE`.
 
@@ -104,6 +112,39 @@ lookback. Note also that `computeLookbackCalendarDays()` asks for 35 calendar
 days by default (15min × 500-SMA), far more than the samples contain, so the
 longer SMAs stay null — configure shorter `sma_timeframe` periods or import more
 history.
+
+### Importing a full ICICI export
+
+The sample files under `docs/` are two expiry cycles. A full export is one folder
+per weekly expiry — `<year>/<expiry>/NIFTY_<expiry>_{SPOT,CE,PE}_5minute.csv` plus
+a `manifest.json` — and the whole tree loads through the same two endpoints:
+
+```powershell
+$root = "C:\path\to\nifty_options"
+$base = "http://localhost:8080/api/charts/historical/import"
+Get-ChildItem $root -Recurse -File -Filter *.csv | Sort-Object FullName | ForEach-Object {
+    $ep = if ($_.Name -match '_SPOT_') { "$base/spot" } else { "$base/options" }
+    curl.exe -s -F "file=@$($_.FullName)" $ep
+}
+```
+
+Two things to check in the export before loading it:
+
+- **A cycle with no SPOT file cannot be replayed.** ATM resolution reads the
+  underlying series, so CE/PE without spot imports fine and then fails at strike
+  selection. `manifest.json` names the underlying file, or reports why it is missing.
+- **An option series never spans more than its own expiry cycle** — about 375
+  five-minute candles. Spot is continuous across cycles; options are not. So
+  `5min × SMA(500)` can never be computed on an option leg from this data
+  (`SMAIndicatorImpl` returns null and stamps nothing when `period > size`), and
+  `5min × SMA(200)` only starts resolving around day 3 of each cycle. Early-cycle
+  days producing no signals for the long-SMA configs is the data, not a bug.
+
+**Operator note — buffer pool.** A full export is ~3.8M option rows, roughly
+380 MB of data plus 310 MB of index. MySQL's default
+`innodb_buffer_pool_size` is 128 MB, which puts the working set on disk and makes
+every backtest day pay I/O. Raise it in `my.ini` (2 GB is comfortable) and restart
+MySQL before a long run.
 
 ---
 

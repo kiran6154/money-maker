@@ -1,7 +1,12 @@
 # Backtest performance & live-parity plan
 
-> **Status:** Phase 1 implemented (2026-05-25). Phases 2–6 still planned.
-> As each lands, mark it ✅ and add a "verified parity" note.
+> **Status:** Phase 1 implemented (2026-05-25). Phase 3 and part of Phase 6
+> implemented (2026-08-29). **Phase 2 is withdrawn — it is not safe as written.**
+> Phases 4 and 5 still planned. As each lands, mark it ✅ and add a "verified
+> parity" note.
+>
+> Phase 0 below was not in the original list and turned out to matter more than
+> any of the numbered phases once the data set grew.
 
 ## Why this document exists
 
@@ -26,16 +31,47 @@ when the phase lands.
 
 ## Baseline
 
-| Metric | Today |
+Original, before Phase 1 (broker data source):
+
+| Metric | Then |
 |---|---|
 | 2-day backtest wall time | ≈ 3–4 min |
 | Broker HTTP calls per day | ≈ 1500 (72 ticks × ~21 calls/tick) |
 | Tick increment | 5 min (smallest configured timeframe) |
 | Per-tick work | refetch underlying + each strike × each timeframe, recompute SMAs, evaluate strategy, drain orders, walk OPEN positions |
 
-The bottleneck is HTTP: each `MarketDataService.fetchHistoricalData(...)`
-call hits Zerodha, blocks on the Resilience4j rate-limiter, and returns the
-same window we already fetched on the previous tick.
+The bottleneck then was HTTP: each `MarketDataService.fetchHistoricalData(...)`
+call hit Zerodha, blocked on the Resilience4j rate-limiter, and returned the
+same window already fetched on the previous tick.
+
+Measured 2026-08-29 on `HISTORICAL_ICICI`, 2024-01-02→01-04 (3 days, 219 ticks),
+DEBUG logging on (so all of these are inflated by log I/O — see Phase 5):
+
+| | Data set | Wall time |
+|---|---|---|
+| After Phase 1, before Phase 0/3/6a | ~110k option rows | 26.2 s |
+| After Phase 0 + 3 + 6a | ~110k option rows | **19.9 s** |
+| After Phase 0 + 3 + 6a | **3.77M option rows** | **8.7–10 s** steady state |
+
+Read those rows carefully — they are not all the same comparison:
+
+- The first two are the honest before/after: same data, same JVM state (both a
+  first run after restart), same ledger out. **−24%.**
+- The third is on a 34× larger table but is JIT-warm and buffer-pool-warm, so it
+  is not comparable to the rows above and does **not** mean "more data is faster."
+  It is there to show the absolute steady-state cost after a full import.
+
+The pre-Phase-0 code was never measured on the full data set, because the point of
+Phase 0 is that it could not have coped: at 3.65M rows the `UPPER(...)` form of the
+per-series fetch plans as a full scan of **3,649,487 rows**, against **378** for the
+fixed form — and the expiry query ran ~400 times per backtest day. Direct query
+timing at that scale, ~150–450 ms extra per fetch (both figures include ~50 ms of
+client startup):
+
+| Query form | Rows examined | Wall |
+|---|---|---|
+| plain `=` | 378 | 59–170 ms |
+| `UPPER(...)` | 3,649,487 | 216–533 ms |
 
 ---
 
@@ -60,6 +96,59 @@ and needs explicit sign-off recorded here.
 
 ---
 
+## Phase 0 — The historical queries were not using their index ✅ implemented
+
+Not in the original plan, and the largest win once the imported data set grew
+from ~100k rows to ~3.8M.
+
+Every `@Query` on `HistoricalOptionCandleRepository` /
+`HistoricalSpotCandleRepository` wrapped its key columns in `UPPER(...)`:
+
+```
+UPPER(c.stockCode) = UPPER(:stockCode) AND UPPER(c.exchangeCode) = UPPER(:exchangeCode)
+```
+
+A function on the leading index column makes the index unusable. `EXPLAIN` on the
+same rows, same query, with and without:
+
+| | type | key | rows examined |
+|---|---|---|---|
+| `UPPER(...)` | `ALL` | `NULL` | 103,585 + filesort |
+| plain `=` | `range` | `uk_historical_option_series_time` | **378** |
+
+The `UPPER` was never buying anything: the table collation is
+`utf8mb4_0900_ai_ci`, so `=` already compares case-insensitively, and both writers
+(`HistoricalChartCsvImportService.normalize`, `HistoricalSymbol.upper`) normalise
+to upper case before the value reaches the DB. The same reasoning rules out
+Spring Data's `…IgnoreCase…` derived-query keywords on these tables — they
+generate the identical `upper()` call.
+
+Three further changes in the same pass:
+
+- **`findAvailableExpiriesOnOrAfter` → `findNearestExpiryOnOrAfter`.** Both callers
+  only ever took the first element, but the `SELECT DISTINCT … ORDER BY` had to
+  walk the whole index and sort it (`Using temporary; Using filesort`) to build
+  the list. As `MIN(expiryDate)` MySQL reports **`Select tables optimized away`** —
+  answered from index metadata, zero rows touched.
+- **`HistoricalOptionInstrumentResolver` memoises expiry per `(stockCode, date)`.**
+  `AnalysisScheduler.fetchAndShareStrikeMarketData` calls `resolveExpiry` once per
+  *(config × timeframe)* per tick — ~400 times a backtest day for an answer that
+  cannot change during a run.
+- **`028_drop_duplicate_historical_indexes.xml`.** `018` created an `idx_*_lookup`
+  on each historical table whose column list and order were *identical* to the
+  table's unique constraint. It could never win a plan the unique key didn't
+  already serve, and it doubled per-row write cost during import — index bytes
+  already exceeded data bytes (17.1 MB vs 10.5 MB).
+
+**Live impact:** none. Both repositories are only reachable with
+`backtest.data-source=HISTORICAL_ICICI`, which `HistoricalDataSourceGuard` refuses
+in live mode, plus the historical chart dashboard.
+
+**Parity:** the queries return the same rows in the same order; only the access
+path changed. Verified by the Phase 3 ledger diff below, which exercised all of it.
+
+---
+
 ## Phase 1 — Per-day candle cache ✅ implemented
 
 **Expected speedup:** 10–20× (≈ 3-4 min → 20-30 s for 2 days).
@@ -69,19 +158,28 @@ and needs explicit sign-off recorded here.
 Three new/changed components:
 
 - **`com.moneymaker.backtesting.BacktestMarketDataCache`** — keyed by
-  `(symbol, interval)`, stores the full day's candle list for a backtest day.
-  `beginDay(from, to)` resets state; `slice(symbol, interval, from, to)` returns
-  the sub-range; `endDay()` clears.
+  `(symbol, interval)`, stores the full day's candle list for a backtest day
+  **together with the window it was fetched over**. `beginDay(from, to)` resets
+  state; `slice(symbol, interval, from, to)` returns the sub-range, or `null`
+  when the request reaches outside the stored window; `endDay()` clears.
 - **`com.moneymaker.market.service.KiteHistoricalFetcher`** — the original
   throttled HTTP path, lifted out of `MarketDataService` into a sibling
   `@Service` so Spring AOP's `@RateLimiter` / `@Retry` keep firing (a
   self-invocation inside `MarketDataService` would have bypassed them).
 - **`MarketDataService.fetchHistoricalData`** — now cache-first:
   1. If the cache is active and a slice exists, return it.
-  2. If active and no slice, call `KiteHistoricalFetcher.fetch(...)` with the
-     **wide** `[dayFrom, dayTo]` window once, store the result, then slice.
+  2. If active and no slice, call `KiteHistoricalFetcher.fetch(...)` once with
+     the **union** of `[dayFrom, dayTo]` and the caller's `[from, to]`, store
+     the result against that window, then slice.
   3. If inactive (live mode), forward the original `[from, to]` straight to
      the throttled fetcher — byte-identical to the pre-Phase-1 path.
+
+  > The union — rather than `[dayFrom, dayTo]` outright — is what keeps a caller
+  > with a longer lookback than the tick loop honest. `EodDowntrendDetectionService`
+  > wants ~30 calendar days for its ATR and up to 35 for its SMA grid; narrowing
+  > to the day window handed it a few days and a partial average, with no miss
+  > and no log line. For the tick loop, whose windows already sit inside the day
+  > window, the union *is* the day window — same single fetch, same result.
 
 `BacktestAnalysisService.run` calls `cache.beginDay(...)` at each day's
 start (using `analysisScheduler.computeLookbackCalendarDays()` to derive
@@ -119,79 +217,140 @@ Eliminates 99% of broker HTTP calls (~72 → 1 per `(symbol, interval)` per day)
 
 ---
 
-## Phase 2 — Skip redundant strategy runs per timeframe
+## Phase 2 — Skip redundant strategy runs per timeframe ❌ withdrawn
 
-**Expected speedup:** 2–3× on top of Phase 1.
+**The premise was right, the justification was wrong, and investigating it
+surfaced a live-parity bug that has nothing to do with performance.** Read this
+section before re-proposing the optimisation.
 
-### What changes
+### What it proposed
 
-The tick loop advances by the smallest timeframe (5 min). At 09:30, 09:35,
-09:40, 09:45 the 15-min strategy is re-run against the **same** candle
-(09:15→09:30). Add a small `Map<(tradeConfigId, interval, strike), LocalDateTime>`
-inside `Strategy1.execute` and skip the gate / rule evaluation when the
-last candle's timestamp hasn't advanced since the previous tick.
+The tick loop advances by the smallest timeframe (5 min). At 09:30, 09:35, 09:40
+and 09:45 the 15-min strategy is re-run against what looks like the same candle.
+Keep a `Map<(tradeConfigId, interval, strike), LocalDateTime>` in `Strategy1` and
+skip the rule evaluation when the last candle's timestamp hasn't advanced.
 
-### Live impact
+### Why it was called trivially equivalent, and why that reasoning fails
 
-| Component | Affected? | Notes |
-|---|---|---|
-| Live cron path | No | Live's `AnalysisScheduler` fires on a 5-min cron and evaluates every candle. The skip is keyed by candle-timestamp, not by clock — in live the cron tick *always* sees a new candle for at least the 5-min timeframe. |
-| Strategy code | Yes, but the skip predicate works identically in live | When a 5-min cron runs, 15-min's last candle has indeed not advanced 3 of every 4 fires — so the same skip helps live too (small CPU win, no behaviour change). |
+The original argument was "the inputs are byte-identical, so the signal is the
+same." Whether that holds depends on something the argument never checked:
+whether a bar's *contents* can change while its *timestamp* stays put.
 
-### Parity guarantee
+For a genuinely forming bar they can — and that is exactly what live does. A
+broker asked for `[start, 09:39]` returns a **partial** 15-min bar stamped 09:30,
+carrying only the 09:30 and 09:35 five-minute candles. Five minutes later the
+same timestamp carries more. A timestamp-keyed skip would freeze the strategy on
+the first partial bar and never see the bar close.
 
-- Strategy decisions depend only on the last candle's OHLC + SMA. Skipping
-  the re-evaluation of the *same* candle produces the same signal (`NONE`),
-  because the inputs are byte-identical. Trivially equivalent.
-- Verification: same as Phase 1 — diff the `trade_order` ledger before/after.
+### The bug this exposed
 
-### Risks
+In backtest that does not happen — for a reason that is itself a defect.
 
-- None for correctness. The risk is a stale skip-map carrying entries from
-  the previous day; the day-loop must clear it at day-start.
+Phase 1 has `MarketDataService` fetch the **wide** `[dayFrom, dayTo]` window once
+per `(symbol, interval)` per day. `HistoricalIciciMarketDataProvider.aggregate`
+therefore builds the 10/15-minute bars over the *entire day*, and
+`BacktestMarketDataCache.slice` then filters by bar timestamp. For a 15-minute
+series, bucket 1 is `{09:30, 09:35, 09:40}` stamped `09:30`. At the 09:35 tick
+`slice(to=09:35)` includes that bar — **already complete, already carrying
+09:40's data.**
+
+So on any timeframe coarser than the tick increment, the backtest strategy sees
+up to `interval - tick` minutes into the future, and live does not. That breaks
+parity rule 2 ("same candle data ... byte-identical to what it would have seen in
+live") in the contract above.
+
+It is not introduced by Phase 2 and not fixed by withdrawing it — it is live in
+every backtest run using a 15-minute `sma_timeframe` row today. Fixing it means
+either aggregating per-tick over `[from, tickAt]` (giving up part of Phase 1's
+win) or having `slice` truncate the trailing bucket to the request's upper bound.
+Both change historical backtest results, so it needs a deliberate decision rather
+than a drive-by fix.
+
+### If Phase 2 is revisited
+
+Key the skip on the last bar's `(timestamp, close)` rather than timestamp alone,
+so a forming bar is correctly seen as changed. Note that the CPU it saves is much
+smaller after Phase 3 — the expensive part of those repeat evaluations was the
+SMA rebuild, which is now cached.
 
 ---
 
-## Phase 3 — Incremental SMA at day-start
+## Phase 3 — Incremental SMA ✅ implemented
 
-**Expected speedup:** 1.5–2× on top of Phases 1–2.
+**Measured:** 26.2 s → 19.9 s for a 3-day / 219-tick run (with Phase 0), on a
+~110k-row data set where Phase 0's index win is barely exercised. Ledger
+identical.
 
-### What changes
+### What changed (as built)
 
-Today `SmaTrendCalculator.compute(...)` and `IndicatorService` recompute
-SMA-{20,50,100,200,500} from scratch on every call, summing `period`
-candles each time. Move SMA population to a **single pass** at day-start
-(right after Phase 1's pre-fetch). Walk each candle list once with a
-rolling sum: on each new candle, subtract the dropped-out tail and add
-the new head. Each `MarketData` row's `smaValueN` is then stamped once,
-and Strategy1 reads precomputed values.
+Not "a single pass at day-start" as originally sketched — that would have needed
+a backtest-only hook into the day loop. Instead `SMAIndicatorImpl` itself became
+incremental, which leaves the call surface untouched and works in both modes.
+
+Two things were wrong with the old implementation, and only the second one was in
+the original plan:
+
+1. **It rebuilt a ta4j `BaseBarSeries` on every call** — every candle re-wrapped
+   as a `BaseBar` of `DecimalNum`s — before computing anything. In a backtest that
+   is per *(strike × timeframe × SMA period)* per tick, thousands of times a day,
+   rebuilding an identical series each time.
+2. **It recomputed every index from scratch**, including the ones whose value
+   cannot have changed.
+
+The replacement computes the same arithmetic directly and skips candles that
+already carry a value for that period. The `MarketData` instances behind
+`BacktestMarketDataCache.slice` are shared across ticks, so a candle stamped on
+one tick is the same object the next tick sees.
+
+### Parity guarantee
+
+Exact reproduction of ta4j's arithmetic, not an approximation: the same ascending
+summation order, the same `MathContext(32, HALF_UP)` that `DecimalNum` defaults
+to, and the same `min(period, index+1)` divisor in the warm-up region.
+
+**The reuse boundary is load-bearing.** A stamped value is only trusted at
+`index >= period - 1`. Above that boundary the window is the same `period`
+absolute candles no matter how many candles have been trimmed off the *left* of
+the list — and the left edge does move during a backtest day, because
+`AnalysisScheduler` derives its `from` bound from the advancing tick time. Below
+it, ta4j averages however many bars happen to precede the candle, which is a
+different number once the list has been trimmed, so the warm-up region is always
+recomputed. That costs one pass, because there the window is a pure prefix and a
+running sum reproduces ta4j's loop term for term.
+
+In live mode every fetch builds fresh `MarketData` objects with null SMA fields,
+so nothing is ever skipped — same numbers as before, minus the `BaseBar`
+allocation.
+
+Verified two ways before the swap, both against **real imported candles** (six
+series, 367–391 bars, periods 20/50/100/200/500):
+
+1. Whole-list: 9,096 values compared, **0 mismatches** on exact `Double.compare`.
+2. Tick-loop simulation — slice grows on the right, left edge creeps forward,
+   stamps shared by object identity: 4,491 ticks compared on the last candle (the
+   one the strategy actually reads), **0 mismatches**.
+
+Then the `trade_order` ledger diff for 2024-01-02→01-04: identical on every
+column of the checklist below.
+
+### Risks
+
+- **Floating point.** Unchanged from before: the sum is `BigDecimal` under a fixed
+  `MathContext`. The warm-up running sum is not a rolling sum (nothing is ever
+  subtracted), so there is no cancellation drift to accumulate.
+- **A mutated candle list would go stale.** If a caller ever mutates OHLC on a
+  candle already stamped, the cached SMA is wrong. Nothing does today: the
+  historical provider builds fresh transient rows per fetch, and a wider refetch
+  replaces the cached series with new objects rather than editing the old ones.
 
 ### Live impact
 
 | Component | Affected? | Notes |
 |---|---|---|
-| `IndicatorService` / `SMAIndicatorImpl` | Replaced internally with a rolling-sum implementation | Public interface unchanged. Live cron fetches data once per 5-min tick and computes SMA on the fly — same rolling-sum implementation produces the same numbers, just faster. |
+| `IndicatorService` / `SMAIndicatorImpl` | Replaced internally | Public interface unchanged. Live gets fresh objects every cron tick, so it computes the full list — same numbers, no ta4j series build. |
 | Strategy code | No | Reads `lastCandle.getSmaValueN()` exactly as today. |
 | `MarketData` entity | No schema change | The `sma_value*` columns already exist. |
-
-### Parity guarantee
-
-- Rolling-sum SMA is **mathematically identical** to recompute-from-scratch
-  SMA — it's the same formula with O(1) update instead of O(period). No
-  floating-point order-of-operations difference because each new SMA value
-  is computed from the same `period` consecutive candles.
-- Verification: pick a long candle list, compute SMA both ways, assert
-  byte-equal `BigDecimal`s with the same scale.
-
-### Risks
-
-- **Floating point.** If we ever switch from `BigDecimal` to `double`,
-  rolling-sum drift can accumulate. As long as we stay on `BigDecimal` with
-  fixed scale, exact equivalence holds.
-- **Re-entry edge case.** If a candle list is mutated after SMA is stamped
-  (e.g. broker re-emits a corrected candle), the cached SMA goes stale. In
-  live this can't happen within a single 5-min window; in backtest the
-  per-day cache is immutable.
+| ta4j dependency | Still used by `EMAIndicatorImpl` / `RSIIndicatorImpl` | Only the SMA path moved off it. |
 
 ---
 
@@ -264,10 +423,37 @@ Recommend option (1) — zero code change, same effect.
 
 ---
 
-## Phase 6 — Position-monitor in-memory OPEN set
+## Phase 6a — Stop re-reading the ledger every tick ✅ implemented
+
+Cheaper and safer than the in-memory OPEN set below, and it removes the part of
+the cost that actually grew with run length.
+
+- **`BacktestAnalysisService.safeCountClosed()`** ran
+  `findByStatusAndEntryTimeBetween("CLOSED", 1970, 9999).size()` — materialising
+  **every CLOSED trade ever written** into the persistence context, twice per
+  tick, to print a delta on a DEBUG line. Now `countByStatus("CLOSED")`.
+  `countTradeOrdersOnDate` had the same shape and is now two counts.
+- The whole counter block is behind `log.isDebugEnabled()`. Nothing else in that
+  method reads it, and at INFO it was four DB round trips per tick bought for a
+  line that is never printed.
+- **`AnalysisScheduler.withOpenPositionStrikes`** ran `findByStatus("OPEN")` once
+  per *(config × timeframe)* per tick. Hoisted to once per `calculateIndicator`.
+  Nothing between those calls writes to `trade_order` — orders are drained by
+  `OrderScheduler` after `calculateIndicator` returns — so every repeat read saw
+  identical rows.
+
+**Live impact:** the `AnalysisScheduler` hoist applies in live too (one query per
+cron tick instead of N); same rows, same order. The rest is backtest-only code.
+
+**Parity:** covered by the same ledger diff as Phase 3.
+
+---
+
+## Phase 6b — Position-monitor in-memory OPEN set
 
 **Expected speedup:** Marginal — small DB SELECT savings cumulative over
-multi-day runs.
+multi-day runs. Consider only if a profile still shows `findByStatus("OPEN")`
+after Phase 6a.
 
 ### What changes
 
@@ -303,17 +489,33 @@ walks the in-memory set, hydrating each via `findById` only when needed.
 
 ## Recommended sequencing
 
-1. **Phase 1** alone — biggest single win, lowest risk, fully isolated
-   behind the `MarketDataProvider` interface. Gets the user from 3-4 min
-   to ~20-30 s for a 2-day run.
-2. **Phase 2 + Phase 3** together — both are pure refactors with
-   mathematical equivalence guarantees. Pair them in one PR so the parity
-   verification (diff `trade_order` rows) runs once for both.
-3. **Phase 5** — config-only, zero code; flip when benchmarking.
-4. **Phase 4** — meaningful for long runs (50+ days); skip for 2-day
-   debugging.
-5. **Phase 6** — only if the OPEN-set query shows up in a profile after
-   Phases 1–4. The complexity isn't worth a marginal win otherwise.
+1. ~~**Phase 1**~~ ✅ done — biggest single win at the time, fully isolated behind
+   the `MarketDataProvider` interface.
+2. ~~**Phase 0**~~ ✅ done — do this before anything else if the historical tables
+   are large. It is a one-line-per-query change with no behaviour surface, and it
+   is worth more than every numbered phase combined once the table passes ~1M rows.
+3. ~~**Phase 3 + Phase 6a**~~ ✅ done together, verified with one ledger diff.
+4. ~~**Phase 2**~~ ❌ withdrawn — see that section; it also documents a live-parity
+   bug in the 10/15-minute aggregation that is still open.
+5. **Phase 5** — config-only, zero code; flip when benchmarking. Note the
+   properties file currently ships with DEBUG on for six `com.moneymaker`
+   packages, so **any timing taken without setting `logging.level.com.moneymaker=INFO`
+   is measuring log I/O as much as compute.**
+6. **Phase 4** — meaningful for long runs (50+ days); skip for short debugging runs.
+7. **Phase 6b** — only if the OPEN-set query still shows up in a profile after
+   Phase 6a. The complexity isn't worth a marginal win otherwise.
+
+### Still open
+
+- **The 10/15-minute look-ahead** documented under Phase 2. This is a correctness
+  bug, not a performance one, and it changes historical results when fixed — so it
+  needs a deliberate decision. It is the highest-value item left in this document.
+- **Option SMA lookback is capped by the expiry cycle.** An imported option series
+  never spans more than its own weekly cycle (~375 five-minute candles), so
+  `5min × SMA(500)` can never resolve on an option leg and `5min × SMA(200)` only
+  starts around day 3 of each cycle. `SMAIndicatorImpl` returns null and stamps
+  nothing when `period > size`, so this shows up as "no signal", silently. See
+  [`BACKTESTING.md`](BACKTESTING.md#importing-a-full-icici-export).
 
 ## What we will NOT do
 
@@ -331,20 +533,51 @@ walks the in-memory set, hydrating each via `findById` only when needed.
 
 ## Parity verification checklist
 
-Before merging any phase, run this two-step check:
+Before merging any phase, run this check. It is cheap and it is the only thing
+standing between "faster" and "different".
 
-1. **Identical inputs.** Pick a date with active configs and known signals.
-   Run backtest with the phase **disabled** (revert toggle / new
-   provider not registered). Dump `trade_order` rows for that date.
-2. **Identical outputs.** Re-run with the phase **enabled**. Diff the
-   `trade_order` rows. Must be identical on:
-   - `entry_time`, `entry_price`, `entry_reason`
-   - `exit_time`, `exit_price`, `exit_reason`
-   - `profit`, `peak_profit`, `peak_loss`
-   - The set of `strategy_id` × `option_strike` × `option_type` rows.
+**Reset between runs.** Both runs must start from the same ledger, or the
+second one sees the first one's positions and diverges for reasons that have
+nothing to do with the change:
 
-Any non-identity is a divergence. Record it here under the relevant phase
-and either fix the divergence or get explicit sign-off.
+```sql
+DELETE FROM trade_order WHERE fill_status='BACKTEST';
+```
+
+Back the table up first (`mysqldump moneymath trade_order trade_config sma_timeframe`).
+Also confirm `trade_config` row count is unchanged between runs — a backtest's
+`EodDowntrendDetectionService` writes `AUTO_DOWNTREND` configs for the next day.
+It is idempotent, so a repeat run should add none; if the count moves, the runs
+were not comparable.
+
+1. **Identical inputs.** Pick a date range with active configs and known signals.
+   Run with the change **absent**, then dump the ledger:
+
+   ```sql
+   SELECT strategy_id, option_type, option_strike, option_token,
+          entry_time, entry_price, entry_reason,
+          exit_time, exit_price, exit_reason,
+          profit, peak_profit, peak_loss, status, fill_status
+   FROM trade_order
+   WHERE entry_time >= :from AND entry_time < :to
+   ORDER BY entry_time, option_type, option_strike, option_token, strategy_id;
+   ```
+
+   The explicit `ORDER BY` matters — without it MySQL is free to return rows in a
+   different order and the diff reports noise.
+
+2. **Identical outputs.** Reset, re-run with the change **present**, dump again,
+   diff the two files. Must be byte-identical.
+
+Any non-identity is a divergence. Record it here under the relevant phase and
+either fix it or get explicit sign-off.
+
+**A ledger diff is necessary, not sufficient.** It only catches differences large
+enough to flip a decision. For a numerical change — Phase 3 being the example —
+also compare the computed values directly against the old implementation across a
+range of real series and periods, asserting exact equality rather than a
+tolerance. Phase 3's harness did 9,096 whole-list values plus 4,491 simulated
+ticks before the ledger diff was trusted.
 
 ---
 

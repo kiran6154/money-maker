@@ -11,7 +11,9 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Resolver for the imported-CSV backtest source. Produces {@link HistoricalSymbol}
@@ -44,6 +46,27 @@ public class HistoricalOptionInstrumentResolver implements OptionInstrumentResol
 
     private final HistoricalOptionCandleRepository optionCandleRepository;
 
+    /**
+     * Memo for {@link #resolveExpiry}, keyed on {@code stockCode|exchange|analysisDate}.
+     *
+     * <p>{@code AnalysisScheduler.fetchAndShareStrikeMarketData} calls
+     * {@code resolveExpiry} once per <em>(config × timeframe)</em> on every tick —
+     * roughly 400 times per backtest day for the same handful of dates. The
+     * underlying query has to range over {@code expiry_date} across the whole
+     * table, and the imported set is ~3.8M rows, so those repeats dominated the
+     * per-day cost. The answer cannot change during a run: nothing writes to
+     * {@code historical_option_candles} while a backtest is replaying it.
+     *
+     * <p>Bounded by the number of distinct trading dates in the run — a few
+     * hundred entries at most, each a date and a date.
+     *
+     * <p>This memo is backtest-only by construction, not by an {@code if}: the
+     * whole bean is conditional on {@code backtest.data-source=HISTORICAL_ICICI},
+     * and {@code HistoricalDataSourceGuard} fails startup if that is set while
+     * {@code app.mode=live}. No shared service grows a mode branch.
+     */
+    private final Map<String, Optional<LocalDate>> expiryByDate = new ConcurrentHashMap<>();
+
     @Override
     public String getName() {
         return NAME;
@@ -51,14 +74,19 @@ public class HistoricalOptionInstrumentResolver implements OptionInstrumentResol
 
     @Override
     public String underlyingSymbol(TradeConfigCombinedDTO dto) {
-        if (dto == null) {
+        return dto == null ? null : underlyingSymbol(dto.getInstrument());
+    }
+
+    @Override
+    public String underlyingSymbol(Instrument instrument) {
+        if (instrument == null) {
             return null;
         }
         // instrument_details is intentionally not consulted — the historical
         // tables are keyed on stock_code, which comes off the instrument row.
-        String stockCode = UnderlyingSymbols.canonicalName(dto.getInstrument());
+        String stockCode = UnderlyingSymbols.canonicalName(instrument);
         if (stockCode.isEmpty()) {
-            log.warn("[historical] trade config has no usable instrument name — cannot build an underlying symbol");
+            log.warn("[historical] instrument has no usable name — cannot build an underlying symbol");
             return null;
         }
         return HistoricalSymbol.encodeSpot(stockCode, SPOT_EXCHANGE);
@@ -74,14 +102,21 @@ public class HistoricalOptionInstrumentResolver implements OptionInstrumentResol
             return null;
         }
 
-        List<LocalDate> expiries = optionCandleRepository.findAvailableExpiriesOnOrAfter(
+        return expiryByDate
+                .computeIfAbsent(stockCode + "|" + OPTION_EXCHANGE + "|" + analysisDate,
+                        key -> lookupExpiry(stockCode, analysisDate))
+                .orElse(null);
+    }
+
+    /** Uncached lookup — runs once per {@code (stockCode, analysisDate)} per JVM. */
+    private Optional<LocalDate> lookupExpiry(String stockCode, LocalDate analysisDate) {
+        Optional<LocalDate> expiry = optionCandleRepository.findNearestExpiryOnOrAfter(
                 stockCode, OPTION_EXCHANGE, analysisDate);
-        if (expiries.isEmpty()) {
+        if (expiry.isEmpty()) {
             log.warn("[historical] no expiry on/after {} in historical_option_candles for stockCode={} — "
                     + "import the CSV covering that expiry", analysisDate, stockCode);
-            return null;
         }
-        return expiries.get(0);
+        return expiry;
     }
 
     @Override
