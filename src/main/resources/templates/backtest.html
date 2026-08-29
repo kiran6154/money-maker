@@ -190,6 +190,8 @@
                         <th class="num">P/L</th>
                         <th class="num" title="Highest unrealised P&L observed during the trade (≥ 0)">Peak +</th>
                         <th class="num" title="Lowest unrealised P&L observed during the trade (≤ 0)">Peak −</th>
+                        <th class="num" title="Per-share profit that closes the trade as TARGET (P/L ≥ this). Snapshotted at entry from target_pct × entry premium, or the config's absolute target.">Target</th>
+                        <th class="num" title="Per-share loss that closes the trade as STOP_LOSS (P/L ≤ this). Stored positive in stop_loss_at_entry; shown signed here so it lines up with P/L and Peak −.">SL</th>
                         <th>Status</th>
                         <th title="Why the trade exited: SIGNAL / TARGET / STOP_LOSS / FORCE_CLOSE">Exit reason</th>
                         <th>Fill</th>
@@ -325,6 +327,17 @@
         if (Number.isNaN(n)) return v;
         return n.toFixed(2);
     }
+    // Renders a magnitude with a forced sign. Used for the SL column: the DB
+    // stores stop_loss_at_entry as a positive magnitude, but the column sits
+    // beside P/L and Peak −, and an unsigned number there reads as a gain.
+    // The breach test PositionService applies is literally  pnl <= -stopLoss.
+    function fmtSigned(v, sign) {
+        if (v === null || v === undefined) return '—';
+        const n = Number(v);
+        if (Number.isNaN(n)) return v;
+        if (n === 0) return '0.00';
+        return (sign < 0 ? '−' : '') + Math.abs(n).toFixed(2);
+    }
     function fmtTime(v) {
         if (!v) return '—';
         return String(v).replace('T', ' ');
@@ -371,6 +384,8 @@
                     '<td class="num ' + plClass + '">' + fmtNum(o.profit) + '</td>' +
                     '<td class="num ' + peakProfitClass + '">' + fmtNum(o.peakProfit) + '</td>' +
                     '<td class="num ' + peakLossClass + '">' + fmtNum(o.peakLoss) + '</td>' +
+                    '<td class="num">' + fmtNum(o.targetAtEntry) + '</td>' +
+                    '<td class="num">' + fmtSigned(o.stopLossAtEntry, -1) + '</td>' +
                     '<td><span class="pill ' + statusPill + '">' + fmt(o.status) + '</span></td>' +
                     '<td>' + fmt(o.exitReason) + '</td>' +
                     '<td>' + fmt(o.fillStatus) + '</td>' +

@@ -70,7 +70,11 @@ monthly deliberately — see the note in [`ORDERS_AND_POSITIONS.md`](ORDERS_AND_
 - **5-minute base only.** `10minute` / `15minute` are aggregated from the 5-minute
   rows, bucketed by wall-clock from the session open (not by list position, which
   would drift across days — an NSE session is 75 five-minute candles, not
-  divisible by 2).
+  divisible by 2). The roll-up happens **after** the candles are narrowed to the
+  caller's window, so the trailing bucket comes back partial exactly as a broker
+  would return it. Doing it the other way round gave the strategy up to
+  `interval - 5` minutes of look-ahead — see
+  [`BACKTEST_PERFORMANCE.md` → Phase 2](BACKTEST_PERFORMANCE.md).
 - **`day` candles are rolled up, not stored.** One bar per trading date —
   open = the session's first candle, high/low = the session's extremes,
   close = the last candle. `EodDowntrendDetectionService` runs against this
@@ -133,12 +137,26 @@ Two things to check in the export before loading it:
 - **A cycle with no SPOT file cannot be replayed.** ATM resolution reads the
   underlying series, so CE/PE without spot imports fine and then fails at strike
   selection. `manifest.json` names the underlying file, or reports why it is missing.
-- **An option series never spans more than its own expiry cycle** — about 375
-  five-minute candles. Spot is continuous across cycles; options are not. So
-  `5min × SMA(500)` can never be computed on an option leg from this data
-  (`SMAIndicatorImpl` returns null and stamps nothing when `period > size`), and
-  `5min × SMA(200)` only starts resolving around day 3 of each cycle. Early-cycle
-  days producing no signals for the long-SMA configs is the data, not a bug.
+- **Option series are truncated to their own expiry cycle — by the exporter, not
+  by the market.** A weekly contract trades for weeks before its cycle starts, but
+  the export windows each expiry to `cycle_start .. expiry`, so that history was
+  never fetched. Measured over a full export: **0 of 10,918 option series carry a
+  candle from before their own cycle**, and the longest series in the set is 456
+  five-minute candles.
+
+  Consequences, given `SMAIndicatorImpl` returns null and stamps nothing when
+  `period > size` — i.e. these fail silently as "no signal":
+
+  | Timeframe × SMA | Series that can resolve it |
+  |---|---|
+  | `5min × 50` | 10,877 / 10,918 |
+  | `5min × 100` | 10,799 / 10,918 |
+  | `5min × 200` | 10,616 / 10,918 (97%), and only from ~day 3 of each cycle |
+  | `5min × 500` | **0** — needs 500 candles, longest series is 456 |
+
+  Spot is continuous across cycles and unaffected. To make long option SMAs
+  usable, re-export with a wider per-expiry window; nothing in this codebase can
+  recover history the export does not contain.
 
 **Operator note — buffer pool.** A full export is ~3.8M option rows, roughly
 380 MB of data plus 310 MB of index. MySQL's default

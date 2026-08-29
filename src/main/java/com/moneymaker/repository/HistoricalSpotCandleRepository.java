@@ -62,4 +62,22 @@ public interface HistoricalSpotCandleRepository extends JpaRepository<Historical
             @Param("exchangeCode") String exchangeCode,
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to);
+
+    /**
+     * Every distinct calendar date that has underlying candles — i.e. the trading
+     * days the imported data actually covers. Backs {@code HistoricalTradingCalendar},
+     * so a backtest replays the sessions the market really held rather than
+     * assuming Mon–Fri.
+     *
+     * <p>Deliberately not filtered by {@code stock_code}: a session is market-wide,
+     * so any index having candles for a date is enough to call it a trading day.
+     *
+     * <p>Native, and returning {@code java.sql.Date} rather than {@code LocalDate},
+     * to keep the {@code DATE(...)} truncation and its type mapping explicit. The
+     * table is small (~24k rows) and this runs once per JVM, so the full scan the
+     * {@code DISTINCT} implies costs nothing worth optimising.
+     */
+    @Query(value = "SELECT DISTINCT DATE(datetime) FROM historical_spot_candles ORDER BY 1",
+            nativeQuery = true)
+    List<java.sql.Date> findDistinctTradingDates();
 }

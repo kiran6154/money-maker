@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      Premium band the detector stamps on the trade_config rows it generates.
+
+      Why this lives on the rule and not in code
+      ==========================================
+      Changesets 024/025 gave trade_config a premium band and made 80-250 the
+      standing band for hand-made configs. EodDowntrendDetectionService predates
+      both and never set the columns at all, so every AUTO_DOWNTREND config was
+      written with NULL/NULL - and Strategy1.isOutsideBand reads NULL as
+      "unbounded". Auto-generated configs were therefore free to enter at any
+      premium: precisely the 6-point-entry-against-a-30-point-target case that
+      024 exists to prevent.
+
+      The band decides whether a signal opens a trade, which makes it a
+      trading-behaviour threshold, so per CLAUDE.md #9 it belongs in config
+      rather than in a service constant. It sits here beside atr_periods /
+      target_multiplier / sl_multiplier - the other knobs that shape what a
+      generated config looks like - so one rule can run a different band from
+      the next without a redeploy.
+
+      NOT NULL, matching every other column on this table. That is deliberate:
+      a nullable band could silently reintroduce the unbounded config this
+      changeset removes. The defaults backfill existing rows with the same
+      80-250 the desk already uses for manual configs (see 025), so behaviour
+      is unchanged for anyone who does not touch the new columns.
+    -->
+    <changeSet id="026_add_option_price_range_to_sma_downtrend_rule" author="moneymaker">
+        <addColumn tableName="sma_downtrend_rule">
+            <column name="min_option_price" type="DECIMAL(12,4)" defaultValueNumeric="80">
+                <constraints nullable="false"/>
+            </column>
+            <column name="max_option_price" type="DECIMAL(12,4)" defaultValueNumeric="250">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

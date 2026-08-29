@@ -10,6 +10,7 @@ import com.moneymaker.indicator.IndicatorService;
 import com.moneymaker.market.exception.HistoricalDataMissingException;
 import com.moneymaker.market.instrument.OptionInstrumentResolver;
 import com.moneymaker.market.service.MarketDataService;
+import com.moneymaker.market.service.TradingCalendar;
 import com.moneymaker.repository.SmaDowntrendRuleRepository;
 import com.moneymaker.repository.SmaTimeframeRepository;
 import com.moneymaker.repository.TradeConfigRepository;
@@ -19,7 +20,6 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -104,19 +104,22 @@ public class EodDowntrendDetectionService {
     private final OptionInstrumentResolver instrumentResolver;
     private final MarketDataService marketDataService;
     private final IndicatorService indicatorService;
+    private final TradingCalendar tradingCalendar;
 
     public EodDowntrendDetectionService(SmaDowntrendRuleRepository ruleRepository,
                                         TradeConfigRepository tradeConfigRepository,
                                         SmaTimeframeRepository smaTimeframeRepository,
                                         OptionInstrumentResolver instrumentResolver,
                                         MarketDataService marketDataService,
-                                        IndicatorService indicatorService) {
+                                        IndicatorService indicatorService,
+                                        TradingCalendar tradingCalendar) {
         this.ruleRepository = ruleRepository;
         this.tradeConfigRepository = tradeConfigRepository;
         this.smaTimeframeRepository = smaTimeframeRepository;
         this.instrumentResolver = instrumentResolver;
         this.marketDataService = marketDataService;
         this.indicatorService = indicatorService;
+        this.tradingCalendar = tradingCalendar;
     }
 
     /**
@@ -133,7 +136,14 @@ public class EodDowntrendDetectionService {
             return;
         }
 
-        LocalDate nextDay = nextTradingDay(tradingDay);
+        // The next *session*, not merely the next weekday. Sourced from the data
+        // when replaying imported candles, so a market holiday is never handed a
+        // config and a special Saturday session is never skipped.
+        LocalDate nextDay = tradingCalendar.nextTradingDay(tradingDay);
+        if (nextDay == null) {
+            log.info("[EOD-downtrend] {} — no trading day follows in the calendar, nothing to generate", tradingDay);
+            return;
+        }
 
         if (!tradeConfigRepository.findByTradingDateAndSource(nextDay, SOURCE_AUTO).isEmpty()) {
             log.info("[EOD-downtrend] {} — AUTO_DOWNTREND configs already exist for {}, skipping",
@@ -800,11 +810,4 @@ public class EodDowntrendDetectionService {
     }
 
     /** Skips Sat/Sun. Holidays not modelled — picked up at the next backtest invocation. */
-    private LocalDate nextTradingDay(LocalDate day) {
-        LocalDate next = day.plusDays(1);
-        while (next.getDayOfWeek() == DayOfWeek.SATURDAY || next.getDayOfWeek() == DayOfWeek.SUNDAY) {
-            next = next.plusDays(1);
-        }
-        return next;
-    }
 }

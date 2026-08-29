@@ -56,7 +56,7 @@ public class HistoricalIciciMarketDataProvider implements MarketDataProvider {
     public static final String NAME = "HISTORICAL_ICICI";
 
     /** Base granularity of both historical tables. */
-    private static final String BASE_INTERVAL = "5minute";
+    public static final String BASE_INTERVAL = "5minute";
 
     /**
      * Requested by {@code EodDowntrendDetectionService} for its ATR. Served by
@@ -102,16 +102,33 @@ public class HistoricalIciciMarketDataProvider implements MarketDataProvider {
     @Override
     @Transactional(readOnly = true)
     public List<MarketData> fetchHistoricalData(String symbol, LocalDateTime from, LocalDateTime to, String interval) {
+        return aggregateTo(fetchBaseCandles(symbol, from, to, interval), symbol, interval);
+    }
+
+    /**
+     * The raw 5-minute rows for {@code symbol} in {@code [from, to]}, before any
+     * timeframe roll-up.
+     *
+     * <p>Exposed separately so {@code MarketDataService} can cache the <b>base</b>
+     * series for a backtest day and roll it up per request, instead of caching an
+     * already-aggregated series and slicing that. The difference is not
+     * cosmetic — see {@link #aggregateTo}.
+     *
+     * <p>{@code interval} is only used to validate and to name the series in the
+     * error message; the rows returned are always 5-minute.
+     */
+    @Transactional(readOnly = true)
+    public List<MarketData> fetchBaseCandles(String symbol, LocalDateTime from, LocalDateTime to, String interval) {
         Objects.requireNonNull(symbol, "symbol must not be null");
         Objects.requireNonNull(from, "from must not be null");
         Objects.requireNonNull(to, "to must not be null");
         Objects.requireNonNull(interval, "interval must not be null");
 
-        int intervalMinutes = DAY_INTERVAL.equalsIgnoreCase(interval)
-                ? MINUTES_PER_DAY
-                : intervalMinutesOf(interval, symbol);
-        HistoricalSymbol.Parsed parsed = HistoricalSymbol.parse(symbol);
+        // Validate eagerly so an unsupported interval fails at the fetch, not
+        // after the caller has already cached the rows.
+        intervalMinutesOf2(interval, symbol);
 
+        HistoricalSymbol.Parsed parsed = HistoricalSymbol.parse(symbol);
         List<MarketData> base = parsed.isSpot()
                 ? fetchSpot(parsed, symbol, from, to)
                 : fetchOption(parsed, symbol, from, to);
@@ -124,8 +141,32 @@ public class HistoricalIciciMarketDataProvider implements MarketDataProvider {
                             + ", window=[" + from + " .. " + to + "]. "
                             + "Import the CSV covering this series/date range, or switch backtest.data-source=BROKER.");
         }
+        return base;
+    }
 
+    /**
+     * Rolls a 5-minute series up to {@code interval}.
+     *
+     * <p><b>Call this on the rows the caller actually asked for, never on a wider
+     * window that is then filtered by bar timestamp.</b> Aggregating first and
+     * slicing after produces bars that are <i>complete</i> at a moment the caller
+     * has not reached yet: for a 15-minute series, bucket {@code {09:30, 09:35,
+     * 09:40}} is stamped {@code 09:30}, so a slice to {@code 09:35} keeps it and
+     * hands the strategy 09:40's data at the 09:35 tick. A broker asked for
+     * {@code to=09:35} returns that bar <i>partial</i>. Getting this backwards
+     * gave backtest up to {@code interval - 5} minutes of look-ahead that live
+     * never has.
+     */
+    public List<MarketData> aggregateTo(List<MarketData> base, String symbol, String interval) {
+        int intervalMinutes = intervalMinutesOf2(interval, symbol);
         return intervalMinutes == BASE_INTERVAL_MINUTES ? base : aggregate(base, intervalMinutes);
+    }
+
+    /** Bar width in minutes, accepting {@link #DAY_INTERVAL} as well. */
+    private int intervalMinutesOf2(String interval, String symbol) {
+        return DAY_INTERVAL.equalsIgnoreCase(interval)
+                ? MINUTES_PER_DAY
+                : intervalMinutesOf(interval, symbol);
     }
 
     private List<MarketData> fetchSpot(HistoricalSymbol.Parsed parsed, String symbol,

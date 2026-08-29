@@ -4,6 +4,7 @@ import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.entity.SmaTimeframe;
 import com.moneymaker.login.service.BrokerSessionStore;
 import com.moneymaker.market.exception.HistoricalDataMissingException;
+import com.moneymaker.market.service.TradingCalendar;
 import com.moneymaker.order.service.OrderService;
 import com.moneymaker.repository.TradeOrderRepository;
 import com.moneymaker.scheduler.AnalysisScheduler;
@@ -42,6 +43,7 @@ public class BacktestAnalysisService {
     private final NotificationService notifier;
     private final BacktestMarketDataCache marketDataCache;
     private final EodDowntrendDetectionService eodDowntrendDetectionService;
+    private final TradingCalendar tradingCalendar;
 
     public BacktestAnalysisService(
             TradeConfigScheduler tradeConfigScheduler,
@@ -54,7 +56,8 @@ public class BacktestAnalysisService {
             @Qualifier("sharedKiteConnect") KiteConnect sharedKiteConnect,
             NotificationService notifier,
             BacktestMarketDataCache marketDataCache,
-            EodDowntrendDetectionService eodDowntrendDetectionService) {
+            EodDowntrendDetectionService eodDowntrendDetectionService,
+            TradingCalendar tradingCalendar) {
         this.tradeConfigScheduler = tradeConfigScheduler;
         this.analysisScheduler = analysisScheduler;
         this.orderScheduler = orderScheduler;
@@ -66,6 +69,7 @@ public class BacktestAnalysisService {
         this.notifier = notifier;
         this.marketDataCache = marketDataCache;
         this.eodDowntrendDetectionService = eodDowntrendDetectionService;
+        this.tradingCalendar = tradingCalendar;
     }
 
     public BacktestRunResult run(LocalDate fromDate, LocalDate toDate) {
@@ -99,14 +103,32 @@ public class BacktestAnalysisService {
             LocalDateTime currentDateTime = LocalDateTime.of(currentDate, marketStart);
             LocalDateTime dateEnd = LocalDateTime.of(currentDate, marketEnd);
 
+            // Non-sessions are skipped before anything else. This is the calendar
+            // the data reports, not Mon-Fri: a market holiday would otherwise be
+            // "replayed" against whatever candles the lookback window ends on —
+            // the previous session's — and a special Saturday session would be
+            // dropped even though it has candles.
+            if (!tradingCalendar.isTradingDay(currentDate)) {
+                log.debug("[Backtest] day={} — not a trading day, skipping", currentDate);
+                currentDate = currentDate.plusDays(1);
+                continue;
+            }
+
             // ===== Day-start: fetch this day's config (live cron equivalent) =====
             List<TradeConfigCombinedDTO> combinedDto = tradeConfigScheduler.getConfigsForDate(currentDate);
             Set<Integer> timePeriodsMinutes = uniqueTimePeriodsFor(combinedDto);
 
-            if (combinedDto.isEmpty() || timePeriodsMinutes.isEmpty()) {
-                log.info("[Backtest] day={} — no active configs / no time-periods, skipping day", currentDate);
-                currentDate = currentDate.plusDays(1);
-                continue;
+            // No config means no trading today — it does NOT mean skip the day.
+            // End-of-day detection decides whether to trade *tomorrow*, and that
+            // question is independent of whether we happened to trade today.
+            // Gating it on today's config made a single empty day terminal: with
+            // AUTO_DOWNTREND configs only ever written by the previous day's
+            // detection, one day without one meant detection never ran again and
+            // every later day was skipped too. A 31-day range stopped after 5.
+            boolean canTrade = !combinedDto.isEmpty() && !timePeriodsMinutes.isEmpty();
+            if (!canTrade) {
+                log.info("[Backtest] day={} — no active configs, no trading; running end-of-day detection only",
+                        currentDate);
             }
 
             // Count rows already in trade_order for this date so the end-of-day
@@ -128,49 +150,59 @@ public class BacktestAnalysisService {
             log.info("[Backtest] day={} starting (configs={}, time-periods={}, cache window={}..{})",
                     currentDate, combinedDto.size(), timePeriodsMinutes, dayFrom, dayTo);
 
-            // Log + telegram the active configs for this trading date — once per date.
-            tradeConfigScheduler.reportConfigsForDay(currentDate, combinedDto);
-
-            int tickMinutes = getSmallestTimePeriod(timePeriodsMinutes);
             int forceClosed = 0;
             long rowsAfter;
             try {
-                while (!currentDateTime.isAfter(dateEnd)) {
-                    LocalDateTime tickAt = currentDateTime;
-                    try {
-                        BacktestDayResult result = runForDateTime(tickAt, combinedDto);
-                        results.add(result);
-                    } catch (HistoricalDataMissingException ex) {
-                        // Deliberately not caught below: replaying an incomplete
-                        // data set silently is worse than not replaying it. Abort
-                        // the run so the gap is fixed rather than averaged over.
-                        log.error("[Backtest] {} — aborting run: {}", tickAt, ex.getMessage());
-                        throw ex;
-                    } catch (Exception ex) {
-                        // Surface the exception unambiguously and keep the loop alive
-                        // so one bad tick doesn't abort the whole day — the run will
-                        // still reach the "[Backtest] day=… done" / "completed" lines.
-                        log.error("[Backtest] tick {} threw — continuing", tickAt, ex);
-                    }
-                    currentDateTime = currentDateTime.plusMinutes(tickMinutes);
-                }
+                if (canTrade) {
+                    // Log + telegram the active configs for this trading date — once per date.
+                    tradeConfigScheduler.reportConfigsForDay(currentDate, combinedDto);
 
-                // End-of-day cleanup: force-close any intraday position whose strike
-                // fell out of the active-strike set before the close-signal could fire.
-                try {
-                    forceClosed = orderService.forceCloseOpenPositions(currentDate, dateEnd);
-                    if (forceClosed > 0) {
-                        log.info("[Backtest] {} — force-closed {} open intraday position(s) at {}",
-                                currentDate, forceClosed, dateEnd);
+                    int tickMinutes = getSmallestTimePeriod(timePeriodsMinutes);
+                    while (!currentDateTime.isAfter(dateEnd)) {
+                        LocalDateTime tickAt = currentDateTime;
+                        try {
+                            BacktestDayResult result = runForDateTime(tickAt, combinedDto);
+                            results.add(result);
+                        } catch (HistoricalDataMissingException ex) {
+                            // Deliberately not caught below: replaying an incomplete
+                            // data set silently is worse than not replaying it. Abort
+                            // the run so the gap is fixed rather than averaged over.
+                            log.error("[Backtest] {} — aborting run: {}", tickAt, ex.getMessage());
+                            throw ex;
+                        } catch (Exception ex) {
+                            // Surface the exception unambiguously and keep the loop alive
+                            // so one bad tick doesn't abort the whole day — the run will
+                            // still reach the "[Backtest] day=… done" / "completed" lines.
+                            log.error("[Backtest] tick {} threw — continuing", tickAt, ex);
+                        }
+                        currentDateTime = currentDateTime.plusMinutes(tickMinutes);
                     }
-                } catch (Exception ex) {
-                    log.error("[Backtest] {} — force-close at end-of-day failed", currentDate, ex);
+
+                    // End-of-day cleanup: force-close any intraday position whose strike
+                    // fell out of the active-strike set before the close-signal could fire.
+                    try {
+                        forceClosed = orderService.forceCloseOpenPositions(currentDate, dateEnd);
+                        if (forceClosed > 0) {
+                            log.info("[Backtest] {} — force-closed {} open intraday position(s) at {}",
+                                    currentDate, forceClosed, dateEnd);
+                        }
+                    } catch (Exception ex) {
+                        log.error("[Backtest] {} — force-close at end-of-day failed", currentDate, ex);
+                    }
                 }
 
                 // End-of-day downtrend detection — auto-generates next-day
                 // trade_config rows for every sma_downtrend_rule that passes.
                 // Backtest-only today (no live scheduler wired). Idempotent:
                 // skipped if AUTO_DOWNTREND rows already exist for the next day.
+                //
+                // OUTSIDE the canTrade branch on purpose: this is what lets the
+                // auto-config chain restart after a day that generated nothing.
+                // The detector is near-blind on the first day of an expiry cycle,
+                // where the newly-nearest contract has only that morning's candles
+                // (~75, so only the shortest SMA is computable) — that day often
+                // writes no config, and before this it took the whole rest of the
+                // run down with it.
                 //
                 // Runs against either data source: the detector resolves every
                 // symbol through OptionInstrumentResolver, and the historical

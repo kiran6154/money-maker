@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      Premium-relative target / stop-loss bracket.
+
+      Why a percentage and not more absolute points
+      =============================================
+      trade_config.target / stop_loss are absolute premium points, compared by
+      PositionService.thresholdBreach against per-share option P&L. That works
+      for a config that trades one premium level. It does not work for a config
+      that trades a *band*: 024/025 set the standing band at 80-250, a 3x spread,
+      and no single points value serves both ends. A 30-point target is a 12%
+      move at 250 and a 38% move at 80; a 120-point target - what the EOD
+      detector was writing off ATR - is unreachable at any entry below 120 and
+      needs the premium to go to zero at 250.
+
+      Measured on the imported Jan-2024 NIFTY option series (every 5-min candle
+      09:20-14:30 as a hypothetical short entry, premium inside the band, ATM +-3
+      strikes, front expiry, first touch on 5-min high/low):
+
+        bracket                    TARGET    STOP    ran to force close
+        120/120 pts (1x ATR)          3.6%   10.1%              86.3%
+        30/30 pts                    45.4%   44.5%              10.1%
+        20% / 30% of entry premium   53.9%   33.7%              12.4%
+
+      The points bracket does not fail gracefully - at 1x ATR it stops being an
+      exit rule at all and 86% of trades run to force close. Scaling the bracket
+      to the premium the trade actually opened at is what keeps it reachable
+      across the whole band.
+
+      Semantics
+      =========
+      NULL = "use the absolute target / stop_loss column", which is what every
+      existing MANUAL config keeps doing - this changeset is behaviour-neutral
+      for them. When set, OrderService snapshots entryPrice * pct into
+      trade_order.target_at_entry / stop_loss_at_entry at open, so the bracket is
+      frozen per trade exactly like the absolute one already is, and
+      PositionService needs no change.
+
+      DECIMAL(6,4): a fraction, not a display percentage. 0.2000 = 20%.
+
+      The sma_downtrend_rule copy gets defaults so the generated configs pick the
+      premium-relative bracket up immediately; that table is NOT NULL throughout
+      (see 026) for the same reason - a null there would silently fall back to
+      the ATR points bracket this changeset exists to replace.
+
+      trade_config stays nullable with no default: a hand-made config opts in.
+    -->
+    <changeSet id="027_add_pct_bracket_to_trade_config" author="moneymaker">
+        <addColumn tableName="trade_config">
+            <column name="target_pct" type="DECIMAL(6,4)"/>
+            <column name="sl_pct" type="DECIMAL(6,4)"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="027_add_pct_bracket_to_sma_downtrend_rule" author="moneymaker">
+        <addColumn tableName="sma_downtrend_rule">
+            <column name="target_pct" type="DECIMAL(6,4)" defaultValueNumeric="0.20">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sl_pct" type="DECIMAL(6,4)" defaultValueNumeric="0.30">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <!--
+      Retune the multipliers that size the absolute fallback bracket.
+
+      1.0/1.0 came from 018's column defaults and was never chosen: it made
+      target and stop-loss identical, and on the old true-range basis it produced
+      brackets of 77-158 premium points on legs entered between 80 and 250.
+
+      The basis has since changed (EodDowntrendDetectionService now measures the
+      traded leg's mean intraday range, not the detected leg's ATR), which alone
+      brings the same six Jan-2024 configs from 77-158 down to 84-155 of basis.
+      Multiplying by 0.30 / 0.45 lands them at 25-47 target against 38-70 stop —
+      inside what an ATM leg actually travels in a session, and asymmetric in the
+      direction the payoff is: a short option's gain is capped at the premium
+      while its loss is not.
+
+      Scoped to rows still holding the 1.0 default so a deliberately chosen
+      multiplier is not overwritten.
+    -->
+    <changeSet id="027_retune_downtrend_multipliers" author="moneymaker">
+        <update tableName="sma_downtrend_rule">
+            <column name="target_multiplier" valueNumeric="0.30"/>
+            <where>target_multiplier = 1.0</where>
+        </update>
+        <update tableName="sma_downtrend_rule">
+            <column name="sl_multiplier" valueNumeric="0.45"/>
+            <where>sl_multiplier = 1.0</where>
+        </update>
+    </changeSet>
+
+</databaseChangeLog>

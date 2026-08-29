@@ -242,36 +242,70 @@ carrying only the 09:30 and 09:35 five-minute candles. Five minutes later the
 same timestamp carries more. A timestamp-keyed skip would freeze the strategy on
 the first partial bar and never see the bar close.
 
-### The bug this exposed
+### The bug this exposed ✅ fixed 2026-08-29
 
-In backtest that does not happen — for a reason that is itself a defect.
+In backtest the bar did not change between ticks — for a reason that was itself a
+defect.
 
-Phase 1 has `MarketDataService` fetch the **wide** `[dayFrom, dayTo]` window once
+Phase 1 had `MarketDataService` fetch the **wide** `[dayFrom, dayTo]` window once
 per `(symbol, interval)` per day. `HistoricalIciciMarketDataProvider.aggregate`
-therefore builds the 10/15-minute bars over the *entire day*, and
-`BacktestMarketDataCache.slice` then filters by bar timestamp. For a 15-minute
+therefore built the 10/15-minute bars over the *entire day*, and
+`BacktestMarketDataCache.slice` then filtered by bar timestamp. For a 15-minute
 series, bucket 1 is `{09:30, 09:35, 09:40}` stamped `09:30`. At the 09:35 tick
-`slice(to=09:35)` includes that bar — **already complete, already carrying
-09:40's data.**
+`slice(to=09:35)` kept that bar — **already complete, already carrying 09:40's
+data.** A broker asked for `to=09:35` returns it partial.
 
-So on any timeframe coarser than the tick increment, the backtest strategy sees
-up to `interval - tick` minutes into the future, and live does not. That breaks
-parity rule 2 ("same candle data ... byte-identical to what it would have seen in
-live") in the contract above.
+So on any timeframe coarser than the tick increment, the backtest strategy saw up
+to `interval - 5` minutes into the future and live did not, breaking parity rule 2
+("same candle data ... byte-identical to what it would have seen in live").
 
-It is not introduced by Phase 2 and not fixed by withdrawing it — it is live in
-every backtest run using a 15-minute `sma_timeframe` row today. Fixing it means
-either aggregating per-tick over `[from, tickAt]` (giving up part of Phase 1's
-win) or having `slice` truncate the trailing bucket to the request's upper bound.
-Both change historical backtest results, so it needs a deliberate decision rather
-than a drive-by fix.
+Measured on 2024-01-04 across the 26 option series a mid-band config would walk,
+comparing the last bar the strategy sees under each ordering:
+
+| Interval | Ticks where the last bar differed | Max close error |
+|---|---|---|
+| 10-minute | 883 / 1898 (46.5%) | ₹18.80 |
+| 15-minute | 1183 / 1898 (62.3%) | ₹17.20 |
+
+On ~₹200 premiums that is up to ~9% on `close` — the field the entry gate tests
+(`open > sma && close < sma`) and the one that becomes `entry_price`.
+
+**The fix: cache the base series, aggregate after slicing.**
+`HistoricalIciciMarketDataProvider` now exposes `fetchBaseCandles(...)` and
+`aggregateTo(...)` separately, and `MarketDataService.fromBaseCache` caches the
+raw 5-minute rows for the day, slices them to the caller's window, and rolls up
+only then. The trailing bucket comes out partial, exactly as the broker returns it.
+
+Phase 1's win is kept: still one fetch per symbol per day. It is in fact now
+**one cache entry per symbol rather than per (symbol, interval)** — the 5-, 10-
+and 15-minute views of a strike are three roll-ups of the same cached rows.
+
+Cost: 10/15-minute roll-ups build fresh `MarketData` objects each tick, so they
+cannot carry Phase 3's SMA stamps across ticks and are recomputed. Measured
+8.7–10 s → 11.7–13.1 s on the 3-day run. Correctness over speed; if it ever
+matters, cache the aggregated series too and rebuild only the trailing bucket.
+
+> **Still unfixed, and a separate decision.** At the 09:35 tick the *5-minute*
+> path returns the candle **stamped** 09:35, whose close is the 09:40 price —
+> because `slice` is inclusive of `to` and a candle stamped T covers `[T, T+5)`.
+> So there is a one-bar look-ahead at the base interval too, on every trade's
+> entry price, on both data sources. Whether a tick at time T should see the
+> candle stamped T or the one that *closed* at T is a tick-semantics decision
+> that shifts every historical result, so it is deliberately left alone here.
+
+### The broker data source has the same defect
+
+`backtest.data-source=BROKER` still caches whatever the broker returned for the
+wide window at the requested interval, and slices that. Fixing it the same way
+means fetching at a base interval and rolling up locally, which changes what the
+broker path even asks for. Not done; `HISTORICAL_ICICI` is the configured source.
 
 ### If Phase 2 is revisited
 
-Key the skip on the last bar's `(timestamp, close)` rather than timestamp alone,
-so a forming bar is correctly seen as changed. Note that the CPU it saves is much
-smaller after Phase 3 — the expensive part of those repeat evaluations was the
-SMA rebuild, which is now cached.
+Key the skip on the last bar's `(timestamp, close)` rather than timestamp alone —
+now genuinely necessary, because after the fix above a forming bar really does
+change between ticks while keeping its timestamp. Note the CPU it saves is much
+smaller after Phase 3.
 
 ---
 

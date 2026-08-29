@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      018_create_historical_chart_tables.xml added, on each historical table, an
+      index whose column list and order are IDENTICAL to the table's unique
+      constraint:
+
+        uk_historical_option_series_time  (stock_code, exchange_code, expiry_date,
+                                           strike_price, option_right, datetime)
+        idx_historical_option_lookup      (… exactly the same six columns …)
+
+      MySQL backs a unique constraint with a real B-tree, so the second index can
+      never win a plan the first one doesn't already serve. It only costs: another
+      index to maintain on every insert, and its own copy of the key bytes.
+
+      That cost is small at the ~100k rows these tables held when the duplicate was
+      written, and not small at the ~3.8M rows the full ICICI CSV set imports —
+      index bytes already exceeded data bytes (17.1 MB vs 10.5 MB) before the load.
+
+      Dropping them leaves every read path covered by the unique constraints.
+    -->
+
+    <changeSet id="028_drop_duplicate_historical_option_index" author="moneymaker">
+        <preConditions onFail="MARK_RAN">
+            <indexExists tableName="historical_option_candles"
+                         indexName="idx_historical_option_lookup"/>
+        </preConditions>
+        <dropIndex tableName="historical_option_candles"
+                   indexName="idx_historical_option_lookup"/>
+    </changeSet>
+
+    <changeSet id="028_drop_duplicate_historical_spot_index" author="moneymaker">
+        <preConditions onFail="MARK_RAN">
+            <indexExists tableName="historical_spot_candles"
+                         indexName="idx_historical_spot_lookup"/>
+        </preConditions>
+        <dropIndex tableName="historical_spot_candles"
+                   indexName="idx_historical_spot_lookup"/>
+    </changeSet>
+
+</databaseChangeLog>

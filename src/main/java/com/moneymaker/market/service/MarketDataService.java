@@ -75,6 +75,20 @@ public class MarketDataService {
         // Fast path: backtest cache hit. In live mode isActive()=false and this
         // short-circuits to the throttled fetch below.
         if (cache.isActive()) {
+            // The superset is the UNION of the day window and what the caller
+            // asked for, never just the day window: EodDowntrendDetectionService
+            // wants ~30 days for its ATR and up to 35 for its SMA grid, and
+            // narrowing to [dayFrom, dayTo] silently handed it a few days and a
+            // partial average. For the tick loop, whose windows already sit
+            // inside the day window, the union *is* the day window — identical
+            // behaviour and the same single fetch.
+            LocalDateTime wideFrom = min(from, cache.dayFrom());
+            LocalDateTime wideTo   = max(to, cache.dayTo());
+
+            if (historicalProvider != null) {
+                return fromBaseCache(symbol, from, to, interval, wideFrom, wideTo);
+            }
+
             List<MarketData> hit = cache.slice(symbol, interval, from, to);
             if (hit != null && !hit.isEmpty()) {
                 return hit;
@@ -82,16 +96,6 @@ public class MarketDataService {
 
             // Backtest cache miss — fetch a superset once, cache it, then slice.
             // All subsequent ticks for this (symbol, interval) hit the cache.
-            //
-            // The superset is the UNION of the day window and what the caller
-            // asked for, never just the day window: EodDowntrendDetectionService
-            // wants ~30 days for its ATR and up to 35 for its SMA grid, and
-            // narrowing to [dayFrom, dayTo] silently handed it a few days and a
-            // partial average. For the tick loop, whose windows already sit
-            // inside the day window, the union *is* the day window — identical
-            // behaviour and the same single fetch per (symbol, interval).
-            LocalDateTime wideFrom = min(from, cache.dayFrom());
-            LocalDateTime wideTo   = max(to, cache.dayTo());
             List<MarketData> wide = fetchFromSource(symbol, wideFrom, wideTo, interval);
             cache.put(symbol, interval, wide, wideFrom, wideTo);
 
@@ -101,6 +105,40 @@ public class MarketDataService {
 
         // Live path — exact same call shape as before Phase 1.
         return fetchFromSource(symbol, from, to, interval);
+    }
+
+    /**
+     * Historical-source backtest read: cache the <b>base</b> 5-minute series for
+     * the day, slice it to the caller's window, and only then roll it up to the
+     * requested interval.
+     *
+     * <p>The ordering is the whole point. Caching an already-aggregated series
+     * and slicing that by bar timestamp keeps any bucket whose <em>start</em>
+     * falls inside the window — including buckets built from candles the caller
+     * has not reached. On a 15-minute series that handed the strategy up to 10
+     * minutes of future data at every tick, which live never has, because a
+     * broker asked for {@code to=09:35} returns the 09:30 bar partial. Rolling up
+     * after the slice reproduces the partial bar exactly.
+     *
+     * <p>Caching the base series also means one cached entry per symbol instead
+     * of one per (symbol, interval): the 5-, 10- and 15-minute views of a strike
+     * are now three roll-ups of the same cached rows, not three fetches.
+     */
+    private List<MarketData> fromBaseCache(String symbol, LocalDateTime from, LocalDateTime to,
+                                           String interval, LocalDateTime wideFrom, LocalDateTime wideTo) {
+        String baseInterval = HistoricalIciciMarketDataProvider.BASE_INTERVAL;
+
+        List<MarketData> base = cache.slice(symbol, baseInterval, from, to);
+        if (base == null || base.isEmpty()) {
+            List<MarketData> wide = historicalProvider.fetchBaseCandles(symbol, wideFrom, wideTo, interval);
+            cache.put(symbol, baseInterval, wide, wideFrom, wideTo);
+
+            base = cache.slice(symbol, baseInterval, from, to);
+            if (base == null) {
+                base = wide;
+            }
+        }
+        return historicalProvider.aggregateTo(base, symbol, interval);
     }
 
     public List<Double> extractClosePrices(List<MarketData> marketDataList) {
