@@ -145,27 +145,28 @@ Legend for effort:
 | Effort | **M** (per broker that wants it). |
 | Priority | _TBD_ |
 
-## 13. Orphan Liquibase changesets — 016 and 017
+## 13. Orphan Liquibase changesets — 016 and 017 — **RESOLVED 2026-08-31**
 
 | | |
 |---|---|
-| Where | [`016_add_interval_expiry_to_market_data.xml`](../src/main/resources/db/changelog/016_add_interval_expiry_to_market_data.xml), [`017_add_underlying_name_to_market_data.xml`](../src/main/resources/db/changelog/017_add_underlying_name_to_market_data.xml) — both present on disk, neither wired into [`db.changelog-master.xml`](../src/main/resources/db/changelog/db.changelog-master.xml) |
-| Why | Both files add columns the team plans to use for the M12 milestone (full live-writes-candles). They sit unwired because the supporting code isn't ready yet. Both files already carry `columnExists` preconditions with `onFail=MARK_RAN`, so they're safe to include in master immediately — production would simply mark them ran without executing. Leaving them unwired risks the same class of bug surfaced in M0.1 (orphan 005): a future test environment or fresh install ends up with inconsistent schema. |
-| Fix sketch | Either (a) include both in master now (safe — preconditions handle production), or (b) physically delete the files until M12 needs them. Choose one; the worst option is "leave them sitting there." |
-| Effort | **S** |
-| Priority | _TBD_ |
+| Where | `016_add_interval_expiry_to_market_data.xml`, `017_add_underlying_name_to_market_data.xml` — both present on disk, neither wired into [`db.changelog-master.xml`](../src/main/resources/db/changelog/db.changelog-master.xml) |
+| Why | Both files add columns the team once planned to use for the M12 milestone (full live-writes-candles, [deferred to demand](MILESTONE_DETAILS.md)). They sat unwired because the supporting code was never built. |
+| Investigation | Grepped the full `src/main/java` tree for `candle_interval`, `expiryDate`/`expiry_date` on `market_data`, and `underlyingName`/`underlying_name` — zero references anywhere; the `MarketData` entity has no fields for any of the three columns 016/017 would have added. The M12 use case they targeted never shipped. What *did* ship instead is a different design: changeset `018_create_historical_chart_tables.xml` (wired into master) creates dedicated `historical_spot_candles` / `historical_option_candles` tables with their own `expiry_date`/`exchange_code` columns, actively used throughout `com.moneymaker.chart.*` and `com.moneymaker.market.historical.*` (see [`HISTORICAL_CHART_DATA_PLAN.md`](HISTORICAL_CHART_DATA_PLAN.md)). 016/017's bolt-columns-onto-`market_data` approach is superseded, not merely deferred. |
+| Resolution | **Deleted both files.** Neither had ever been `<include>`d in `db.changelog-master.xml` on this branch's history (confirmed via `git log`), so no Liquibase `DATABASECHANGELOG` row exists for either id on any real database — deleting them changes nothing about what any existing database has applied or will apply. Master was already correct (no edit needed). |
+| Verification | New guard test (Gap #14, `LiquibaseMasterInclusionTest`) plus full `mvn test` green after the deletion — see Gap #14 below. |
+| Found in the same pass | A **third**, pre-existing orphan: `005_create_market_data_table.xml`. Unlike 016/017 it is not dead — `market_data` is a live table — but it predates this project's Liquibase discipline and can't be safely wired in today (see new Gap #23). Left untouched; out of this entry's scope. |
 
-> Surfaced during M0.1 while fixing the 005 orphan. Same pattern (changeset on disk, not in master) suggests the team needs a Liquibase pre-commit check.
+> Surfaced during an earlier (unmerged) M0.1 pass while fixing a since-superseded copy of the 005 orphan. Same pattern (changeset on disk, not in master) is why Gap #14 exists.
 
-## 14. No Liquibase changeset master-inclusion guard
+## 14. No Liquibase changeset master-inclusion guard — **RESOLVED 2026-08-31**
 
 | | |
 |---|---|
-| Where | Build pipeline (none exists) |
-| Why | The 005 / 016 / 017 orphans (Gaps #13) prove the team is forgetting to add new changesets to `db.changelog-master.xml`. A linter / unit test that scans `db/changelog/*.xml` and asserts every file (except master itself) is `<include>`d somewhere would catch this at build time, before tests or production. |
-| Fix sketch | Small Java test: glob `db/changelog/00*.xml`, parse master, assert every changeset file is referenced. ArchUnit-style. |
-| Effort | **S** |
-| Priority | _TBD_ |
+| Where | Build pipeline (none existed) |
+| Why | The 005 / 016 / 017 orphans (Gap #13) prove the team was forgetting to add new changesets to `db.changelog-master.xml`. A linter / unit test that scans `db/changelog/*.xml` and asserts every file (except master itself) is `<include>`d somewhere catches this at build time, before tests or production. |
+| Resolution | Added [`LiquibaseMasterInclusionTest`](../src/test/java/com/moneymaker/architecture/LiquibaseMasterInclusionTest.java) — pure file I/O, no Spring context. Three tests: every `NNN_*.xml` under `db/changelog/` is either `<include>`d by the master or named in an explicit `ALLOWLIST` (with a comment pointing at the GAPS entry that explains why); the allowlist itself can't go stale (fails if an allowlisted file is deleted or later included); and every `<include>` in the master resolves to a real file on disk (catches a rename/delete that forgot to update the master the other way). |
+| Allowlist today | `005_create_market_data_table.xml` only, pointing at Gap #23 — the pre-existing orphan found while resolving Gap #13 (see above). After deleting 016/017 there was nothing left from Gap #13 itself to allowlist. |
+| Effort | **S** — shipped as a single test class, no build-plugin changes. |
 
 > Companion to Gap #13. Together these are the "stop the next orphan from happening" fix.
 
@@ -239,3 +240,16 @@ Legend for effort:
 > Strategy gaps now live in **[STRATEGY_ANALYSIS_TODO.md](STRATEGY_ANALYSIS_TODO.md)**.
 > This entry is [S5](STRATEGY_ANALYSIS_TODO.md#s5-session-window-constants-are-hardcoded-while-appmarket-already-exists).
 > Filed here first by mistake before Rule 0 landed; number kept so a later #23 does not collide.
+
+## 23. Orphan Liquibase changeset — 005_create_market_data_table.xml
+
+| | |
+|---|---|
+| Where | [`005_create_market_data_table.xml`](../src/main/resources/db/changelog/005_create_market_data_table.xml) — present on disk, not `<include>`d in [`db.changelog-master.xml`](../src/main/resources/db/changelog/db.changelog-master.xml) (master's only `005_*` include is `005_create_broker_session_table.xml`) |
+| Why | Discovered while resolving Gap #13/#14: [`LiquibaseMasterInclusionTest`](../src/test/java/com/moneymaker/architecture/LiquibaseMasterInclusionTest.java) scans every numbered changeset, not just the two named in Gap #13, and this one is a genuine third orphan — unrelated to 016/017, and older (its `createTable` predates them). Unlike 016/017 it is **not** dead: `market_data` is the live table every SMA/analysis/backtest read hits. It has survived unwired this whole time because `spring.jpa.hibernate.ddl-auto=update` (`application.properties`) creates the table straight from the `MarketData` JPA entity on every boot, so Liquibase never had to. |
+| Risk | Unlike 016/017, this changeset carries **no** `preConditions` guard — it's an unconditional `<createTable tableName="market_data">`. Wiring it into master as-is would throw "table already exists" against every environment that has ever booted this app (i.e. all of them), since Hibernate already created the table. That is the hard-constraint failure mode this whole cleanup was trying to avoid, so it was left alone rather than "fixed" in the same pass. |
+| Fix sketch | Add a `<preConditions onFail="MARK_RAN"><not><tableExists tableName="market_data"/></not></preConditions>` block (same pattern 016/017 used for `columnExists`), matching how Hibernate + Liquibase already coexist elsewhere in this schema. Then include it in master, positioned before `007_add_sma_value_to_market_data.xml` (which `ALTER`s the table). Needs a real verification pass (H2 fresh-install boot, or a scratch MySQL) before landing — this doc's author did not attempt it, per the hard constraint on GAPS #13/#14 not to touch what Liquibase applies without that verification. |
+| Effort | **S** for the precondition + include; the verification is the part worth budgeting time for. |
+| Priority | _TBD_ |
+
+> The `LiquibaseMasterInclusionTest` allowlist (Gap #14) names this file explicitly, pointing back at this entry, so the guard test stays green without silently hiding the gap.
