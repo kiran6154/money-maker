@@ -16,27 +16,44 @@ Legend for effort:
 
 ---
 
-## 1. Live force-close does not place a real broker exit order
+## 1. Live force-close does not place a real broker exit order — **RESOLVED 2026-08-31**
 
 | | |
 |---|---|
-| Where | [`OrderService.forceCloseOpenPositions`](../src/main/java/com/moneymaker/order/service/OrderService.java#L398-L431) — comment at L420-422 |
-| Why | `DaySummaryScheduler` (15:31 IST) calls this on live trades that survived market close. Today it only marks the DB row `CLOSED` with `exit_reason=FORCE_CLOSE` and a stale cached price. The actual broker-side position **is still open overnight** — silent risk if the broker rolls it into next-day delivery, or if SEBI auto-squareoff charges hit. |
-| Fix sketch | After the local update, call `placementFactory.active().place(...)` with an opposite-side market order; reconcile fill on success, fall back to existing local-only behaviour with an `[ALERT]` Telegram if the broker call fails. |
-| Effort | **M** |
-| Priority | _TBD_ |
+| Where | [`OrderService.forceCloseOpenPositions`](../src/main/java/com/moneymaker/order/service/OrderService.java) |
+| Why | `DaySummaryScheduler` (15:31 IST) calls this on live trades that survived market close. It only marked the DB row `CLOSED` with `exit_reason=FORCE_CLOSE` and a stale cached price. The actual broker-side position **was still open overnight** — silent risk if the broker rolls it into next-day delivery, or if SEBI auto-squareoff charges hit. |
+| Resolution | The ledger update still runs first (invariant: the row is persisted before any broker call). After it, live mode sends the exit through the same `OrderPlacementService.place(order, config)` call `closeOrder` / `closeManually` already use — the row is `CLOSED` by then, which is how the placement service knows to invert the side. A returned broker id lands on `exit_broker_order_id` and moves `fill_status` to `PENDING`. Backtest mode is branched out by placement name (`BACKTESTING`) and does nothing new, so a replay's rows are byte-for-byte what they were. |
+| Failure handling | The row still ends up `CLOSED` when the exit cannot be dispatched — that is unchanged — but it is no longer silent: `NotificationService.alertForceCloseExitFailed(order, reason)` fires per stranded row, naming the row and telling the operator to square off by hand. Four paths reach it: broker returned no order id, broker threw, no cached `TradeConfigCombinedDTO` (quantity unknown — placing at the fallback quantity of 1 against a 75-unit lot would open a position rather than close one), and `OrderPlacementFactory.active()` itself unresolvable. None of them abort the sweep for the remaining rows. |
+| Depends on | **Zerodha `resolveTradingSymbol` is still a stub returning `null`** (its own pending item in [ORDERS_AND_POSITIONS.md](ORDERS_AND_POSITIONS.md#things-that-are-still-pending)), so on Zerodha today every live force-close exit takes the "no order id returned" path. That is the intended interim state: the alert is the deliverable until the NFO instrument-dump lookup lands. Implementing that broker client was out of scope here. |
+| Left open | **(a)** Whether a failed exit should keep the row `OPEN` with a new `EXIT_FAILED` fill status instead of closing it locally — `MILESTONE_DETAILS.md` T3.2 proposes that, this change deliberately kept the existing local-close semantics per the fix sketch above; it is a ledger-semantics decision for the user. **(b)** The M3 roadmap's `app.market.force-close-time` property (a 15:25 sweep separate from the 15:31 digest) is still undecided — this change reuses the caller's `closeAt` and introduces no new timing. **(c)** Order type is whatever the placement service already sends for an exit (MARKET on Zerodha); no new variant was invented. |
+| Tests | [`OrderServiceForceCloseTest`](../src/test/java/com/moneymaker/order/service/OrderServiceForceCloseTest.java) — backtest-unchanged, live-places-and-reconciles, and the four failure paths. |
 
-> Linked: the day-summary digest currently reports `force-closed: N` so the gap is at least *visible* every evening.
+> Linked: the day-summary digest reports `force-closed: N`, so the count was at least *visible* every evening even before this.
 
-## 2. Day-summary P/L is per-share, not lot-multiplied
+> **Noticed while fixing this, not fixed:** the sweep selects rows by
+> `findByStatusAndEntryTimeBetween(OPEN, startOfToday, endOfToday)` — it only
+> ever sees positions *entered today*. A row left `OPEN` by a previous day (JVM
+> down at 15:31, or an exit that failed and was never squared off) is invisible
+> to every subsequent sweep, so it is never force-closed and never alerted, and
+> it keeps counting against `numberOfParallelTrades` for its config. The same
+> carryover case is flagged from the UI side in `MILESTONE_DETAILS.md` (the
+> open-trade banner should show carryover rows separately from today's).
+> Widening the selector is a one-line change but it decides whether a stale row
+> gets a market exit at today's price — a real-money call, so it needs the user,
+> not a guess. **Impact | Unquantified.**
+
+## 2. Day-summary P/L is per-share, not lot-multiplied — **PARTLY RESOLVED 2026-08-31**
 
 | | |
 |---|---|
-| Where | [`DaySummaryScheduler.buildSummary`](../src/main/java/com/moneymaker/scheduler/DaySummaryScheduler.java) — `totalPnl.add(pnl)` |
-| Why | `trade_order.profit` is per-share (consistent with the orders ledger). The Telegram digest sums those values directly, so `P/L (per-sh): 124.50` is correct as a per-share figure but **not** the rupee-P&L the user actually cares about. |
-| Fix sketch | Join through `tradeConfigId → TradeConfig.lotQuantity` (or snapshot `lot_quantity_at_entry` onto `trade_order` to keep it self-contained — preferable, matches the `target_at_entry` pattern from changeset 011). |
-| Effort | **S** if join-on-the-fly; **M** if snapshot column (new changeset + write-path update). |
+| Where | [`DaySummaryScheduler.buildSummary`](../src/main/java/com/moneymaker/scheduler/DaySummaryScheduler.java) |
+| Why | `trade_order.profit` is per-share (consistent with the orders ledger). The Telegram digest summed those values directly, so `P/L (per-sh): 124.50` was correct as a per-share figure but **not** the rupee-P&L the user actually cares about. |
+| Resolution | Join-on-the-fly, the **S** half of the fix sketch. `lotQuantitiesFor(trades)` resolves `tradeConfigId → TradeConfig.lotQuantity` in one `findAllById` and the digest gained a `P/L (net)` line beside the existing per-share one; `by config` is now in net, and `best winner` / `worst loser` print both units (`pnl/sh=… net=…`). `lotQuantity` is the right multiplier because it is the same number the placement services hand the broker as the order quantity (`ZerodhaOrderPlacementService.quantity`, seeded from `Instrument.lotQty` by `EodDowntrendDetectionService`) — so the reported P&L and the size actually traded cannot drift apart. |
+| Unknown multipliers | A config that was force-deleted, or whose `lot_quantity` is null / non-positive, has no multiplier. Those trades are **excluded** from net and declared on a `no lot qty : N trade(s) excluded from net — config(s) #9` line rather than folded in at ×1, which would print a number that looks like rupees and isn't. |
+| Left open | **The snapshot column.** No `lot_quantity_at_entry` exists on `trade_order`, so the multiplier is read live. Editing a config's `lotQuantity` between a trade's entry and 15:31 makes the digest use the *edited* size — the same class of staleness `target_at_entry` (changeset 011) exists to prevent, and the **M** half of the original fix sketch. Not done here: it needs a new changeset, and Liquibase numbering was being reworked in parallel. Also unaddressed: brokerage / STT / slippage — `net` is gross premium × quantity, not what settles. |
+| Effort remaining | **M** — snapshot column + write-path update in `OrderService.openOrder`. |
 | Priority | _TBD_ |
+| Tests | [`DaySummaryLotMultipliedPnlTest`](../src/test/java/com/moneymaker/scheduler/DaySummaryLotMultipliedPnlTest.java). |
 
 ## 3. Heartbeat runs 24/7
 
@@ -58,15 +75,17 @@ Legend for effort:
 | Effort | **S** |
 | Priority | _TBD_ |
 
-## 5. Day-summary marked-as-sent even when Telegram delivery fails
+## 5. Day-summary marked-as-sent even when Telegram delivery fails — **RESOLVED 2026-08-31**
 
 | | |
 |---|---|
-| Where | [`DaySummaryScheduler.runEndOfDay`](../src/main/java/com/moneymaker/scheduler/DaySummaryScheduler.java) — `dailyEventGuard.firstTime(...)` runs *before* the Telegram send |
-| Why | If the Telegram POST fails (network blip, bot rate limit), the `alert_state` row is already persisted, so the summary is silently lost. Force-close still ran correctly. |
-| Fix sketch | Move the `DailyEventGuard` insert to *after* a successful `notifier.alertDaySummary(...)` — but then a force-close failure shouldn't gate the insert either. Cleanest is two guard keys: `day-summary-forceclose` and `day-summary-telegram`, each gated independently so retries on the next cron tick can recover the missing half. (Or: just add a manual re-trigger endpoint — see gap #11.) |
-| Effort | **S** for two-key gate; same with manual re-trigger. |
-| Priority | _TBD_ |
+| Where | [`DaySummaryScheduler.runEndOfDay`](../src/main/java/com/moneymaker/scheduler/DaySummaryScheduler.java) — `dailyEventGuard.firstTime(...)` ran *before* the Telegram send |
+| Why | If the Telegram POST failed (network blip, bot rate limit), the `alert_state` row was already persisted, so the summary was silently lost — and the guard then reported the day as done forever after. Force-close still ran correctly. |
+| Resolution | The two-key gate from the fix sketch. `day-summary-forceclose` is written after `forceCloseOpenPositions` returns cleanly; `day-summary-telegram` only after Telegram confirms. Each half checks its own key with `alreadyFired(...)` first, so a retry re-sends the digest **without** force-closing a second time, and a delivered digest is never re-sent. A force-close that throws leaves its key unwritten and still lets the digest go out. |
+| Delivery signal | `TelegramNotifier.send` now returns a boolean and `NotificationService.alertDaySummary` propagates it. The value answers one question only — *is there anything a retry could fix?* `false` means a POST was attempted and threw; disabled / backtest-suppressed / unconfigured all return `true`, because retrying those produces the same non-send. Every other caller ignores the return, so no other alert changed behaviour. |
+| Backward compatibility | The old single `day-summary` key is still consulted. A deploy landing at 16:00, after the previous build already fired and marked the day, reads it as "both halves done" rather than as "the two new keys were never written" — otherwise the upgrade itself would re-send. |
+| Left open | With the default once-a-day cron there is **no second tick** to retry on. The gate now makes a repeating `app.market.summary-cron` (e.g. every 5 min through the 15:30-16:00 window) safe to set — idempotent in both halves — but choosing that schedule is an operator decision, and the proper fix is still the manual re-run endpoint of gap #6. `runEndOfDay()` was split into a package-private `runEndOfDayFor(LocalDate)` partly to give that endpoint something to call. |
+| Tests | [`DaySummarySentMarkerTest`](../src/test/java/com/moneymaker/scheduler/DaySummarySentMarkerTest.java). |
 
 ## 6. No manual re-run for end-of-day work
 

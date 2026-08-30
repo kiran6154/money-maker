@@ -1,8 +1,10 @@
 package com.moneymaker.scheduler;
 
+import com.moneymaker.entity.TradeConfig;
 import com.moneymaker.entity.TradeOrder;
 import com.moneymaker.market.service.MarketHoursService;
 import com.moneymaker.order.service.OrderService;
+import com.moneymaker.repository.TradeConfigRepository;
 import com.moneymaker.repository.TradeOrderRepository;
 import com.moneymaker.state.DailyEventGuard;
 import com.moneymaker.telegram.NotificationService;
@@ -13,6 +15,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -21,7 +24,9 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * Fires once after market close (15:31 IST by default) to:
@@ -38,6 +43,21 @@ import java.util.TreeMap;
  * will <b>not</b> re-fire the summary; the persisted row in {@code alert_state}
  * still wins.</p>
  *
+ * <h3>Two guard keys, not one (GAPS #5)</h3>
+ * The two steps fail independently, so they are gated independently:
+ * {@code day-summary-forceclose} is written once the force-close has run, and
+ * {@code day-summary-telegram} only once the digest has actually reached
+ * Telegram. A failed send therefore leaves its key unwritten and the next tick
+ * retries <i>only</i> the digest — it will not force-close a second time, and a
+ * delivered digest is never re-sent. Before this the single {@code day-summary}
+ * key was written up-front, so a network blip on the Telegram POST silently ate
+ * the summary for the day.
+ *
+ * <p>With the default once-a-day cron there is no second tick to retry on; the
+ * recovery paths are an operator-set repeating {@code app.market.summary-cron}
+ * (which the two-key gate now makes safe to run every few minutes) or the manual
+ * re-run endpoint tracked as GAPS #6.</p>
+ *
  * <p>Skipped entirely in backtest mode — {@code BacktestAnalysisService}
  * already calls {@link OrderService#forceCloseOpenPositions(LocalDate, LocalDateTime)}
  * at the end of every replay day, and we don't want a live Telegram to fire on
@@ -48,11 +68,20 @@ import java.util.TreeMap;
 @RequiredArgsConstructor
 public class DaySummaryScheduler {
 
-    private static final String ALERT_KEY = "day-summary";
+    /**
+     * The single key used before the two-key split. Still consulted so that a
+     * deploy landing mid-afternoon, after the old code already fired and marked
+     * the day, doesn't read the two new keys as "never ran" and re-send.
+     */
+    private static final String LEGACY_ALERT_KEY = "day-summary";
+    private static final String KEY_FORCE_CLOSE = "day-summary-forceclose";
+    private static final String KEY_TELEGRAM = "day-summary-telegram";
+
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
 
     private final OrderService orderService;
     private final TradeOrderRepository tradeOrderRepository;
+    private final TradeConfigRepository tradeConfigRepository;
     private final MarketHoursService marketHours;
     private final NotificationService notifier;
     private final DailyEventGuard dailyEventGuard;
@@ -70,31 +99,69 @@ public class DaySummaryScheduler {
             log.debug("[day-summary] skipped — app.mode={}", appMode);
             return;
         }
-        LocalDate today = LocalDate.now(marketHours.zone());
+        runEndOfDayFor(LocalDate.now(marketHours.zone()));
+    }
+
+    /**
+     * The end-of-day work for one date, with the wall clock supplied rather than
+     * read. Split out of the {@code @Scheduled} method so the day's date is a
+     * parameter and not an ambient fact — which is what lets the tests exercise a
+     * fixed weekday, and what a manual re-run endpoint (GAPS #6) would call.
+     *
+     * <p>Note for that endpoint: the close moment still comes from
+     * {@link MarketHoursService#marketCloseToday()}, so replaying a <i>past</i>
+     * date would force-close it at today's close timestamp. Re-running the
+     * current day (the case gap #6 describes) is correct as-is; a back-dated
+     * re-run needs a date-aware close first.</p>
+     */
+    void runEndOfDayFor(LocalDate today) {
         if (today.getDayOfWeek() == DayOfWeek.SATURDAY || today.getDayOfWeek() == DayOfWeek.SUNDAY) {
             return;
         }
-        if (!dailyEventGuard.firstTime(ALERT_KEY, today)) {
-            log.info("[day-summary] {} — already fired today, skipping", today);
-            return;
-        }
+        boolean legacyAlreadyFired = dailyEventGuard.alreadyFired(LEGACY_ALERT_KEY, today);
 
         LocalDateTime closeAt = marketHours.marketCloseToday();
         log.info("[day-summary] {} — running end-of-day at {}", today, closeAt);
 
+        // ---- half 1: force-close. Marked only after it returns cleanly. ----
         int forceClosed = 0;
-        try {
-            forceClosed = orderService.forceCloseOpenPositions(today, closeAt);
-        } catch (Exception ex) {
-            log.error("[day-summary] forceCloseOpenPositions failed", ex);
+        if (legacyAlreadyFired || dailyEventGuard.alreadyFired(KEY_FORCE_CLOSE, today)) {
+            log.info("[day-summary] {} — force-close already ran today, skipping it", today);
+        } else {
+            try {
+                forceClosed = orderService.forceCloseOpenPositions(today, closeAt);
+                dailyEventGuard.firstTime(KEY_FORCE_CLOSE, today);
+            } catch (Exception ex) {
+                // Left unmarked on purpose: an unclosed position is worth
+                // another attempt, and the method is idempotent (it only ever
+                // selects rows still in status OPEN).
+                log.error("[day-summary] forceCloseOpenPositions failed — leaving '{}' unmarked for retry",
+                        KEY_FORCE_CLOSE, ex);
+            }
+        }
+
+        // ---- half 2: the digest. Marked only after Telegram confirms. ----
+        if (legacyAlreadyFired || dailyEventGuard.alreadyFired(KEY_TELEGRAM, today)) {
+            log.info("[day-summary] {} — digest already delivered today, skipping it", today);
+            return;
         }
 
         String body = buildSummary(today, forceClosed);
         log.info("[day-summary] {}\n{}", today, body);
+
+        boolean delivered;
         try {
-            notifier.alertDaySummary(body);
+            delivered = notifier.alertDaySummary(body);
         } catch (Exception ex) {
             log.error("[day-summary] Telegram send failed", ex);
+            delivered = false;
+        }
+
+        if (delivered) {
+            dailyEventGuard.firstTime(KEY_TELEGRAM, today);
+        } else {
+            log.warn("[day-summary] {} — digest NOT delivered; '{}' left unmarked so the next tick retries",
+                    today, KEY_TELEGRAM);
         }
     }
 
@@ -112,9 +179,14 @@ public class DaySummaryScheduler {
                     TIME_FMT.format(marketHours.marketCloseToday()));
         }
 
+        Map<Integer, Integer> lotQuantities = lotQuantitiesFor(trades);
+
         int total = trades.size();
         int closed = 0, openLeftover = 0, winners = 0, losers = 0, scratches = 0;
-        BigDecimal totalPnl = BigDecimal.ZERO;
+        BigDecimal totalPnl = BigDecimal.ZERO;   // per-share, as stored on the row
+        BigDecimal totalNet  = BigDecimal.ZERO;  // per-share × lot quantity
+        int unpricedTrades = 0;
+        Set<Integer> unpricedConfigs = new TreeSet<>();
         TradeOrder biggestWinner = null;
         TradeOrder biggestLoser  = null;
         Map<String, Integer> byExitReason = new HashMap<>();
@@ -135,7 +207,17 @@ public class DaySummaryScheduler {
                 } else {
                     scratches++;
                 }
-                byConfig.merge(t.getTradeConfigId(), pnl, BigDecimal::add);
+                BigDecimal net = netPnl(pnl, lotQuantities.get(t.getTradeConfigId()));
+                if (net == null) {
+                    // The multiplier is gone (config deleted, or lot_quantity
+                    // null / non-positive). Counting the trade at ×1 would read
+                    // as a real rupee figure, so it is excluded and declared.
+                    unpricedTrades++;
+                    unpricedConfigs.add(t.getTradeConfigId());
+                } else {
+                    totalNet = totalNet.add(net);
+                    byConfig.merge(t.getTradeConfigId(), net, BigDecimal::add);
+                }
                 byExitReason.merge(t.getExitReason() == null ? "-" : t.getExitReason(), 1, Integer::sum);
             } else {
                 openLeftover++;
@@ -156,20 +238,20 @@ public class DaySummaryScheduler {
         sb.append("  losers      : ").append(losers).append(nl);
         sb.append("  scratches   : ").append(scratches).append(nl);
         sb.append("  P/L (per-sh): ").append(totalPnl).append(nl);
+        sb.append("  P/L (net)   : ").append(totalNet.setScale(2, RoundingMode.HALF_UP)).append(nl);
+        if (unpricedTrades > 0) {
+            sb.append("  no lot qty  : ").append(unpricedTrades)
+              .append(" trade(s) excluded from net — config(s) ")
+              .append(unpricedConfigs.stream().map(id -> "#" + id)
+                      .reduce((a, b) -> a + ", " + b).orElse("-"))
+              .append(nl);
+        }
 
         if (biggestWinner != null) {
-            sb.append("  best winner : id=").append(biggestWinner.getId())
-              .append(" ").append(biggestWinner.getInstrumentName())
-              .append(" ").append(biggestWinner.getOptionStrike())
-              .append(" ").append(biggestWinner.getOptionType())
-              .append(" pnl=").append(biggestWinner.getProfit()).append(nl);
+            appendExtreme(sb, "  best winner : ", biggestWinner, lotQuantities, nl);
         }
         if (biggestLoser != null) {
-            sb.append("  worst loser : id=").append(biggestLoser.getId())
-              .append(" ").append(biggestLoser.getInstrumentName())
-              .append(" ").append(biggestLoser.getOptionStrike())
-              .append(" ").append(biggestLoser.getOptionType())
-              .append(" pnl=").append(biggestLoser.getProfit()).append(nl);
+            appendExtreme(sb, "  worst loser : ", biggestLoser, lotQuantities, nl);
         }
 
         if (!byExitReason.isEmpty()) {
@@ -186,10 +268,79 @@ public class DaySummaryScheduler {
             sb.append(byConfig.entrySet().stream()
                     .sorted(Map.Entry.<Integer, BigDecimal>comparingByValue(
                             Comparator.reverseOrder()))
-                    .map(e -> "#" + e.getKey() + "=" + e.getValue())
+                    .map(e -> "#" + e.getKey() + "=" + e.getValue().setScale(2, RoundingMode.HALF_UP))
                     .reduce((a, b) -> a + ", " + b).orElse("-"));
         }
 
         return sb.toString();
+    }
+
+    /**
+     * One line for the day's best / worst trade, carrying both units so neither
+     * can be misread: {@code pnl/sh} is the number on the ledger row,
+     * {@code net} is what actually hit the account.
+     *
+     * <p>The ranking itself stays on the per-share figure — the same trade the
+     * previous version of this digest picked. Ranking on net would silently
+     * change which trade gets named on any day where two configs trade different
+     * lot sizes, and that is a reporting decision, not part of this fix.</p>
+     */
+    private void appendExtreme(StringBuilder sb, String label, TradeOrder t,
+                               Map<Integer, Integer> lotQuantities, String nl) {
+        BigDecimal net = netPnl(t.getProfit(), lotQuantities.get(t.getTradeConfigId()));
+        sb.append(label).append("id=").append(t.getId())
+          .append(" ").append(t.getInstrumentName())
+          .append(" ").append(t.getOptionStrike())
+          .append(" ").append(t.getOptionType())
+          .append(" pnl/sh=").append(t.getProfit())
+          .append(" net=").append(net == null ? "?" : net.setScale(2, RoundingMode.HALF_UP))
+          .append(nl);
+    }
+
+    /* ---------------- lot multiplication (GAPS #2) ---------------- */
+
+    /**
+     * {@code trade_config_id → lot_quantity} for every config that traded today.
+     *
+     * <p>{@code trade_order.profit} is per-share by design — the ledger stores the
+     * premium move, not the rupee outcome — so the digest has to supply the
+     * multiplier. {@code TradeConfig.lotQuantity} is the right one because it is
+     * the <i>same</i> number the placement services hand the broker as the order
+     * quantity (see {@code ZerodhaOrderPlacementService.quantity}, and
+     * {@code EodDowntrendDetectionService}, which seeds it from
+     * {@code Instrument.lotQty}). Multiplying by anything else would produce a
+     * P&amp;L that disagrees with the size actually traded.</p>
+     *
+     * <p>Read live rather than snapshotted onto the row: no
+     * {@code lot_quantity_at_entry} column exists today, and adding one is the
+     * schema half of GAPS #2 that this change deliberately leaves open. The
+     * consequence is that editing a config's {@code lotQuantity} between entry
+     * and 15:31 makes the digest value the <i>edited</i> size — noted in
+     * {@code docs/GAPS.md}.</p>
+     *
+     * <p>Configs whose row has been deleted, or whose {@code lot_quantity} is
+     * null / non-positive, are simply absent from the map; callers exclude those
+     * trades from the net rather than assuming a size.</p>
+     */
+    private Map<Integer, Integer> lotQuantitiesFor(List<TradeOrder> trades) {
+        Set<Integer> configIds = new TreeSet<>();
+        for (TradeOrder t : trades) {
+            if (t.getTradeConfigId() != null) configIds.add(t.getTradeConfigId());
+        }
+        if (configIds.isEmpty()) return Map.of();
+
+        Map<Integer, Integer> lots = new HashMap<>();
+        for (TradeConfig tc : tradeConfigRepository.findAllById(configIds)) {
+            if (tc == null || tc.getId() == null) continue;
+            Integer qty = tc.getLotQuantity();
+            if (qty != null && qty > 0) lots.put(tc.getId(), qty);
+        }
+        return lots;
+    }
+
+    /** Per-share P&amp;L × lot quantity, or {@code null} when the quantity is unknown. */
+    private static BigDecimal netPnl(BigDecimal perShare, Integer lotQuantity) {
+        if (perShare == null || lotQuantity == null || lotQuantity <= 0) return null;
+        return perShare.multiply(BigDecimal.valueOf(lotQuantity));
     }
 }

@@ -42,9 +42,10 @@ Other packages depend on `NotificationService`, never on `TelegramNotifier` or t
 | Order opened | `alertOrderOpened(TradeOrder)` | None — each order id is unique | **Suppressed** |
 | Order closed by signal | `alertOrderClosed(TradeOrder)` | None | **Suppressed** |
 | Order force-closed at EOD | `alertOrderForceClosed(TradeOrder)` | None | **Suppressed** |
+| Force-close exit not placed at the broker | `alertForceCloseExitFailed(TradeOrder, reason)` | None — deliberately. Each message names one row whose ledger says `CLOSED` while the broker position may still be open, and every one of those is a separate manual square-off. Deduping would collapse two stranded positions into one alert. | **Suppressed** (only live mode reaches the call site at all — the backtest branch of `forceCloseOpenPositions` never places an exit) |
 | Broker rejected an order | `alertOrderRejected(broker, orderId, reason)` | `sendIfChanged("order-rejected:<broker>", …)` — identical-reason loops stay quiet | **Suppressed** |
 | Trade configs active for the trading day | `TradeConfigScheduler.reportConfigsForDay(date, configs)` | Once per `(alertKey, date)` via **persisted** `DailyEventGuard` (row in `alert_state`). Survives JVM restart. `sendIfChanged("trade-configs:<date>", …)` backstops the actual send. | Fires (one per backtest date) |
-| End-of-day digest | `alertDaySummary(body)` | None inside the notifier — `DaySummaryScheduler` already gates to once/day via the same persisted `DailyEventGuard` before it ever calls this method | Never invoked — `DaySummaryScheduler` doesn't run in backtest |
+| End-of-day digest | `alertDaySummary(body)` → **returns `boolean`** | None inside the notifier — `DaySummaryScheduler` gates to once/day via the persisted `DailyEventGuard`, but writes its `day-summary-telegram` key only *after* this method reports success. See "Delivery-confirmed sends" below. | Never invoked — `DaySummaryScheduler` doesn't run in backtest |
 | No active broker session mid-tick | `alertNoActiveSession(reason)` | `sendThrottled("no-session", 5min, …)` — at most one message per 5-minute window regardless of how many callers hit it | **Suppressed** (only call site today is `BacktestAnalysisService`, same backtest gate as market-data / order alerts) |
 
 The "backtest behaviour" column reflects `app.mode=backtest`. Login and heartbeat alerts still fire because they're rare and useful in both modes; the noisy event types (per-order, market-data spam) are off so a multi-day replay can't blow up the chat.
@@ -76,6 +77,37 @@ public void alertMarketDataUp() {
     telegram.send("[RECOVERED] Market-data API back online …");
 }
 ```
+
+### Delivery-confirmed sends
+
+`TelegramNotifier.send(String)` returns a `boolean`, and it answers exactly one
+question — **"is there anything a retry could fix?"**:
+
+| Outcome | Returns | Rationale |
+|---|---|---|
+| POST succeeded | `true` | Delivered. |
+| POST attempted and threw | `false` | Network blip, 429. The transient case — worth retrying. |
+| `telegram.enabled=false` | `true` | Nothing was sent and nothing will be. A retry produces the same non-send. |
+| Suppressed in backtest | `true` | Same. |
+| Bot token / chat-id blank | `true` | Same — a configuration problem, not a delivery problem. |
+
+Only `alertDaySummary` propagates it. Every other alert method ignores the value
+and behaves exactly as before, so adding this changed no existing alert.
+
+The one caller that cares is
+[`DaySummaryScheduler`](../src/main/java/com/moneymaker/scheduler/DaySummaryScheduler.java):
+it writes its `day-summary-telegram` `alert_state` row **only** when the send
+comes back `true`. Before this, the guard row went in first, so a dropped
+connection lost the day's digest permanently and the guard then reported the day
+as already done (GAPS #5). Note the third/fourth/fifth rows above: a run with
+Telegram switched off must not leave the key unwritten forever, which is why
+"not sent on purpose" counts as settled rather than as a failure.
+
+**If you add another delivery-gated alert**, follow the same shape — return the
+boolean up from `NotificationService`, and let the *caller* own the persistence
+of "already delivered". Don't put retry state inside the notifier; `dedupeState`
+and `throttleState` are in-memory and don't survive a restart, which is precisely
+why the day-summary marker lives in `alert_state` instead.
 
 ### `sendThrottled(dedupeKey, cooldown, message)` — quiet-period style
 
@@ -135,7 +167,7 @@ This means feature code calls alert methods unconditionally. The decision of whe
 - `LoginController` / `LoginScheduler` — login + heartbeat (existing, unchanged).
 - [`OrderService.openOrder`](../src/main/java/com/moneymaker/order/service/OrderService.java) → `alertOrderOpened`.
 - [`OrderService.closeOrder`](../src/main/java/com/moneymaker/order/service/OrderService.java) → `alertOrderClosed`.
-- [`OrderService.forceCloseOpenPositions`](../src/main/java/com/moneymaker/order/service/OrderService.java) → `alertOrderForceClosed` per row.
+- [`OrderService.forceCloseOpenPositions`](../src/main/java/com/moneymaker/order/service/OrderService.java) → `alertOrderForceClosed` per row, plus `alertForceCloseExitFailed` per row whose live broker exit could not be dispatched (see [ORDERS_AND_POSITIONS.md](ORDERS_AND_POSITIONS.md#force-close-live-vs-backtest) for the four causes).
 - [`MarketDataService.fetchHistoricalData`](../src/main/java/com/moneymaker/market/service/MarketDataService.java) → `alertMarketDataUp` on success, `alertMarketDataDown` on non-rate-limit failure (after Resilience4j retries — see [RATE_LIMITING.md](RATE_LIMITING.md)).
 - [`ZerodhaOrderPlacementService.place`](../src/main/java/com/moneymaker/broker/zerodha/ZerodhaOrderPlacementService.java) → `alertOrderRejected` on `KiteException` / `IOException`.
 - [`DaySummaryScheduler.runEndOfDay`](../src/main/java/com/moneymaker/scheduler/DaySummaryScheduler.java) → `alertDaySummary` once per trading day (live only) — see [SCHEDULERS.md](SCHEDULERS.md#daysummaryscheduler).
