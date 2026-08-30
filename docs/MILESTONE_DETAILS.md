@@ -807,7 +807,19 @@ Engineer says `BacktestAnalysisService.beginDay`. In live, no equivalent — the
 
 ---
 
-# M10 — Pre-resolve strikes per day
+# M10 — Pre-resolve strikes per day — **ABANDONED 2026-08-31**
+
+> **This milestone was approved on a false premise and is closed without code.**
+> The engineer's answer below — *"uses the *first* candle of the day to anchor
+> ATM ... **Confirmed stable**"* — is not what the code does.
+> `AnalysisScheduler.calculateStrikesForCandles` anchors on
+> `marketDataList.get(marketDataList.size() - 1)`, the **latest** candle, so the
+> ATM base tracks spot through the session and the strike set shifts with it.
+> The architect asked exactly the right question and got a wrong answer; nobody
+> opened the file. Closed as `GAPS.md` #16 option (c): strike compute is
+> intentionally per-tick. Kept here unedited below as a record of how the premise
+> got through review.
+
 
 ## Engineer's plan
 `AnalysisScheduler.calculateStrikesForCandles` runs per-tick today. Within a day the active strike set is stable. Cache by `(date, tradeConfigId)` for the day's duration.
@@ -944,7 +956,7 @@ Day-parallel backtest becomes a real ask, OR M7's lint allowlist becomes too pai
 | M7 | Lint + indicator_binding | 2 days | APPROVED WITH CHANGES | — |
 | M8 | Disk-backed cache | 2 days | APPROVED WITH CHANGES | — |
 | M9 | Perf Phases 2+3 | 2 days | APPROVED WITH CHANGES | — |
-| M10 | Pre-resolve strikes | 0.5 day | APPROVED WITH CHANGES | — |
+| M10 | Pre-resolve strikes | 0.5 day | ~~APPROVED WITH CHANGES~~ **ABANDONED 2026-08-31** — premise false, see GAPS #16 | — |
 | M11 | Drop SMA columns | 0.5 day | APPROVED, deferred 1Q | — |
 | M12 | Live candle writes | 1 week | DEFERRED to demand | — |
 | M13 | RunSession refactor | 1-2 weeks | DEFERRED to demand | — |
