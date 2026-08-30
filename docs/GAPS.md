@@ -85,7 +85,7 @@ Legend for effort:
 | Mode source | `@Value("${app.mode:live}")`, the same key `TelegramNotifier`'s backtest-suppression gate reads, moved from field to constructor injection on all three so a unit test can build the bean in either mode. No new property. |
 | Live parity | Byte-for-byte. The market-hours guard kept its exact original expression (`"live".equalsIgnoreCase(appMode) && !isOpenNow()`) rather than being simplified to `!isOpenNow()`, so a mode that is neither `live` nor `backtest` behaves as it did. Same cron expressions, same cadence, same delegation order. |
 | Not fixed here | The cron **trigger** still fires in backtest â€” it is the body that is now inert. Removing the trigger needs either bean-level conditioning (ruled out above) or a `SchedulingConfigurer` / `Scheduled.CRON_DISABLED` property, and the latter would mean inventing a new key. The per-tick cost of a no-op trigger is the "tiny" one this entry originally described. |
-| Also unfixed, deliberately | [`TradeConfigScheduler`](../src/main/java/com/moneymaker/scheduler/TradeConfigScheduler.java)'s `0 16 9 * * MON-FRI` cron is **not** gated â€” this entry names three schedulers and that is not one of them. It assigns `SharedData.combinedDto` from the live DB, which a replay reassigns per tick, so the exposure is a narrower cross-thread race rather than a standing clobber. Filed as [S11](STRATEGY_ANALYSIS_TODO.md#s11-wall-clock-scheduler-threads-mutate-replay-state-mid-run) because it decides which configs get dispatched. Its `0 12 9` sibling only logs. `LoginScheduler` (bean-level `@ConditionalOnProperty`) and `DaySummaryScheduler` (live-only guard) were already gated. |
+| Also unfixed, deliberately | [`TradeConfigScheduler`](../src/main/java/com/moneymaker/scheduler/TradeConfigScheduler.java)'s `0 16 9 * * MON-FRI` cron is **not** gated â€” this entry names three schedulers and that is not one of them. It assigns `SharedData.combinedDto` from the live DB, which a replay reassigns per tick, so the exposure is a narrower cross-thread race rather than a standing clobber. Filed as [S11](STRATEGY_ANALYSIS_TODO.md#s11-wall-clock-scheduler-threads-mutate-replay-state-mid-run) because it decides which configs get dispatched. Its `0 12 9` sibling only logged, and was deleted 2026-08-31 under GAPS #11. `LoginScheduler` (bean-level `@ConditionalOnProperty`) and `DaySummaryScheduler` (live-only guard) were already gated. |
 | Tests | [`PipelineCronBacktestGateTest`](../src/test/java/com/moneymaker/scheduler/PipelineCronBacktestGateTest.java) â€” per scheduler: cron inert in backtest, cron runs in live with the market open, live market-hours gating unchanged, and the explicit call the replay makes unaffected by mode. |
 
 ## 5. Day-summary marked-as-sent even when Telegram delivery fails â€” **RESOLVED 2026-08-31**
@@ -151,15 +151,15 @@ Legend for effort:
 | Effort | **M** â€” straightforward but cross-cutting. |
 | Priority | _TBD_ |
 
-## 11. `TradeConfigScheduler.dailyTaskAt912AM` is a no-op stub
+## 11. `TradeConfigScheduler.dailyTaskAt912AM` is a no-op stub -- **RESOLVED 2026-08-31**
 
 | | |
 |---|---|
-| Where | [`TradeConfigScheduler.dailyTaskAt912AM`](../src/main/java/com/moneymaker/scheduler/TradeConfigScheduler.java#L91) |
+| Where | `TradeConfigScheduler.dailyTaskAt912AM` â€” `@Scheduled(cron = "0 12 9 * * MON-FRI")` |
 | Why | Logs a line, does nothing. Either it has a planned job that was never written, or it should be deleted to stop confusing readers. |
-| Fix sketch | Delete unless there's intent â€” happy to remove in a 1-line PR. |
-| Effort | **S** |
-| Priority | _TBD_ |
+| Resolution | **Deleted**, the fix sketch's default. No intent was found: grep across `src/`, `docs/` and the templates turned up no caller, no test, and no design note describing a job for the 09:12 slot â€” only this entry, its `IMPLEMENTATION_PLAN` / `MILESTONE_DETAILS` restatements (M5.4, which reached the same conclusion), and the passing mention in GAPS #4 confirming it "only logs". A comment is left in its place so the next reader knows the 09:12 slot was empty by decision rather than by omission. |
+| Not touched | The `0 16 9` sibling (`checkTradeConfigAt916AM`) and its mode-gating question, which is a separate open item â€” see GAPS #4's "Also unfixed, deliberately" row and [S11](STRATEGY_ANALYSIS_TODO.md#s11-wall-clock-scheduler-threads-mutate-replay-state-mid-run). |
+| Tests | None â€” a deletion with no callers. `mvn test` green covers the compile. |
 
 ## 12. Options-data fetch is Zerodha-only
 

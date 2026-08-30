@@ -41,7 +41,7 @@ public void scheduledTick() {                    // wall-clock wrapper: gates on
 
 The **trigger** still fires in backtest for the three pipeline crons; it is the body that is inert. Removing the trigger would need bean-level `@ConditionalOnProperty`, which is not available here â€” `BacktestAnalysisService` injects all three beans and calls them per tick, so conditioning the bean away would delete the replay's pipeline, not just its cron. (`LoginScheduler` *can* use it, and does, because nothing in the replay path needs that bean.)
 
-> âš ï¸ **`TradeConfigScheduler`'s `0 16 9 * * MON-FRI` cron is still ungated.** It assigns `SharedData.combinedDto` from *today's* DB rows on the scheduler thread; a replay reassigns that field at the top of every tick, so the exposure is a cross-thread race rather than a standing clobber â€” but it decides which configs get dispatched, so it is filed as [STRATEGY_ANALYSIS_TODO.md S11](STRATEGY_ANALYSIS_TODO.md#s11-wall-clock-scheduler-threads-mutate-replay-state-mid-run) and needs sign-off before being gated. Its `0 12 9` sibling only logs.
+> âš ï¸ **`TradeConfigScheduler`'s `0 16 9 * * MON-FRI` cron is still ungated.** It assigns `SharedData.combinedDto` from *today's* DB rows on the scheduler thread; a replay reassigns that field at the top of every tick, so the exposure is a cross-thread race rather than a standing clobber â€” but it decides which configs get dispatched, so it is filed as [STRATEGY_ANALYSIS_TODO.md S11](STRATEGY_ANALYSIS_TODO.md#s11-wall-clock-scheduler-threads-mutate-replay-state-mid-run) and needs sign-off before being gated. (Its `0 12 9` sibling, which only logged, was deleted 2026-08-31 â€” GAPS #11.)
 
 ---
 
