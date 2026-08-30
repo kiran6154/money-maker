@@ -91,14 +91,11 @@ public class TradeConfigScheduler {
         reportConfigsForDay(today, combinedDto);
     }
 
-    @Scheduled(cron = "0 12 9 * * MON-FRI")
-    public void dailyTaskAt912AM() {
-        LocalDateTime now = LocalDateTime.now();
-
-        if (now.getDayOfWeek() != DayOfWeek.SATURDAY && now.getDayOfWeek() != DayOfWeek.SUNDAY) {
-            log.info("Scheduler has run at 9:12 AM on {}", now);
-        }
-    }
+    // A `0 12 9 * * MON-FRI` sibling of the cron below used to live here. It
+    // logged one line and did nothing else -- no planned job was ever attached to
+    // it -- so it was deleted (GAPS #11) rather than left reading as a hook
+    // somebody might be relying on. The 09:16 cron below is the one that actually
+    // loads the day's configs.
 
     /**
      * S11 gate (signed off 2026-08-31): in backtest mode this wall-clock cron

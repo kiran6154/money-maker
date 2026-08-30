@@ -3,9 +3,38 @@
         xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
-        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.0.xsd">
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
 
+    <!--
+      GAPS #23. This changeset sat on disk unwired into db.changelog-master.xml
+      from the beginning, so it has never been applied to any database and no
+      DATABASECHANGELOG row exists for it anywhere. Meanwhile
+      spring.jpa.hibernate.ddl-auto=update created market_data straight from the
+      MarketData JPA entity on every boot, which is why nobody noticed.
+
+      Wiring it in as an unconditional createTable would therefore throw
+      "table already exists" against every environment that has ever run this
+      app. The precondition below is what makes inclusion safe: on an existing
+      database the table is there, the precondition fails, and Liquibase records
+      the changeset as MARK_RAN without executing it, so from here on the two
+      cases converge. On a genuinely fresh database (no Hibernate pass, or
+      ddl-auto=none) it runs and creates the table, which is the point of having
+      it under Liquibase at all.
+
+      The schemaLocation above previously read dbchangelog-4.23.0.xsd, which the
+      bundled Liquibase 4.24.0 does not ship (it has 4.23.xsd). Including the file
+      with that typo intact would have failed startup at parse time, before any
+      precondition was ever evaluated. Caught by the H2 verification test.
+
+      Editing this file is allowed precisely because it has never run. Do not
+      treat it as licence to edit any changeset that IS in the master.
+    -->
     <changeSet id="005_create_market_data_table" author="moneymaker">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="market_data"/>
+            </not>
+        </preConditions>
         <createTable tableName="market_data">
             <column name="id" type="INT" autoIncrement="true">
                 <constraints primaryKey="true" nullable="false"/>

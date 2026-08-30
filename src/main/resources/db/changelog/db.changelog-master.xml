@@ -12,6 +12,10 @@
     <include file="db/changelog/004_create_sma_timeframe_table.xml"/>
     <include file="db/changelog/005_create_broker_session_table.xml"/>
     <include file="db/changelog/006_create_options_data_table.xml"/>
+    <!-- Must precede 007/013, which ALTER market_data. Guarded by a
+         tableExists precondition (onFail=MARK_RAN) because ddl-auto=update
+         already created this table everywhere — see GAPS #23. -->
+    <include file="db/changelog/005_create_market_data_table.xml"/>
     <include file="db/changelog/007_add_sma_value_to_market_data.xml"/>
     <include file="db/changelog/008_create_trade_order_table.xml"/>
     <include file="db/changelog/009_add_broker_order_id_to_trade_order.xml"/>
@@ -41,5 +45,6 @@
     <include file="db/changelog/034_create_sma_downtrend_rule_strategy.xml"/>
     <include file="db/changelog/035_strategy_ids_on_trade_config.xml"/>
     <include file="db/changelog/036_add_trailing_stop_loss.xml"/>
+    <include file="db/changelog/037_add_is_active_to_trade_config.xml"/>
 
 </databaseChangeLog>

@@ -305,13 +305,16 @@ spring.liquibase.change-log=classpath:db/changelog/db.changelog-master.xml
 | GET  | `/api/session`       | `{ activeBroker, loggedIn, dataHealthy, lastHeartbeatStatus, lastHeartbeatAt, lastDataAt, session: {...} }` |
 | POST | `/api/backtest/login`  | Backtest-mode login preflight (same `LoginOrchestrator` as live) |
 | POST | `/api/backtest/analysis?fromDate=&toDate=` | Run the multi-day analysis→order→position replay; returns per-day summary |
-| GET/POST/PUT/DELETE | `/api/trade-configs[...]` | Trade-config CRUD — see [`docs/ORDERS_AND_POSITIONS.md`](docs/ORDERS_AND_POSITIONS.md#trade-config-admin) |
+| GET/POST/PUT/DELETE | `/api/trade-configs[...]` | Trade-config CRUD — see [`docs/ORDERS_AND_POSITIONS.md`](docs/ORDERS_AND_POSITIONS.md#trade-config-admin). `PUT` returns `409 confirmRequired` while trades are open on the config |
+| POST | `/api/trade-configs/{id}/active?value=` | Retire / reinstate a config without deleting it — keeps its history, drops it from dispatch |
+| POST | `/api/trade-configs/clone?fromDate=&toDate=&dryRun=` | Clone a trading day's configs onto another date (— `dryRun` defaults to true) |
 | GET/POST | `/api/trade-configs/auto/{calendar,runs,delete}` | Bulk config delete — `AUTO_DOWNTREND` by default, `MANUAL` on opt-in; see [`docs/EOD_DOWNTREND.md`](docs/EOD_DOWNTREND.md#deleting-generated-configs) |
 | GET  | `/api/orders`        | Persisted `trade_order` rows |
 | POST | `/api/orders/{id}/sync` | Re-fetch broker fill status for one order |
 | POST | `/api/orders/purge`  | Clear ledger rows by entry-date (`dryRun` defaults to true) — see [`docs/ORDERS_AND_POSITIONS.md`](docs/ORDERS_AND_POSITIONS.md#purging-the-ledger) |
 | GET  | `/api/charts/market-data` | Chart candle data (token-based or historical ICICI) — see [`docs/CHART_DASHBOARD.md`](docs/CHART_DASHBOARD.md) |
 | POST | `/api/charts/historical/import/{spot,options}` | Import ICICI-style historical CSV — see [`docs/HISTORICAL_CHART_DATA_PLAN.md`](docs/HISTORICAL_CHART_DATA_PLAN.md) |
+| POST | `/api/admin/day-summary?date=&force=` | Re-run end-of-day work (force-close sweep + digest) for a date. Idempotent without `force` — the two-key sent markers skip whichever half already completed. See [`docs/SCHEDULERS.md`](docs/SCHEDULERS.md#daysummaryscheduler) |
 
 ---
 
@@ -320,12 +323,12 @@ spring.liquibase.change-log=classpath:db/changelog/db.changelog-master.xml
 | Cron / fixed-delay | What it does | Defined in |
 |---|---|---|
 | `0 0 8 * * MON-FRI` (08:00 IST) | First-of-day login: `LoginOrchestrator.ensureLoggedIn()`. Silent if already valid. | `LoginScheduler.ensureSessionAtMarketOpen` |
-| `fixedDelay = 60_000ms` | Heartbeat: auth probe + data probe; updates `broker_session`, drives Telegram on state transitions. | `LoginScheduler.heartbeat` |
+| `fixedDelay = 60_000ms`, 07:50–15:40 window | Heartbeat: auth probe + data probe; updates `broker_session`, drives Telegram on state transitions. Skipped outside `app.market.heartbeat-start`..`-end`. | `LoginScheduler.heartbeat` |
 | `0 16 9 * * MON-FRI` (09:16 IST) + `ApplicationReadyEvent` | Loads `trade_config` (+ instrument + `sma_timeframe`) for today into `SharedData.combinedDto`, fanned out to one entry per (config x strategy named in `trade_config.strategy_ids`). | `TradeConfigScheduler` |
 | `0 0/5 9-16 * * MON-FRI` (every 5 min, market-hours gated) | Fetch OHLC, compute SMAs, run strategies → trade signals. | `AnalysisScheduler` |
 | `0 0/5 9-16 * * MON-FRI` (same tick, after Analysis) | Drain trade signals into `trade_order` rows + broker order calls. | `OrderScheduler` |
 | `0 0/5 9-16 * * MON-FRI` (same tick, after Order) | Monitor OPEN `trade_order` rows; SL/target close. | `PositionScheduler` |
-| `0 31 15 * * MON-FRI` (15:31 IST, live only) | Force-close leftover OPEN trades + Telegram end-of-day digest. | `DaySummaryScheduler` |
+| `0 31 15 * * MON-FRI` (15:31 IST, live only) | Force-close leftover OPEN trades + Telegram end-of-day digest. Re-runnable by hand via `POST /api/admin/day-summary`. | `DaySummaryScheduler` |
 
 Full detail — including the market-hours gate that all three 5-min schedulers share, and how the backtest runner replays the exact same service methods — lives in [`docs/SCHEDULERS.md`](docs/SCHEDULERS.md).
 

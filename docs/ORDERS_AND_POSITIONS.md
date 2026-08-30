@@ -170,10 +170,58 @@ fires per stranded row and says to square off manually. Four things reach it:
 
 | Cause | Why it doesn't just place anyway |
 |---|---|
-| Broker returned no order id | Not logged in, or symbol unresolved. **This is today's Zerodha default** — `resolveTradingSymbol` is still a stub returning `null`, so every live force-close exit currently takes this path. |
+| Broker returned no order id | Not logged in, or the contract could not be resolved. On Zerodha the second case now means a real data problem — `instrument_details` has no row for the ledger's `option_token`, or it has one describing a different contract. See [Zerodha contract resolution](#zerodha-contract-resolution). |
 | Broker threw | Network / API failure. Caught per row so one bad leg doesn't strand the rest of the batch as OPEN. |
 | No cached `TradeConfigCombinedDTO` for the row's config | Quantity comes off the config; placement services fall back to quantity `1`. One unit against a 75-unit lot is a *new position*, not a close. Not closing is recoverable by hand; closing the wrong size isn't. |
 | `OrderPlacementFactory.active()` unresolvable | A misconfigured `broker.active`. Resolved once, defensively — "close nothing" would be the worse answer than "close the ledger and shout". |
+
+---
+
+## Zerodha contract resolution
+
+`ZerodhaOrderPlacementService.resolveContract(order)` turns a `trade_order` row
+into the `(tradingsymbol, exchange)` pair Kite's `OrderParams` needs. It is a
+**lookup, never a formatter**.
+
+**Why.** Kite's NFO tradingsymbols are not derivable from
+`(underlying, expiry, strike, type)` by one rule. Two rows from the bundled dump,
+same underlying, same strike, same option type:
+
+| instrument_token | tradingsymbol | expiry |
+|---|---|---|
+| `14598658` | `NIFTY2660223400CE` | 2026-06-02 (weekly — 2-digit year, *single* char month, day) |
+| `20401922` | `NIFTY26JUN23400CE` | 2026-06-30 (monthly — 2-digit year, 3-letter month, no day) |
+
+October/November/December weeklies use `O`/`N`/`D` for the month character, and a
+month-end weekly is published in the monthly form. Any formatter would be a guess
+that fires a real market order at a symbol the exchange may not list.
+
+**The key.** `trade_order.option_token` is the broker instrument token
+`TokenOptionInstrumentResolver` wrote when the leg was chosen — i.e. the primary
+key of `instrument_details`. One `findById` is the whole resolution, and it
+cannot drift from the leg the strategy analysed, because it *is* that leg's row.
+
+**Refusals.** Every one of these returns `null`, so `place(...)` skips rather
+than sending a wrong order (on the force-close path that raises
+`alertForceCloseExitFailed`):
+
+| Case | Meaning |
+|---|---|
+| `option_token` null / blank | Ledger row predates the token being written. |
+| `option_token` isn't numeric | It's a `HISTORICAL_ICICI` natural key (`NIFTY\|NFO\|2024-01-04\|23400\|CE`). That source is replay-only; live placement needs `backtest.data-source=BROKER`. |
+| No `instrument_details` row | The local dump is stale relative to the ledger — reload it. |
+| Row has no `tradingsymbol` | Malformed dump row. |
+| Row's strike / type disagrees with the ledger's | The dump was re-seeded and the token now names a *different* contract. Placing would trade the wrong leg. |
+
+`exchange` is read off the row rather than hardcoded to `NFO`, so a BFO contract
+(BANKEX / SENSEX) isn't routed to the wrong exchange; `NFO` remains the fallback
+when the column is empty. Pinned by
+[`ZerodhaTradingSymbolResolutionTest`](../src/test/java/com/moneymaker/broker/zerodha/ZerodhaTradingSymbolResolutionTest.java).
+
+> **Prerequisite:** `instrument_details` must be populated for the expiries being
+> traded. It is the same table `TokenOptionInstrumentResolver` reads to pick the
+> leg in the first place, so if analysis produced a signal, the row placement
+> needs is by construction already there.
 
 ---
 
@@ -383,10 +431,95 @@ Backtest mode is gated at `TelegramNotifier.send()` — `telegram.backtest-enabl
 | GET | `/api/trade-configs?date=&page=&size=` | Paged list, optionally filtered by trading date |
 | GET | `/api/trade-configs/{id}` | Single config + its `sma_timeframe` rows |
 | POST | `/api/trade-configs` | Create |
-| PUT | `/api/trade-configs/{id}` | Update |
+| PUT | `/api/trade-configs/{id}?confirm=` | Update — `409 confirmRequired` while trades are open, see [Editing a config with live trades](#editing-a-config-with-live-trades) |
 | DELETE | `/api/trade-configs/{id}` | Delete — `409` if any `trade_order` references the config |
+| POST | `/api/trade-configs/{id}/active?value=` | Retire / reinstate without deleting, see [Retiring a config](#retiring-a-config) |
+| POST | `/api/trade-configs/clone?fromDate=&toDate=&dryRun=` | Bulk-clone a day's configs onto another date, see [Cloning a day](#cloning-a-day) |
 | GET | `/api/trade-configs/instruments` | Instrument dropdown source |
 | GET | `/api/trade-configs/strategies` | Strategy dropdown source |
+
+### Cloning a day
+
+`POST /api/trade-configs/clone?fromDate=&toDate=&dryRun=` (GAPS #9) copies every
+runnable config from one trading date to another, with its `sma_timeframe`
+children. The toolbar's **Clone a day…** button previews first and then
+confirms; the per-row `⧉ Clone` action is a different thing — it pre-fills the
+create form from one existing config.
+
+`dryRun` defaults to **true**, the same shape the bulk delete uses.
+
+What it replaces is not just tedium. The workaround was
+`INSERT … SELECT … WHERE trading_date='yesterday'`, which **bypasses
+`TradeConfigAdminService`** and therefore the cache-invalidation contract of
+invariant 10: the rows land in MySQL while `TradeConfigScheduler`'s date cache
+and `SharedData.combinedDto` keep the old snapshot, so the running pipeline
+cannot see them until the next restart.
+
+| Decision | Why |
+|---|---|
+| Retired configs are not cloned | `is_active=false` means "do not run this". Carrying it forward as active resurrects exactly what someone retired. Counted and named in the summary rather than quietly missing. |
+| Clones are stamped `MANUAL`, whatever the source was | Keeping `AUTO_DOWNTREND` would hand the row to `EodDowntrendDetectionService`'s dedupe key, which reads "a config already exists for this (day, strategy)" as "I already generated" — so cloning an AUTO config forward would silently suppress the detector's own output for that day. |
+| Cloning a day onto itself is rejected | It could only duplicate every config. |
+| Skip-if-present, not upsert | A source config is skipped when the destination already carries the same instrument + side + transaction type + primary strategy. That tuple is *not* a database key, so this is deliberately best-effort: a hand-built config that happens to match is reported as skipped rather than silently doubled. Doubling configs doubles positions, so the ambiguity resolves toward the recoverable failure. |
+
+> `copyForDate` lists every column longhand. A new column nobody adds there is
+> silently dropped from every clone — same failure mode as the `applyForm` /
+> `toView` note below, and the same reason for not reflecting it away.
+
+### Retiring a config
+
+`is_active` (changeset 037, GAPS #7) is the retire-without-deleting state. A
+config that has ever traded cannot be hard-deleted — the ledger references it —
+and before this the only way to silence one was to shove its `tradingDate` into
+the past, which falsifies the record of what the config was for.
+
+Retired means **dropped from dispatch**:
+`TradeConfigRepository.fetchCombinedByTradingDate` — the query that builds
+`SharedData.combinedDto` — filters on `COALESCE(tc.is_active, TRUE) = TRUE`. The
+row, its `sma_timeframe` children and all its `trade_order` history stay exactly
+where they are. `findByTradingDate` is deliberately *not* filtered: the admin
+list must show retired configs or you cannot reinstate one.
+
+`COALESCE` rather than `= TRUE` on purpose — a NULL must read as active. The
+alternative is silently retiring every config on the day the changeset lands.
+
+**Retiring is refused while the config has OPEN trades**, and this is the part
+worth remembering. A retired config leaves `SharedData.combinedDto`, and
+`OrderService.findConfig` reads exactly that list to size an **exit**. With no
+DTO the exit is never dispatched: the row is marked `CLOSED` while the broker
+position stays open — one of the four paths `alertForceCloseExitFailed` exists
+for. Close the trades first (or let the 15:31 sweep close them), then retire.
+Reinstating is never blocked.
+
+> The underlying resolution bug is older than the retire feature — editing
+> `tradingDate` to another day does the same thing — and is filed as
+> [`STRATEGY_ANALYSIS_TODO.md` S12](STRATEGY_ANALYSIS_TODO.md#s12-a-config-that-leaves-shareddatacombineddto-mid-day-strands-its-open-trades-broker-exits).
+> When that lands, the refusal can relax to a warning.
+
+### Editing a config with live trades
+
+`PUT /api/trade-configs/{id}` returns **409 with `confirmRequired: true`** — not
+an error — when the config has OPEN trades *and* the edit touches something
+those trades still read (GAPS #8). The body lists each change
+(`lotQuantity: 75 -> 150`) so the dialog can name them; `?confirm=true` applies
+the same edit. It is a warning, not a block.
+
+The rule for what counts is one line: **a field is consequential unless the
+order snapshotted it at entry.**
+
+| | Fields | Why |
+|---|---|---|
+| **Never asks** | `target`, `stopLoss`, `targetPct`, `slPct`, `maxSlPoints`, `trailLadder`, the premium band | Snapshotted onto `trade_order` at entry by changesets 011 / 036, precisely so a mid-day edit cannot re-price an open position. Warning here would be false, and would train the operator to click through. |
+| **Asks** | `transactionType`, `tradingSide`, `lotQuantity`, `numberOfTradesPerDay`, `numberOfParallelTrades`, `strategyId`, `instrument`, `tradingDate` | Read live for the rest of the day. |
+
+`lotQuantity` is the one that surprises people: `trade_order.quantity` *is*
+snapshotted (changeset 029), but the placement services size an order from the
+**config** (`ZerodhaOrderPlacementService.quantity`), so an open trade would exit
+at a different size than it entered. That is a partial close or an accidental
+reversal, not a resize.
+
+Only `OPEN` trades gate — a config with a hundred closed trades and nothing live
+edits freely.
 
 [`TradeConfigAdminController`](../src/main/java/com/moneymaker/tradeconfig/controller/TradeConfigAdminController.java) is a thin HTTP layer; [`TradeConfigAdminService`](../src/main/java/com/moneymaker/tradeconfig/service/TradeConfigAdminService.java) is the **single owner** of trade-config writes — controllers and other feature code must call it rather than `TradeConfigRepository` directly (see the CLAUDE.md / AGENTS.md invariant).
 
@@ -571,9 +704,9 @@ These aren't trading-behaviour rules per se (they're broker / exchange constants
 
 ## Things that are still pending
 
-- **Zerodha tradingsymbol resolution.** `ZerodhaOrderPlacementService.resolveTradingSymbol` returns `null`, so live `place(...)` short-circuits before hitting Kite. Needs a cached NFO instruments dump fetched at login + a `(name, expiry, strike, optionType)` lookup. Once that lands, the rest of the pipeline is wired.
+- ~~**Zerodha tradingsymbol resolution.**~~ **Done 2026-08-31** — resolved by `instrument_details` primary-key lookup on `trade_order.option_token`, not by formatting a symbol. See [Zerodha contract resolution](#zerodha-contract-resolution) for why the lookup is the only sound shape and what each refusal means. The originally sketched `(name, expiry, strike, optionType)` lookup was not needed: the token *is* that tuple's already-resolved answer, and it comes off the same row the strategy analysed.
 - **Groww + Angel One real REST clients** for both `OrderPlacementService` and `PositionMonitorService`.
-- (Live force-close now places a real broker exit — see "Force-close: live vs backtest" above. It is gated behind Zerodha tradingsymbol resolution, the first bullet in this list, and alerts per row until that lands. GAPS #1.)
+- (Live force-close now places a real broker exit — see "Force-close: live vs backtest" above. On Zerodha it is no longer gated behind symbol resolution; the per-row alert now only fires on a genuine failure. GAPS #1.)
 - (Both `numberOfTradesPerDay` and `numberOfParallelTrades` are now enforced — see steps 3 and 4 in "Open / close decision rules" above.)
 - **Lot-size aware quantity** — `quantity()` in placement services treats `tradeConfig.lotQuantity` as raw quantity. Multiplying by lot size (50 for NIFTY etc.) needs a data source decision. The end-of-day digest's net P&L uses the *same* number as its multiplier (GAPS #2), deliberately — so if this bullet is ever resolved, the digest has to move with it or the two will disagree.
 - **`lot_quantity_at_entry` snapshot.** `trade_order` has no lot-size snapshot, so the day-summary net P&L joins `TradeConfig.lotQuantity` live. Editing a config's lot quantity mid-day therefore re-prices trades that already closed — the staleness `target_at_entry` (changeset 011) exists to prevent. Remaining half of GAPS #2.

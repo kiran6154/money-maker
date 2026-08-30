@@ -3,6 +3,7 @@ package com.moneymaker.market.service;
 import com.moneymaker.entity.MarketData;
 import com.moneymaker.market.exception.KiteRateLimitException;
 import com.moneymaker.market.provider.MarketDataProvider;
+import com.moneymaker.market.provider.MarketDataProviderFactory;
 import com.moneymaker.telegram.NotificationService;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import io.github.resilience4j.retry.annotation.Retry;
@@ -21,6 +22,9 @@ import java.util.Objects;
  * cache-then-fetch path inside one class would skip {@code @RateLimiter} /
  * {@code @Retry} on self-invocation.
  *
+ * <p>The provider itself comes from {@link MarketDataProviderFactory}, which owns
+ * the "which provider is running" decision — see that class for the rule.
+ *
  * <p>Behaviour is identical to the previous {@code MarketDataService.fetchHistoricalData}:
  * the call is permit-acquired through {@code kiteHistorical}, retried on
  * rate-limit, and surfaces "market data down/up" notifications.
@@ -35,9 +39,17 @@ public class KiteHistoricalFetcher {
     private final MarketDataProvider marketDataProvider;
     private final NotificationService notifier;
 
-    public KiteHistoricalFetcher(MarketDataProvider marketDataProvider,
+    /**
+     * Takes the {@link MarketDataProviderFactory} rather than a single
+     * {@link MarketDataProvider} bean (GAPS #20). The old single-bean parameter is
+     * what made a second provider an ambiguous injection and forced a
+     * {@code @Primary} annotation to arbitrate; going through the factory moves
+     * that decision into one readable, testable place.
+     */
+    public KiteHistoricalFetcher(MarketDataProviderFactory providerFactory,
                                  NotificationService notifier) {
-        this.marketDataProvider = Objects.requireNonNull(marketDataProvider, "marketDataProvider must not be null");
+        this.marketDataProvider = Objects.requireNonNull(providerFactory, "providerFactory must not be null")
+                .active();
         this.notifier = Objects.requireNonNull(notifier, "notifier must not be null");
     }
 

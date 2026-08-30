@@ -10,6 +10,7 @@ import com.moneymaker.login.model.HeartbeatStatus;
 import com.moneymaker.login.service.BrokerLoginManager;
 import com.moneymaker.login.service.BrokerLoginService;
 import com.moneymaker.login.service.LoginOrchestrator;
+import com.moneymaker.market.service.MarketHoursService;
 import com.moneymaker.state.AppState;
 import com.moneymaker.telegram.NotificationService;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,11 @@ import java.time.LocalDateTime;
  * is driven manually via {@code POST /api/backtest/login}.</p>
  *
  * <p>Telegram alerts are emitted only on <b>state transitions</b> to avoid spam.</p>
+ *
+ * <p><b>Time-gated too:</b> the heartbeat only probes inside
+ * {@link MarketHoursService#isWithinHeartbeatWindow()} (07:50–15:40 IST weekdays
+ * by default). See {@code docs/HEARTBEAT.md} for why the window is wider than
+ * market hours on both sides.</p>
  */
 @Slf4j
 @Component
@@ -44,6 +50,7 @@ public class LoginScheduler {
     private final NotificationService notifier;
     private final LoginOrchestrator loginOrchestrator;
     private final ZerodhaMarketDataService marketDataService;
+    private final MarketHoursService marketHours;
 
     /** 08:00 IST Mon-Fri: first login of the day. */
     @Scheduled(cron = "0 0 8 * * MON-FRI", zone = "Asia/Kolkata")
@@ -56,11 +63,33 @@ public class LoginScheduler {
         loginOrchestrator.ensureLoggedIn();
     }
 
-    /** Heartbeat every 1 minute. Telegram alerts are emitted only on state
-     *  transitions (see {@link #transitionAndNotify}), so a steady "OK" or
-     *  steady "AUTH_FAIL" never spams the channel. */
+    /**
+     * Heartbeat every 1 minute, <b>within the heartbeat window only</b>. Telegram
+     * alerts are emitted only on state transitions (see
+     * {@link #transitionAndNotify}), so a steady "OK" or steady "AUTH_FAIL" never
+     * spams the channel.
+     *
+     * <p>The wall-clock gate is on the {@code @Scheduled} wrapper, not inside
+     * {@link #runHeartbeat()}, following the same split the pipeline schedulers
+     * use: the tick decides <i>whether now is a time to probe</i>, the method
+     * underneath does the probing and can be called directly by a test.
+     */
     @Scheduled(fixedDelay = 60_000L, initialDelay = 30_000L)
     public void heartbeat() {
+        if (!marketHours.isWithinHeartbeatWindow()) {
+            // Every 60s outside the window, so trace rather than debug.
+            log.trace("[Heartbeat] outside {}-{} window — skipping",
+                    marketHours.heartbeatStart(), marketHours.heartbeatEnd());
+            return;
+        }
+        runHeartbeat();
+    }
+
+    /**
+     * The probe itself, with no wall-clock opinion. Unchanged from what the
+     * {@code @Scheduled} method used to do inline.
+     */
+    void runHeartbeat() {
         BrokerSession session = appState.currentSession().orElse(null);
         if (session == null) {
             transitionAndNotify(HeartbeatStatus.NO_SESSION, null, "no active session");

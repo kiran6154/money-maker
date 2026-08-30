@@ -16,6 +16,7 @@ import com.moneymaker.util.TrailLadder;
 import com.moneymaker.tradeconfig.dto.AutoConfigCalendarDTO;
 import com.moneymaker.tradeconfig.dto.AutoDeleteRequestDTO;
 import com.moneymaker.tradeconfig.dto.AutoDeleteResultDTO;
+import com.moneymaker.tradeconfig.dto.CloneResultDTO;
 import com.moneymaker.tradeconfig.dto.InstrumentOptionDTO;
 import com.moneymaker.tradeconfig.dto.PagedResponse;
 import com.moneymaker.tradeconfig.dto.SmaTimeframeDTO;
@@ -34,10 +35,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
 
 /**
@@ -136,9 +139,38 @@ public class TradeConfigAdminService {
 
     @Transactional
     public TradeConfigViewDTO update(Integer id, TradeConfigFormDTO form) {
+        return update(id, form, false);
+    }
+
+    /**
+     * @param confirm the caller has seen the consequential-change warning and
+     *                wants the edit anyway. Ignored when the config has no OPEN
+     *                trades, which is the overwhelmingly common case.
+     * @throws ConfirmationRequiredException when trades are open and the edit
+     *         touches something those trades still read. See
+     *         {@link #consequentialChanges(TradeConfig, TradeConfigFormDTO)}.
+     */
+    @Transactional
+    public TradeConfigViewDTO update(Integer id, TradeConfigFormDTO form, boolean confirm) {
         validate(form);
         TradeConfig tc = tradeConfigRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("No trade config with id=" + id));
+
+        if (!confirm) {
+            long openTrades = tradeOrderRepository.countByTradeConfigIdAndStatus(id, STATUS_OPEN);
+            if (openTrades > 0) {
+                List<String> changes = consequentialChanges(tc, form);
+                if (!changes.isEmpty()) {
+                    throw new ConfirmationRequiredException(
+                            "Config " + id + " has " + openTrades + " open trade(s), and this edit changes "
+                                    + String.join("; ", changes)
+                                    + ". Those changes affect the rest of today's behaviour on this config. "
+                                    + "Re-send with confirm=true to apply.",
+                            changes, openTrades);
+                }
+            }
+        }
+
         LocalDate previousDate = tc.getTradingDate();
         applyForm(tc, form);
         tradeConfigRepository.save(tc);
@@ -158,12 +190,306 @@ public class TradeConfigAdminService {
         if (tradeOrderRepository.existsByTradeConfigId(id)) {
             throw new IllegalStateException(
                     "Cannot delete trade config " + id + " — trade_order rows reference it. " +
-                    "Configs with executed trades are kept for audit.");
+                    "Configs with executed trades are kept for audit. " +
+                    "To stop it running without losing its history, retire it instead: " +
+                    "POST /api/trade-configs/" + id + "/active?value=false");
         }
         smaTimeframeRepository.deleteByTradeConfigId(id);
         tradeConfigRepository.deleteById(id);
         afterMutation(tc.getTradingDate());
         log.info("[trade-config] deleted id={}", id);
+    }
+
+    /**
+     * Retires or reinstates a config without touching its history (GAPS #7).
+     *
+     * <p>An inactive config is skipped by
+     * {@code TradeConfigRepository.fetchCombinedByTradingDate}, so no strategy
+     * scans it and no new trade opens against it. It keeps its id, its
+     * {@code sma_timeframe} children and every {@code trade_order} row that
+     * references it — which is exactly what hard delete cannot offer for a config
+     * that has traded, and what forcing {@code tradingDate} into the past was
+     * being abused to fake.</p>
+     *
+     * <h3>Refused while the config has OPEN trades</h3>
+     * Not a nicety. Retiring drops the config out of {@code SharedData.combinedDto},
+     * and {@code OrderService.findConfig} resolves an open row's config from exactly
+     * that list when it needs the quantity for an <b>exit</b>. With no DTO the exit
+     * is never dispatched: the ledger row is marked CLOSED while the broker position
+     * stays open — the failure GAPS #1's {@code alertForceCloseExitFailed} exists to
+     * shout about. Retiring is supposed to mean "open nothing further"; also meaning
+     * "and strand what is open" is not a trade-off worth offering behind a
+     * confirmation dialog, so this refuses and says what to do instead.
+     *
+     * <p>The underlying hazard is older than this method — editing a config's
+     * {@code tradingDate} into the past does the same thing, and that is precisely
+     * the workaround GAPS #7 exists to replace — and is filed as
+     * {@code STRATEGY_ANALYSIS_TODO.md} S12. When it is fixed, this refusal can
+     * relax to a warning.</p>
+     *
+     * <p>Reinstating is always allowed: it can only add a config back to dispatch.</p>
+     */
+    @Transactional
+    public TradeConfigViewDTO setActive(Integer id, boolean active) {
+        TradeConfig tc = tradeConfigRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("No trade config with id=" + id));
+
+        long openTrades = tradeOrderRepository.countByTradeConfigIdAndStatus(id, STATUS_OPEN);
+        if (!active && openTrades > 0) {
+            throw new IllegalStateException(
+                    "Cannot retire trade config " + id + " — it has " + openTrades + " open trade(s). "
+                            + "A retired config leaves SharedData.combinedDto, and an exit leg is sized from "
+                            + "that cached config, so those positions would be closed in the ledger without an "
+                            + "order reaching the broker. Close them first (or let the 15:31 sweep close them), "
+                            + "then retire.");
+        }
+
+        tc.setIsActive(active);
+        tradeConfigRepository.save(tc);
+        afterMutation(tc.getTradingDate());
+
+        log.info("[trade-config] {} id={} date={}", active ? "reinstated" : "retired", id, tc.getTradingDate());
+        return findById(id);
+    }
+
+    /** Ledger status for a live position — matches {@code OrderService}'s vocabulary. */
+    private static final String STATUS_OPEN = "OPEN";
+
+    /**
+     * The changes that a currently-open trade would still feel, i.e. the ones
+     * worth stopping the user for (GAPS #8).
+     *
+     * <p>The rule is one line: <b>a field is consequential unless the order
+     * snapshotted it at entry.</b> The bracket did get snapshotted —
+     * {@code target_at_entry} / {@code stop_loss_at_entry} (changeset 011),
+     * {@code trail_ladder_at_entry} (036) — precisely so a mid-day edit could not
+     * retroactively re-price an open position, so target / stop-loss / their
+     * percentage forms / the max-SL cap / the ladder are all deliberately absent
+     * from this list. Editing them mid-trade is safe by construction and warning
+     * about it would train the operator to click through the dialog.</p>
+     *
+     * <p>What is <i>not</i> snapshotted, and therefore is listed:</p>
+     * <ul>
+     *   <li>{@code transactionType} / {@code tradingSide} — which side and which
+     *       leg the rest of the day trades.</li>
+     *   <li>{@code lotQuantity} — {@code trade_order.quantity} is snapshotted
+     *       (029), but the placement services size an order from the <i>config</i>
+     *       ({@code ZerodhaOrderPlacementService.quantity}), so an open trade
+     *       would exit at a different size than it entered. That is a partial
+     *       close or an accidental reversal, not a resize.</li>
+     *   <li>{@code numberOfTradesPerDay} / {@code numberOfParallelTrades} — the
+     *       caps the rest of the day is counted against, with trades already
+     *       counting toward them.</li>
+     *   <li>{@code strategyId} — {@code (trade_config_id, strategy_id)} is the
+     *       identity those caps are applied against, so moving it re-buckets the
+     *       open trades' accounting.</li>
+     *   <li>{@code instrumentId} / {@code tradingDate} — at that point it is a
+     *       different config wearing the same id.</li>
+     * </ul>
+     */
+    private List<String> consequentialChanges(TradeConfig current, TradeConfigFormDTO form) {
+        List<String> changes = new ArrayList<>();
+        Integer currentInstrumentId = current.getInstrument() == null ? null : current.getInstrument().getId();
+
+        addIfChanged(changes, "instrument", currentInstrumentId, form.getInstrumentId());
+        addIfChanged(changes, "tradingDate", current.getTradingDate(), form.getTradingDate());
+        addIfChanged(changes, "tradingSide", current.getTradingSide(), form.getTradingSide());
+        addIfChanged(changes, "transactionType", current.getTransactionType(), form.getTransactionType());
+        addIfChanged(changes, "lotQuantity", current.getLotQuantity(), form.getLotQuantity());
+        addIfChanged(changes, "numberOfTradesPerDay",
+                current.getNumberOfTradesPerDay(), form.getNumberOfTradesPerDay());
+        addIfChanged(changes, "numberOfParallelTrades",
+                current.getNumberOfParallelTrades(), form.getNumberOfParallelTrades());
+        addIfChanged(changes, "strategyId", current.getStratergyId(), form.getStrategyId());
+        return changes;
+    }
+
+    private static void addIfChanged(List<String> into, String field, Object before, Object after) {
+        if (!Objects.equals(before, after)) {
+            into.add(field + ": " + before + " -> " + after);
+        }
+    }
+
+    /* ---------------- bulk clone: one trading day to another (GAPS #9) ---------------- */
+
+    /**
+     * Copies every runnable config from one trading date to another, with their
+     * {@code sma_timeframe} children.
+     *
+     * <p>This is the most-skipped step in real ops: a user with eight configs was
+     * otherwise recreating them by hand every morning, or running
+     * {@code INSERT … SELECT … WHERE trading_date='yesterday'} against the
+     * database — which bypasses this service and therefore the cache-invalidation
+     * contract, so the configs exist but the running pipeline cannot see them
+     * until the next restart.</p>
+     *
+     * <h3>Three decisions worth knowing</h3>
+     * <ul>
+     *   <li><b>Dry run by default.</b> Same shape as {@code deleteAuto}: a caller
+     *       who omits the flag gets a preview, and the UI confirms against the
+     *       server's own count rather than its own guess.</li>
+     *   <li><b>Retired configs are not cloned.</b> {@code is_active=false} means
+     *       "do not run this"; carrying it to a new day as active would resurrect
+     *       exactly what someone retired. Reported separately so the number is
+     *       explained rather than just missing.</li>
+     *   <li><b>Clones are stamped {@code MANUAL}, whatever the source was.</b> A
+     *       clone is a human action. Keeping {@code AUTO_DOWNTREND} would hand the
+     *       row to the detector's dedupe key, which treats "a config already exists
+     *       for this (day, strategy)" as "I already generated" — so cloning an AUTO
+     *       config forward would silently suppress the detector's own output for
+     *       that day. Stamping MANUAL keeps the two populations separate, which is
+     *       what the bulk-delete panel and the calendar both assume.</li>
+     * </ul>
+     *
+     * <h3>Idempotency</h3>
+     * Re-running is safe. A source config is skipped when {@code toDate} already
+     * carries an equivalent one — same instrument, trading side, transaction type
+     * and primary strategy. That tuple is not a database key (nothing stops two
+     * genuinely different configs sharing it), so this is a deliberate
+     * best-effort: clone twice and you get one set, but a hand-built config that
+     * happens to match is treated as already-cloned and reported as skipped rather
+     * than silently doubled. Doubling configs doubles positions, so the failure
+     * this leans toward is the recoverable one.
+     */
+    @Transactional
+    public CloneResultDTO cloneDay(LocalDate fromDate, LocalDate toDate, boolean dryRun) {
+        if (fromDate == null || toDate == null) {
+            throw new IllegalArgumentException("fromDate and toDate are required");
+        }
+        if (fromDate.equals(toDate)) {
+            throw new IllegalArgumentException("fromDate and toDate are the same day (" + fromDate
+                    + ") — a clone onto itself would only duplicate every config");
+        }
+
+        List<TradeConfig> source = tradeConfigRepository.findByTradingDate(fromDate);
+        Set<String> existing = new HashSet<>();
+        for (TradeConfig tc : tradeConfigRepository.findByTradingDate(toDate)) {
+            existing.add(identityKey(tc));
+        }
+
+        int skippedRetired = 0;
+        int skippedExisting = 0;
+        int timeframesCopied = 0;
+        List<Integer> created = new ArrayList<>();
+
+        for (TradeConfig tc : source) {
+            if (Boolean.FALSE.equals(tc.getIsActive())) {
+                skippedRetired++;
+                continue;
+            }
+            if (!existing.add(identityKey(tc))) {
+                skippedExisting++;
+                continue;
+            }
+
+            List<SmaTimeframe> timeframes = smaTimeframeRepository.findByTradeConfigId(tc.getId());
+            timeframesCopied += timeframes.size();
+
+            if (dryRun) {
+                continue;
+            }
+
+            TradeConfig copy = copyForDate(tc, toDate);
+            TradeConfig saved = tradeConfigRepository.save(copy);
+            created.add(saved.getId());
+
+            TradeConfig parentRef = tradeConfigRepository.getReferenceById(saved.getId());
+            List<SmaTimeframe> copies = new ArrayList<>(timeframes.size());
+            for (SmaTimeframe tf : timeframes) {
+                SmaTimeframe row = new SmaTimeframe();
+                row.setTradeConfig(parentRef);
+                row.setTimePeriod(tf.getTimePeriod());
+                row.setSma(tf.getSma());
+                row.setSlope(tf.getSlope());
+                copies.add(row);
+            }
+            smaTimeframeRepository.saveAll(copies);
+        }
+
+        int cloned = dryRun
+                ? source.size() - skippedRetired - skippedExisting
+                : created.size();
+
+        if (!dryRun && cloned > 0) {
+            afterMutation(toDate);
+        }
+
+        String summary = cloneSummary(source.size(), cloned, skippedRetired, skippedExisting,
+                fromDate, toDate, dryRun);
+        log.info("[trade-config] clone {} -> {}: {} (dryRun={})", fromDate, toDate, summary, dryRun);
+
+        return new CloneResultDTO(fromDate, toDate, source.size(), skippedRetired, skippedExisting,
+                cloned, List.copyOf(created), timeframesCopied, dryRun, summary);
+    }
+
+    /**
+     * What makes two configs "the same config on a different day" for clone
+     * de-duplication. Not a database constraint — see the idempotency note on
+     * {@link #cloneDay}.
+     */
+    private static String identityKey(TradeConfig tc) {
+        Integer instrumentId = tc.getInstrument() == null ? null : tc.getInstrument().getId();
+        return instrumentId + "|" + tc.getTradingSide() + "|" + tc.getTransactionType()
+                + "|" + tc.getStratergyId();
+    }
+
+    /**
+     * Field-by-field copy onto a new trading date.
+     *
+     * <p>Written out longhand rather than reflected or serialised: a new column
+     * that nobody adds here is silently dropped from every clone, and a loud
+     * compile-time list is the only thing that makes that omission visible. Same
+     * reason {@code applyForm} / {@code toView} are longhand — see the note in
+     * {@code ORDERS_AND_POSITIONS.md} about a column missing from one of the four
+     * places.</p>
+     */
+    private TradeConfig copyForDate(TradeConfig from, LocalDate toDate) {
+        TradeConfig c = new TradeConfig();
+        c.setInstrument(from.getInstrument());
+        c.setTradingDate(toDate);
+        c.setTradingSide(from.getTradingSide());
+        c.setTransactionType(from.getTransactionType());
+        c.setTarget(from.getTarget());
+        c.setStopLoss(from.getStopLoss());
+        c.setTargetPct(from.getTargetPct());
+        c.setSlPct(from.getSlPct());
+        c.setMaxLoss(from.getMaxLoss());
+        c.setOptionDepth(from.getOptionDepth());
+        c.setLotQuantity(from.getLotQuantity());
+        c.setStratergyId(from.getStratergyId());
+        c.setStrategyIds(from.getStrategyIds());
+        c.setNumberOfTradesPerDay(from.getNumberOfTradesPerDay());
+        c.setNumberOfParallelTrades(from.getNumberOfParallelTrades());
+        c.setItmDepth(from.getItmDepth());
+        c.setOtmDepth(from.getOtmDepth());
+        c.setAtmDepth(from.getAtmDepth());
+        c.setMinOptionPrice(from.getMinOptionPrice());
+        c.setMaxOptionPrice(from.getMaxOptionPrice());
+        c.setMaxSlPoints(from.getMaxSlPoints());
+        c.setTrailLadder(from.getTrailLadder());
+        // Not copied, on purpose: `source` (a clone is a human action — see the
+        // javadoc on cloneDay), `isActive` (a new config starts runnable), `id`,
+        // and `updatedDate` (stamped by @PrePersist).
+        c.setSource(SOURCE_MANUAL);
+        c.setIsActive(Boolean.TRUE);
+        return c;
+    }
+
+    private static String cloneSummary(int matched, int cloned, int skippedRetired, int skippedExisting,
+                                       LocalDate fromDate, LocalDate toDate, boolean dryRun) {
+        if (matched == 0) {
+            return "No configs on " + fromDate + " to clone.";
+        }
+        StringBuilder sb = new StringBuilder(dryRun ? "Would clone " : "Cloned ");
+        sb.append(cloned).append(" of ").append(matched)
+          .append(" config(s) from ").append(fromDate).append(" to ").append(toDate);
+        if (skippedExisting > 0) {
+            sb.append("; ").append(skippedExisting).append(" already present on ").append(toDate);
+        }
+        if (skippedRetired > 0) {
+            sb.append("; ").append(skippedRetired).append(" retired and left behind");
+        }
+        return sb.append('.').toString();
     }
 
     /* ---------------- auto-generated config bulk delete ---------------- */
@@ -646,6 +972,10 @@ public class TradeConfigAdminService {
         v.setTrailLadder(tc.getTrailLadder());
         v.setSource(tc.getSource());
         v.setUpdatedDate(tc.getUpdatedDate());
+        // Null on rows written before changeset 037 reads as active, matching the
+        // COALESCE in fetchCombinedByTradingDate: the list must not show a config
+        // as retired that dispatch is still running.
+        v.setActive(tc.getIsActive() == null || tc.getIsActive());
         v.setMaxLoss(tc.getMaxLoss());
         v.setOptionDepth(tc.getOptionDepth());
         v.setLotQuantity(tc.getLotQuantity());

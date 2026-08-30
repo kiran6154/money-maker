@@ -57,8 +57,10 @@ class DaySummaryLotMultipliedPnlTest {
         notifier = mock(NotificationService.class);
         guard = mock(DailyEventGuard.class);
 
-        when(marketHours.marketCloseToday()).thenReturn(MONDAY.atTime(15, 30));
-        when(marketHours.marketOpenToday()).thenReturn(MONDAY.atTime(9, 15));
+        when(marketHours.marketCloseOn(any(LocalDate.class))).thenAnswer(
+                inv -> inv.getArgument(0, LocalDate.class).atTime(15, 30));
+        when(marketHours.marketOpenOn(any(LocalDate.class))).thenAnswer(
+                inv -> inv.getArgument(0, LocalDate.class).atTime(9, 15));
         when(notifier.alertDaySummary(anyString())).thenReturn(true);
 
         scheduler = new DaySummaryScheduler(orderService, tradeOrderRepository, tradeConfigRepository,

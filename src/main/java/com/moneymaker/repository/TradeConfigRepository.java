@@ -118,6 +118,12 @@ public interface TradeConfigRepository extends JpaRepository<TradeConfig, Intege
             "FROM trade_config tc " +
             "JOIN instrument i ON tc.p_instrument = i.id " +
             "JOIN instrument_details id ON i.ins_id = id.instrument_token " +
-            "WHERE DATE(tc.trading_date) = :tradingDate", nativeQuery = true)
+            "WHERE DATE(tc.trading_date) = :tradingDate " +
+            // GAPS #7: retired configs keep their id, history and trade_order rows
+            // but stop being dispatched. COALESCE rather than a bare `= TRUE` so a
+            // row that predates changeset 037 -- or one written by a path that left
+            // the column NULL -- still runs; "unknown" must mean active, because the
+            // alternative is silently retiring every config on the day 037 lands.
+            "  AND COALESCE(tc.is_active, TRUE) = TRUE", nativeQuery = true)
     List<Object[]> fetchCombinedByTradingDate(@Param("tradingDate") LocalDate tradingDate);
 }

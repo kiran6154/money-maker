@@ -10,7 +10,7 @@ Every `@Scheduled` bean in the app, what it does, when it runs, and what it depe
 
 | Scheduler | Package | Cadence (live) | Mode gate on the cron | Replays in backtest? | Reads | Writes |
 |---|---|---|---|---|---|---|
-| [`LoginScheduler`](#loginscheduler) | `com.moneymaker.scheduler` | `0 0 8 * * MON-FRI` (08:00 IST) + `fixedDelay=60s` heartbeat + `0 15 9 * * MON-FRI` (09:15 IST) options fetch | Bean-level `@ConditionalOnProperty(app.mode=live)` â€” not registered at all in backtest | No (controller-driven) | `AppState`, `BrokerLoginManager` | `broker_session`, `market_data`/`options_data`, Telegram |
+| [`LoginScheduler`](#loginscheduler) | `com.moneymaker.scheduler` | `0 0 8 * * MON-FRI` (08:00 IST) + `fixedDelay=60s` heartbeat (07:50â€“15:40 window) + `0 15 9 * * MON-FRI` (09:15 IST) options fetch | Bean-level `@ConditionalOnProperty(app.mode=live)` â€” not registered at all in backtest | No (controller-driven) | `AppState`, `BrokerLoginManager` | `broker_session`, `market_data`/`options_data`, Telegram |
 | [`TradeConfigScheduler`](#tradeconfigscheduler) | `com.moneymaker.scheduler` | `ApplicationReadyEvent` (live, weekday) + `0 16 9 * * MON-FRI` | Startup seed: live only. **09:16 cron: none** â€” see the warning under [Mode + market-hours gating](#mode--market-hours-gating) | Yes (per-day fetch) | `trade_config` (incl. `strategy_ids`), `instrument`, `sma_timeframe` | `SharedData.combinedDto` |
 | [`AnalysisScheduler`](#analysisscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI`, gated by [`MarketHoursService.isOpenNow()`](#mode--market-hours-gating) | `analyzeMarketData()` no-ops in backtest | Yes (every backtest tick) | Broker historical data | `SharedData.strikeMarketDataByInstrumentAndInterval`, `SharedData.tradeSignals` |
 | [`OrderScheduler`](#orderscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI`, gated by [`MarketHoursService.isOpenNow()`](#mode--market-hours-gating) | `scheduledTick()` no-ops in backtest | Yes (after `AnalysisScheduler` each tick) | `SharedData.tradeSignals` | `trade_order`, broker order endpoints, Telegram |
@@ -37,11 +37,11 @@ public void scheduledTick() {                    // wall-clock wrapper: gates on
 ```
 
 - **The backtest gate** (`GAPS.md` #4, 2026-08-31) stops the wall clock from running a second pipeline alongside a replay. Before it, the market-hours guard was the only gate and it short-circuits *only in live mode* â€” so in `app.mode=backtest` these three crons ran their bodies in full, on the scheduler thread, against the same statics the replay was using. The mode string comes from `@Value("${app.mode:live}")`, the same key `TelegramNotifier`'s backtest suppression reads.
-- **The market-hours gate** is unchanged. [`MarketHoursService`](../src/main/java/com/moneymaker/market/service/MarketHoursService.java) is the single source of truth for the trading window â€” default `09:15â€“15:30 IST, MON-FRI`, overridable via `app.market.open` / `app.market.close` / `app.market.timezone`. It applies in live mode only; the replay supplies its own time axis. `DaySummaryScheduler` also depends on `MarketHoursService` â€” not for gating (its own cron already only fires once a day) but to anchor `marketCloseToday()` / `marketOpenToday()` in the summary text.
+- **The market-hours gate** is unchanged. [`MarketHoursService`](../src/main/java/com/moneymaker/market/service/MarketHoursService.java) is the single source of truth for the trading window â€” default `09:15â€“15:30 IST, MON-FRI`, overridable via `app.market.open` / `app.market.close` / `app.market.timezone`. It applies in live mode only; the replay supplies its own time axis. `DaySummaryScheduler` also depends on `MarketHoursService` â€” not for gating (its own cron already only fires once a day) but to anchor `marketCloseOn(date)` / `marketOpenOn(date)` in the force-close timestamp and the summary text. `LoginScheduler`'s heartbeat uses it for a third window, `isWithinHeartbeatWindow()` â€” see [HEARTBEAT.md](HEARTBEAT.md#the-heartbeat-window).
 
 The **trigger** still fires in backtest for the three pipeline crons; it is the body that is inert. Removing the trigger would need bean-level `@ConditionalOnProperty`, which is not available here â€” `BacktestAnalysisService` injects all three beans and calls them per tick, so conditioning the bean away would delete the replay's pipeline, not just its cron. (`LoginScheduler` *can* use it, and does, because nothing in the replay path needs that bean.)
 
-> âš ï¸ **`TradeConfigScheduler`'s `0 16 9 * * MON-FRI` cron is still ungated.** It assigns `SharedData.combinedDto` from *today's* DB rows on the scheduler thread; a replay reassigns that field at the top of every tick, so the exposure is a cross-thread race rather than a standing clobber â€” but it decides which configs get dispatched, so it is filed as [STRATEGY_ANALYSIS_TODO.md S11](STRATEGY_ANALYSIS_TODO.md#s11-wall-clock-scheduler-threads-mutate-replay-state-mid-run) and needs sign-off before being gated. Its `0 12 9` sibling only logs.
+> âš ï¸ **`TradeConfigScheduler`'s `0 16 9 * * MON-FRI` cron is still ungated.** It assigns `SharedData.combinedDto` from *today's* DB rows on the scheduler thread; a replay reassigns that field at the top of every tick, so the exposure is a cross-thread race rather than a standing clobber â€” but it decides which configs get dispatched, so it is filed as [STRATEGY_ANALYSIS_TODO.md S11](STRATEGY_ANALYSIS_TODO.md#s11-wall-clock-scheduler-threads-mutate-replay-state-mid-run) and needs sign-off before being gated. (Its `0 12 9` sibling, which only logged, was deleted 2026-08-31 â€” GAPS #11.)
 
 ---
 
@@ -80,6 +80,8 @@ The **trigger** still fires in backtest for the three pipeline crons; it is the 
 
 - **08:00 IST cron** â€” first auto-login of the day. Calls `LoginOrchestrator.ensureLoggedIn()` for the active broker.
 - **1-minute heartbeat (`fixedDelay = 60_000L`)** â€” runs auth probe + data probe, records `last_heartbeat_status` on `broker_session`, and emits transition-only Telegram alerts via `LoginScheduler.transitionAndNotify(prev, new)`.
+
+**Time gating on the heartbeat (GAPS #3).** The tick short-circuits outside `MarketHoursService.isWithinHeartbeatWindow()` â€” weekdays, `app.market.heartbeat-start`..`app.market.heartbeat-end`, **07:50â€“15:40 IST** by default. Wider than market hours on both sides on purpose: the morning margin exists so a dead token is probed (and, since alerts are transition-only, alerted) before the 08:00 login cron, and the evening margin covers the 15:31 day-summary sweep. Startup refuses a window that does not contain `[open, close]`, so the gate cannot suppress a probe during trading hours. Same wrapper/method split the pipeline schedulers use: the gate is on the `@Scheduled` method, and `runHeartbeat()` underneath probes whenever called. Full rationale in [HEARTBEAT.md](HEARTBEAT.md#the-heartbeat-window).
 
 Mode gating: live only, and unlike the pipeline schedulers it is gated at the **bean** â€” `@ConditionalOnProperty(name = "app.mode", havingValue = "live", matchIfMissing = true)`. In `app.mode=backtest` the bean does not exist, so neither the cron nor the heartbeat is registered at all. That option is open here precisely because nothing in the replay path injects `LoginScheduler`; the backtest controller (`POST /api/backtest/login`) drives `LoginOrchestrator` directly.
 
@@ -214,9 +216,9 @@ In backtest, `BacktestAnalysisService` calls `positionScheduler.processPositions
 [`com.moneymaker.scheduler.DaySummaryScheduler`](../src/main/java/com/moneymaker/scheduler/DaySummaryScheduler.java)
 
 - **Cron `0 31 15 * * MON-FRI`** (configurable via `app.market.summary-cron`) â€” one minute after the configured close, giving the last 15:30 `PositionScheduler` tick time to settle first.
-- **Live only.** `runEndOfDay()` returns immediately unless `app.mode=live`, then delegates to the package-private `runEndOfDayFor(LocalDate)` â€” the date is a parameter rather than an ambient `LocalDate.now(...)`, which is what the tests drive and what a manual re-run endpoint (GAPS #6) would call. Skipped on Sat/Sun.
+- **Live only.** `runEndOfDay()` returns immediately unless `app.mode=live`, then delegates to `runEndOfDayFor(LocalDate, boolean force)` â€” the date is a parameter rather than an ambient `LocalDate.now(...)`, which is what the tests drive and what the manual re-run endpoint (below) calls. Skipped on Sat/Sun.
 - Steps, in order:
-  1. `OrderService.forceCloseOpenPositions(today, marketHours.marketCloseToday())` â€” closes any `trade_order` row still `OPEN` at close, so the ledger is complete before summarizing. **In live mode this now places a real broker exit per row** (GAPS #1) â€” see [ORDERS_AND_POSITIONS.md](ORDERS_AND_POSITIONS.md#force-close-live-vs-backtest). Exceptions are caught and logged; a force-close failure does not stop the summary from being built.
+  1. `OrderService.forceCloseOpenPositions(date, marketHours.marketCloseOn(date))` â€” closes any `trade_order` row still `OPEN` at close, so the ledger is complete before summarizing. **In live mode this now places a real broker exit per row** (GAPS #1) â€” see [ORDERS_AND_POSITIONS.md](ORDERS_AND_POSITIONS.md#force-close-live-vs-backtest). Exceptions are caught and logged; a force-close failure does not stop the summary from being built.
   2. `buildSummary(today, forceClosed)` â€” aggregates the day's `trade_order` rows into a compact text digest: trade/closed/open-left counts, win/loss/scratch counts, **both** the per-share and the lot-multiplied (net) P&L, biggest winner/loser in both units, exit-reason breakdown, per-config net P&L. The net multiplier is `TradeConfig.lotQuantity`, joined per config; trades whose config no longer resolves are excluded from net and declared on a `no lot qty` line rather than counted at Ã—1 (GAPS #2).
   3. `NotificationService.alertDaySummary(body)` â€” one Telegram message.
 
@@ -232,7 +234,24 @@ Both halves are gated by [`DailyEventGuard`](../src/main/java/com/moneymaker/sta
 
 Previously a single `day-summary` key was written *up front*, so one failed Telegram POST lost the day's digest permanently while the guard reported the day as done (GAPS #5). Delivery is now confirmed â€” `TelegramNotifier.send` returns whether a retry could help; see [NOTIFICATIONS.md](NOTIFICATIONS.md#delivery-confirmed-sends).
 
-With the default once-a-day cron there is no second tick to retry on. The gate does make a repeating `app.market.summary-cron` safe to set (both halves are idempotent), but that's an operator choice; the intended recovery path is GAPS #6's manual re-run endpoint.
+With the default once-a-day cron there is no second tick to retry on. The gate does make a repeating `app.market.summary-cron` safe to set (both halves are idempotent), but that's an operator choice; the intended recovery path is the manual re-run below.
+
+### Manual re-run â€” `POST /api/admin/day-summary` (GAPS #6)
+
+[`DaySummaryAdminController`](../src/main/java/com/moneymaker/admin/controller/DaySummaryAdminController.java).
+
+| Param | Default | Meaning |
+|---|---|---|
+| `date` | today, in `app.market.timezone` | Which trading date to re-run. A Saturday/Sunday is rejected with 400 and a reason rather than silently doing nothing. |
+| `force` | `false` | Bypass the sent markers and run both halves regardless. |
+
+**Idempotency is free, not new code.** Without `force`, the two-key gate above already knows which half completed, so a plain re-run executes the pending half and skips the finished one. That covers the cases the endpoint exists for: the JVM was down at 15:31 (nothing marked, so both halves run), or the Telegram POST failed (`day-summary-telegram` unmarked, so the digest re-sends and the force-close does *not* run twice). Calling it repeatedly on a completed day does nothing at all.
+
+`force` is the deliberate override for the one case the marker cannot see: **the digest was delivered and it was wrong** â€” it fired before a delayed close, so the day it summarised was not over. It is safe on the force-close half too, since `forceCloseOpenPositions` only selects rows still `OPEN`.
+
+**Back-dated re-runs are correct now.** The close moment comes from `marketHours.marketCloseOn(date)`, so replaying last Friday stamps exits with *Friday's* close rather than this afternoon's. For `date = today` that is the same value `marketCloseToday()` returned, so the 15:31 cron's behaviour is byte-for-byte unchanged.
+
+Unlike the cron, the endpoint is **not** mode-gated: an operator hitting it has asked for it explicitly, and in backtest mode `TelegramNotifier` suppresses the send while `OrderPlacementFactory` resolves to `BACKTESTING`, so nothing reaches a broker.
 
 - **Not replayed in backtest.** `BacktestAnalysisService` already calls `orderService.forceCloseOpenPositions(date, dateEnd)` at the end of every simulated day (see below), so a second live-style digest per backtest day isn't needed â€” and would spam Telegram on every backtest boot if it were wired the same way.
 

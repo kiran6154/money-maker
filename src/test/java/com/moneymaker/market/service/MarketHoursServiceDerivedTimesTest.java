@@ -25,6 +25,12 @@ class MarketHoursServiceDerivedTimesTest {
 
     private MarketHoursService service(String open, String close,
                                        int closeSignalOff, int firstTickOff, int lastTickOff) {
+        return service(open, close, closeSignalOff, firstTickOff, lastTickOff, "07:50", "15:40");
+    }
+
+    private MarketHoursService service(String open, String close,
+                                       int closeSignalOff, int firstTickOff, int lastTickOff,
+                                       String heartbeatStart, String heartbeatEnd) {
         MarketHoursService s = new MarketHoursService();
         ReflectionTestUtils.setField(s, "openStr", open);
         ReflectionTestUtils.setField(s, "closeStr", close);
@@ -32,6 +38,8 @@ class MarketHoursServiceDerivedTimesTest {
         ReflectionTestUtils.setField(s, "closeSignalOffsetMinutes", closeSignalOff);
         ReflectionTestUtils.setField(s, "replayFirstTickOffsetMinutes", firstTickOff);
         ReflectionTestUtils.setField(s, "replayLastTickOffsetMinutes", lastTickOff);
+        ReflectionTestUtils.setField(s, "heartbeatStartStr", heartbeatStart);
+        ReflectionTestUtils.setField(s, "heartbeatEndStr", heartbeatEnd);
         ReflectionTestUtils.invokeMethod(s, "init");
         return s;
     }

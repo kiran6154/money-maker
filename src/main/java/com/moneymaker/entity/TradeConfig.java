@@ -175,6 +175,31 @@ public class TradeConfig {
     private String source;
 
     /**
+     * Whether this config still runs. {@code false} retires it: it keeps its id,
+     * its history and its {@code trade_order} rows, but
+     * {@code fetchCombinedByTradingDate} stops returning it, so no strategy scans
+     * it and no new trade opens against it (changeset 037, GAPS #7).
+     *
+     * <p>Exists because a config that has ever traded cannot be hard-deleted —
+     * the ledger references it — and the only previous way to stop one was to
+     * move its {@code tradingDate} into the past, which falsifies the record of
+     * what the config was for.</p>
+     *
+     * <p><b>Retiring does not close open trades.</b> Positions already on the
+     * books keep being monitored to their own exit: {@code PositionService} walks
+     * {@code trade_order} rows, not configs, and the bracket it applies was
+     * snapshotted at entry. Retire means "open nothing further", not "abandon
+     * what is open".</p>
+     *
+     * <p>Defaulted to {@code TRUE} in the field, not only in the DB: Hibernate
+     * names every column in its INSERT, so a null field is written as an explicit
+     * NULL and the column default never fires — the same trap that made
+     * {@link #source} break every create through {@code TradeConfigAdminService}.</p>
+     */
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = Boolean.TRUE;
+
+    /**
      * When this row was last written. Stamped automatically on every insert and
      * update — never set it by hand.
      *

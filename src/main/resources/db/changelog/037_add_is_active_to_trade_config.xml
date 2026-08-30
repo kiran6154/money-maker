@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      GAPS #7 - the retire-without-deleting path.
+
+      A config that ever fired a trade cannot be hard-deleted (trade_order rows
+      reference it and the audit trail is worth keeping), so until now the only
+      way to stop one running was to move its trading_date into the past - an
+      edit that also falsifies the record of what the config was for.
+
+      is_active is that missing state. DEFAULT TRUE and NOT NULL, and every
+      existing row is backfilled to TRUE, so nothing changes behaviour on
+      deploy: a config only stops running when someone deliberately retires it.
+    -->
+    <changeSet id="037_add_is_active_to_trade_config" author="moneymaker">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="trade_config" columnName="is_active"/>
+            </not>
+        </preConditions>
+
+        <addColumn tableName="trade_config">
+            <column name="is_active" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+
+        <!--
+          Belt and braces with the column default. addColumn's default applies to
+          rows created by the ALTER on MySQL, but stating the backfill explicitly
+          means the intent survives a different database engine reading this file.
+        -->
+        <update tableName="trade_config">
+            <column name="is_active" valueBoolean="true"/>
+            <where>is_active IS NULL</where>
+        </update>
+    </changeSet>
+
+</databaseChangeLog>
