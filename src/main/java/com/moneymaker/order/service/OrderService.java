@@ -593,9 +593,24 @@ public class OrderService {
         LocalDateTime startOfDay = tradingDate.atStartOfDay();
         LocalDateTime endOfDay   = startOfDay.plusDays(1).minusNanos(1);
 
+        // S9 (signed off 2026-08-31): every OPEN row up to this day's end, not
+        // just today's entries. A carryover row — JVM down at 15:31, or a live
+        // exit that failed — was previously invisible to every later sweep and
+        // held its config's parallel-trades slot forever. It now gets the same
+        // exit-and-alert treatment as today's rows; in a replay each day closes
+        // its own rows, so this selects the identical set the old query did.
         List<TradeOrder> openToday = tradeOrderRepository
-                .findByStatusAndEntryTimeBetween(STATUS_OPEN, startOfDay, endOfDay);
+                .findByStatusAndEntryTimeLessThanEqual(STATUS_OPEN, endOfDay);
         if (openToday.isEmpty()) return 0;
+
+        List<Long> carryoverIds = openToday.stream()
+                .filter(o -> o.getEntryTime() != null && o.getEntryTime().isBefore(startOfDay))
+                .map(TradeOrder::getId)
+                .toList();
+        if (!carryoverIds.isEmpty()) {
+            log.warn("[order] force-close sweep includes {} carryover OPEN row(s) from before {}: {}",
+                    carryoverIds.size(), tradingDate, carryoverIds);
+        }
 
         // Resolved once, defensively: a misconfigured broker.active makes
         // active() throw, and that must not turn "close the ledger" into "close

@@ -95,7 +95,7 @@ class OrderServiceForceCloseTest {
         o.setEntryPrice(new BigDecimal("100.00"));
         o.setStatus("OPEN");
         o.setFillStatus(fillStatusAtEntry);
-        when(repo.findByStatusAndEntryTimeBetween(eq("OPEN"), any(), any())).thenReturn(List.of(o));
+        when(repo.findByStatusAndEntryTimeLessThanEqual(eq("OPEN"), any())).thenReturn(List.of(o));
         return o;
     }
 

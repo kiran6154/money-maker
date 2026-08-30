@@ -104,6 +104,19 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 
 ---
 
+### S12. The backtest now assumes live places resting SL orders — live does not yet do that
+
+| | |
+|---|---|
+| Where | [`PositionService`](../src/main/java/com/moneymaker/position/service/PositionService.java) (the resting-order stop model from the S4 decision) versus the live path: live monitoring is `PositionScheduler` polling LTP every 5 minutes and exiting by market order via `OrderService.closeManually` — no SL order ever rests at the broker. |
+| Why | The 2026-08-31 S4 sign-off ("*in live, once profit is 25 an SL order at 2 is placed — hence granularity does not matter in backtest*") justified modelling floors as resting orders in backtest: breach on the bar's adverse extreme, fill at the floor price. That is now how the backtest exits. **But live code today is still the 5-minute poll** — so the backtest models a live behaviour that does not exist yet. Until live actually places (and re-places, on each rung change) a broker SL order, live fills will be worse than backtest fills on fast moves: the exact gap the model assumed away. |
+| Impact | **Unquantified.** Bounded by the same giveback the S4 measurement saw from the tick-granularity side (219.50 points of peak giveback on one month), since a live poll has the same granularity the old backtest had. Measuring it properly needs live fills to compare against, which don't exist yet. |
+| Fix sketch | Implement resting SL orders in the live path: place an SL order at the floor when a rung arms, modify it on each rung change, cancel it on any other exit. Depends on Zerodha order placement being able to place/modify SL order types, and interacts with `exit_broker_order_id` bookkeeping. Rule 0: needs its own sign-off; also an infra design (order-type support per broker). |
+| Effort | **M–L** — broker order-type work plus lifecycle bookkeeping. |
+| Priority | **Should precede live trading with the ladder enabled** — filed 2026-08-31 the moment the backtest model landed, so the parity gap is on record. |
+
+---
+
 ### S7. Signal flip-flop consumes the daily trade cap — **RESOLVED 2026-08-31**
 
 > Moved to [Resolved](#s7-signal-flip-flop-consumes-the-daily-trade-cap--resolved-2026-08-31): zero occurrences on the post-fix month; closed by the user.

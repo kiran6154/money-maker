@@ -100,8 +100,20 @@ public class TradeConfigScheduler {
         }
     }
 
+    /**
+     * S11 gate (signed off 2026-08-31): in backtest mode this wall-clock cron
+     * must not run — it assigns {@code SharedData.combinedDto} from *today's*
+     * DB rows, and a replay crossing 09:16 on a weekday could have one tick
+     * dispatch live configs against the replayed window's candles. The replay
+     * never calls this method (it uses {@link #getConfigsForDate} directly),
+     * so gating here changes nothing it does. Same shape as GAPS #4.
+     */
     @Scheduled(cron = "0 16 9 * * MON-FRI")
     public void checkTradeConfigAt916AM() {
+        if ("backtest".equalsIgnoreCase(appMode)) {
+            log.debug("TradeConfigScheduler 09:16 cron ignored - app.mode=backtest owns SharedData.combinedDto");
+            return;
+        }
         LocalDateTime now = LocalDateTime.now();
 
         if (now.getDayOfWeek() != DayOfWeek.SATURDAY && now.getDayOfWeek() != DayOfWeek.SUNDAY) {

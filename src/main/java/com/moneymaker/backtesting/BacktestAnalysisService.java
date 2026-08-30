@@ -240,6 +240,7 @@ public class BacktestAnalysisService {
                 // even for identical inputs.
                 marketDataCache.endDay();
                 SharedData.strikeMarketDataByInstrumentAndInterval.clear();
+                SharedData.strikeMarketDataTick.clear();
                 SharedData.marketDataByInstrumentAndInterval.clear();
                 SharedData.tradeSignals.clear();
                 // strike → option symbol, and the symbol encodes the expiry. Left

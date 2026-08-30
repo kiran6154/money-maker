@@ -54,6 +54,15 @@ public interface TradeOrderRepository extends JpaRepository<TradeOrder, Long> {
             String status, LocalDateTime fromInclusive, LocalDateTime toInclusive);
 
     /**
+     * The force-close sweep's selector (S9): every row in {@code status} entered
+     * at or before {@code toInclusive} — no lower bound, so a carryover row from
+     * an earlier session is swept instead of silently holding its config's
+     * parallel-trades slot forever.
+     */
+    List<TradeOrder> findByStatusAndEntryTimeLessThanEqual(
+            String status, LocalDateTime toInclusive);
+
+    /**
      * Returns every trade in the given status. Used by {@code PositionService}
      * to walk OPEN trades each monitor tick and update peak P&L / detect SL or
      * target breaches.

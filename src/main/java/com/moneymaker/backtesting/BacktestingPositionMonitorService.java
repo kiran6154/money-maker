@@ -44,6 +44,9 @@ public class BacktestingPositionMonitorService implements PositionMonitorService
                     order.getOptionToken(), order.getId());
             return null;
         }
-        return new Quote(md.getClose(), md.getTimestamp());
+        // High/low ride along for the resting-order stop model: a floor is an
+        // SL order at the broker, so a bar that touches it intra-bar fills it
+        // even when the close bounces back above (S4 decision 2026-08-31).
+        return new Quote(md.getClose(), md.getTimestamp(), md.getHigh(), md.getLow());
     }
 }

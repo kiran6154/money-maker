@@ -27,6 +27,17 @@ public class SharedData {
    public static Map<String, List<List<Integer>>> strikesByInstrumentAndInterval = new ConcurrentHashMap<>();
    public static List<MarketData> strikeMarketDataList;
    public static Map<String, List<MarketData>> strikeMarketDataByInstrumentAndInterval = new ConcurrentHashMap<>();
+
+   /**
+    * The tick ({@code asOf}) that last wrote each key of
+    * {@link #strikeMarketDataByInstrumentAndInterval}. Strategies refuse to
+    * evaluate a key whose stamp is not the tick being evaluated — a strike that
+    * left the config's ATM window stops being refreshed, and before this stamp
+    * existed its frozen series kept emitting the same signal for the rest of
+    * the session (S8: two entries at a 48-point-stale price). Written alongside
+    * every cache put, cleared wherever the cache itself is cleared.
+    */
+   public static Map<String, LocalDateTime> strikeMarketDataTick = new ConcurrentHashMap<>();
      public static KiteConnect sharedKiteconnect;
     public static Map<Integer, List<Integer>> allTimeFrameMap;
     /**

@@ -482,6 +482,10 @@ public class AnalysisScheduler {
             SharedData.strikeMarketDataByInstrumentAndInterval.put(
                     strikeMarketDataKey,
                     strikeMarketDataList);
+            // S8 stamp: marks this key as written by this tick, so strategies
+            // can refuse a series that stopped being refreshed when its strike
+            // left the ATM window.
+            SharedData.strikeMarketDataTick.put(strikeMarketDataKey, observedAt);
 
             // CANDIDATE: every leg evaluated this tick, whether or not it is
             // traded. `selected` is left false here because nothing has decided

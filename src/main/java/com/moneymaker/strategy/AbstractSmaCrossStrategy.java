@@ -125,6 +125,7 @@ public abstract class AbstractSmaCrossStrategy implements Strategy {
                     .filter(e -> keyMatches(e.getKey(), instrumentToken, interval,
                                             optionType, itmDepth, otmDepth))
                     .filter(e -> e.getValue() != null && !e.getValue().isEmpty())
+                    .filter(e -> isWrittenByThisTick(e.getKey(), asOf, tradeConfigId))
                     .sorted(premiumComparator())
                     .toList();
 
@@ -345,6 +346,25 @@ public abstract class AbstractSmaCrossStrategy implements Strategy {
      * direction, never as a filter. Depths leak the same way between sibling
      * configs that differ only in {@code itm_depth} / {@code otm_depth}.</p>
      */
+    /**
+     * S8 guard: a key is only evaluable if the current tick's fetch wrote it.
+     * A strike that drops out of the config's ATM window stops being refreshed
+     * — its series is frozen at the bar it left on, and acting on it re-emits
+     * that bar's signal for the rest of the session (observed 2024-01-16:
+     * entries at a 48-point-stale price). Rejection is logged so a scan that
+     * shrinks is visible, never silent. A null {@code asOf} (manual callers)
+     * skips the check entirely — legacy behaviour, same degrade rule as the
+     * stale-bar guard.
+     */
+    private boolean isWrittenByThisTick(String key, java.time.LocalDateTime asOf, Integer tradeConfigId) {
+        if (asOf == null) return true;
+        java.time.LocalDateTime stamp = SharedData.strikeMarketDataTick.get(key);
+        if (asOf.equals(stamp)) return true;
+        log.info("[tick] tradeConfigId={} skipping stale strike key (written {}, tick {}): {}",
+                tradeConfigId, stamp, asOf, key);
+        return false;
+    }
+
     private boolean keyMatches(String key, String instrumentToken, String interval,
                                String optionType, String itmDepth, String otmDepth) {
         if (key == null || interval == null) return false;

@@ -110,9 +110,27 @@ class PositionServiceTrailTest {
         tick("155", 5);  // +55 → floor +25
         tick("124", 10); // +24, at or below the floor
 
-        // The whole point: this trade was +55, reversed, and still books +24 —
-        // where the fixed 60-point stop would have let it run to -60.
-        verify(orderService).closeManually(eq(1L), eq(new BigDecimal("124")),
+        // The whole point: this trade was +55, reversed, and books the FLOOR —
+        // +25, the resting SL order's fill (S4 decision) — where the fixed
+        // 60-point stop would have let it run to -60.
+        verify(orderService).closeManually(eq(1L), eq(new BigDecimal("125")),
+                eq(ENTRY.plusMinutes(10)), eq("TRAIL_SL"));
+    }
+
+    @Test
+    @DisplayName("a bar that touches the floor intra-bar fills it even when the close bounces back above")
+    void floorTouchedIntraBarFillsAtFloor() {
+        tick("155", 5); // +55 → floor +25
+
+        // Close +30 (above the floor), but the bar's low went to +24 — a
+        // resting SL order at +25 fills on the touch. Old close-only detection
+        // would have held this trade.
+        when(monitor.currentQuote(order)).thenReturn(new Quote(
+                new BigDecimal("130"), ENTRY.plusMinutes(10),
+                new BigDecimal("135"), new BigDecimal("124")));
+        positionService.processPositions();
+
+        verify(orderService).closeManually(eq(1L), eq(new BigDecimal("125")),
                 eq(ENTRY.plusMinutes(10)), eq("TRAIL_SL"));
     }
 
@@ -129,7 +147,9 @@ class PositionServiceTrailTest {
     void fixedStopStillApplies() {
         tick("39", 5); // -61, past the 60-point stop, no rung ever reached
 
-        verify(orderService).closeManually(eq(1L), eq(new BigDecimal("39")),
+        // Fill is at the stop itself (entry 100 - 60 = 40), not the tick that
+        // detected the breach — the resting-order model (S4 decision).
+        verify(orderService).closeManually(eq(1L), eq(new BigDecimal("40")),
                 eq(ENTRY.plusMinutes(5)), eq("STOP_LOSS"));
     }
 

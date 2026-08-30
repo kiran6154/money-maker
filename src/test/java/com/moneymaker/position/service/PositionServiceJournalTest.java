@@ -127,8 +127,9 @@ class PositionServiceJournalTest {
         tick("39", 5); // -61, past the 60-point stop
 
         // The stop still fires, with the same price, time and reason it would
-        // have had if nothing were being journalled.
-        verify(orderService).closeManually(eq(1L), eq(new BigDecimal("39")),
+        // have had if nothing were being journalled. The price is the stop's
+        // resting-order fill (entry 100 - 60 = 40), per the S4 decision.
+        verify(orderService).closeManually(eq(1L), eq(new BigDecimal("40")),
                 eq(ENTRY.plusMinutes(5)), eq("STOP_LOSS"));
     }
 

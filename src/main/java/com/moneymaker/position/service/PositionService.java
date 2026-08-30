@@ -109,25 +109,40 @@ public class PositionService {
 
         BigDecimal pnl = perShareProfit(order.getEntryDirection(), order.getEntryPrice(), price);
 
-        // Peak tracking
-        if (order.getPeakProfit() == null || pnl.compareTo(order.getPeakProfit()) > 0) {
-            order.setPeakProfit(pnl);
+        // Resting-order stop model (S4 decision, 2026-08-31): a floor — the
+        // trailing rung or the fixed stop — is an SL order resting at the
+        // broker, so it fills the moment the bar touches it, at the floor
+        // price, regardless of where the bar closes. Detection therefore uses
+        // the bar's ADVERSE extreme when the monitor supplies one (backtest
+        // candles carry high/low; live LTP quotes leave them null and degrade
+        // to close-only, the pre-existing behaviour).
+        //
+        // Convention: adverse-first within a bar. The floor tested is the one
+        // armed by PREVIOUS ticks; a rung this bar's own excursion earns arms
+        // only after the breach check, so it cannot exit on the bar that
+        // earned it. Bar internals are unordered, and this is the conservative
+        // reading — it can understate the ladder, never flatter it.
+        BigDecimal adversePnl = extremePnl(order, quote, pnl, true);
+        String hit = thresholdBreach(order, pnl, adversePnl);
+
+        // Peak tracking uses the bar's favorable extreme for the same reason —
+        // "price makes new values" intra-bar is what arms a rung in live.
+        BigDecimal favorablePnl = extremePnl(order, quote, pnl, false);
+        if (order.getPeakProfit() == null || favorablePnl.compareTo(order.getPeakProfit()) > 0) {
+            order.setPeakProfit(favorablePnl);
         }
-        if (order.getPeakLoss() == null || pnl.compareTo(order.getPeakLoss()) < 0) {
-            order.setPeakLoss(pnl);
+        if (order.getPeakLoss() == null || adversePnl.compareTo(order.getPeakLoss()) < 0) {
+            order.setPeakLoss(adversePnl);
         }
 
         order.setLastMonitoredPrice(price);
         order.setLastMonitoredAt(asOf);
 
-        // Move the trailing floor up first, so a tick that reaches a new rung is
-        // also judged against it. It cannot close the trade on that same tick —
-        // a rung locks strictly below its own trigger (TrailLadder.parse enforces
-        // it), so P&L at the moment of arming is always above the new floor.
+        // Arm rungs AFTER the breach check (adverse-first convention above).
+        // A rung locks strictly below its own trigger (TrailLadder.parse
+        // enforces it), so the newly armed floor is below the peak that armed
+        // it and waits for a later bar.
         applyTrail(order);
-
-        // Threshold check using values snapshotted at entry — not the live config.
-        String hit = thresholdBreach(order, pnl);
 
         log.debug("[position] orderId={} {} {}{} entry={}@{} cur={}@{} pl={} maxPL={} maxLoss={} target={} stopLoss={} trailSl={} → {}",
                 order.getId(), order.getInstrumentName(), order.getOptionStrike(), order.getOptionType(),
@@ -149,12 +164,21 @@ public class PositionService {
         }
 
         if (hit != null) {
-            log.info("[position] CLOSE orderId={} reason={} pnl={} (target={} stopLoss={} trailSl={} peak={}) at {}",
-                    order.getId(), hit, pnl, order.getTargetAtEntry(), order.getStopLossAtEntry(),
+            // A floor exit fills AT the floor (the resting order's trigger),
+            // not at the bar's close — that is the whole point of the model.
+            // TARGET keeps the close-price fill it always had.
+            BigDecimal exitPrice = price;
+            if ("TRAIL_SL".equals(hit)) {
+                exitPrice = priceAtPnl(order, order.getTrailSlAt());
+            } else if ("STOP_LOSS".equals(hit)) {
+                exitPrice = priceAtPnl(order, order.getStopLossAtEntry().negate());
+            }
+            log.info("[position] CLOSE orderId={} reason={} pnl={} adversePnl={} exitPrice={} (target={} stopLoss={} trailSl={} peak={}) at {}",
+                    order.getId(), hit, pnl, adversePnl, exitPrice, order.getTargetAtEntry(), order.getStopLossAtEntry(),
                     order.getTrailSlAt(), order.getPeakProfit(), asOf);
             // Save peak/last-monitored before closeManually loads the row again.
             tradeOrderRepository.save(order);
-            orderService.closeManually(order.getId(), price, asOf, hit);
+            orderService.closeManually(order.getId(), exitPrice, asOf, hit);
             return;
         }
 
@@ -208,7 +232,16 @@ public class PositionService {
      * from the order itself — the first two are snapshotted at entry by
      * {@link OrderService}, the third is maintained by {@link #applyTrail}.
      * {@code stopLossAtEntry} is stored as a positive number, so the breach check
-     * negates it: {@code pnl <= -stopLoss}.</p>
+     * negates it: {@code adversePnl <= -stopLoss}.</p>
+     *
+     * <p><b>Two different P&Ls on purpose</b> (resting-order model, S4 decision):
+     * the floors are tested against {@code adversePnl} — the bar's worst moment —
+     * because an SL order resting at the broker fills on a touch; {@code TARGET}
+     * is tested against the close {@code pnl}, unchanged from before, because no
+     * resting order exists for it (see the entry for the follow-up question).
+     * TARGET is evaluated first, as before — on a bar that spans both, the
+     * close-tested target keeps priority exactly as it did when everything was
+     * close-tested.</p>
      *
      * <p>The two stops are not checked in sequence but collapsed into the
      * <b>higher</b> of the two floors, labelled by whichever put it there. Order of
@@ -217,7 +250,7 @@ public class PositionService {
      * the label is the only thing that tells a trailed exit apart from a stopped
      * one afterwards.</p>
      */
-    private String thresholdBreach(TradeOrder order, BigDecimal pnl) {
+    private String thresholdBreach(TradeOrder order, BigDecimal pnl, BigDecimal adversePnl) {
         BigDecimal target   = order.getTargetAtEntry();
         BigDecimal stopLoss = order.getStopLossAtEntry();
         BigDecimal trailSl  = order.getTrailSlAt();
@@ -233,12 +266,42 @@ public class PositionService {
                 && (fixedFloor == null || trailSl.compareTo(fixedFloor) > 0);
 
         if (trailIsTighter) {
-            return pnl.compareTo(trailSl) <= 0 ? "TRAIL_SL" : null;
+            return adversePnl.compareTo(trailSl) <= 0 ? "TRAIL_SL" : null;
         }
-        if (fixedFloor != null && pnl.compareTo(fixedFloor) <= 0) {
+        if (fixedFloor != null && adversePnl.compareTo(fixedFloor) <= 0) {
             return "STOP_LOSS";
         }
         return null;
+    }
+
+    /**
+     * The per-share P&L at the bar's adverse ({@code true}) or favorable
+     * ({@code false}) extreme, degrading to the close-based {@code pnl} when the
+     * quote carries no bar (live LTP) or the extreme is missing. For a SELL
+     * entry the adverse extreme is the bar HIGH (price rose against the short);
+     * for a BUY it is the LOW — and vice versa for favorable.
+     */
+    private BigDecimal extremePnl(TradeOrder order, Quote quote, BigDecimal pnl, boolean adverse) {
+        boolean sell = "SELL".equalsIgnoreCase(order.getEntryDirection());
+        BigDecimal extreme = (adverse == sell) ? quote.high() : quote.low();
+        if (extreme == null) return pnl;
+        BigDecimal atExtreme = perShareProfit(order.getEntryDirection(), order.getEntryPrice(), extreme);
+        if (adverse) {
+            return atExtreme.compareTo(pnl) < 0 ? atExtreme : pnl;
+        }
+        return atExtreme.compareTo(pnl) > 0 ? atExtreme : pnl;
+    }
+
+    /**
+     * The price at which this order's P&L equals {@code targetPnl} — where a
+     * resting SL order at that floor fills. SELL: {@code entry − pnl};
+     * BUY: {@code entry + pnl}.
+     */
+    private BigDecimal priceAtPnl(TradeOrder order, BigDecimal targetPnl) {
+        if ("SELL".equalsIgnoreCase(order.getEntryDirection())) {
+            return order.getEntryPrice().subtract(targetPnl);
+        }
+        return order.getEntryPrice().add(targetPnl);
     }
 
     /** Per-share P&L given entry direction. SELL entry profits when price drops. */
