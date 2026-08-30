@@ -37,6 +37,16 @@ that fetcher's rate limiter and retry exist to protect the broker API and would
 only throttle local DB reads. `BacktestMarketDataCache` still wraps the call, so
 per-day windowing is unchanged.
 
+> **Which provider does `KiteHistoricalFetcher` use?**
+> `MarketDataProviderFactory` decides, and it is the only place that decides
+> (GAPS #20 — the class was an empty file, and selection was an emergent
+> property of `@ConditionalOnProperty` plus a `@Primary`). Order: an explicit
+> `market.data.provider`, else the only registered provider, else the default
+> precedence `HISTORICAL_ICICI` > `ZERODHA`. That precedence matters here: with
+> the historical source active, any path that still reaches the fetcher reads
+> imported candles rather than quietly calling the broker, so a replay cannot mix
+> live quotes into its ledger.
+
 The historical tables carry no instrument tokens by design (see
 [`HISTORICAL_CHART_DATA_PLAN.md`](HISTORICAL_CHART_DATA_PLAN.md)), so the pipeline's
 `symbol` string becomes a natural key produced by `HistoricalSymbol`:

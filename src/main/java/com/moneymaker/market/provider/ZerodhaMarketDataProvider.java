@@ -26,7 +26,8 @@ import java.util.Objects;
 @ConditionalOnProperty(name = "broker.active", havingValue = "ZERODHA", matchIfMissing = true)
 public class ZerodhaMarketDataProvider implements MarketDataProvider {
     private static final Logger logger = LoggerFactory.getLogger(ZerodhaMarketDataProvider.class);
-    private static final String NAME = "ZERODHA";
+    /** Selection key for {@link MarketDataProviderFactory}. */
+    public static final String NAME = "ZERODHA";
     private static final DateTimeFormatter KITE_TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssZ");
     private final KiteConnect sharedKiteConnect;
 

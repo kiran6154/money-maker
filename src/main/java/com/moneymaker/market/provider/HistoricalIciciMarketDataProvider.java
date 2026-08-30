@@ -10,7 +10,6 @@ import com.moneymaker.repository.HistoricalOptionCandleRepository;
 import com.moneymaker.repository.HistoricalSpotCandleRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,13 +31,19 @@ import java.util.Objects;
  * which skips the {@code kiteHistorical} rate limiter — that limiter exists to
  * protect the broker API and would only throttle local DB reads.
  *
- * <p>{@code @Primary} is load-bearing, not cosmetic. {@code ZerodhaMarketDataProvider}
- * declares {@code matchIfMissing = true}, so whenever this bean also exists there
- * are two {@link MarketDataProvider} candidates for the single-provider injection
- * point in {@code KiteHistoricalFetcher} and startup dies with
- * {@code NoUniqueBeanDefinitionException}. Winning that injection point is also
- * the safe outcome: with the historical source active, any path that still
- * reaches the fetcher reads imported candles rather than silently calling a broker.
+ * <p>This used to carry {@code @Primary}, and it was load-bearing:
+ * {@code ZerodhaMarketDataProvider} declares {@code matchIfMissing = true}, so
+ * whenever this bean also existed there were two {@link MarketDataProvider}
+ * candidates for the single-provider injection point in
+ * {@code KiteHistoricalFetcher} and startup died with
+ * {@code NoUniqueBeanDefinitionException}. {@code KiteHistoricalFetcher} now takes
+ * {@link MarketDataProviderFactory} instead, so no single-provider injection point
+ * remains and there is nothing left for {@code @Primary} to arbitrate (GAPS #20).
+ * The preference it encoded did not go away, it just became legible: this provider
+ * is first in {@code MarketDataProviderFactory.DEFAULT_PRECEDENCE}, for the same
+ * reason it was {@code @Primary} — with the historical source active, any path
+ * that still reaches the fetcher must read imported candles rather than silently
+ * calling a broker.
  *
  * <h3>Interval support</h3>
  * The tables store 5-minute candles only. {@code 10minute} / {@code 15minute}
@@ -49,7 +54,6 @@ import java.util.Objects;
  */
 @Slf4j
 @Component
-@Primary
 @ConditionalOnProperty(name = "backtest.data-source", havingValue = "HISTORICAL_ICICI")
 public class HistoricalIciciMarketDataProvider implements MarketDataProvider {
 
