@@ -434,8 +434,37 @@ Backtest mode is gated at `TelegramNotifier.send()` — `telegram.backtest-enabl
 | PUT | `/api/trade-configs/{id}?confirm=` | Update — `409 confirmRequired` while trades are open, see [Editing a config with live trades](#editing-a-config-with-live-trades) |
 | DELETE | `/api/trade-configs/{id}` | Delete — `409` if any `trade_order` references the config |
 | POST | `/api/trade-configs/{id}/active?value=` | Retire / reinstate without deleting, see [Retiring a config](#retiring-a-config) |
+| POST | `/api/trade-configs/clone?fromDate=&toDate=&dryRun=` | Bulk-clone a day's configs onto another date, see [Cloning a day](#cloning-a-day) |
 | GET | `/api/trade-configs/instruments` | Instrument dropdown source |
 | GET | `/api/trade-configs/strategies` | Strategy dropdown source |
+
+### Cloning a day
+
+`POST /api/trade-configs/clone?fromDate=&toDate=&dryRun=` (GAPS #9) copies every
+runnable config from one trading date to another, with its `sma_timeframe`
+children. The toolbar's **Clone a day…** button previews first and then
+confirms; the per-row `⧉ Clone` action is a different thing — it pre-fills the
+create form from one existing config.
+
+`dryRun` defaults to **true**, the same shape the bulk delete uses.
+
+What it replaces is not just tedium. The workaround was
+`INSERT … SELECT … WHERE trading_date='yesterday'`, which **bypasses
+`TradeConfigAdminService`** and therefore the cache-invalidation contract of
+invariant 10: the rows land in MySQL while `TradeConfigScheduler`'s date cache
+and `SharedData.combinedDto` keep the old snapshot, so the running pipeline
+cannot see them until the next restart.
+
+| Decision | Why |
+|---|---|
+| Retired configs are not cloned | `is_active=false` means "do not run this". Carrying it forward as active resurrects exactly what someone retired. Counted and named in the summary rather than quietly missing. |
+| Clones are stamped `MANUAL`, whatever the source was | Keeping `AUTO_DOWNTREND` would hand the row to `EodDowntrendDetectionService`'s dedupe key, which reads "a config already exists for this (day, strategy)" as "I already generated" — so cloning an AUTO config forward would silently suppress the detector's own output for that day. |
+| Cloning a day onto itself is rejected | It could only duplicate every config. |
+| Skip-if-present, not upsert | A source config is skipped when the destination already carries the same instrument + side + transaction type + primary strategy. That tuple is *not* a database key, so this is deliberately best-effort: a hand-built config that happens to match is reported as skipped rather than silently doubled. Doubling configs doubles positions, so the ambiguity resolves toward the recoverable failure. |
+
+> `copyForDate` lists every column longhand. A new column nobody adds there is
+> silently dropped from every clone — same failure mode as the `applyForm` /
+> `toView` note below, and the same reason for not reflecting it away.
 
 ### Retiring a config
 

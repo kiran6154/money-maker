@@ -41,6 +41,7 @@ import java.util.Map;
  *   <li>{@code PUT  /api/trade-configs/{id}?confirm=}     – update (409 + {@code confirmRequired} while trades are open)</li>
  *   <li>{@code DELETE /api/trade-configs/{id}}            – delete (blocked if executed trades exist)</li>
  *   <li>{@code POST /api/trade-configs/{id}/active?value=} – retire / reinstate without deleting</li>
+ *   <li>{@code POST /api/trade-configs/clone?fromDate=&toDate=&dryRun=} – bulk clone a day's configs</li>
  *   <li>{@code GET  /api/trade-configs/instruments}       – instrument dropdown source</li>
  *   <li>{@code GET  /api/trade-configs/strategies}        – strategy dropdown source</li>
  * </ul>
@@ -139,6 +140,11 @@ public class TradeConfigAdminController {
             return ResponseEntity.ok(service.setActive(id, value));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (IllegalStateException e) {
+            // Retire refused because trades are open — same 409 shape as delete,
+            // and for the same reason: the ledger holds the config down.
+            log.info("[trade-config] retire {} refused: {}", id, e.getMessage());
+            return ResponseEntity.status(409).body(Map.of("error", e.getMessage()));
         }
     }
 
@@ -152,6 +158,28 @@ public class TradeConfigAdminController {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IllegalStateException e) {
             return ResponseEntity.status(409).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Bulk-clone a trading day's configs onto another date (GAPS #9).
+     *
+     * <p>{@code dryRun} defaults to <b>true</b>, the same shape the bulk delete
+     * uses: a caller who omits it gets a preview with the real counts, not a
+     * write. Retired configs are left behind and configs already present on
+     * {@code toDate} are skipped, both reported separately so the numbers are
+     * explained rather than merely small.
+     */
+    @PostMapping("/api/trade-configs/clone")
+    @ResponseBody
+    public ResponseEntity<?> clone(
+            @RequestParam("fromDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam("toDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            @RequestParam(value = "dryRun", defaultValue = "true") boolean dryRun) {
+        try {
+            return ResponseEntity.ok(service.cloneDay(fromDate, toDate, dryRun));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 

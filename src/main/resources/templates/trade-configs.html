@@ -310,6 +310,11 @@
             </div>
             <button id="tc-clear-filter" class="btn btn-ghost" type="button">Show all dates</button>
             <button id="tc-refresh" class="btn btn-ghost" type="button">↻ Refresh</button>
+            <!-- GAPS #9: recreating yesterday's configs by hand every morning was
+                 the most-skipped step in real ops, and the SQL workaround bypasses
+                 TradeConfigAdminService, so the pipeline never sees the new rows. -->
+            <button id="tc-clone-day" class="btn btn-ghost" type="button"
+                    title="Copy another day's configs onto the filtered date">⧉ Clone a day…</button>
             <div class="spacer"></div>
             <button id="tc-add" class="btn btn-primary" type="button">+ Add Trade Config</button>
         </div>
@@ -618,6 +623,7 @@
         pageSize:     document.getElementById('tc-page-size'),
         clearFilter:  document.getElementById('tc-clear-filter'),
         refresh:      document.getElementById('tc-refresh'),
+        cloneDay:     document.getElementById('tc-clone-day'),
         addBtn:       document.getElementById('tc-add'),
 
         formCard:     document.getElementById('tc-form-card'),
@@ -971,6 +977,60 @@
         }
     }
 
+    // ---------- bulk clone a day (GAPS #9) ----------
+    async function cloneDay() {
+        const to = state.date || today();
+        const from = prompt(
+            'Clone configs onto ' + to + '.
+
+Copy from which trading date? (YYYY-MM-DD)',
+            isoShift(to, -1));
+        if (!from) return;
+
+        // Dry run first, always: the confirmation quotes the server's own counts
+        // rather than the browser's guess at what will happen.
+        const preview = await postClone(from, to, true);
+        if (!preview) return;
+        if (preview.cloned === 0) { alert(preview.summary); return; }
+
+        const detail =
+            preview.summary + '
+
+' +
+            'Clones are stamped MANUAL and start active.
+' +
+            (preview.skippedRetired ? 'Retired configs are left behind.
+' : '') +
+            (preview.skippedExisting ? 'Configs already on ' + to + ' are skipped.
+' : '') +
+            '
+Proceed?';
+        if (!confirm(detail)) return;
+
+        const result = await postClone(from, to, false);
+        if (!result) return;
+        setAlert(result.summary, 'success');
+        setFilterDate(to, true);
+    }
+
+    async function postClone(from, to, dryRun) {
+        const qs = 'fromDate=' + from + '&toDate=' + to + '&dryRun=' + dryRun;
+        const r = await fetch('/api/trade-configs/clone?' + qs, { method: 'POST' });
+        if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            alert(err.error || ('HTTP ' + r.status));
+            return null;
+        }
+        return r.json();
+    }
+
+    /** ISO date shifted by whole days, without dragging in a date library. */
+    function isoShift(iso, days) {
+        const d = new Date(iso + 'T00:00:00');
+        d.setDate(d.getDate() + days);
+        return d.toISOString().slice(0, 10);
+    }
+
     // ---------- retire / reinstate (GAPS #7) ----------
     async function setActive(id, value) {
         if (!value && !confirm(
@@ -1143,6 +1203,7 @@
     els.saveSimilar.addEventListener('click', () => save(true));
     els.addTf.addEventListener('click', () => addTimeframeRow(null));
     els.refresh.addEventListener('click', loadList);
+    els.cloneDay.addEventListener('click', cloneDay);
     els.prevDate.addEventListener('click', () => stepFilterDate(-1));
     els.nextDate.addEventListener('click', () => stepFilterDate(1));
     els.todayDate.addEventListener('click', () => setFilterDate(today(), true));

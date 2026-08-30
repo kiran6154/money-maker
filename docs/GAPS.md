@@ -140,15 +140,19 @@ Legend for effort:
 | Only OPEN trades gate | A config with a hundred closed trades and nothing live edits freely; `countByTradeConfigIdAndStatus(id, "OPEN")` is the check, not `existsByTradeConfigId`. |
 | Tests | [`TradeConfigRetireAndConfirmTest`](../src/test/java/com/moneymaker/tradeconfig/service/TradeConfigRetireAndConfirmTest.java) -- no open trades means no gate, bracket-only and no-op edits never ask, `lotQuantity` asks and writes nothing, all eight fields report at once, `confirm=true` applies, and closed-only history does not gate. |
 
-## 9. No "clone yesterday's configs to today" workflow
+## 9. No "clone yesterday's configs to today" workflow -- **RESOLVED 2026-08-31**
 
 | | |
 |---|---|
+| Where | [`TradeConfigAdminService.cloneDay`](../src/main/java/com/moneymaker/tradeconfig/service/TradeConfigAdminService.java), `POST /api/trade-configs/clone?fromDate=&toDate=&dryRun=` |
 | Where | n/a â€” single-row clone or bulk-clone both not built |
-| Why | A user with 8 active configs has to recreate them every morning, or run a manual SQL `INSERT â€¦ SELECT â€¦ WHERE trading_date='yesterday'`. This is the most-skipped step in real ops. |
-| Fix sketch | `POST /api/trade-configs/clone?fromDate=â€¦&toDate=â€¦` (bulk) plus a `âŽ˜ Clone` row action that pre-fills the form for single-row copy with a new date. |
-| Effort | **S** for bulk; **M** with UI affordance + dry-run preview. |
-| Priority | _TBD_ |
+| Resolution | Both halves of the fix sketch. The **bulk** endpoint is new; the `⧉ Clone` **row action** already existed in `trade-configs.html` (it pre-fills the form from an existing config), so only the day-level copy was missing. The toolbar gained a `Clone a day…` button that previews and then confirms. |
+| Why the SQL workaround was worse than tedious | `INSERT ... SELECT ... WHERE trading_date='yesterday'` bypasses `TradeConfigAdminService`, and therefore the cache-invalidation contract of invariant 10: the rows exist in MySQL while `TradeConfigScheduler`'s date cache and `SharedData.combinedDto` keep the old snapshot, so the running pipeline does not see them until the next restart. Going through the service is the whole point of the endpoint, not just convenience. |
+| Dry run by default | Same shape as the bulk delete: a caller who omits `dryRun` gets a preview with the server's real counts, and the UI confirms against those rather than its own guess. |
+| Three decisions | **(a) Retired configs are not cloned** -- `is_active=false` means "do not run this", and carrying it forward as active would resurrect exactly what someone retired. Counted and named in the summary rather than quietly missing. **(b) Clones are stamped `MANUAL`, whatever the source was.** Keeping `AUTO_DOWNTREND` would hand the row to `EodDowntrendDetectionService`'s dedupe key, which reads "a config already exists for this (day, strategy)" as "I already generated" -- so cloning an AUTO config forward would silently suppress the detector's own output for that day. **(c) Cloning a day onto itself is rejected**: it could only duplicate every config. |
+| Idempotency | Re-running is safe. A source config is skipped when the destination already carries an equivalent one -- same instrument, trading side, transaction type and primary strategy. That tuple is **not** a database key, so this is deliberately best-effort: a hand-built config that happens to match is treated as already-cloned and reported as skipped rather than silently doubled. Doubling configs doubles positions, so the ambiguity is resolved toward the recoverable failure. |
+| The copy is longhand | `copyForDate` lists every column by name rather than reflecting or serialising. A new column nobody adds there is silently dropped from every clone, and a compile-time list is the only thing that makes the omission visible -- the same reason `applyForm` / `toView` are longhand, and the same trap documented in ORDERS_AND_POSITIONS about a column missing from one of the four places. |
+| Tests | [`TradeConfigCloneDayTest`](../src/test/java/com/moneymaker/tradeconfig/service/TradeConfigCloneDayTest.java) -- clones a day and invalidates the cache, carries every field including the 027/036 bracket columns, copies `sma_timeframe` children as new rows, stamps MANUAL, leaves retired configs behind, skips what the destination already has, collapses duplicate sources, dry-run writes nothing, self-clone rejected, empty source reported. |
 
 ## 10. `TradeConfig.stratergyId` â€” column name typo
 
