@@ -8,28 +8,40 @@ Every `@Scheduled` bean in the app, what it does, when it runs, and what it depe
 
 ## Inventory
 
-| Scheduler | Package | Cadence (live) | Replays in backtest? | Reads | Writes |
-|---|---|---|---|---|---|
-| [`LoginScheduler`](#loginscheduler) | `com.moneymaker.scheduler` | `0 0 8 * * MON-FRI` (08:00 IST) + `fixedDelay=60s` heartbeat + `0 15 9 * * MON-FRI` (09:15 IST) options fetch | No (controller-driven) | `AppState`, `BrokerLoginManager` | `broker_session`, `market_data`/`options_data`, Telegram |
-| [`TradeConfigScheduler`](#tradeconfigscheduler) | `com.moneymaker.scheduler` | `ApplicationReadyEvent` (live, weekday) + `0 16 9 * * MON-FRI` | Yes (per-day fetch) | `trade_config` (incl. `strategy_ids`), `instrument`, `sma_timeframe` | `SharedData.combinedDto` |
-| [`AnalysisScheduler`](#analysisscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI`, gated by [`MarketHoursService.isOpenNow()`](#market-hours-gating) | Yes (every backtest tick) | Broker historical data | `SharedData.strikeMarketDataByInstrumentAndInterval`, `SharedData.tradeSignals` |
-| [`OrderScheduler`](#orderscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI`, gated by [`MarketHoursService.isOpenNow()`](#market-hours-gating) | Yes (after `AnalysisScheduler` each tick) | `SharedData.tradeSignals` | `trade_order`, broker order endpoints, Telegram |
-| [`PositionScheduler`](#positionscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI`, gated by [`MarketHoursService.isOpenNow()`](#market-hours-gating) | Yes (after `OrderScheduler` each tick) | OPEN `trade_order` rows, broker LTP | `trade_order` (peak/last-monitored/exit), Telegram |
-| [`DaySummaryScheduler`](#daysummaryscheduler) | `com.moneymaker.scheduler` | `0 31 15 * * MON-FRI` (15:31 IST), live only | No (`BacktestAnalysisService` force-closes per day itself) | `trade_order`, `trade_config` (lot quantity), `MarketHoursService` | Force-closed `trade_order` rows **+ live broker exits**, Telegram digest |
+| Scheduler | Package | Cadence (live) | Mode gate on the cron | Replays in backtest? | Reads | Writes |
+|---|---|---|---|---|---|---|
+| [`LoginScheduler`](#loginscheduler) | `com.moneymaker.scheduler` | `0 0 8 * * MON-FRI` (08:00 IST) + `fixedDelay=60s` heartbeat + `0 15 9 * * MON-FRI` (09:15 IST) options fetch | Bean-level `@ConditionalOnProperty(app.mode=live)` — not registered at all in backtest | No (controller-driven) | `AppState`, `BrokerLoginManager` | `broker_session`, `market_data`/`options_data`, Telegram |
+| [`TradeConfigScheduler`](#tradeconfigscheduler) | `com.moneymaker.scheduler` | `ApplicationReadyEvent` (live, weekday) + `0 16 9 * * MON-FRI` | Startup seed: live only. **09:16 cron: none** — see the warning under [Mode + market-hours gating](#mode--market-hours-gating) | Yes (per-day fetch) | `trade_config` (incl. `strategy_ids`), `instrument`, `sma_timeframe` | `SharedData.combinedDto` |
+| [`AnalysisScheduler`](#analysisscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI`, gated by [`MarketHoursService.isOpenNow()`](#mode--market-hours-gating) | `analyzeMarketData()` no-ops in backtest | Yes (every backtest tick) | Broker historical data | `SharedData.strikeMarketDataByInstrumentAndInterval`, `SharedData.tradeSignals` |
+| [`OrderScheduler`](#orderscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI`, gated by [`MarketHoursService.isOpenNow()`](#mode--market-hours-gating) | `scheduledTick()` no-ops in backtest | Yes (after `AnalysisScheduler` each tick) | `SharedData.tradeSignals` | `trade_order`, broker order endpoints, Telegram |
+| [`PositionScheduler`](#positionscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI`, gated by [`MarketHoursService.isOpenNow()`](#mode--market-hours-gating) | `scheduledTick()` no-ops in backtest | Yes (after `OrderScheduler` each tick) | OPEN `trade_order` rows, broker LTP | `trade_order` (peak/last-monitored/exit), Telegram |
+| [`DaySummaryScheduler`](#daysummaryscheduler) | `com.moneymaker.scheduler` | `0 31 15 * * MON-FRI` (15:31 IST), live only | `runEndOfDay()` returns unless `app.mode=live` | No (`BacktestAnalysisService` force-closes per day itself) | `trade_order`, `trade_config` (lot quantity), `MarketHoursService` | Force-closed `trade_order` rows **+ live broker exits**, Telegram digest |
 
 Live cadence stays inside NSE trading hours (`9-16` Mon-Fri). Off-hours the cron just doesn't fire.
 
-### Market-hours gating
+### Mode + market-hours gating
 
-Since the trade-config-admin / day-summary work landed, `AnalysisScheduler`, `OrderScheduler`, and `PositionScheduler` each take a `MarketHoursService` dependency and short-circuit their tick body with the same guard:
+Both gates are **wall-clock concerns**, and both live at the `@Scheduled` entry point — never on the service method underneath it. That is invariant 8 in practice: the replay calls the method underneath directly with a simulated timestamp, so a mode or clock check placed there would silence the backtest itself.
 
 ```java
-if ("live".equalsIgnoreCase(appMode) && !marketHours.isOpenNow()) {
-    return; // outside the configured trading window — no-op
+@Scheduled(cron = "0 0/5 9-16 * * MON-FRI")
+public void scheduledTick() {                    // wall-clock wrapper: gates only
+    if ("backtest".equalsIgnoreCase(appMode)) {
+        return;                                  // the simulated clock drives the pipeline
+    }
+    if ("live".equalsIgnoreCase(appMode) && !marketHours.isOpenNow()) {
+        return;                                  // outside the configured trading window
+    }
+    processOrders();                             // replayable: no mode branch, ever
 }
 ```
 
-[`MarketHoursService`](../src/main/java/com/moneymaker/market/service/MarketHoursService.java) is the single source of truth for the trading window — default `09:15–15:30 IST, MON-FRI`, overridable via `app.market.open` / `app.market.close` / `app.market.timezone`. The guard only applies in live mode; in backtest the three services are called directly by `BacktestAnalysisService` regardless of wall-clock time (the simulated day supplies its own time axis). `DaySummaryScheduler` also depends on `MarketHoursService` — not for gating (its own cron already only fires once a day) but to anchor `marketCloseToday()` / `marketOpenToday()` in the summary text.
+- **The backtest gate** (`GAPS.md` #4, 2026-08-31) stops the wall clock from running a second pipeline alongside a replay. Before it, the market-hours guard was the only gate and it short-circuits *only in live mode* — so in `app.mode=backtest` these three crons ran their bodies in full, on the scheduler thread, against the same statics the replay was using. The mode string comes from `@Value("${app.mode:live}")`, the same key `TelegramNotifier`'s backtest suppression reads.
+- **The market-hours gate** is unchanged. [`MarketHoursService`](../src/main/java/com/moneymaker/market/service/MarketHoursService.java) is the single source of truth for the trading window — default `09:15–15:30 IST, MON-FRI`, overridable via `app.market.open` / `app.market.close` / `app.market.timezone`. It applies in live mode only; the replay supplies its own time axis. `DaySummaryScheduler` also depends on `MarketHoursService` — not for gating (its own cron already only fires once a day) but to anchor `marketCloseToday()` / `marketOpenToday()` in the summary text.
+
+The **trigger** still fires in backtest for the three pipeline crons; it is the body that is inert. Removing the trigger would need bean-level `@ConditionalOnProperty`, which is not available here — `BacktestAnalysisService` injects all three beans and calls them per tick, so conditioning the bean away would delete the replay's pipeline, not just its cron. (`LoginScheduler` *can* use it, and does, because nothing in the replay path needs that bean.)
+
+> ⚠️ **`TradeConfigScheduler`'s `0 16 9 * * MON-FRI` cron is still ungated.** It assigns `SharedData.combinedDto` from *today's* DB rows on the scheduler thread; a replay reassigns that field at the top of every tick, so the exposure is a cross-thread race rather than a standing clobber — but it decides which configs get dispatched, so it is filed as [STRATEGY_ANALYSIS_TODO.md S10](STRATEGY_ANALYSIS_TODO.md#s10-wall-clock-scheduler-threads-mutate-replay-state-mid-run) and needs sign-off before being gated. Its `0 12 9` sibling only logs.
 
 ---
 
@@ -69,7 +81,7 @@ if ("live".equalsIgnoreCase(appMode) && !marketHours.isOpenNow()) {
 - **08:00 IST cron** — first auto-login of the day. Calls `LoginOrchestrator.ensureLoggedIn()` for the active broker.
 - **1-minute heartbeat (`fixedDelay = 60_000L`)** — runs auth probe + data probe, records `last_heartbeat_status` on `broker_session`, and emits transition-only Telegram alerts via `LoginScheduler.transitionAndNotify(prev, new)`.
 
-Mode gating: live only. In `app.mode=backtest` the bean is registered (so manual probes from controllers still work) but the cron + heartbeat are inert. The backtest controller (`POST /api/backtest/login`) drives the orchestrator manually instead.
+Mode gating: live only, and unlike the pipeline schedulers it is gated at the **bean** — `@ConditionalOnProperty(name = "app.mode", havingValue = "live", matchIfMissing = true)`. In `app.mode=backtest` the bean does not exist, so neither the cron nor the heartbeat is registered at all. That option is open here precisely because nothing in the replay path injects `LoginScheduler`; the backtest controller (`POST /api/backtest/login`) drives `LoginOrchestrator` directly.
 
 Detailed state machine and alert-rule matrix live in [HEARTBEAT.md](HEARTBEAT.md).
 
@@ -103,7 +115,7 @@ After the live cron stores configs into `SharedData`, and at the top of each bac
 
 [`com.moneymaker.scheduler.AnalysisScheduler`](../src/main/java/com/moneymaker/scheduler/AnalysisScheduler.java)
 
-- **Cron `0 0/5 9-16 * * MON-FRI`** — every 5 minutes during NSE hours.
+- **Cron `0 0/5 9-16 * * MON-FRI`** on `analyzeMarketData()` — every 5 minutes during NSE hours. That method is the wall-clock wrapper (backtest + market-hours gates, then `calculateIndicator(LocalDateTime.now())`); the replayable work is `calculateIndicator(asOf)` + `runStrategies(asOf)`, neither of which knows the mode.
 - For each `TradeConfigCombinedDTO` and each timeframe **that config's own `sma_timeframe` rows name** (`timePeriodsOf(dto)`):
   1. `MarketDataService.fetchHistoricalData(...)` for the underlying.
   2. `calculateStrikesForCandles(...)` to derive active strikes.
@@ -166,7 +178,7 @@ first one's leg. Use `SharedData.optionTokenKey(...)` when touching it.
 
 [`com.moneymaker.scheduler.OrderScheduler`](../src/main/java/com/moneymaker/scheduler/OrderScheduler.java)
 
-- **Cron `0 0/5 9-16 * * MON-FRI`** — same cadence as `AnalysisScheduler`, intentionally. Each tick: analysis writes signals, orders drain them.
+- **Cron `0 0/5 9-16 * * MON-FRI`** on `scheduledTick()` — same cadence as `AnalysisScheduler`, intentionally. Each tick: analysis writes signals, orders drain them. `scheduledTick()` holds the backtest + market-hours gates and nothing else; `processOrders()` below it is the replayable method and carries no mode branch.
 - Delegates to `OrderService.processOrders()` which:
   1. `SharedData.tradeSignals.poll()` until empty.
   2. For each signal, looks up the active broker via `OrderPlacementFactory` (selects `BACKTESTING` when `app.mode=backtest`, otherwise `broker.active`).
@@ -183,7 +195,7 @@ In backtest, `BacktestAnalysisService` calls `orderScheduler.processOrders()` di
 
 [`com.moneymaker.scheduler.PositionScheduler`](../src/main/java/com/moneymaker/scheduler/PositionScheduler.java)
 
-- **Cron `0 0/5 9-16 * * MON-FRI`** — same cadence again. Tick order: analysis → orders → positions.
+- **Cron `0 0/5 9-16 * * MON-FRI`** on `scheduledTick()` — same cadence again, same wrapper split as `OrderScheduler`. Tick order: analysis → orders → positions.
 - Delegates to `PositionService.processPositions()` which:
   1. `tradeOrderRepository.findByStatus("OPEN")`.
   2. For each open row, calls `PositionMonitorFactory.active().currentPrice(order)` — broker-specific live quote (Zerodha LTP, backtest cached candle, Groww/AngelOne TODO).
@@ -228,7 +240,7 @@ With the default once-a-day cron there is no second tick to retry on. The gate d
 
 ## Backtest replay vs live cron
 
-`BacktestAnalysisService.run(fromDate, toDate)` walks each backtest day in 5-minute increments and **calls the same scheduler methods directly**. The cron annotations are inert in `app.mode=backtest`. Per tick, the call order is:
+`BacktestAnalysisService.run(fromDate, toDate)` walks each backtest day in 5-minute increments and **calls the same scheduler methods directly**. The cron *bodies* are inert in `app.mode=backtest` — true since 2026-08-31 (`GAPS.md` #4); before that they ran in full and a replay started during market hours shared its state with a live wall-clock pipeline. Per tick, the call order is:
 
 1. `analysisScheduler.calculateIndicator(currentDateTime)`  (data fetch + SMAs)
 2. `analysisScheduler.runStrategies(asOf)`                   (strategy → signals)
@@ -246,7 +258,7 @@ End-of-run cleanup: `SharedData.tradeSignals.clear()` so a subsequent backtest /
 1. New `@Component` class in `com.moneymaker.scheduler`. Match the existing file shape: constructor-injected dependencies + `@Scheduled` method that delegates to a separate service.
 2. Pick a cron that matches the operational window — `0 0/N 9-16 * * MON-FRI` for market-hours, `fixedDelay = …` for always-on probes.
 3. Wrap the body in `try/catch` so an exception in one tick doesn't poison the schedule.
-4. If you want backtest replay, **don't put the work in the `@Scheduled` method**. Put it on the underlying service so `BacktestAnalysisService` can call it directly per tick.
+4. If you want backtest replay, **don't put the work in the `@Scheduled` method**. Put it on the underlying service so `BacktestAnalysisService` can call it directly per tick. Keep the `@Scheduled` method to wall-clock concerns only — the mode gate and any market-hours guard — and let the replay call past it. A mode check on the replayable method silences the replay; a wall-clock cron with no mode check runs a second pipeline against the replay's state.
 5. Wire any new persistence into `application.properties` for sensitivity (toggles), Liquibase for schema (numbered changeset), and `NotificationService` for alerts (use `sendIfChanged` / `sendThrottled` to avoid spam — see [NOTIFICATIONS.md](NOTIFICATIONS.md)).
 6. **Update this page.** Every new scheduler gets a row in the inventory table and a section below.
 

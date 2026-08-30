@@ -88,7 +88,9 @@ A phase passes the parity bar when **all** of the following hold:
 3. **Same scheduler entry points.** `BacktestAnalysisService` keeps calling
    the same `analysisScheduler.calculateIndicator / runStrategies`,
    `orderScheduler.processOrders`, `positionScheduler.processPositions` —
-   none of those methods grow a `if (backtest) …` branch.
+   none of those methods grow a `if (backtest) …` branch. The mode gate added
+   for `GAPS.md` #4 sits on the `@Scheduled` wrapper *above* them
+   (`scheduledTick` / `analyzeMarketData`), which the replay never calls.
 4. **Reversible.** Reverting the phase restores byte-identical behaviour.
 
 If a phase fails any of (1)–(3), it's a divergence, not an optimisation,
@@ -671,8 +673,8 @@ LIVE                                         BACKTEST
   AnalysisScheduler.analyzeMarketData          loop tick(t):
      calculateIndicator(now)                     calculateIndicator(t)
      runStrategies()                             runStrategies()
-  OrderScheduler.processOrders                   orderScheduler.processOrders()
-  PositionScheduler.processPositions             positionScheduler.processPositions()
+  OrderScheduler.scheduledTick                   orderScheduler.processOrders()
+  PositionScheduler.scheduledTick                positionScheduler.processPositions()
   TradeConfigScheduler.checkTradeConfigAt916AM   tradeConfigScheduler.reportConfigsForDay
   LoginScheduler                                 (one-shot login at run start)
                 ↓ same methods ↓
