@@ -170,10 +170,58 @@ fires per stranded row and says to square off manually. Four things reach it:
 
 | Cause | Why it doesn't just place anyway |
 |---|---|
-| Broker returned no order id | Not logged in, or symbol unresolved. **This is today's Zerodha default** — `resolveTradingSymbol` is still a stub returning `null`, so every live force-close exit currently takes this path. |
+| Broker returned no order id | Not logged in, or the contract could not be resolved. On Zerodha the second case now means a real data problem — `instrument_details` has no row for the ledger's `option_token`, or it has one describing a different contract. See [Zerodha contract resolution](#zerodha-contract-resolution). |
 | Broker threw | Network / API failure. Caught per row so one bad leg doesn't strand the rest of the batch as OPEN. |
 | No cached `TradeConfigCombinedDTO` for the row's config | Quantity comes off the config; placement services fall back to quantity `1`. One unit against a 75-unit lot is a *new position*, not a close. Not closing is recoverable by hand; closing the wrong size isn't. |
 | `OrderPlacementFactory.active()` unresolvable | A misconfigured `broker.active`. Resolved once, defensively — "close nothing" would be the worse answer than "close the ledger and shout". |
+
+---
+
+## Zerodha contract resolution
+
+`ZerodhaOrderPlacementService.resolveContract(order)` turns a `trade_order` row
+into the `(tradingsymbol, exchange)` pair Kite's `OrderParams` needs. It is a
+**lookup, never a formatter**.
+
+**Why.** Kite's NFO tradingsymbols are not derivable from
+`(underlying, expiry, strike, type)` by one rule. Two rows from the bundled dump,
+same underlying, same strike, same option type:
+
+| instrument_token | tradingsymbol | expiry |
+|---|---|---|
+| `14598658` | `NIFTY2660223400CE` | 2026-06-02 (weekly — 2-digit year, *single* char month, day) |
+| `20401922` | `NIFTY26JUN23400CE` | 2026-06-30 (monthly — 2-digit year, 3-letter month, no day) |
+
+October/November/December weeklies use `O`/`N`/`D` for the month character, and a
+month-end weekly is published in the monthly form. Any formatter would be a guess
+that fires a real market order at a symbol the exchange may not list.
+
+**The key.** `trade_order.option_token` is the broker instrument token
+`TokenOptionInstrumentResolver` wrote when the leg was chosen — i.e. the primary
+key of `instrument_details`. One `findById` is the whole resolution, and it
+cannot drift from the leg the strategy analysed, because it *is* that leg's row.
+
+**Refusals.** Every one of these returns `null`, so `place(...)` skips rather
+than sending a wrong order (on the force-close path that raises
+`alertForceCloseExitFailed`):
+
+| Case | Meaning |
+|---|---|
+| `option_token` null / blank | Ledger row predates the token being written. |
+| `option_token` isn't numeric | It's a `HISTORICAL_ICICI` natural key (`NIFTY\|NFO\|2024-01-04\|23400\|CE`). That source is replay-only; live placement needs `backtest.data-source=BROKER`. |
+| No `instrument_details` row | The local dump is stale relative to the ledger — reload it. |
+| Row has no `tradingsymbol` | Malformed dump row. |
+| Row's strike / type disagrees with the ledger's | The dump was re-seeded and the token now names a *different* contract. Placing would trade the wrong leg. |
+
+`exchange` is read off the row rather than hardcoded to `NFO`, so a BFO contract
+(BANKEX / SENSEX) isn't routed to the wrong exchange; `NFO` remains the fallback
+when the column is empty. Pinned by
+[`ZerodhaTradingSymbolResolutionTest`](../src/test/java/com/moneymaker/broker/zerodha/ZerodhaTradingSymbolResolutionTest.java).
+
+> **Prerequisite:** `instrument_details` must be populated for the expiries being
+> traded. It is the same table `TokenOptionInstrumentResolver` reads to pick the
+> leg in the first place, so if analysis produced a signal, the row placement
+> needs is by construction already there.
 
 ---
 
@@ -571,9 +619,9 @@ These aren't trading-behaviour rules per se (they're broker / exchange constants
 
 ## Things that are still pending
 
-- **Zerodha tradingsymbol resolution.** `ZerodhaOrderPlacementService.resolveTradingSymbol` returns `null`, so live `place(...)` short-circuits before hitting Kite. Needs a cached NFO instruments dump fetched at login + a `(name, expiry, strike, optionType)` lookup. Once that lands, the rest of the pipeline is wired.
+- ~~**Zerodha tradingsymbol resolution.**~~ **Done 2026-08-31** — resolved by `instrument_details` primary-key lookup on `trade_order.option_token`, not by formatting a symbol. See [Zerodha contract resolution](#zerodha-contract-resolution) for why the lookup is the only sound shape and what each refusal means. The originally sketched `(name, expiry, strike, optionType)` lookup was not needed: the token *is* that tuple's already-resolved answer, and it comes off the same row the strategy analysed.
 - **Groww + Angel One real REST clients** for both `OrderPlacementService` and `PositionMonitorService`.
-- (Live force-close now places a real broker exit — see "Force-close: live vs backtest" above. It is gated behind Zerodha tradingsymbol resolution, the first bullet in this list, and alerts per row until that lands. GAPS #1.)
+- (Live force-close now places a real broker exit — see "Force-close: live vs backtest" above. On Zerodha it is no longer gated behind symbol resolution; the per-row alert now only fires on a genuine failure. GAPS #1.)
 - (Both `numberOfTradesPerDay` and `numberOfParallelTrades` are now enforced — see steps 3 and 4 in "Open / close decision rules" above.)
 - **Lot-size aware quantity** — `quantity()` in placement services treats `tradeConfig.lotQuantity` as raw quantity. Multiplying by lot size (50 for NIFTY etc.) needs a data source decision. The end-of-day digest's net P&L uses the *same* number as its multiplier (GAPS #2), deliberately — so if this bullet is ever resolved, the digest has to move with it or the two will disagree.
 - **`lot_quantity_at_entry` snapshot.** `trade_order` has no lot-size snapshot, so the day-summary net P&L joins `TradeConfig.lotQuantity` live. Editing a config's lot quantity mid-day therefore re-prices trades that already closed — the staleness `target_at_entry` (changeset 011) exists to prevent. Remaining half of GAPS #2.
