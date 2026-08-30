@@ -77,13 +77,24 @@ public class BacktestController {
         return ResponseEntity.status(success ? HttpStatus.OK : HttpStatus.CONFLICT).body(body);
     }
 
+    /**
+     * Replay a window. Since 2026-08-31 (user request) a replay no longer
+     * generates {@code AUTO_DOWNTREND} configs as a side effect — run
+     * {@link #generateConfigs} first for a window that has none, or pass
+     * {@code generateConfigs=true} to restore the old combined behaviour.
+     * Separation keeps a measurement run from mutating the config set it is
+     * measuring.
+     */
     @PostMapping("/analysis")
     public ResponseEntity<?> runAnalysis(
             @RequestParam("fromDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
-            @RequestParam("toDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+            @RequestParam("toDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            @RequestParam(value = "generateConfigs", defaultValue = "false") boolean generateConfigs) {
         try {
-            BacktestAnalysisService.BacktestRunResult result = backtestAnalysisService.run(fromDate, toDate);
-            log.info("[Backtest] /analysis {} -> {} completed in {}ms", fromDate, toDate, result.durationMs());
+            BacktestAnalysisService.BacktestRunResult result =
+                    backtestAnalysisService.run(fromDate, toDate, generateConfigs);
+            log.info("[Backtest] /analysis {} -> {} (generateConfigs={}) completed in {}ms",
+                    fromDate, toDate, generateConfigs, result.durationMs());
             return ResponseEntity.ok(result);
         } catch (HistoricalDataMissingException ex) {
             // The run was aborted on purpose — the imported data set does not
@@ -94,6 +105,18 @@ public class BacktestController {
                     "error", "Backtest aborted — historical data missing",
                     "detail", ex.getMessage()));
         }
+    }
+
+    /**
+     * Generation-only: run the EOD downtrend detector over each session in the
+     * window, writing {@code AUTO_DOWNTREND} configs, with no replay and no
+     * ledger writes. Idempotent — the detector skips days whose configs exist.
+     */
+    @PostMapping("/generate-configs")
+    public ResponseEntity<?> generateConfigs(
+            @RequestParam("fromDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam("toDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+        return ResponseEntity.ok(backtestAnalysisService.generateConfigsOnly(fromDate, toDate));
     }
 
 }

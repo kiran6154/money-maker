@@ -79,7 +79,61 @@ public class BacktestAnalysisService {
         this.marketHours = marketHours;
     }
 
+    /** Per-window summary of a generation-only pass ({@code /api/backtest/generate-configs}). */
+    public record GenerateConfigsResult(LocalDate fromDate, LocalDate toDate,
+                                        int sessionsProcessed, int failures,
+                                        List<String> failedDates, long durationMs) {}
+
+    /**
+     * Generation-only counterpart of {@link #run}: walks each trading session
+     * in the window and runs the EOD downtrend detector for it — no replay, no
+     * ledger writes, no shared-state mutation beyond what the detector itself
+     * persists. Idempotent by the detector's own contract (it skips days whose
+     * configs already exist). A per-day failure is recorded and the walk
+     * continues, matching how the combined flow treated detector errors.
+     */
+    public GenerateConfigsResult generateConfigsOnly(LocalDate fromDate, LocalDate toDate) {
+        if (fromDate == null || toDate == null) {
+            throw new IllegalArgumentException("fromDate and toDate must not be null");
+        }
+        if (fromDate.isAfter(toDate)) {
+            throw new IllegalArgumentException("fromDate must be on or before toDate");
+        }
+        Instant startedAt = Instant.now();
+        int sessions = 0;
+        List<String> failed = new ArrayList<>();
+        LocalDate d = fromDate;
+        while (!d.isAfter(toDate)) {
+            if (tradingCalendar.isTradingDay(d)) {
+                sessions++;
+                try {
+                    eodDowntrendDetectionService.runForDay(d);
+                } catch (Exception ex) {
+                    failed.add(d.toString());
+                    log.error("[Backtest] generate-configs {} — detector failed", d, ex);
+                }
+            }
+            d = d.plusDays(1);
+        }
+        long ms = java.time.Duration.between(startedAt, Instant.now()).toMillis();
+        log.info("[Backtest] generate-configs {} -> {}: {} session(s), {} failure(s), {}ms",
+                fromDate, toDate, sessions, failed.size(), ms);
+        return new GenerateConfigsResult(fromDate, toDate, sessions, failed.size(), failed, ms);
+    }
+
+    /**
+     * Replay without config generation — the default since 2026-08-31 (user
+     * request): a backtest run and {@code AUTO_DOWNTREND} generation are
+     * separate operations, so a measurement run can never mutate the config
+     * set it is measuring. Use {@link #generateConfigsOnly} to generate, or
+     * the three-arg overload with {@code generateConfigs=true} for the old
+     * combined behaviour.
+     */
     public BacktestRunResult run(LocalDate fromDate, LocalDate toDate) {
+        return run(fromDate, toDate, false);
+    }
+
+    public BacktestRunResult run(LocalDate fromDate, LocalDate toDate, boolean generateConfigs) {
         if (fromDate == null) {
             throw new IllegalArgumentException("fromDate must not be null");
         }
@@ -222,10 +276,12 @@ public class BacktestAnalysisService {
                 // symbol through OptionInstrumentResolver, and the historical
                 // provider now serves the "day" candles its ATR needs by rolling
                 // up the imported 5-minute rows.
-                try {
-                    eodDowntrendDetectionService.runForDay(currentDate);
-                } catch (Exception ex) {
-                    log.error("[Backtest] {} — EOD downtrend detection failed", currentDate, ex);
+                if (generateConfigs) {
+                    try {
+                        eodDowntrendDetectionService.runForDay(currentDate);
+                    } catch (Exception ex) {
+                        log.error("[Backtest] {} — EOD downtrend detection failed", currentDate, ex);
+                    }
                 }
 
                 rowsAfter = countTradeOrdersOnDate(currentDate);

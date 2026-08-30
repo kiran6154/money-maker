@@ -9,6 +9,28 @@
 > `PositionScheduler` entry points the live cron uses. The
 > **[Data source](#data-source)** section immediately below is current.
 
+## Running a backtest — two separate operations (since 2026-08-31)
+
+A replay and `AUTO_DOWNTREND` config generation are **decoupled** (user
+request): a backtest run no longer writes configs as a side effect, so a
+measurement run can never mutate the config set it is measuring.
+
+```powershell
+# 1. (fresh window only) generate AUTO_DOWNTREND configs for the window —
+#    no replay, no ledger writes; idempotent, skips days whose configs exist
+curl.exe -X POST "http://localhost:8080/api/backtest/generate-configs?fromDate=2024-01-01&toDate=2024-01-31"
+
+# 2. replay the window (uses whatever configs exist; generates nothing)
+curl.exe -X POST "http://localhost:8080/api/backtest/analysis?fromDate=2024-01-01&toDate=2024-01-31"
+
+# legacy combined behaviour, explicit opt-in only:
+curl.exe -X POST "http://localhost:8080/api/backtest/analysis?fromDate=2024-01-01&toDate=2024-01-31&generateConfigs=true"
+```
+
+Before re-running the **same** window, clear `trade_order` (the ledger's
+dedupe key suppresses identical re-entries) — `analysis/db-scripts/wipe-ledger.bat`
+does it, or the `/api/orders/purge` endpoint.
+
 ---
 
 ## Data source
