@@ -2,6 +2,7 @@ package com.moneymaker.position.service;
 
 import com.moneymaker.dto.Quote;
 import com.moneymaker.entity.TradeOrder;
+import com.moneymaker.journal.PositionJournal;
 import com.moneymaker.order.service.OrderService;
 import com.moneymaker.repository.TradeOrderRepository;
 import com.moneymaker.util.TrailLadder;
@@ -43,12 +44,22 @@ public class PositionService {
     private final PositionMonitorFactory monitorFactory;
     private final OrderService orderService;
 
+    /**
+     * The during-position half of the observation journal. Wired here rather
+     * than into {@code PositionScheduler} so a backtest replays it identically
+     * to live (CLAUDE.md invariant 8), and called only after each tick's
+     * decision is made — it records what happened, it never takes part in it.
+     */
+    private final PositionJournal positionJournal;
+
     public PositionService(TradeOrderRepository tradeOrderRepository,
                            PositionMonitorFactory monitorFactory,
-                           OrderService orderService) {
+                           OrderService orderService,
+                           PositionJournal positionJournal) {
         this.tradeOrderRepository = Objects.requireNonNull(tradeOrderRepository, "tradeOrderRepository must not be null");
         this.monitorFactory = Objects.requireNonNull(monitorFactory, "monitorFactory must not be null");
         this.orderService = Objects.requireNonNull(orderService, "orderService must not be null");
+        this.positionJournal = Objects.requireNonNull(positionJournal, "positionJournal must not be null");
     }
 
     public void processPositions() {
@@ -56,6 +67,11 @@ public class PositionService {
         if (open.isEmpty()) return;
 
         PositionMonitorService monitor = monitorFactory.active();
+
+        // Drop journal state for trades that have since closed. This is the one
+        // place that knows the current open set, so it is the cheapest correct
+        // moment to bound it.
+        positionJournal.retainOpen(open.stream().map(TradeOrder::getId).toList());
 
         for (TradeOrder order : open) {
             try {
@@ -119,6 +135,18 @@ public class PositionService {
                 price, asOf, pnl, order.getPeakProfit(), order.getPeakLoss(),
                 order.getTargetAtEntry(), order.getStopLossAtEntry(), order.getTrailSlAt(),
                 hit != null ? hit : "hold");
+
+        // MONITOR / EVENT rows for this tick. Deliberately after every decision
+        // above and before none of them: `hit` is already settled and is passed
+        // in as a recorded fact, so journalling cannot reorder or alter an exit.
+        // Guarded even though PositionJournal swallows its own failures — a
+        // broken journal must never cost a stop-loss.
+        try {
+            positionJournal.observe(order, asOf, pnl, hit);
+        } catch (Exception ex) {
+            log.debug("[position] journal observation failed for orderId={} — ignored: {}",
+                    order.getId(), ex.toString());
+        }
 
         if (hit != null) {
             log.info("[position] CLOSE orderId={} reason={} pnl={} (target={} stopLoss={} trailSl={} peak={}) at {}",

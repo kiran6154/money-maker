@@ -242,7 +242,20 @@ reason = "TRAIL_SL" if the trail supplied the floor else "STOP_LOSS"
 if pnl >= order.target_at_entry → OrderService.closeManually(id, price, now, "TARGET")
 if pnl <= floor                 → OrderService.closeManually(id, price, now, reason)
 else                            → save row
+
+# After the decision above is settled, never before it:
+PositionJournal.observe(order, asOf, pnl, decision)   # MONITOR row + any EVENT rows
 ```
+
+**The journal write is observation, not a step.** It runs after
+`thresholdBreach` has answered, takes that answer as an argument, and is wrapped
+so that a journal failure cannot abort the tick or change an exit. It sits on
+`PositionService` rather than `PositionScheduler` so a backtest replays it
+identically (CLAUDE.md invariant 8). What it records — one `MONITOR` row per
+evaluated tick, plus an `EVENT` row per BOS / CHoCH that became knowable while
+the trade was running — is described in
+[`OBSERVATION_JOURNAL.md`](OBSERVATION_JOURNAL.md#the-during-position-timeline).
+Ticks skipped above (no quote, or the same-candle guard) write nothing.
 
 **Why the two stops are collapsed into one floor instead of checked in sequence.**
 A candle can gap through both at once. If they were checked one after the other,
@@ -564,7 +577,7 @@ These aren't trading-behaviour rules per se (they're broker / exchange constants
 - (Both `numberOfTradesPerDay` and `numberOfParallelTrades` are now enforced — see steps 3 and 4 in "Open / close decision rules" above.)
 - **Lot-size aware quantity** — `quantity()` in placement services treats `tradeConfig.lotQuantity` as raw quantity. Multiplying by lot size (50 for NIFTY etc.) needs a data source decision. The end-of-day digest's net P&L uses the *same* number as its multiplier (GAPS #2), deliberately — so if this bullet is ever resolved, the digest has to move with it or the two will disagree.
 - **`lot_quantity_at_entry` snapshot.** `trade_order` has no lot-size snapshot, so the day-summary net P&L joins `TradeConfig.lotQuantity` live. Editing a config's lot quantity mid-day therefore re-prices trades that already closed — the staleness `target_at_entry` (changeset 011) exists to prevent. Remaining half of GAPS #2.
-- **Per-position audit trail** — peak / last-monitored is overwritten each tick. If we ever need a full price-vs-time history per trade, an `order_monitor_history` table is the next step. Not added today because it would explode write volume for marginal benefit.
+- ~~**Per-position audit trail** — peak / last-monitored is overwritten each tick. If we ever need a full price-vs-time history per trade, an `order_monitor_history` table is the next step.~~ **Covered as of 2026-08-31, in a different place than this bullet proposed:** the observation journal's `MONITOR` rows are that per-tick history, written to `journal_observation` rather than a new table, so a closed trade can be replayed tick by tick against its structure and OI context. See [`OBSERVATION_JOURNAL.md` → the during-position timeline](OBSERVATION_JOURNAL.md#the-during-position-timeline). The row on `trade_order` is still overwritten — the ledger keeps one line per trade, on purpose.
 
 ---
 

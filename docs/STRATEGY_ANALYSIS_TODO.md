@@ -149,6 +149,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 
 ---
 
+### S10. A structure-based exit is now measurable and still unmeasured — nothing reads the during-position timeline
+
+| | |
+|---|---|
+| Where | [`PositionJournal`](../src/main/java/com/moneymaker/journal/PositionJournal.java) writing `MONITOR` / `EVENT` rows from [`PositionService.handleOne`](../src/main/java/com/moneymaker/position/service/PositionService.java); detector [`MarketStructureAnalyzer`](../src/main/java/com/moneymaker/structure/MarketStructureAnalyzer.java). Exits themselves: `PositionService.thresholdBreach`, `trade_config.stop_loss` / `max_sl_points` / `trail_ladder`. |
+| Why | Filed here rather than in `GAPS.md` because the thing it leads to is an **exit rule**, which decides what trades get taken. As of 2026-08-31 the journal records, per open trade per tick, whether a BOS or CHoCH had become knowable — `WITH` or `AGAINST` the position — with the minutes of warning it gave and the trade's P&L at that moment. That was built precisely to test the premise stated in [`OBSERVATION_JOURNAL.md`](OBSERVATION_JOURNAL.md): against a ledger where **all 21 stop-losses overshot their stop** and 17 trades gave back an average of +13.81 before closing at −77.19, an `AGAINST` CHoCH may be an earlier and cheaper exit signal than a percentage or points stop. **Nothing acts on these rows, and nothing reads them.** No strategy, no rule, no query. |
+| Impact | **Unquantified — and deliberately so; no behaviour has been changed.** What would measure it, now that the rows exist: replay a window with `journal.enabled=true`, then for each closed trade join its `EVENT` rows to its `EXIT` row and ask (a) how many stopped-out trades had an `AGAINST` CHoCH confirmed before the stop fired, (b) the distribution of `monitor_minutes_since_entry` between that event and the actual exit — the warning in bars — and (c) the counterfactual P&L of exiting at the event's bar close instead. `monitor_pnl` and `monitor_peak_profit` are on the event row so (c) needs no second replay. The control is the same window with the current bracket, which [S4](#s4-the-036-exit-bracket--sl-ceiling--trailing-ladder--is-shipped-but-unmeasured) already ran (2024-01, Run B: −141.10 per share, 6 `TRAIL_SL` giving back 219.50). |
+| Two things the measurement must respect | **(1) `confirmableAt`, not `occurredAt`.** The journal only writes an event once its confirming bar has settled, and any query must filter on `confirmable_at` for the same reason — reading at `occurredAt` credits the strategy with a level before the market finished drawing it, the look-ahead that cost this codebase a 640-point swing in apparent edge. **(2) The counterfactual is not free.** Exiting on a CHoCH would also exit trades that went on to reach target, so (c) must be computed over *all* trades with a qualifying event, not only the ones that stopped out. |
+| Fix sketch | Nothing until measured **and signed off** — a structure-driven exit changes when every open trade closes, so it is Rule 0 twice over. If it is ever wired, note that `MarketStructureAnalyzer.DEFAULT_FRACTAL_N = 2` is documented as a *measurement* constant that stays in code only while structure decides nothing; the moment it gates an exit it becomes a trading parameter and must move to `TradeConfig` (CLAUDE.md invariant 9), along with any "which series" and "WITH/AGAINST" selection. |
+| Effort | **M** for the measurement (a replay plus queries — the capture is already built). **L** for any exit rule that follows: new config fields, a before/after pair, and sign-off. |
+| Priority | _TBD — filed 2026-08-31 when `MONITOR` / `EVENT` were wired; not yet raised with the user, and no run has been made against the new rows._ |
+
+---
+
 ## Resolved
 
 ### S2. `Strategy1` scanned every config's legs, not its own — **RESOLVED 2026-08-25**

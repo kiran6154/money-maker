@@ -107,7 +107,7 @@ When changing anything in these areas, **read the relevant doc first**:
 | EOD downtrend auto-config | [`docs/EOD_DOWNTREND.md`](docs/EOD_DOWNTREND.md) | `sma_downtrend_rule` table, end-of-day detector, `trade_config.source` marker, extension hooks |
 | Chart dashboard | [`docs/CHART_DASHBOARD.md`](docs/CHART_DASHBOARD.md) | Kite-style dashboard: frontend flow, ATM/expiry resolution, both chart data sources, debugging checklist |
 | Historical ICICI chart data | [`docs/HISTORICAL_CHART_DATA_PLAN.md`](docs/HISTORICAL_CHART_DATA_PLAN.md) | CSV import format, natural-key historical tables, dual-source chart design |
-| Observation journal + CHoCH/BOS | [`docs/OBSERVATION_JOURNAL.md`](docs/OBSERVATION_JOURNAL.md) | Platform-level capture of candidates/entries/exits, the `FeatureContributor` SPI, and market-structure detection (`confirmableAt` matters) |
+| Observation journal + CHoCH/BOS | [`docs/OBSERVATION_JOURNAL.md`](docs/OBSERVATION_JOURNAL.md) | Platform-level capture of candidates/entries/exits **and the during-position timeline** (`MONITOR` / `EVENT`), the `FeatureContributor` SPI, and market-structure detection (`confirmableAt` matters) |
 | Cross-workflow system map | [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md) | Every workflow end-to-end (trigger → steps → reads/writes), plus which workflows feed each other's data — the view none of the per-feature docs above gives on its own |
 
 If you add a doc, link it here. If you change behaviour described in a doc, update the doc in the same PR — see the next section.
