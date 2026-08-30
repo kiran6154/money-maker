@@ -305,7 +305,8 @@ spring.liquibase.change-log=classpath:db/changelog/db.changelog-master.xml
 | GET  | `/api/session`       | `{ activeBroker, loggedIn, dataHealthy, lastHeartbeatStatus, lastHeartbeatAt, lastDataAt, session: {...} }` |
 | POST | `/api/backtest/login`  | Backtest-mode login preflight (same `LoginOrchestrator` as live) |
 | POST | `/api/backtest/analysis?fromDate=&toDate=` | Run the multi-day analysis→order→position replay; returns per-day summary |
-| GET/POST/PUT/DELETE | `/api/trade-configs[...]` | Trade-config CRUD — see [`docs/ORDERS_AND_POSITIONS.md`](docs/ORDERS_AND_POSITIONS.md#trade-config-admin) |
+| GET/POST/PUT/DELETE | `/api/trade-configs[...]` | Trade-config CRUD — see [`docs/ORDERS_AND_POSITIONS.md`](docs/ORDERS_AND_POSITIONS.md#trade-config-admin). `PUT` returns `409 confirmRequired` while trades are open on the config |
+| POST | `/api/trade-configs/{id}/active?value=` | Retire / reinstate a config without deleting it — keeps its history, drops it from dispatch |
 | GET/POST | `/api/trade-configs/auto/{calendar,runs,delete}` | Bulk config delete — `AUTO_DOWNTREND` by default, `MANUAL` on opt-in; see [`docs/EOD_DOWNTREND.md`](docs/EOD_DOWNTREND.md#deleting-generated-configs) |
 | GET  | `/api/orders`        | Persisted `trade_order` rows |
 | POST | `/api/orders/{id}/sync` | Re-fetch broker fill status for one order |

@@ -93,6 +93,10 @@
             border: 1px solid rgba(0,0,0,0.06);
         }
         .row-actions { display: inline-flex; gap: 6px; }
+        /* A retired config is still listed -- you have to see it to reinstate it --
+           but it must not read as one that will trade today. */
+        tr.row-retired > td { opacity: .45; }
+        tr.row-retired > td:last-child { opacity: 1; }
         .icon-btn {
             padding: 5px 10px;
             border: 1px solid rgba(0,0,0,0.08);
@@ -904,11 +908,39 @@
                 ? '/api/trade-configs/' + state.editingId
                 : '/api/trade-configs';
             const method = state.editingId ? 'PUT' : 'POST';
-            const r = await fetch(url, {
+            const send = (confirmed) => fetch(url + (confirmed ? '?confirm=true' : ''), {
                 method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+
+            let r = await send(false);
+            // 409 + confirmRequired is not an error: the config has open trades and
+            // this edit changes something those trades still read (GAPS #8). Name
+            // the changes -- a generic "are you sure?" is one people click through.
+            if (r.status === 409) {
+                const warn = await r.json().catch(() => ({}));
+                if (warn.confirmRequired) {
+                    const lines = (warn.changes || []).map(c => '  • ' + c).join('
+');
+                    const ok = confirm(
+                        'This config has ' + warn.openTrades + ' open trade(s).
+
+' +
+                        'These changes affect the rest of today’s behaviour on it:
+' +
+                        lines + '
+
+' +
+                        'Open positions keep the target / stop-loss they entered with — those are ' +
+                        'snapshotted on the order — but the fields above are read live.
+
+' +
+                        'Apply anyway?');
+                    if (!ok) { setAlert('Edit cancelled — nothing was changed.', 'error'); return; }
+                    r = await send(true);
+                }
+            }
             if (!r.ok) {
                 const err = await r.json().catch(() => ({}));
                 setAlert(err.error || ('HTTP ' + r.status), 'error');
@@ -937,6 +969,30 @@
             els.save.disabled = false;
             els.saveSimilar.disabled = false;
         }
+    }
+
+    // ---------- retire / reinstate (GAPS #7) ----------
+    async function setActive(id, value) {
+        if (!value && !confirm(
+                'Retire trade config #' + id + '?
+
+' +
+                'It stops being dispatched, so nothing new opens against it. Its history and any ' +
+                'trade_order rows are kept, and trades already open run to their own exits.
+
+' +
+                'Reversible — use Reinstate to bring it back.
+
+' +
+                'Note: a config with trades still OPEN cannot be retired — close them first.')) return;
+        const r = await fetch('/api/trade-configs/' + id + '/active?value=' + value, { method: 'POST' });
+        if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            alert(err.error || ('HTTP ' + r.status));
+            return;
+        }
+        setAlert(value ? 'Config #' + id + ' reinstated.' : 'Config #' + id + ' retired.', 'success');
+        await loadList();
     }
 
     // ---------- delete ----------
@@ -1034,8 +1090,16 @@
                 '<td><span class="row-actions">' +
                     '<button class="icon-btn" data-edit="' + v.id + '">✎ Edit</button>' +
                     '<button class="icon-btn" data-clone="' + v.id + '">Clone</button>' +
+                    // Retire, not delete: a config that has traded cannot be
+                    // deleted (the ledger references it), and moving its date into
+                    // the past to silence it falsifies the record.
+                    '<button class="icon-btn" data-active="' + v.id + '" data-value="' + (v.active ? 'false' : 'true') + '" title="' +
+                        (v.active ? 'Retire: stop dispatching this config, keep its history'
+                                  : 'Reinstate: dispatch this config again') + '">' +
+                        (v.active ? '⏻ Retire' : '↺ Reinstate') + '</button>' +
                     '<button class="icon-btn danger" data-delete="' + v.id + '">🗑</button>' +
                 '</span></td>';
+            if (!v.active) tr.classList.add('row-retired');
             els.rows.appendChild(tr);
         });
         els.count.textContent = data.totalItems + ' row' + (data.totalItems === 1 ? '' : 's');
@@ -1052,6 +1116,7 @@
     els.rows.addEventListener('click', async (ev) => {
         const editBtn = ev.target.closest('[data-edit]');
         const cloneBtn = ev.target.closest('[data-clone]');
+        const activeBtn = ev.target.closest('[data-active]');
         const delBtn  = ev.target.closest('[data-delete]');
         if (editBtn) {
             const id = editBtn.getAttribute('data-edit');
@@ -1063,6 +1128,9 @@
             const r = await fetch('/api/trade-configs/' + id);
             if (!r.ok) { alert('Load failed'); return; }
             openClone(await r.json());
+        } else if (activeBtn) {
+            await setActive(activeBtn.getAttribute('data-active'),
+                            activeBtn.getAttribute('data-value') === 'true');
         } else if (delBtn) {
             await remove(delBtn.getAttribute('data-delete'));
         }

@@ -7,6 +7,7 @@ import com.moneymaker.tradeconfig.dto.PagedResponse;
 import com.moneymaker.tradeconfig.dto.StrategyOptionDTO;
 import com.moneymaker.tradeconfig.dto.TradeConfigFormDTO;
 import com.moneymaker.tradeconfig.dto.TradeConfigViewDTO;
+import com.moneymaker.tradeconfig.service.ConfirmationRequiredException;
 import com.moneymaker.tradeconfig.service.TradeConfigAdminService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,8 +38,9 @@ import java.util.Map;
  *   <li>{@code GET  /api/trade-configs?date=&page=&size=} – paged list</li>
  *   <li>{@code GET  /api/trade-configs/{id}}              – single config</li>
  *   <li>{@code POST /api/trade-configs}                   – create</li>
- *   <li>{@code PUT  /api/trade-configs/{id}}              – update</li>
+ *   <li>{@code PUT  /api/trade-configs/{id}?confirm=}     – update (409 + {@code confirmRequired} while trades are open)</li>
  *   <li>{@code DELETE /api/trade-configs/{id}}            – delete (blocked if executed trades exist)</li>
+ *   <li>{@code POST /api/trade-configs/{id}/active?value=} – retire / reinstate without deleting</li>
  *   <li>{@code GET  /api/trade-configs/instruments}       – instrument dropdown source</li>
  *   <li>{@code GET  /api/trade-configs/strategies}        – strategy dropdown source</li>
  * </ul>
@@ -91,13 +93,51 @@ public class TradeConfigAdminController {
         }
     }
 
+    /**
+     * Update. Returns <b>409 with {@code confirmRequired: true}</b> — not an
+     * error — when the config has OPEN trades and the edit touches something
+     * those trades still read (GAPS #8). The response names each change so the
+     * dialog can show them; re-sending with {@code ?confirm=true} applies the
+     * same edit. An edit that only moves the bracket never trips this: those
+     * values were snapshotted onto the order at entry.
+     */
     @PutMapping("/api/trade-configs/{id}")
     @ResponseBody
-    public ResponseEntity<?> update(@PathVariable Integer id, @RequestBody TradeConfigFormDTO form) {
+    public ResponseEntity<?> update(@PathVariable Integer id,
+                                    @RequestBody TradeConfigFormDTO form,
+                                    @RequestParam(value = "confirm", defaultValue = "false") boolean confirm) {
         try {
-            return ResponseEntity.ok(service.update(id, form));
+            return ResponseEntity.ok(service.update(id, form, confirm));
         } catch (IllegalArgumentException e) {
             log.warn("[trade-config] update {} rejected: {}", id, e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (ConfirmationRequiredException e) {
+            log.info("[trade-config] update {} needs confirmation: {}", id, e.getMessage());
+            return ResponseEntity.status(409).body(Map.of(
+                    "error", e.getMessage(),
+                    "confirmRequired", true,
+                    "openTrades", e.getOpenTrades(),
+                    "changes", e.getChanges()));
+        }
+    }
+
+    /**
+     * Retire ({@code value=false}) or reinstate ({@code value=true}) a config
+     * without deleting it (GAPS #7). A retired config stops being dispatched but
+     * keeps its id and its whole trade history; trades already open run to their
+     * own exits.
+     *
+     * <p>POST rather than PUT because it is a row action, not a representation
+     * replacement — and deliberately not a field on the edit form, so a stale
+     * form cannot flip it as a side effect of an unrelated save.
+     */
+    @PostMapping("/api/trade-configs/{id}/active")
+    @ResponseBody
+    public ResponseEntity<?> setActive(@PathVariable Integer id,
+                                       @RequestParam("value") boolean value) {
+        try {
+            return ResponseEntity.ok(service.setActive(id, value));
+        } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }

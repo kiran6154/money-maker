@@ -45,5 +45,6 @@
     <include file="db/changelog/034_create_sma_downtrend_rule_strategy.xml"/>
     <include file="db/changelog/035_strategy_ids_on_trade_config.xml"/>
     <include file="db/changelog/036_add_trailing_stop_loss.xml"/>
+    <include file="db/changelog/037_add_is_active_to_trade_config.xml"/>
 
 </databaseChangeLog>

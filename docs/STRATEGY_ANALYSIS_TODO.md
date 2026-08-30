@@ -168,6 +168,23 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 
 ---
 
+### S12. A config that leaves `SharedData.combinedDto` mid-day strands its open trades' broker exits
+
+| | |
+|---|---|
+| Where | [`OrderService.findConfig`](../src/main/java/com/moneymaker/order/service/OrderService.java) reads `SharedData.combinedDto`; its callers are `closeOrder`, the manual close, and the force-close exit. `SharedData.combinedDto` is rebuilt from [`TradeConfigRepository.fetchCombinedByTradingDate`](../src/main/java/com/moneymaker/repository/TradeConfigRepository.java) by `TradeConfigScheduler` and by `TradeConfigAdminService.afterMutation`. |
+| Why | An **exit** is sized from the cached config, not from the order row. `trade_order.quantity` has been snapshotted since changeset 029, but the placement services read `config.getTradeConfig().getLotQuantity()` and fall back to quantity `1` when the config is absent -- one unit against a 75-unit lot opens a position rather than closing one -- so `OrderService` treats a null config as "do not place". The ledger row is then marked `CLOSED` while the broker position stays open. That is one of the four paths `alertForceCloseExitFailed` was built for (GAPS #1), and the alert is the only thing standing between it and an overnight position. |
+| How a config leaves the list mid-day | Three ways today, all reachable from the admin UI: editing `tradingDate` to another day, the bulk `force` delete, and (as of 2026-08-31) retiring a config via `is_active`. The first has existed all along and is precisely the workaround GAPS #7 was written to replace, so this is **not a hazard the retire feature introduced** -- it is one the retire feature made visible. |
+| Filed here, not in `GAPS.md` | It decides whether an open trade actually gets closed at the broker, which is what trades get taken in the only sense that costs money. |
+| What is already done | `TradeConfigAdminService.setActive` **refuses** to retire a config with OPEN trades, and the GAPS #8 confirmation gate now names a `tradingDate` change as consequential while trades are open. Both are guards at the admin surface; neither fixes the underlying resolution. |
+| Impact | **Unquantified.** What would measure it: scan the ledger for rows whose `exit_reason` is set but whose `exit_broker_order_id` is null in live mode, and cross-check against `alert_state` / the Telegram log for a matching `alertForceCloseExitFailed`. A zero count would say the path has never been hit in production; a non-zero count names real stranded positions. Cannot be measured in backtest -- `BacktestingOrderPlacementService` never needs the config for an exit. |
+| Fix sketch | Make exit-side config resolution not depend on the live cache. Two shapes, both Rule 0 because they change whether an exit is placed: **(a)** fall back to a `tradeConfigRepository.findById` when `findConfig` misses -- correct and cheap, but it means an exit can go out for a config the dispatch list has deliberately dropped, which is the *intent* here but should be stated rather than inherited; **(b)** size the exit from `trade_order.quantity`, the value the entry actually carried, and stop consulting the config for exits entirely -- arguably the right answer, since an exit should mirror its own entry rather than today's configuration, but it changes the quantity on every live exit path and needs a before/after on a live-mode ledger, not a replay. Neither attempted. |
+| Effort | **S** for (a), **M** for (b) including the verification. The decision is the work. |
+| Priority | _TBD -- filed 2026-08-31 while implementing GAPS #7; not yet raised with the user. No behaviour was changed on the basis of this entry beyond refusing the one new way to trigger it._ |
+
+---
+
+
 ## Resolved
 
 ### S2. `Strategy1` scanned every config's legs, not its own — **RESOLVED 2026-08-25**

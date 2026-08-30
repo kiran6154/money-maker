@@ -62,4 +62,14 @@ public class TradeConfigViewDTO {
 
     /** Last write; shown so a generated row can be traced back to its run. */
     private LocalDateTime updatedDate;
+
+    /**
+     * False = retired (GAPS #7): the config keeps its id and its whole
+     * {@code trade_order} history but is skipped by dispatch, so nothing new
+     * opens against it. Read-only on the edit form — toggled through
+     * {@code POST /api/trade-configs/{id}/active?value=}, because retiring is a
+     * row action rather than a field edit and must not be something a stale form
+     * can flip by accident on an unrelated save.
+     */
+    private boolean active;
 }

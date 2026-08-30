@@ -136,9 +136,38 @@ public class TradeConfigAdminService {
 
     @Transactional
     public TradeConfigViewDTO update(Integer id, TradeConfigFormDTO form) {
+        return update(id, form, false);
+    }
+
+    /**
+     * @param confirm the caller has seen the consequential-change warning and
+     *                wants the edit anyway. Ignored when the config has no OPEN
+     *                trades, which is the overwhelmingly common case.
+     * @throws ConfirmationRequiredException when trades are open and the edit
+     *         touches something those trades still read. See
+     *         {@link #consequentialChanges(TradeConfig, TradeConfigFormDTO)}.
+     */
+    @Transactional
+    public TradeConfigViewDTO update(Integer id, TradeConfigFormDTO form, boolean confirm) {
         validate(form);
         TradeConfig tc = tradeConfigRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("No trade config with id=" + id));
+
+        if (!confirm) {
+            long openTrades = tradeOrderRepository.countByTradeConfigIdAndStatus(id, STATUS_OPEN);
+            if (openTrades > 0) {
+                List<String> changes = consequentialChanges(tc, form);
+                if (!changes.isEmpty()) {
+                    throw new ConfirmationRequiredException(
+                            "Config " + id + " has " + openTrades + " open trade(s), and this edit changes "
+                                    + String.join("; ", changes)
+                                    + ". Those changes affect the rest of today's behaviour on this config. "
+                                    + "Re-send with confirm=true to apply.",
+                            changes, openTrades);
+                }
+            }
+        }
+
         LocalDate previousDate = tc.getTradingDate();
         applyForm(tc, form);
         tradeConfigRepository.save(tc);
@@ -158,12 +187,124 @@ public class TradeConfigAdminService {
         if (tradeOrderRepository.existsByTradeConfigId(id)) {
             throw new IllegalStateException(
                     "Cannot delete trade config " + id + " — trade_order rows reference it. " +
-                    "Configs with executed trades are kept for audit.");
+                    "Configs with executed trades are kept for audit. " +
+                    "To stop it running without losing its history, retire it instead: " +
+                    "POST /api/trade-configs/" + id + "/active?value=false");
         }
         smaTimeframeRepository.deleteByTradeConfigId(id);
         tradeConfigRepository.deleteById(id);
         afterMutation(tc.getTradingDate());
         log.info("[trade-config] deleted id={}", id);
+    }
+
+    /**
+     * Retires or reinstates a config without touching its history (GAPS #7).
+     *
+     * <p>An inactive config is skipped by
+     * {@code TradeConfigRepository.fetchCombinedByTradingDate}, so no strategy
+     * scans it and no new trade opens against it. It keeps its id, its
+     * {@code sma_timeframe} children and every {@code trade_order} row that
+     * references it — which is exactly what hard delete cannot offer for a config
+     * that has traded, and what forcing {@code tradingDate} into the past was
+     * being abused to fake.</p>
+     *
+     * <h3>Refused while the config has OPEN trades</h3>
+     * Not a nicety. Retiring drops the config out of {@code SharedData.combinedDto},
+     * and {@code OrderService.findConfig} resolves an open row's config from exactly
+     * that list when it needs the quantity for an <b>exit</b>. With no DTO the exit
+     * is never dispatched: the ledger row is marked CLOSED while the broker position
+     * stays open — the failure GAPS #1's {@code alertForceCloseExitFailed} exists to
+     * shout about. Retiring is supposed to mean "open nothing further"; also meaning
+     * "and strand what is open" is not a trade-off worth offering behind a
+     * confirmation dialog, so this refuses and says what to do instead.
+     *
+     * <p>The underlying hazard is older than this method — editing a config's
+     * {@code tradingDate} into the past does the same thing, and that is precisely
+     * the workaround GAPS #7 exists to replace — and is filed as
+     * {@code STRATEGY_ANALYSIS_TODO.md} S12. When it is fixed, this refusal can
+     * relax to a warning.</p>
+     *
+     * <p>Reinstating is always allowed: it can only add a config back to dispatch.</p>
+     */
+    @Transactional
+    public TradeConfigViewDTO setActive(Integer id, boolean active) {
+        TradeConfig tc = tradeConfigRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("No trade config with id=" + id));
+
+        long openTrades = tradeOrderRepository.countByTradeConfigIdAndStatus(id, STATUS_OPEN);
+        if (!active && openTrades > 0) {
+            throw new IllegalStateException(
+                    "Cannot retire trade config " + id + " — it has " + openTrades + " open trade(s). "
+                            + "A retired config leaves SharedData.combinedDto, and an exit leg is sized from "
+                            + "that cached config, so those positions would be closed in the ledger without an "
+                            + "order reaching the broker. Close them first (or let the 15:31 sweep close them), "
+                            + "then retire.");
+        }
+
+        tc.setIsActive(active);
+        tradeConfigRepository.save(tc);
+        afterMutation(tc.getTradingDate());
+
+        log.info("[trade-config] {} id={} date={}", active ? "reinstated" : "retired", id, tc.getTradingDate());
+        return findById(id);
+    }
+
+    /** Ledger status for a live position — matches {@code OrderService}'s vocabulary. */
+    private static final String STATUS_OPEN = "OPEN";
+
+    /**
+     * The changes that a currently-open trade would still feel, i.e. the ones
+     * worth stopping the user for (GAPS #8).
+     *
+     * <p>The rule is one line: <b>a field is consequential unless the order
+     * snapshotted it at entry.</b> The bracket did get snapshotted —
+     * {@code target_at_entry} / {@code stop_loss_at_entry} (changeset 011),
+     * {@code trail_ladder_at_entry} (036) — precisely so a mid-day edit could not
+     * retroactively re-price an open position, so target / stop-loss / their
+     * percentage forms / the max-SL cap / the ladder are all deliberately absent
+     * from this list. Editing them mid-trade is safe by construction and warning
+     * about it would train the operator to click through the dialog.</p>
+     *
+     * <p>What is <i>not</i> snapshotted, and therefore is listed:</p>
+     * <ul>
+     *   <li>{@code transactionType} / {@code tradingSide} — which side and which
+     *       leg the rest of the day trades.</li>
+     *   <li>{@code lotQuantity} — {@code trade_order.quantity} is snapshotted
+     *       (029), but the placement services size an order from the <i>config</i>
+     *       ({@code ZerodhaOrderPlacementService.quantity}), so an open trade
+     *       would exit at a different size than it entered. That is a partial
+     *       close or an accidental reversal, not a resize.</li>
+     *   <li>{@code numberOfTradesPerDay} / {@code numberOfParallelTrades} — the
+     *       caps the rest of the day is counted against, with trades already
+     *       counting toward them.</li>
+     *   <li>{@code strategyId} — {@code (trade_config_id, strategy_id)} is the
+     *       identity those caps are applied against, so moving it re-buckets the
+     *       open trades' accounting.</li>
+     *   <li>{@code instrumentId} / {@code tradingDate} — at that point it is a
+     *       different config wearing the same id.</li>
+     * </ul>
+     */
+    private List<String> consequentialChanges(TradeConfig current, TradeConfigFormDTO form) {
+        List<String> changes = new ArrayList<>();
+        Integer currentInstrumentId = current.getInstrument() == null ? null : current.getInstrument().getId();
+
+        addIfChanged(changes, "instrument", currentInstrumentId, form.getInstrumentId());
+        addIfChanged(changes, "tradingDate", current.getTradingDate(), form.getTradingDate());
+        addIfChanged(changes, "tradingSide", current.getTradingSide(), form.getTradingSide());
+        addIfChanged(changes, "transactionType", current.getTransactionType(), form.getTransactionType());
+        addIfChanged(changes, "lotQuantity", current.getLotQuantity(), form.getLotQuantity());
+        addIfChanged(changes, "numberOfTradesPerDay",
+                current.getNumberOfTradesPerDay(), form.getNumberOfTradesPerDay());
+        addIfChanged(changes, "numberOfParallelTrades",
+                current.getNumberOfParallelTrades(), form.getNumberOfParallelTrades());
+        addIfChanged(changes, "strategyId", current.getStratergyId(), form.getStrategyId());
+        return changes;
+    }
+
+    private static void addIfChanged(List<String> into, String field, Object before, Object after) {
+        if (!Objects.equals(before, after)) {
+            into.add(field + ": " + before + " -> " + after);
+        }
     }
 
     /* ---------------- auto-generated config bulk delete ---------------- */
@@ -646,6 +787,10 @@ public class TradeConfigAdminService {
         v.setTrailLadder(tc.getTrailLadder());
         v.setSource(tc.getSource());
         v.setUpdatedDate(tc.getUpdatedDate());
+        // Null on rows written before changeset 037 reads as active, matching the
+        // COALESCE in fetchCombinedByTradingDate: the list must not show a config
+        // as retired that dispatch is still running.
+        v.setActive(tc.getIsActive() == null || tc.getIsActive());
         v.setMaxLoss(tc.getMaxLoss());
         v.setOptionDepth(tc.getOptionDepth());
         v.setLotQuantity(tc.getLotQuantity());

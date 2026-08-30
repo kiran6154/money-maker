@@ -113,26 +113,32 @@ Legend for effort:
 | Left open | No authentication. The endpoint sits behind whatever fronts the app, the same as `/api/orders/purge` and `/api/trade-configs/auto/delete` -- a standing gap for the whole admin surface, not this endpoint's to solve. |
 | Tests | [`DaySummaryManualRerunTest`](../src/test/java/com/moneymaker/admin/controller/DaySummaryManualRerunTest.java) -- drives the real `DaySummaryScheduler` through the controller rather than mocking it, so the idempotency claim is exercised rather than restated: missed run replays both halves, completed day is a no-op (including under repeated calls), only the pending half replays, force bypasses both markers, a back-dated run uses that day's close, and the weekend rejection. |
 
-## 7. Trade-config delete blocked by `trade_order` history â€” no soft-delete path
+## 7. Trade-config delete blocked by `trade_order` history -- no soft-delete path -- **RESOLVED 2026-08-31**
 
 | | |
 |---|---|
+| Where | [`TradeConfigAdminService.setActive`](../src/main/java/com/moneymaker/tradeconfig/service/TradeConfigAdminService.java), `POST /api/trade-configs/{id}/active?value=` |
 | Where | [`TradeConfigAdminService.delete`](../src/main/java/com/moneymaker/tradeconfig/service/TradeConfigAdminService.java) â†’ HTTP 409 |
 | Why | Configs that ever fired a trade can't be removed, ever. Operationally fine for audit but the list view will grow forever â€” and there's no way to mark a config as "retired, do not run anymore today" without changing its `trading_date` to a past day. |
-| Partly addressed 2026-08-25 | The bulk delete now takes `force`, which removes traded configs **and their `trade_order` rows** â€” see [EOD_DOWNTREND.md](EOD_DOWNTREND.md#force-deleting-configs-that-have-trades). That covers "clear out configs I no longer want", including `source: MANUAL` ones. It does **not** cover the retire-without-deleting case below: the single-config `DELETE` still 409s, and there is still no way to keep a config's history while stopping it from running. |
-| Fix sketch | New `is_active BOOLEAN` column on `trade_config` (Liquibase 018). `findByTradingDate` becomes `findByTradingDateAndIsActiveTrue`. UI gets a toggle in the row actions; hard delete stays for configs that never traded. |
-| Effort | **M** |
-| Priority | _TBD_ |
+| Resolution | The fix sketch, at changeset **037** rather than 018 (018 was already taken twice). `trade_config.is_active BOOLEAN NOT NULL DEFAULT TRUE`, backfilled TRUE, and `fetchCombinedByTradingDate` -- the query that builds `SharedData.combinedDto`, i.e. the actual dispatch list -- gained `AND COALESCE(tc.is_active, TRUE) = TRUE`. A retired config keeps its id, its `sma_timeframe` children and every `trade_order` row, and simply stops being scanned. `findByTradingDate` was deliberately **not** narrowed: the admin list has to show retired configs or you cannot reinstate one. |
+| Behaviour on deploy | Unchanged. Everything is active until someone retires it, and `COALESCE` rather than a bare `= TRUE` means a row that somehow carries NULL still dispatches -- "unknown" must mean active, because the alternative is silently retiring every config on the day 037 lands. |
+| UI | Row action in `trade-configs.html`: **Retire** / **Reinstate**, with retired rows dimmed so they cannot be misread as trading today. Hard delete is unchanged for configs that never traded, and its 409 message now names the retire endpoint instead of leaving the operator at a dead end. |
+| **Retiring is refused while trades are OPEN** | Found while building this, and it is the interesting part. A retired config leaves `SharedData.combinedDto` -- and `OrderService.findConfig` reads exactly that list to size an **exit**. With no DTO the exit is not dispatched: the row is marked `CLOSED` and the broker position stays open, which is one of the four paths GAPS #1's `alertForceCloseExitFailed` exists for. A confirmation dialog does not make that outcome less wrong, so `setActive(id, false)` refuses and says to close the trades first. Reinstating is never blocked. |
+| Filed, not fixed (Rule 0) | The underlying resolution bug is **older than this feature** -- editing `tradingDate` into the past does the same thing, and that is the very workaround this entry set out to replace. Filed as [S12](STRATEGY_ANALYSIS_TODO.md#s12-a-config-that-leaves-shareddatacombineddto-mid-day-strands-its-open-trades-broker-exits) because it decides whether an open trade actually gets closed at the broker. When S12 lands, this refusal can relax to a warning. |
+| Tests | [`TradeConfigRetireAndConfirmTest`](../src/test/java/com/moneymaker/tradeconfig/service/TradeConfigRetireAndConfirmTest.java) -- retire keeps the row and deletes nothing, refuses with open trades, allows once flat, reinstate is never blocked, a pre-037 NULL reads as active, and the delete message names the alternative. |
 
-## 8. Trade-config edit silently allowed while OPEN trades exist on that config
+## 8. Trade-config edit silently allowed while OPEN trades exist on that config -- **RESOLVED 2026-08-31**
 
 | | |
 |---|---|
 | Where | [`TradeConfigAdminService.update`](../src/main/java/com/moneymaker/tradeconfig/service/TradeConfigAdminService.java) |
 | Why | Target / SL changes are safe (the order has snapshot fields from changeset 011), but changing `transactionType`, `numberOfParallelTrades` or `lotQuantity` mid-day on a config that has 3 open trades will subtly alter the rest of the day's behaviour without warning. |
-| Fix sketch | Cheap version: UI checks `existsByTradeConfigId(id) + statusOpen` and shows a yellow banner before the user clicks Save. Stricter version: backend returns 409 unless `?confirm=true` is appended. |
-| Effort | **S** for banner; **M** for backend confirm flow. |
-| Priority | _TBD_ |
+| Resolution | The **stricter** half of the fix sketch, because the cheap banner cannot know what the user is about to change -- it can only say "this config has open trades", which is the kind of standing warning people stop reading. `PUT /api/trade-configs/{id}` returns **409 with `confirmRequired: true`** and the list of changes; the same request with `?confirm=true` applies it. It is a warning, not a block: nothing is refused, and the UI dialog names each change (`lotQuantity: 75 -> 150`) rather than asking a generic "are you sure?". |
+| The rule for what counts | One line: **a field is consequential unless the order snapshotted it at entry.** Target / stop-loss / their percentage forms / the max-SL cap / the trailing ladder are all absent from the gate, because changesets 011 / 036 snapshot them onto `trade_order` precisely so a mid-day edit cannot re-price an open position. Warning about those would be false and would train the operator to click through. What is left, and therefore gated: `transactionType`, `tradingSide`, `lotQuantity`, `numberOfTradesPerDay`, `numberOfParallelTrades`, `strategyId`, `instrument`, `tradingDate`. |
+| Wider than the entry's three | The entry named `transactionType`, `numberOfParallelTrades` and `lotQuantity`. The rule above pulls in five more for the same reason those three qualify: `tradingSide` picks the leg, `numberOfTradesPerDay` is the other lifecycle cap, `strategyId` is half the `(config, strategy)` identity the caps are counted against, and `instrument` / `tradingDate` make it a different config wearing the same id. Enumerating three of eight would have been arbitrary. |
+| Why `lotQuantity` matters despite changeset 029 | `trade_order.quantity` **is** snapshotted, but the placement services size an order from the *config* (`ZerodhaOrderPlacementService.quantity`), so an open trade would exit at a different size than it entered -- a partial close or an accidental reversal, not a resize. |
+| Only OPEN trades gate | A config with a hundred closed trades and nothing live edits freely; `countByTradeConfigIdAndStatus(id, "OPEN")` is the check, not `existsByTradeConfigId`. |
+| Tests | [`TradeConfigRetireAndConfirmTest`](../src/test/java/com/moneymaker/tradeconfig/service/TradeConfigRetireAndConfirmTest.java) -- no open trades means no gate, bracket-only and no-op edits never ask, `lotQuantity` asks and writes nothing, all eight fields report at once, `confirm=true` applies, and closed-only history does not gate. |
 
 ## 9. No "clone yesterday's configs to today" workflow
 

@@ -148,6 +148,14 @@ public interface TradeOrderRepository extends JpaRepository<TradeOrder, Long> {
     boolean existsByTradeConfigId(Integer tradeConfigId);
 
     /**
+     * How many trades this config currently has in a given status. Used by the
+     * trade-config admin to decide whether an edit needs confirming: a change to
+     * a field the order did <b>not</b> snapshot at entry alters the behaviour of
+     * positions that are still live (GAPS #8).
+     */
+    long countByTradeConfigIdAndStatus(Integer tradeConfigId, String status);
+
+    /**
      * Counts the trade rows attached to a set of configs. Used by the bulk
      * auto-config delete to tell the user how much history a forced delete
      * would take with it, before they confirm it.

@@ -431,10 +431,66 @@ Backtest mode is gated at `TelegramNotifier.send()` — `telegram.backtest-enabl
 | GET | `/api/trade-configs?date=&page=&size=` | Paged list, optionally filtered by trading date |
 | GET | `/api/trade-configs/{id}` | Single config + its `sma_timeframe` rows |
 | POST | `/api/trade-configs` | Create |
-| PUT | `/api/trade-configs/{id}` | Update |
+| PUT | `/api/trade-configs/{id}?confirm=` | Update — `409 confirmRequired` while trades are open, see [Editing a config with live trades](#editing-a-config-with-live-trades) |
 | DELETE | `/api/trade-configs/{id}` | Delete — `409` if any `trade_order` references the config |
+| POST | `/api/trade-configs/{id}/active?value=` | Retire / reinstate without deleting, see [Retiring a config](#retiring-a-config) |
 | GET | `/api/trade-configs/instruments` | Instrument dropdown source |
 | GET | `/api/trade-configs/strategies` | Strategy dropdown source |
+
+### Retiring a config
+
+`is_active` (changeset 037, GAPS #7) is the retire-without-deleting state. A
+config that has ever traded cannot be hard-deleted — the ledger references it —
+and before this the only way to silence one was to shove its `tradingDate` into
+the past, which falsifies the record of what the config was for.
+
+Retired means **dropped from dispatch**:
+`TradeConfigRepository.fetchCombinedByTradingDate` — the query that builds
+`SharedData.combinedDto` — filters on `COALESCE(tc.is_active, TRUE) = TRUE`. The
+row, its `sma_timeframe` children and all its `trade_order` history stay exactly
+where they are. `findByTradingDate` is deliberately *not* filtered: the admin
+list must show retired configs or you cannot reinstate one.
+
+`COALESCE` rather than `= TRUE` on purpose — a NULL must read as active. The
+alternative is silently retiring every config on the day the changeset lands.
+
+**Retiring is refused while the config has OPEN trades**, and this is the part
+worth remembering. A retired config leaves `SharedData.combinedDto`, and
+`OrderService.findConfig` reads exactly that list to size an **exit**. With no
+DTO the exit is never dispatched: the row is marked `CLOSED` while the broker
+position stays open — one of the four paths `alertForceCloseExitFailed` exists
+for. Close the trades first (or let the 15:31 sweep close them), then retire.
+Reinstating is never blocked.
+
+> The underlying resolution bug is older than the retire feature — editing
+> `tradingDate` to another day does the same thing — and is filed as
+> [`STRATEGY_ANALYSIS_TODO.md` S12](STRATEGY_ANALYSIS_TODO.md#s12-a-config-that-leaves-shareddatacombineddto-mid-day-strands-its-open-trades-broker-exits).
+> When that lands, the refusal can relax to a warning.
+
+### Editing a config with live trades
+
+`PUT /api/trade-configs/{id}` returns **409 with `confirmRequired: true`** — not
+an error — when the config has OPEN trades *and* the edit touches something
+those trades still read (GAPS #8). The body lists each change
+(`lotQuantity: 75 -> 150`) so the dialog can name them; `?confirm=true` applies
+the same edit. It is a warning, not a block.
+
+The rule for what counts is one line: **a field is consequential unless the
+order snapshotted it at entry.**
+
+| | Fields | Why |
+|---|---|---|
+| **Never asks** | `target`, `stopLoss`, `targetPct`, `slPct`, `maxSlPoints`, `trailLadder`, the premium band | Snapshotted onto `trade_order` at entry by changesets 011 / 036, precisely so a mid-day edit cannot re-price an open position. Warning here would be false, and would train the operator to click through. |
+| **Asks** | `transactionType`, `tradingSide`, `lotQuantity`, `numberOfTradesPerDay`, `numberOfParallelTrades`, `strategyId`, `instrument`, `tradingDate` | Read live for the rest of the day. |
+
+`lotQuantity` is the one that surprises people: `trade_order.quantity` *is*
+snapshotted (changeset 029), but the placement services size an order from the
+**config** (`ZerodhaOrderPlacementService.quantity`), so an open trade would exit
+at a different size than it entered. That is a partial close or an accidental
+reversal, not a resize.
+
+Only `OPEN` trades gate — a config with a hundred closed trades and nothing live
+edits freely.
 
 [`TradeConfigAdminController`](../src/main/java/com/moneymaker/tradeconfig/controller/TradeConfigAdminController.java) is a thin HTTP layer; [`TradeConfigAdminService`](../src/main/java/com/moneymaker/tradeconfig/service/TradeConfigAdminService.java) is the **single owner** of trade-config writes — controllers and other feature code must call it rather than `TradeConfigRepository` directly (see the CLAUDE.md / AGENTS.md invariant).
 
