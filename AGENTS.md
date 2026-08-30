@@ -106,7 +106,7 @@ When changing anything in these areas, read the relevant doc first:
 | Broker rate limiting + retry | [`docs/RATE_LIMITING.md`](docs/RATE_LIMITING.md) | Resilience4j wiring, the cache / reshape PR roadmap |
 | Telegram alerts + dedupe | [`docs/NOTIFICATIONS.md`](docs/NOTIFICATIONS.md) | `NotificationService` facade, `sendIfChanged` / `sendThrottled`, backtest gate |
 | EOD downtrend auto-config | [`docs/EOD_DOWNTREND.md`](docs/EOD_DOWNTREND.md) | `sma_downtrend_rule` table, end-of-day detector, `trade_config.source` marker, extension hooks |
-| Observation journal + CHoCH/BOS | [`docs/OBSERVATION_JOURNAL.md`](docs/OBSERVATION_JOURNAL.md) | Platform-level capture of candidates/entries/exits, the `FeatureContributor` SPI, and market-structure detection (`confirmableAt` matters) |
+| Observation journal + CHoCH/BOS | [`docs/OBSERVATION_JOURNAL.md`](docs/OBSERVATION_JOURNAL.md) | Platform-level capture of candidates/entries/exits **and the during-position timeline** (`MONITOR` / `EVENT`), the `FeatureContributor` SPI, and market-structure detection (`confirmableAt` matters) |
 | Cross-workflow system map | [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md) | Every workflow end-to-end (trigger → steps → reads/writes), plus which workflows feed each other's data — the view none of the per-feature docs above gives on its own |
 
 If you add a doc, link it here. If you change behaviour described in a doc, update the doc in the same change — see the next section.

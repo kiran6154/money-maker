@@ -2,6 +2,7 @@ package com.moneymaker.position.service;
 
 import com.moneymaker.dto.Quote;
 import com.moneymaker.entity.TradeOrder;
+import com.moneymaker.journal.PositionJournal;
 import com.moneymaker.order.service.OrderService;
 import com.moneymaker.repository.TradeOrderRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,7 +49,7 @@ class PositionServiceTrailTest {
         PositionMonitorFactory factory = mock(PositionMonitorFactory.class);
         when(factory.active()).thenReturn(monitor);
 
-        positionService = new PositionService(repo, factory, orderService);
+        positionService = new PositionService(repo, factory, orderService, mock(PositionJournal.class));
 
         order = new TradeOrder();
         order.setId(1L);

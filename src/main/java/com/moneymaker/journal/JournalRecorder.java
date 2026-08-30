@@ -114,9 +114,29 @@ public class JournalRecorder {
      * throw, and this is the enforcement.
      */
     public void record(ObservationContext context, boolean selected) {
+        record(context, selected, null);
+    }
+
+    /**
+     * As {@link #record(ObservationContext, boolean)}, plus features only the
+     * call site can know.
+     *
+     * <p>A contributor sees the market; it cannot see what the caller decided
+     * about it. The position monitor's own state — unrealised P&amp;L, the peak
+     * the trade has given back, which threshold (if any) it just breached — is
+     * knowable only where the decision was made, and it is the difference
+     * between a MONITOR row that describes the market and one that can explain a
+     * blown stop tick by tick.
+     *
+     * <p>Extras are applied <em>after</em> the contributors, so a call site can
+     * be explicit about a key it owns. Keys are namespaced ({@code monitor_*})
+     * to keep that from being an accident.
+     */
+    public void record(ObservationContext context, boolean selected, Map<String, Object> extraFeatures) {
         if (!enabled || context == null) return;
         try {
             Map<String, Object> features = collectFeatures(context);
+            if (extraFeatures != null) features.putAll(extraFeatures);
             buffer(toObservation(context, selected, features, null, null, null));
         } catch (Exception ex) {
             logWriteFailure("building observation", ex);

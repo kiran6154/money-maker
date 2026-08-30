@@ -5,6 +5,7 @@ import com.moneymaker.journal.FeatureContributor;
 import com.moneymaker.journal.ObservationContext;
 import com.moneymaker.structure.MarketStructureAnalyzer;
 import com.moneymaker.structure.MarketStructureAnalyzer.StructureEvent;
+import com.moneymaker.structure.StructureEventCache;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -13,7 +14,6 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Market-structure state (CHoCH / BOS) for both the option leg and the index, as
@@ -39,42 +39,16 @@ public class StructureContributor implements FeatureContributor {
     private final MarketStructureAnalyzer analyzer;
 
     /**
-     * Memo of {@code analyze(series)} keyed on the series instance.
-     *
-     * <p>Every leg evaluated in a tick is handed the <em>same</em> underlying
-     * list object - {@code SharedData} holds one per (symbol, interval) - so
-     * without this the ~2000-bar index series is re-analysed once per candidate,
-     * and that term dominates journalling cost across a ~138k-row run.
-     *
-     * <p>Keyed on identity plus size and last timestamp: a fresh slice is a new
-     * object and misses, and a list that somehow grew in place would miss too.
-     * Bounded and cleared wholesale, because entries are only ever useful within
-     * the tick that created them.
+     * Shared memo of {@code analyze(series)}, so the ~2000-bar index series is
+     * analysed once per tick rather than once per candidate — and so the
+     * {@code EVENT} rows {@code PositionJournal} emits describe the same
+     * analysis this contributor summarises.
      */
-    private final Map<String, List<StructureEvent>> memo = new ConcurrentHashMap<>();
-
-    private static final int MEMO_MAX = 512;
+    private final StructureEventCache structureEvents;
 
     @Override
     public String name() {
         return "structure";
-    }
-
-    /** Analyse once per distinct series instance. */
-    private List<StructureEvent> analyzed(List<MarketData> candles) {
-        MarketData last = candles.get(candles.size() - 1);
-        String key = System.identityHashCode(candles) + ":" + candles.size()
-                + ":" + (last == null ? "?" : String.valueOf(last.getTimestamp()));
-        List<StructureEvent> hit = memo.get(key);
-        if (hit != null) {
-            return hit;
-        }
-        if (memo.size() >= MEMO_MAX) {
-            memo.clear();
-        }
-        List<StructureEvent> computed = analyzer.analyze(candles);
-        memo.put(key, computed);
-        return computed;
     }
 
     @Override
@@ -96,7 +70,7 @@ public class StructureContributor implements FeatureContributor {
         if (candles == null || candles.isEmpty()) {
             return;
         }
-        List<StructureEvent> events = analyzed(candles);
+        List<StructureEvent> events = structureEvents.eventsFor(candles);
         if (events.isEmpty()) {
             return;
         }
