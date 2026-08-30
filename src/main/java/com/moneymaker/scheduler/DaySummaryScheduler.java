@@ -55,8 +55,9 @@ import java.util.TreeSet;
  *
  * <p>With the default once-a-day cron there is no second tick to retry on; the
  * recovery paths are an operator-set repeating {@code app.market.summary-cron}
- * (which the two-key gate now makes safe to run every few minutes) or the manual
- * re-run endpoint tracked as GAPS #6.</p>
+ * (which the two-key gate now makes safe to run every few minutes) and
+ * {@code POST /api/admin/day-summary} — the manual re-run of GAPS #6, which calls
+ * {@link #runEndOfDayFor(LocalDate, boolean)} directly.</p>
  *
  * <p>Skipped entirely in backtest mode — {@code BacktestAnalysisService}
  * already calls {@link OrderService#forceCloseOpenPositions(LocalDate, LocalDateTime)}
@@ -106,26 +107,44 @@ public class DaySummaryScheduler {
      * The end-of-day work for one date, with the wall clock supplied rather than
      * read. Split out of the {@code @Scheduled} method so the day's date is a
      * parameter and not an ambient fact — which is what lets the tests exercise a
-     * fixed weekday, and what a manual re-run endpoint (GAPS #6) would call.
-     *
-     * <p>Note for that endpoint: the close moment still comes from
-     * {@link MarketHoursService#marketCloseToday()}, so replaying a <i>past</i>
-     * date would force-close it at today's close timestamp. Re-running the
-     * current day (the case gap #6 describes) is correct as-is; a back-dated
-     * re-run needs a date-aware close first.</p>
+     * fixed weekday, and what the manual re-run endpoint (GAPS #6) calls.
      */
     void runEndOfDayFor(LocalDate today) {
-        if (today.getDayOfWeek() == DayOfWeek.SATURDAY || today.getDayOfWeek() == DayOfWeek.SUNDAY) {
-            return;
-        }
-        boolean legacyAlreadyFired = dailyEventGuard.alreadyFired(LEGACY_ALERT_KEY, today);
+        runEndOfDayFor(today, false);
+    }
 
-        LocalDateTime closeAt = marketHours.marketCloseToday();
-        log.info("[day-summary] {} — running end-of-day at {}", today, closeAt);
+    /**
+     * @param force bypass {@link DailyEventGuard} and run both halves regardless
+     *              of what has already fired for this date. The manual re-run
+     *              endpoint's escape hatch (GAPS #6) for the case the guard cannot
+     *              distinguish: the digest went out, but it was wrong — it fired
+     *              before a delayed close, so the day it summarised was not over.
+     *              Everything the guard <i>can</i> see (a missed run, a Telegram
+     *              that failed to send) is already handled by re-running without
+     *              force, which is why force is not the default.
+     *
+     * <p>Force is safe on the force-close half too:
+     * {@link OrderService#forceCloseOpenPositions} only ever selects rows still in
+     * status {@code OPEN}, so a second pass over an already-swept day closes
+     * nothing and returns 0.</p>
+     *
+     * @return the number of positions force-closed on this pass
+     */
+    public int runEndOfDayFor(LocalDate today, boolean force) {
+        if (today.getDayOfWeek() == DayOfWeek.SATURDAY || today.getDayOfWeek() == DayOfWeek.SUNDAY) {
+            return 0;
+        }
+        boolean legacyAlreadyFired = !force && dailyEventGuard.alreadyFired(LEGACY_ALERT_KEY, today);
+
+        // Date-aware, not "today's" close: a re-run for a past date must stamp
+        // exits with that day's close, not the current one.
+        LocalDateTime closeAt = marketHours.marketCloseOn(today);
+        log.info("[day-summary] {} — running end-of-day at {}{}", today, closeAt,
+                force ? " (force: guard bypassed)" : "");
 
         // ---- half 1: force-close. Marked only after it returns cleanly. ----
         int forceClosed = 0;
-        if (legacyAlreadyFired || dailyEventGuard.alreadyFired(KEY_FORCE_CLOSE, today)) {
+        if (legacyAlreadyFired || (!force && dailyEventGuard.alreadyFired(KEY_FORCE_CLOSE, today))) {
             log.info("[day-summary] {} — force-close already ran today, skipping it", today);
         } else {
             try {
@@ -141,9 +160,9 @@ public class DaySummaryScheduler {
         }
 
         // ---- half 2: the digest. Marked only after Telegram confirms. ----
-        if (legacyAlreadyFired || dailyEventGuard.alreadyFired(KEY_TELEGRAM, today)) {
+        if (legacyAlreadyFired || (!force && dailyEventGuard.alreadyFired(KEY_TELEGRAM, today))) {
             log.info("[day-summary] {} — digest already delivered today, skipping it", today);
-            return;
+            return forceClosed;
         }
 
         String body = buildSummary(today, forceClosed);
@@ -163,6 +182,7 @@ public class DaySummaryScheduler {
             log.warn("[day-summary] {} — digest NOT delivered; '{}' left unmarked so the next tick retries",
                     today, KEY_TELEGRAM);
         }
+        return forceClosed;
     }
 
     /* ---------------- summary builder ---------------- */
@@ -175,8 +195,8 @@ public class DaySummaryScheduler {
         if (trades.isEmpty()) {
             return String.format(
                     "*Day Summary — %s*%n  no trades%n  market window: %s–%s",
-                    date, TIME_FMT.format(marketHours.marketOpenToday()),
-                    TIME_FMT.format(marketHours.marketCloseToday()));
+                    date, TIME_FMT.format(marketHours.marketOpenOn(date)),
+                    TIME_FMT.format(marketHours.marketCloseOn(date)));
         }
 
         Map<Integer, Integer> lotQuantities = lotQuantitiesFor(trades);
@@ -228,8 +248,8 @@ public class DaySummaryScheduler {
         String nl = System.lineSeparator();
         sb.append("*Day Summary — ").append(date).append("*").append(nl);
         sb.append("  window      : ")
-          .append(TIME_FMT.format(marketHours.marketOpenToday())).append("–")
-          .append(TIME_FMT.format(marketHours.marketCloseToday())).append(nl);
+          .append(TIME_FMT.format(marketHours.marketOpenOn(date))).append("–")
+          .append(TIME_FMT.format(marketHours.marketCloseOn(date))).append(nl);
         sb.append("  trades      : ").append(total).append(nl);
         sb.append("  closed      : ").append(closed).append(nl);
         sb.append("  open left   : ").append(openLeftover).append(nl);

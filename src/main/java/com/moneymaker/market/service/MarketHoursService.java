@@ -194,12 +194,27 @@ public class MarketHoursService {
 
     /** Today's close moment in the configured zone. */
     public LocalDateTime marketCloseToday() {
-        return LocalDate.now(zone).atTime(close);
+        return marketCloseOn(LocalDate.now(zone));
+    }
+
+    /**
+     * The close moment on a given date. Same value as {@link #marketCloseToday()}
+     * when the date is today — the split exists so end-of-day work can be re-run
+     * for a past date and still stamp exits with <i>that</i> day's close rather
+     * than the current one.
+     */
+    public LocalDateTime marketCloseOn(LocalDate date) {
+        return date.atTime(close);
     }
 
     /** Today's open moment in the configured zone. */
     public LocalDateTime marketOpenToday() {
-        return LocalDate.now(zone).atTime(open);
+        return marketOpenOn(LocalDate.now(zone));
+    }
+
+    /** The open moment on a given date. See {@link #marketCloseOn(LocalDate)}. */
+    public LocalDateTime marketOpenOn(LocalDate date) {
+        return date.atTime(open);
     }
 
     public ZoneId zone() {

@@ -100,15 +100,18 @@ Legend for effort:
 | Left open | With the default once-a-day cron there is **no second tick** to retry on. The gate now makes a repeating `app.market.summary-cron` (e.g. every 5 min through the 15:30-16:00 window) safe to set â€” idempotent in both halves â€” but choosing that schedule is an operator decision, and the proper fix is still the manual re-run endpoint of gap #6. `runEndOfDay()` was split into a package-private `runEndOfDayFor(LocalDate)` partly to give that endpoint something to call. |
 | Tests | [`DaySummarySentMarkerTest`](../src/test/java/com/moneymaker/scheduler/DaySummarySentMarkerTest.java). |
 
-## 6. No manual re-run for end-of-day work
+## 6. No manual re-run for end-of-day work -- **RESOLVED 2026-08-31**
 
 | | |
 |---|---|
+| Where | [`DaySummaryAdminController`](../src/main/java/com/moneymaker/admin/controller/DaySummaryAdminController.java) |
 | Where | n/a â€” endpoint doesn't exist |
-| Why | If `DaySummaryScheduler` is missed because the JVM was down at 15:31, or it fired before a delayed close, there's no way to replay it from the UI â€” restart-safe gating means even a manual code call would no-op. Operator has to run a SQL `DELETE FROM alert_state WHERE alert_key='day-summary' AND alert_date='â€¦'` then wait for the next cron. |
-| Fix sketch | `POST /api/admin/day-summary?date=â€¦&force=true` on a new admin controller; if `force=true`, bypass `DailyEventGuard`. Mirrors the `/api/backtest/*` style. |
-| Effort | **S** |
-| Priority | _TBD_ |
+| Resolution | `POST /api/admin/day-summary?date=&force=`, exactly the sketch. Calls `DaySummaryScheduler.runEndOfDayFor(date, force)` -- the method GAPS #5 split out for this purpose -- which now takes the force flag and returns the number of positions it closed. `date` defaults to today in `app.market.timezone`; a weekend date is rejected 400 with the reason rather than returning a silent success the caller has to interpret. |
+| Idempotency is inherited, not written | Without `force` this needed **no new logic**: the two-key sent-marker gate from GAPS #5 already records which half completed, so a plain re-run executes the pending half and skips the finished one. A missed 15:31 runs both halves; a failed Telegram re-sends the digest and does *not* force-close twice; a completed day does nothing, however many times it is called. `force` bypasses the markers and exists for the one case they cannot see -- the digest was delivered and it was wrong, because it fired before a delayed close. |
+| Also fixed here | The caveat GAPS #5 left on `runEndOfDayFor`: the close moment came from `marketHours.marketCloseToday()`, so a back-dated re-run would have stamped a past day's exits with today's close. New `MarketHoursService.marketCloseOn(date)` / `marketOpenOn(date)` make it date-aware. For `date = today` the value is identical, so the 15:31 cron is byte-for-byte unchanged -- worth doing before shipping the endpoint rather than after, because the exit timestamp is what every downstream report reads. |
+| Not mode-gated | Unlike the cron, on purpose: an operator hitting this asked for it explicitly, and in backtest `TelegramNotifier` suppresses the send while `OrderPlacementFactory` resolves to `BACKTESTING`, so nothing reaches a broker. |
+| Left open | No authentication. The endpoint sits behind whatever fronts the app, the same as `/api/orders/purge` and `/api/trade-configs/auto/delete` -- a standing gap for the whole admin surface, not this endpoint's to solve. |
+| Tests | [`DaySummaryManualRerunTest`](../src/test/java/com/moneymaker/admin/controller/DaySummaryManualRerunTest.java) -- drives the real `DaySummaryScheduler` through the controller rather than mocking it, so the idempotency claim is exercised rather than restated: missed run replays both halves, completed day is a no-op (including under repeated calls), only the pending half replays, force bypasses both markers, a back-dated run uses that day's close, and the weekend rejection. |
 
 ## 7. Trade-config delete blocked by `trade_order` history â€” no soft-delete path
 

@@ -57,8 +57,10 @@ class DaySummarySentMarkerTest {
         notifier = mock(NotificationService.class);
         guard = mock(DailyEventGuard.class);
 
-        when(marketHours.marketCloseToday()).thenReturn(MONDAY.atTime(15, 30));
-        when(marketHours.marketOpenToday()).thenReturn(MONDAY.atTime(9, 15));
+        when(marketHours.marketCloseOn(any(LocalDate.class))).thenAnswer(
+                inv -> inv.getArgument(0, LocalDate.class).atTime(15, 30));
+        when(marketHours.marketOpenOn(any(LocalDate.class))).thenAnswer(
+                inv -> inv.getArgument(0, LocalDate.class).atTime(9, 15));
         when(tradeOrderRepository.findByEntryTimeBetween(any(), any())).thenReturn(List.of());
         when(orderService.forceCloseOpenPositions(any(LocalDate.class), any(LocalDateTime.class))).thenReturn(2);
 
