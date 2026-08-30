@@ -97,7 +97,12 @@ public class TradeOrder {
     @Column(name = "last_monitored_at")
     private LocalDateTime lastMonitoredAt;
 
-    /** Why the trade was closed: SIGNAL / TARGET / STOP_LOSS / FORCE_CLOSE. */
+    /**
+     * Why the trade was closed: SIGNAL / TARGET / STOP_LOSS / TRAIL_SL /
+     * FORCE_CLOSE. {@code TRAIL_SL} is the trailing floor (changeset 036) and is
+     * kept distinct from {@code STOP_LOSS} because it is the opposite outcome —
+     * a trailed exit closes green, the fixed stop closes red.
+     */
     @Column(name = "exit_reason", length = 32)
     private String exitReason;
 
@@ -118,6 +123,21 @@ public class TradeOrder {
     private Integer strategyId;
 
     /**
+     * Order quantity in units (75 = one NIFTY lot), snapshotted from
+     * {@code TradeConfig.lotQuantity} at open.
+     *
+     * <p>Snapshotted for the same reason the bracket below is: it is what the
+     * broker order actually carried, and editing the config's lot size later must
+     * not restate historical trades. Before changeset 029 it was not persisted at
+     * all, which meant rupee P&L could not be derived from the ledger.
+     *
+     * <p>Null on rows written before 029 — {@code TradeChargeService} reports
+     * those as uncosted rather than assuming a lot size.
+     */
+    @Column(name = "quantity")
+    private Integer quantity;
+
+    /**
      * Per-share profit target snapshotted from {@code TradeConfig.target} at the
      * moment this trade was opened. Used by {@code PositionService} so a config
      * edit mid-trade can't retroactively close already-open positions.
@@ -131,4 +151,26 @@ public class TradeOrder {
      */
     @Column(name = "stop_loss_at_entry", precision = 12, scale = 4)
     private BigDecimal stopLossAtEntry;
+
+    /**
+     * Trailing ladder snapshotted from {@code TradeConfig.trailLadder} at open,
+     * already canonicalised by {@code TrailLadder.canonical}. Null = this trade
+     * does not trail.
+     *
+     * <p>Snapshotted for the same reason the bracket above is: editing a ladder
+     * at 13:00 must not re-floor a trade that opened at 09:20.</p>
+     */
+    @Column(name = "trail_ladder_at_entry", length = 128)
+    private String trailLadderAtEntry;
+
+    /**
+     * The currently latched trailing floor in signed premium points — {@code +2}
+     * is a stop two points into profit. Null until the first rung is reached.
+     *
+     * <p>Written by {@code PositionService} as a ratchet: it only ever moves up,
+     * so it records the best floor the trade earned, and survives on a closed row
+     * as the explanation for a {@code TRAIL_SL} exit.</p>
+     */
+    @Column(name = "trail_sl_at", precision = 12, scale = 4)
+    private BigDecimal trailSlAt;
 }

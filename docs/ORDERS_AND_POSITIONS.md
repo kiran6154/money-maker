@@ -34,7 +34,9 @@ How a strategy's `BUY` / `SELL` signal becomes a persisted `TradeOrder` row, get
        Then, on every PositionScheduler tick:
        PositionService walks OPEN rows
        PositionMonitorFactory.active().currentPrice(order)  ──→  updates peak_profit / peak_loss
+       trail_sl_at = highest trail_ladder rung peak_profit has reached (ratchet, never lowers)
        if pnl ≥ target  →  OrderService.closeManually(..., "TARGET")
+       if pnl ≤ trail floor →  OrderService.closeManually(..., "TRAIL_SL")
        if pnl ≤ -stopLoss →  OrderService.closeManually(..., "STOP_LOSS")
 
        At end of backtest day:
@@ -49,6 +51,7 @@ How a strategy's `BUY` / `SELL` signal becomes a persisted `TradeOrder` row, get
 |---|---|---|
 | `id` | open | Surrogate primary key. |
 | `trade_config_id` | open | Which config produced the trade. |
+| `strategy_id` | open | Which strategy produced the trade, snapshotted from the emitting `TradeSignal` so a later re-tag can't restate history (changeset 015). Since 031 this is **not** decorative: `(trade_config_id, strategy_id)` is the ledger identity every cap and dedupe rule below is keyed on, because one config can be tagged with several strategies. |
 | `instrument_name` / `instrument_token` | open | Underlying (e.g. `NIFTY`, token `256265`). |
 | `option_strike` / `option_type` / `option_token` | open | Specific option leg. `option_token` is unique per strike+expiry+type and is the dedupe / monitor key. |
 | `entry_direction` | open | `BUY` or `SELL`. The leg side at entry. |
@@ -58,19 +61,26 @@ How a strategy's `BUY` / `SELL` signal becomes a persisted `TradeOrder` row, get
 | `exit_broker_order_id` | close (live) | Same for the exit leg. |
 | `fill_status` | open / close | `PENDING` / `COMPLETE` / `REJECTED` / `CANCELLED` / `BACKTEST`. The most-recent leg's broker fill state (refreshed by the sync endpoint). |
 | `exit_time` / `exit_price` / `profit` | close | Exit leg fields. `profit` is per-share. |
-| `exit_reason` | close | `SIGNAL` / `TARGET` / `STOP_LOSS` / `FORCE_CLOSE`. |
+| `exit_reason` | close | `SIGNAL` / `TARGET` / `STOP_LOSS` / `TRAIL_SL` / `FORCE_CLOSE`. `TRAIL_SL` is the trailing floor (036) and is deliberately not folded into `STOP_LOSS` — it is the opposite outcome, since a trailed exit closes green. |
 | `peak_profit` / `peak_loss` | each PositionScheduler tick while OPEN | High-water-mark / low-water-mark of unrealised per-share P&L. |
 | `last_monitored_price` / `last_monitored_at` | each PositionScheduler tick while OPEN | Most recent quote and tick time. |
+| `quantity` | open | Order quantity in units (75 = one NIFTY lot), **snapshotted at entry** from `tradeConfig.lotQuantity` — the same value the placement services send. Snapshotted for the same reason the bracket is: it is what the broker order actually carried, and editing the config's lot size later must not restate history. Before changeset 029 it was not persisted at all, so rupee P&L could not be derived from the ledger. Null on pre-029 rows, which `TradeChargeService` reports as uncosted rather than assuming a lot size. |
 | `target_at_entry` / `stop_loss_at_entry` | open | Per-share thresholds **snapshotted at entry** by `OrderService.bracketAtEntry`: `entryPrice × tradeConfig.targetPct` when the config carries a percentage, else the absolute `tradeConfig.target` / `tradeConfig.stopLoss`. PositionService reads from the row, never from the live config — so a config edit mid-trade can't retroactively close existing positions, and SL/target works even when `SharedData.combinedDto` is stale or empty. |
+| `trail_ladder_at_entry` | open | Trailing rungs **snapshotted at entry** from `tradeConfig.trailLadder`, canonicalised by `TrailLadder.canonical`. Null = this trade does not trail. Snapshotted for the same reason the bracket is: editing a ladder at 13:00 must not re-floor a trade opened at 09:20. A ladder that fails to parse at entry is logged and degrades to null — the trade opens on its fixed stop rather than not opening at all. |
+| `trail_sl_at` | each PositionScheduler tick while OPEN | The latched trailing floor in **signed** premium points — `+2` is a stop two points into profit. Null until the first rung is reached. Only ever moves up (`PositionService.applyTrail`), so on a closed row it records the best floor the trade earned and explains a `TRAIL_SL` exit. |
 
 Liquibase changesets that built this:
 - 008 — initial table.
 - 009 — broker order ids + fill_status.
 - 010 — monitor columns (peak / last-monitored / exit_reason).
 - 011 — target / stop-loss snapshot columns.
+- 036 — trailing stop-loss (`trail_ladder_at_entry`, `trail_sl_at`) + the `max_sl_points` ceiling on `trade_config`.
+- 029 — `trade_order.quantity`, plus the `charge_rate` table (date-effective brokerage / statutory rates). See [Charges and net P&L](#charges-and-net-pl).
 - 027 — `trade_config.target_pct` / `sl_pct`, the premium-relative bracket the snapshot resolves. Nullable: null keeps the absolute columns. See [EOD_DOWNTREND.md](EOD_DOWNTREND.md).
+- 031 / 035 — lets one config be run by several strategies: 031 added a `trade_config_strategy` tag table, 035 replaced it with the `trade_config.strategy_ids` CSV column. See [STRATEGIES.md](STRATEGIES.md#how-a-config-reaches-a-strategy).
+- 032 — backfills `trade_order.strategy_id` on rows written before 015. Required by 031: the gates below put `strategy_id` in the predicate, and `strategy_id = 1` is never true for a NULL, so an un-backfilled pre-015 row would drop out of every cap and let an already-capped config re-enter.
 
-Open-position lookup index (`idx_trade_order_open_lookup`) covers `(trade_config_id, instrument_token, option_type, status)` from changeset 008. The dedupe key in `OrderService` later moved to `option_token`, which doesn't have a dedicated index — currently a small-N filter, fine until thousands of trades land per day.
+Open-position lookup index (`idx_trade_order_open_lookup`) covers `(trade_config_id, instrument_token, option_type, status)` from changeset 008. The dedupe key in `OrderService` later moved to `option_token` and, from 031, also carries `strategy_id` — neither has a dedicated index. Currently a small-N filter, fine until thousands of trades land per day; the fan-out multiplies row count by the number of tags, so it gets there sooner than it used to.
 
 ---
 
@@ -82,7 +92,7 @@ Open-position lookup index (`idx_trade_order_open_lookup`) covers `(trade_config
 | `entry_price` saved on the row | candle's **close** at the moment of signal |
 | `exit_price` on signal-driven close | candle's **close** at the moment of the close-signal |
 | `exit_price` on TARGET / STOP_LOSS | next candle's **close** picked up by the position monitor |
-| `exit_price` on EOD force-close | last cached candle's **close** at-or-before market close |
+| `exit_price` on EOD force-close | last cached candle's **close** at-or-before market close, from the finest cached interval (`SharedData.latestCachedCandle`) |
 | **SMA values the gate compares against** | candle's **low** — see note below |
 
 **SMA-on-lows is intentional.** [`SMAIndicatorImpl`](../src/main/java/com/moneymaker/indicator/SMAIndicatorImpl.java) wraps `LowPriceIndicator`, not `ClosePriceIndicator`. Because `SMA(low) ≤ SMA(close)`, the "rejection at SMA" gate (`open > SMA && close < SMA`) is more permissive — the candle's open more easily clears the SMA and the close more easily sits below it, surfacing intraday rejection candles a close-based SMA would miss. **Don't change this without consulting the strategy author.**
@@ -91,25 +101,37 @@ Open-position lookup index (`idx_trade_order_open_lookup`) covers `(trade_config
 
 ## Open / close decision rules
 
+> **The ledger identity is `(trade_config_id, strategy_id)`, not the config alone.**
+> Since changeset 031 a config can be tagged with several strategies (see
+> [STRATEGIES.md → How a config reaches a strategy](STRATEGIES.md#how-a-config-reaches-a-strategy)),
+> so every rule below is scoped to the strategy that emitted the signal —
+> carried on `TradeSignal.strategyId` and stamped onto `trade_order.strategy_id`
+> at open. Each tagged strategy gets its own caps, its own realised-loss budget,
+> and its own position on a given leg. A config tagged with one strategy behaves
+> exactly as it did before.
+
 `OrderService.handleSignal(signal, placement)` evaluates rules in this order:
 
-1. **Existing OPEN row for the same `(tradeConfigId, optionToken)`?**
+1. **Existing OPEN row for the same `(tradeConfigId, strategyId, optionToken)`?**
    - Same direction → skip (true duplicate).
    - Opposite direction → close it via `closeOrder(...)`.
+   - Scoped by strategy so one strategy's exit signal can't close a position another strategy opened on the same leg.
 2. **No open row, signal direction matches `tradeConfig.transactionType`?**
    - Yes → continue.
    - No → skip ("BUY signal arrived but config is SELL-only — exit-only signal suppressed").
 3. **Hit the per-day cap?** (`tradeConfig.numberOfTradesPerDay`)
-   - Counts **all** entries for this config today (every strike, OPEN + CLOSED).
+   - Counts **all** entries this strategy made from this config today (every strike, OPEN + CLOSED).
    - `null` / `<= 0` → no cap. Re-entries on the same strike after a CLOSED trade earlier in the day are allowed.
    - Cap reached → skip.
+   - Per strategy, not shared: two strategies on one config would otherwise share one budget, and whichever fired first would silence the other for the day.
 4. **Hit the parallel-direction cap?** (`tradeConfig.numberOfParallelTrades`)
-   - Counts **OPEN** trades for this config in the **same direction** as the incoming signal (BUY / SELL).
+   - Counts **OPEN** trades for this `(config, strategy)` in the **same direction** as the incoming signal (BUY / SELL).
    - `null` / `<= 0` → no cap.
    - Cap reached → skip. Once one of those open trades exits, a fresh signal can take its place.
-5. **Exact duplicate?** (`(tradeConfigId, optionToken, entryDirection, entryTime)`)
+5. **Exact duplicate?** (`(tradeConfigId, strategyId, optionToken, entryDirection, entryTime)`)
    - True when a row already exists with this same key — re-running the same backtest, or the same signal getting queued twice within one tick. Skipped to keep the ledger idempotent.
    - Legitimate re-entries on the same strike later in the day fire at a *different* `entryTime`, so this guard doesn't block them.
+   - `strategyId` is in the key because two strategies tagged on one config can legitimately cross on the same leg at the same candle. Without it the second one's entry would be discarded as a duplicate and the strategy would look like it never fired.
 
 The dedupe key is `option_token`, **not** `(instrument_token, option_type)`. Earlier the broader key collided across strikes — a 24100 BUY would close an open 24200 SELL because both are CE on NIFTY. The narrower key fixed that.
 
@@ -120,7 +142,7 @@ The dedupe key is `option_token`, **not** `(instrument_token, option_type)`. Ear
 | Path | Trigger | Sets `exit_reason` | Calls broker exit? |
 |---|---|---|---|
 | `OrderService.closeOrder(...)` | Strategy signal of opposite direction matches an open row | `SIGNAL` | Yes |
-| `OrderService.closeManually(...)` | `PositionService` detects target / stop-loss breach | `TARGET` / `STOP_LOSS` (caller passes) | Yes |
+| `OrderService.closeManually(...)` | `PositionService` detects target / trailing-floor / stop-loss breach | `TARGET` / `TRAIL_SL` / `STOP_LOSS` (caller passes) | Yes |
 | `OrderService.forceCloseOpenPositions(date, closeAt)` | End-of-day cleanup from `BacktestAnalysisService` | `FORCE_CLOSE` | No (local-only — live force-close needs a separate broker exit, deferred PR) |
 
 All three persist the row before any broker call so the ledger is always the source of truth.
@@ -158,7 +180,7 @@ So a backtest run never hits a live broker even with `broker.active=ZERODHA`.
 
 | Impl | `currentPrice(order)` |
 |---|---|
-| [Backtesting](../src/main/java/com/moneymaker/backtesting/BacktestingPositionMonitorService.java) | walks `SharedData.strikeMarketDataByInstrumentAndInterval`, finds latest cached candle whose key has `optionToken` in segment 4 |
+| [Backtesting](../src/main/java/com/moneymaker/backtesting/BacktestingPositionMonitorService.java) | `SharedData.latestCachedCandle(optionToken, null)` — newest cached candle for the contract, taken from the **finest interval** cached for it |
 | [Zerodha](../src/main/java/com/moneymaker/broker/zerodha/ZerodhaPositionMonitorService.java) | `kiteConnect.getLTP(new String[]{optionToken})` — bails on null when not logged in |
 | [Groww](../src/main/java/com/moneymaker/broker/groww/GrowwPositionMonitorService.java) | skeleton — TODO |
 | [Angel One](../src/main/java/com/moneymaker/broker/angelone/AngelOnePositionMonitorService.java) | skeleton — TODO |
@@ -181,11 +203,53 @@ peak_loss   = min(peak_loss,   pnl)
 last_monitored_price = price
 last_monitored_at    = now
 
+# Ratchet the trailing floor up to whatever rung the PEAK has earned (never down).
+lock = highest trail_ladder_at_entry rung whose trigger <= peak_profit
+if lock != null and lock > trail_sl_at: trail_sl_at = lock
+
 # Read thresholds from the snapshot on the row, NOT from SharedData / live config.
-if pnl >=  order.target_at_entry      → OrderService.closeManually(id, price, now, "TARGET")
-if pnl <= -order.stop_loss_at_entry   → OrderService.closeManually(id, price, now, "STOP_LOSS")
-else                                   → save row
+floor  = max(-order.stop_loss_at_entry, order.trail_sl_at)   # whichever is TIGHTER
+reason = "TRAIL_SL" if the trail supplied the floor else "STOP_LOSS"
+
+if pnl >= order.target_at_entry → OrderService.closeManually(id, price, now, "TARGET")
+if pnl <= floor                 → OrderService.closeManually(id, price, now, reason)
+else                            → save row
 ```
+
+**Why the two stops are collapsed into one floor instead of checked in sequence.**
+A candle can gap through both at once. If they were checked one after the other,
+the *order of the two `if`s* would decide the exit reason on exactly those ticks
+— and the reason is the only thing that distinguishes a trailed exit from a
+stopped-out one afterwards. Taking the higher floor and labelling it by whichever
+put it there makes the answer independent of evaluation order. A trail sitting
+*exactly* on the fixed stop reports `STOP_LOSS`, because it moved nothing.
+
+### Trailing stop-loss (changeset 036)
+
+`trade_config.trail_ladder` holds ascending `trigger:lock` pairs in premium
+points — `"25:2,50:25,75:50,100:75"` reads as "once the trade has been 25 points
+in profit the stop moves to +2; at 50 it moves to +25". Parsed **only** by
+`com.moneymaker.util.TrailLadder`, which is strict: a malformed rung is rejected
+at the admin form and refused at entry, never silently trimmed. (Contrast
+`StrategyIds`, which skips bad fragments — a dropped strategy id stops trades
+visibly, a dropped rung changes exits invisibly.)
+
+Three properties worth keeping in mind:
+
+- **It latches off `peak_profit`, not current P&L.** Touching +50 fixes the +25
+  floor even if price falls straight back to +30. That is the entire point: it
+  converts excursion the trade actually achieved into a floor.
+- **It only ever tightens.** `parse` rejects a ladder whose locks decrease, and
+  `applyTrail` refuses to lower a floor already set.
+- **A rung cannot close the trade on the tick it arms.** `parse` requires
+  `lock < trigger`, so P&L at the moment of arming is always above the new floor.
+  A rung with `lock == trigger` would be a take-profit, which `target_at_entry`
+  already is.
+
+The first rung must be reachable *before* the target or the ladder never arms.
+With `target_pct = 0.20`, an 80-point leg targets 16 — below a 25-point first
+rung — so the ladder is inert at the cheap end of the premium band. That is why
+the rungs are per-config data rather than a constant.
 
 **Why read from the row, not the live config:**
 
@@ -284,6 +348,29 @@ Backtest mode is gated at `TelegramNotifier.send()` — `telegram.backtest-enabl
 
 [`TradeConfigAdminController`](../src/main/java/com/moneymaker/tradeconfig/controller/TradeConfigAdminController.java) is a thin HTTP layer; [`TradeConfigAdminService`](../src/main/java/com/moneymaker/tradeconfig/service/TradeConfigAdminService.java) is the **single owner** of trade-config writes — controllers and other feature code must call it rather than `TradeConfigRepository` directly (see the CLAUDE.md / AGENTS.md invariant).
 
+> **`toView` must map every column the form can edit.** The form is rendered from
+> the view DTO and posted back whole, so a column the DTO drops comes back as a
+> blank and is written as one. Until 2026-08-30 `toView` never set `target_pct`,
+> `sl_pct`, `min_option_price` or `max_option_price`: the list's bracket column
+> showed points only, and **every edit through the UI silently cleared the
+> percentage bracket**, reverting the config to the absolute points bracket that
+> changeset 027 exists to replace. Fixed alongside 036, whose two new columns
+> would have inherited the same bug. When adding a config column, add it in three
+> places — `TradeConfigFormDTO`, `TradeConfigViewDTO`, **and both directions of
+> `TradeConfigAdminService`** (`applyForm` *and* `toView`) — or the round trip
+> quietly destroys it.
+
+> **And a fourth place: the native combined query.** `SharedData.combinedDto` is
+> built by `TradeConfigRepository.fetchCombinedByTradingDate` — a native query
+> consumed **positionally** by `TradeConfigScheduler.mapToTradeConfig`. A column
+> that is not in that SELECT list and not in that mapper is **null on every DTO
+> the pipeline sees**, so the feature reading it silently never runs, in live and
+> backtest alike, with nothing logged. This bit changeset 036 (`max_sl_points` /
+> `trail_ladder` were inert until the query was fixed) and still bites changeset
+> 027 (`target_pct` / `sl_pct` — see [S6](STRATEGY_ANALYSIS_TODO.md)). Append to
+> the **end** of the column's own block, bump the two later mapper offsets, and
+> extend `TradeConfigCombinedQueryContractTest`, which pins the whole ordering.
+
 ### The cache-invalidation contract
 
 Every create / update / delete runs through `afterMutation(affectedDate)`, which:
@@ -345,12 +432,12 @@ control that keeps a config on legs where its thresholds mean something.
 
 ### Where it is enforced — and why not in `OrderService`
 
-In [`Strategy1.outsidePriceBand`](../src/main/java/com/moneymaker/strategy/Strategy1.java),
+In [`AbstractSmaCrossStrategy.outsidePriceBand`](../src/main/java/com/moneymaker/strategy/AbstractSmaCrossStrategy.java),
 at signal generation, against the leg's premium on that candle — the same value
 that becomes `entry_price`. Not at strike-selection time, because a leg out of
 band at 09:20 can be in band by noon.
 
-Legs are scanned **highest premium first** (`Strategy1.premiumComparator`), so
+Legs are scanned **highest premium first** (`AbstractSmaCrossStrategy.premiumComparator`), so
 when a cap allows only one entry the dearest in-band leg wins it. This replaced
 a strike-based proxy — ascending strike for CE, descending for PE, on the
 assumption that deeper ITM is always dearer — which breaks down near expiry and
@@ -384,7 +471,7 @@ so a config that stops trading is diagnosable rather than silently idle.
 
 ## Adding a new exit reason
 
-1. Pick an UPPER_SNAKE name. Currently used: `SIGNAL`, `TARGET`, `STOP_LOSS`, `FORCE_CLOSE`.
+1. Pick an UPPER_SNAKE name. Currently used: `SIGNAL`, `TARGET`, `STOP_LOSS`, `TRAIL_SL`, `FORCE_CLOSE`.
 2. Pass it as the `reason` arg to `OrderService.closeManually(...)` (or wherever the new close path lives).
 3. **Update this doc.** The Close-paths table above is the registry.
 
@@ -410,13 +497,15 @@ Trading-behaviour parameters — anything that controls *when* a trade enters, *
 | Behaviour | Config field |
 |---|---|
 | Entry direction allowed (BUY-only / SELL-only) | `tradeConfig.transactionType` |
-| Max trades per config per day (across all strikes, all statuses) | `tradeConfig.numberOfTradesPerDay` |
-| Max simultaneous OPEN trades per direction | `tradeConfig.numberOfParallelTrades` |
-| Profit target (per share) | `tradeConfig.targetPct` × entry premium, else `tradeConfig.target` → snapshotted to `target_at_entry` at open |
-| Stop loss (per share, positive) | `tradeConfig.slPct` × entry premium, else `tradeConfig.stopLoss` → snapshotted to `stop_loss_at_entry` at open |
+| Max trades per `(config, strategy)` per day (across all strikes, all statuses) | `tradeConfig.numberOfTradesPerDay` |
+| Max simultaneous OPEN trades per `(config, strategy)` per direction | `tradeConfig.numberOfParallelTrades` |
+| Profit target (per share) | `tradeConfig.targetPct` × entry premium, else `tradeConfig.target` → snapshotted to `target_at_entry` at open. **Today the percentage branch never fires** — `target_pct` is not selected by the combined query, so the absolute column always applies; see [S6](STRATEGY_ANALYSIS_TODO.md) |
+| Stop loss (per share, positive) | `tradeConfig.slPct` × entry premium, else `tradeConfig.stopLoss` → snapshotted to `stop_loss_at_entry` at open. Same caveat as the target: `sl_pct` does not reach the pipeline, so the absolute column is what the ceiling below caps |
+| Ceiling on the stop loss, in points (whichever is lower applies) | `tradeConfig.maxSlPoints` — applied at open, so `stop_loss_at_entry` already carries the capped value. Blank on the admin form resolves to the standing 60 (`TradeConfigAdminService.DEFAULT_MAX_SL_POINTS`), **not** to uncapped |
+| Where the stop moves as profit accrues | `tradeConfig.trailLadder` → snapshotted to `trail_ladder_at_entry` at open; blank = no trailing |
 | Lot quantity | `tradeConfig.lotQuantity` |
 | Tradeable premium band at signal time (default 80–250) | `tradeConfig.minOptionPrice` / `tradeConfig.maxOptionPrice` |
-| Which in-band leg wins when a cap allows one | highest premium first — `Strategy1.premiumComparator` |
+| Which in-band leg wins when a cap allows one | highest premium first — `AbstractSmaCrossStrategy.premiumComparator` |
 | Active broker | `broker.active` (application property) |
 | Backtest replay window | `fromDate` / `toDate` from the `/api/backtest/analysis` request |
 
@@ -425,7 +514,7 @@ When a new trading rule is needed and no `TradeConfig` field exists, **ask the u
 ### What MAY stay hardcoded (technical / correctness)
 
 - **Same-candle guard** in `PositionService.handleOne` — a trade cannot exit on the same candle that opened it. Correctness invariant.
-- **Exact-duplicate guard** in `OrderService.handleSignal` — `(configId, optionToken, direction, entryTime)` uniquely identifies one ledger row. Re-runs and same-tick repeats are deduplicated. Idempotency.
+- **Exact-duplicate guard** in `OrderService.handleSignal` — `(configId, strategyId, optionToken, direction, entryTime)` uniquely identifies one ledger row. Re-runs and same-tick repeats are deduplicated. Idempotency.
 - **`STATUS_OPEN` / `STATUS_CLOSED`, `FILL_PENDING` / `FILL_BACKTEST` / `FILL_COMPLETE`** — internal lifecycle vocabulary. Not user-tunable.
 - **Per-share P&L formula** — direction-aware subtraction. A formula, not a parameter.
 
@@ -446,3 +535,63 @@ These aren't trading-behaviour rules per se (they're broker / exchange constants
 - (Both `numberOfTradesPerDay` and `numberOfParallelTrades` are now enforced — see steps 3 and 4 in "Open / close decision rules" above.)
 - **Lot-size aware quantity** — `quantity()` in placement services treats `tradeConfig.lotQuantity` as raw quantity. Multiplying by lot size (50 for NIFTY etc.) needs a data source decision.
 - **Per-position audit trail** — peak / last-monitored is overwritten each tick. If we ever need a full price-vs-time history per trade, an `order_monitor_history` table is the next step. Not added today because it would explode write volume for marginal benefit.
+
+---
+
+## Charges and net P&L
+
+`trade_order.profit` is **per share**. Rupee economics come from
+`TradeChargeService`, which costs a row from `quantity` and the `charge_rate`
+table and returns a `TradeCharges` alongside it on `GET /api/orders`.
+
+### Computed on read, never stored
+
+Nothing is written back onto `trade_order`. The seeded rates are documented but
+**unverified**, so the first real contract note will probably correct one — and
+when it does, every historical trade should re-cost itself rather than carry a
+number frozen from a wrong rate. Charges are a view over the ledger, not part of
+it. Correcting a rate is an `UPDATE`, not a code change or a backfill.
+
+### Rates are date-effective
+
+`charge_rate` is keyed `(charge_type, segment, effective_from)`, and a trade is
+costed with the rates in force on **its own entry date**. This is not
+future-proofing — the 2024 backtest range already spans a change:
+
+| Charge | Until 2024-09-30 | From 2024-10-01 |
+|---|---|---|
+| `STT_SELL_PCT` | 0.0625% of premium | **0.1%** of premium |
+| `EXCHANGE_TXN_PCT` | 0.053% of premium | **0.03503%** of premium |
+
+Measured effect on the 2024 ledger: ₹25.72 average charge per trade before the
+change, ₹31.14 after. A single flat rate would misstate roughly a quarter of the
+trades, in the direction that flatters the earlier ones.
+
+### The formula
+
+Turnover for an option leg is `premium × quantity` — premium turnover, not
+notional, because F&O statutory charges are levied on premium.
+
+| Component | Basis |
+|---|---|
+| Brokerage | per leg: `min(BROKERAGE_FLAT_PER_ORDER, BROKERAGE_PCT_OF_TURNOVER × legTurnover)` |
+| STT | sell leg only |
+| Exchange transaction | both legs |
+| SEBI turnover fee | both legs |
+| Stamp duty | buy leg only |
+| GST | on (brokerage + exchange transaction + SEBI) |
+
+### Assumptions
+
+- **Both legs execute on the entry date.** True for these intraday strategies —
+  `forceCloseOpenPositions` squares off at 15:20 — but a positional variant would
+  need the exit date too.
+- **A row that cannot be costed reports `null`, not zero.** An OPEN position has
+  no exit leg; a pre-029 row has no quantity. The ledger totals count these
+  separately rather than folding them in, so a total never quietly understates cost.
+- **A missing rate contributes zero and logs a warning** rather than throwing, so
+  charges visibly understate instead of aborting a ledger read.
+
+> **The seeded Zerodha rates are unverified.** Every row carries `UNVERIFIED` in
+> its `notes` column and the ledger UI repeats it. STT dominates option selling —
+> if you verify one number against a contract note, verify that one.

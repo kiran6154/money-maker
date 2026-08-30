@@ -4,6 +4,7 @@ import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.entity.SmaTimeframe;
 import com.moneymaker.login.service.BrokerSessionStore;
 import com.moneymaker.market.exception.HistoricalDataMissingException;
+import com.moneymaker.journal.JournalRecorder;
 import com.moneymaker.market.service.TradingCalendar;
 import com.moneymaker.order.service.OrderService;
 import com.moneymaker.repository.TradeOrderRepository;
@@ -44,6 +45,7 @@ public class BacktestAnalysisService {
     private final BacktestMarketDataCache marketDataCache;
     private final EodDowntrendDetectionService eodDowntrendDetectionService;
     private final TradingCalendar tradingCalendar;
+    private final JournalRecorder journal;
 
     public BacktestAnalysisService(
             TradeConfigScheduler tradeConfigScheduler,
@@ -57,7 +59,8 @@ public class BacktestAnalysisService {
             NotificationService notifier,
             BacktestMarketDataCache marketDataCache,
             EodDowntrendDetectionService eodDowntrendDetectionService,
-            TradingCalendar tradingCalendar) {
+            TradingCalendar tradingCalendar,
+            JournalRecorder journal) {
         this.tradeConfigScheduler = tradeConfigScheduler;
         this.analysisScheduler = analysisScheduler;
         this.orderScheduler = orderScheduler;
@@ -70,6 +73,7 @@ public class BacktestAnalysisService {
         this.marketDataCache = marketDataCache;
         this.eodDowntrendDetectionService = eodDowntrendDetectionService;
         this.tradingCalendar = tradingCalendar;
+        this.journal = journal;
     }
 
     public BacktestRunResult run(LocalDate fromDate, LocalDate toDate) {
@@ -85,6 +89,11 @@ public class BacktestAnalysisService {
 
         Instant startedAt = Instant.now();
         List<BacktestDayResult> results = new ArrayList<>();
+
+        // Names every observation this run produces, so two runs over the same
+        // dates stay separable in journal_observation instead of merging into one
+        // indistinguishable pile.
+        journal.beginRun("bt-" + fromDate + "_" + toDate + "-" + startedAt.toEpochMilli());
 
         // Market hours: 09:15–15:30. We stop the strategy loop and force-close
         // every still-OPEN intraday position at 15:20 — that's the de-facto
@@ -247,6 +256,10 @@ public class BacktestAnalysisService {
         // they are the backtest's output ledger.
         SharedData.tradeSignals.clear();
 
+        // Flush the tail of the buffer; without this the last partial batch of a
+        // run is lost, which is most of a short run.
+        journal.endRun();
+
         long durationMs = Duration.between(startedAt, Instant.now()).toMillis();
         long successCount = results.stream().filter(BacktestDayResult::success).count();
         return new BacktestRunResult(fromDate, toDate, results.size(), successCount, durationMs, results);
@@ -356,7 +369,7 @@ public class BacktestAnalysisService {
             catch(Exception e){
                 log.error("[Backtest] calculateIndicator failed at {}", date, e);
             }
-            analysisScheduler.runStrategies();
+            analysisScheduler.runStrategies(date);
             // Capture signals between strategy emit and order drain — processOrders
             // empties the queue, so reading it after would always show 0.
             int signalsEmitted = SharedData.tradeSignals != null ? SharedData.tradeSignals.size() : 0;

@@ -36,5 +36,21 @@ public class TradeConfigFormDTO {
      */
     private BigDecimal targetPct;
     private BigDecimal slPct;
+
+    /**
+     * Ceiling in premium points on the resolved stop-loss; the lower of the two
+     * applies. Blank falls back to the standing 60, <b>not</b> to "uncapped" —
+     * the cap is the exposure limit, and losing it by clearing a field is the
+     * accident it exists to prevent.
+     */
+    private BigDecimal maxSlPoints;
+
+    /**
+     * Trailing rungs as {@code "25:2,50:25"}. Blank here really does mean "no
+     * trailing", unlike {@link #maxSlPoints}: absence of a ladder is just the
+     * pre-036 fixed stop, so it is the safe reading, and it gives the form an
+     * off switch the cap does not need.
+     */
+    private String trailLadder;
     private List<SmaTimeframeDTO> timeframes = new ArrayList<>();
 }

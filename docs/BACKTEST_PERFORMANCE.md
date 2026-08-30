@@ -570,6 +570,21 @@ walks the in-memory set, hydrating each via `findById` only when needed.
 Before merging any phase, run this check. It is cheap and it is the only thing
 standing between "faster" and "different".
 
+> **A ledger produced before the stale-bar fix is not a valid baseline.** Two
+> correctness fixes deliberately change which trades exist and what they close
+> at, so an unchanged-ledger diff against pre-fix rows will show differences that
+> are the fix working, not a regression:
+>
+> - `AbstractSmaCrossStrategy` now skips a decision bar from an earlier session
+>   (see [STRATEGIES.md](STRATEGIES.md#the-shared-engine)). Coarse timeframes no
+>   longer signal before their first bucket of the day settles.
+> - `SharedData.latestCachedCandle` pins quote resolution to the finest cached
+>   interval, so monitor-driven exits (`TARGET` / `STOP_LOSS` / `FORCE_CLOSE`) are
+>   priced off a 5-minute bar instead of whichever interval hashed first.
+>
+> Re-baseline by replaying the range once with both fixes in place, then diff
+> subsequent phases against that.
+
 **Reset between runs.** Both runs must start from the same ledger, or the
 second one sees the first one's positions and diverges for reasons that have
 nothing to do with the change:
@@ -647,3 +662,67 @@ LIVE                                         BACKTEST
 
 Phase 1, 4, 6 only touch the bottom row. Phases 2, 3, 5 are inside the
 shared services but produce mathematically identical outputs.
+
+---
+
+## The settled-bar rule (2026-08-29)
+
+> **Do not "optimise" this away.** It looks like the pipeline is throwing data
+> out. It is. Removing it inflates every backtest result.
+
+`MarketDataService.dropIncompleteBars(bars, asOf, interval)` drops any trailing
+bar whose period has not finished by the request's `to`. It is applied on **all
+three paths** - historical backtest, broker backtest, and live - so there is one
+rule, not a backtest special case.
+
+### Why
+
+A bar stamped `T` covers `[T, T + width)`. In imported data that bar is
+*complete*, so including it at tick `T` handed the strategy five minutes of price
+action that had not happened yet, and then stamped the resulting trade at `T`.
+
+Assuming `close(09:35) == open(09:40)` does **not** rescue it. That argument only
+covers the fill price. The *decision* reads the bar's whole shape - open, high,
+low, close, and the SMA computed over it - none of which exists at 09:35:00.
+
+| At tick 09:35 | Newest admissible bar | Its close is |
+|---|---|---|
+| 5-minute | 09:30 (closed 09:35) | the 09:35 price |
+| 15-minute | 09:15 (closed 09:30) | the 09:30 price |
+
+The newest admissible bar closed exactly at `T`, so its close *is* the price
+transactable at `T` - the fill stays realistic while the decision uses only
+settled data.
+
+### Measured impact
+
+Full-year 2024, the same 88-entry configuration:
+
+| | Net per share |
+|---|---|
+| Before | **+401.10** |
+| After | **-238.90** |
+
+A **-640 swing**, concentrated in `SIGNAL` exits (+235.75 to -447.55) - the exits
+that leaned hardest on the not-yet-formed bar. **The strategy's apparent edge was
+the look-ahead.** Any analysis produced before this date was computed on inflated
+data.
+
+### Live is not exempt
+
+A broker asked for data "up to now" returns the current bar partially formed, and
+the gate reads its open and close - so whether a signal fires depended on how far
+into the bar the 5-minute cron happened to land. Two identical live days could
+disagree. Dropping the forming bar removes that non-determinism as well as the
+backtest look-ahead.
+
+`day` intervals are deliberately exempt: `EodDowntrendDetectionService` asks for
+them at 15:20 for its ATR, and the session's own bar is exactly what it wants.
+
+### Still open
+
+The `BROKER` data source keeps the *aggregation* defect described under Phase 2 -
+it caches whatever the broker returned for the wide window at the requested
+interval and slices that. `dropIncompleteBars` limits the damage to the trailing
+bar, but the fix (fetch at a base interval and roll up locally) is not done.
+`HISTORICAL_ICICI` is the configured source.

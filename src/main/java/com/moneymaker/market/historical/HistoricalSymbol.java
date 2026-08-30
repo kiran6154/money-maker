@@ -26,7 +26,7 @@ import java.util.Locale;
  *
  * <p><b>The separator must not be {@code |}.</b> {@code SharedData} strike keys
  * are {@code token|interval|optionType|strike|optionToken|itmDepth|otmDepth} and
- * are split on {@code \|} by {@code OrderService.ParsedKey}, {@code Strategy1}
+ * are split on {@code \|} by {@code OrderService.ParsedKey}, {@code AbstractSmaCrossStrategy}
  * and {@code BacktestingPositionMonitorService}; a {@code |} inside the symbol
  * would shift every field. The longest encoded form is well under the
  * {@code trade_order.option_token} limit of {@code VARCHAR(100)}.

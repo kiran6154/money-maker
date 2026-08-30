@@ -22,6 +22,19 @@ public class TradeSignal {
     private String strikeKey;
     private TradeAction action;
     private Integer tradeConfigId;
+
+    /**
+     * The strategy that emitted this signal. Together with
+     * {@link #tradeConfigId} it is the ledger identity {@code OrderService}
+     * applies every cap and dedupe rule against.
+     *
+     * <p>Carried on the signal rather than re-derived from the config, because
+     * since changeset 031 one {@code trade_config} can be tagged with several
+     * strategies and the config alone no longer says which one fired. Stamped by
+     * {@code AbstractSmaCrossStrategy} from its own {@code getId()}.</p>
+     */
+    private Integer strategyId;
+
     private LocalDateTime signalTime;
     private Integer primarySma;
     private String interval;

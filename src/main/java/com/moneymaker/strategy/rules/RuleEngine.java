@@ -10,7 +10,7 @@ import com.moneymaker.entity.SmaTimeframe;
  *
  * <p>{@link #decide(RuleContext, TradeRules, TradeRules)} returns a
  * {@link Decision} that carries both the action and a human-readable reason —
- * the caller (typically Strategy1) prints the reason on the tick log so you can
+ * the caller (typically AbstractSmaCrossStrategy) prints the reason on the tick log so you can
  * see at-a-glance WHY a gate did/didn't fire and which rule passed or failed.
  */
 public final class RuleEngine {
@@ -87,7 +87,7 @@ public final class RuleEngine {
      * <p><b>A null or fully-empty rules object fails closed</b> —
      * {@code pass=false, reason="no rules"}. "The strategy has no opinion about
      * this SMA period" must never mean "trade it unconditionally": a period that
-     * reaches {@code Strategy1.sellRulesFor}'s {@code default:} branch is one
+     * reaches {@code AbstractSmaCrossStrategy.sellRulesFor}'s {@code default:} branch is one
      * nobody wrote rules for, so the only safe answer is no signal. Returning
      * true here previously made a commented-out {@code case} widen the strategy
      * instead of disabling it — the SMA-cross gate fired with no trend filter,

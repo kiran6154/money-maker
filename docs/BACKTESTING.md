@@ -49,7 +49,7 @@ option  HIST:NIFTY:NFO:2024-01-04:21700:CE
 `OptionInstrumentResolver` decides which shape is produced —
 `TokenOptionInstrumentResolver` (broker tokens, from `instrument_details` +
 `expiry_dates`) or `HistoricalOptionInstrumentResolver` (natural keys, from
-`historical_option_candles`). `AnalysisScheduler` and `Strategy1` both go through
+`historical_option_candles`). `AnalysisScheduler` and the strategies both go through
 it, so the symbol written into a cache key is always the symbol read back out.
 
 > The separator is `:` and never `|`, because `SharedData` strike keys are
@@ -307,3 +307,41 @@ If you eventually need multiple variants (e.g. `LiveRunner`, `WalkForwardRunner`
 
 Until then, the single-runner / single-step setup is deliberately minimal — easier to reason about than a framework with no users.
 
+---
+
+## Trading days come from the data, not from Mon-Fri
+
+`TradingCalendar` answers "which *dates* does the market trade" - the companion
+to `MarketHoursService`, which answers "which *times* within a date".
+
+| Implementation | Active when | Source of truth |
+|---|---|---|
+| `HistoricalTradingCalendar` | `backtest.data-source=HISTORICAL_ICICI` (`@Primary`) | distinct dates in `historical_spot_candles` |
+| `WeekdayTradingCalendar` | otherwise (`matchIfMissing`) | Mon-Fri |
+
+Assuming weekday == trading day is wrong in **both** directions, and January 2024
+contains one of each:
+
+- **Saturday 2024-01-20 traded** - NSE ran a special session. A weekday rule skips
+  a real session.
+- **Monday 2024-01-22 did not** - market holiday. A weekday rule targets it, and
+  the day is then "replayed" against whatever candles the lookback window happens
+  to end on, i.e. the previous session's.
+
+The historical calendar loads its date set lazily and does not cache an empty
+result, so it starts working as soon as CSVs are imported without a restart.
+
+> **Live still uses the weekday calendar** and therefore still does not know about
+> holidays. That is a live/backtest deviation, deliberately left rather than
+> silently switched, because it changes which days live generates configs for.
+
+## Only settled bars reach the strategy
+
+`MarketDataService.dropIncompleteBars` removes any trailing bar whose period has
+not closed by the request's `to`, on **all** paths - historical, broker, and live.
+
+This is the highest-impact behaviour change in the codebase's recent history:
+full-year 2024 went from **+401.10 to -238.90** per share when it landed, because
+the previous behaviour let the strategy read a bar that had not finished forming.
+Full reasoning, worked boundary examples, and the measured breakdown are in
+[`BACKTEST_PERFORMANCE.md` -> The settled-bar rule](BACKTEST_PERFORMANCE.md).

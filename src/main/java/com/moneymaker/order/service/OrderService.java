@@ -6,12 +6,17 @@ import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.dto.TradeSignal;
 import com.moneymaker.entity.Instrument;
 import com.moneymaker.entity.MarketData;
+import com.moneymaker.entity.TradeConfig;
 import com.moneymaker.entity.TradeOrder;
+import com.moneymaker.journal.JournalRecorder;
+import com.moneymaker.journal.ObservationContextFactory;
+import com.moneymaker.journal.ObservationKind;
 import com.moneymaker.order.dto.OrderPurgeRequestDTO;
 import com.moneymaker.order.dto.OrderPurgeResultDTO;
 import com.moneymaker.repository.TradeOrderRepository;
 import com.moneymaker.shared.data.SharedData;
 import com.moneymaker.telegram.NotificationService;
+import com.moneymaker.util.TrailLadder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,12 +61,52 @@ public class OrderService {
     private final TradeOrderRepository tradeOrderRepository;
     private final NotificationService notifier;
 
+    /**
+     * Journalling is wired here, not into the strategies, because CLAUDE.md
+     * invariant 7 makes this class the single owner of order lifecycle: every
+     * strategy present and future opens and closes through it, so all of them
+     * are journalled without opting in and without a per-strategy edit.
+     */
+    private final JournalRecorder journal;
+    private final ObservationContextFactory observations;
+
     public OrderService(OrderPlacementFactory placementFactory,
                         TradeOrderRepository tradeOrderRepository,
-                        NotificationService notifier) {
+                        NotificationService notifier,
+                        JournalRecorder journal,
+                        ObservationContextFactory observations) {
         this.placementFactory = Objects.requireNonNull(placementFactory, "placementFactory must not be null");
         this.tradeOrderRepository = Objects.requireNonNull(tradeOrderRepository, "tradeOrderRepository must not be null");
         this.notifier = Objects.requireNonNull(notifier, "notifier must not be null");
+        this.journal = Objects.requireNonNull(journal, "journal must not be null");
+        this.observations = Objects.requireNonNull(observations, "observations must not be null");
+    }
+
+    /**
+     * Journals one lifecycle moment. Never throws: a failed observation must not
+     * be able to cost a trade, so anything going wrong here is swallowed by the
+     * recorder and logged there.
+     */
+    private void journal(ObservationKind kind, TradeOrder order, LocalDateTime at, Integer intervalMinutes) {
+        if (!journal.isEnabled() || order == null || at == null) return;
+        journal.record(observations.forOrder(kind, order, at, intervalMinutes), true);
+    }
+
+    /**
+     * Bar width the signal was raised on, e.g. {@code "15minute"} to {@code 15}.
+     * Null when the signal carries no interval - the journal records the leg
+     * without a timeframe rather than guessing one.
+     */
+    private static Integer intervalMinutesOf(TradeSignal signal) {
+        String interval = signal == null ? null : signal.getInterval();
+        if (interval == null) return null;
+        String n = interval.trim().toLowerCase(java.util.Locale.ROOT);
+        if (!n.endsWith("minute")) return null;
+        try {
+            return Integer.valueOf(n.substring(0, n.length() - "minute".length()));
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     public void processOrders() {
@@ -83,9 +128,16 @@ public class OrderService {
     private void handleSignal(TradeSignal signal, OrderPlacementService placement) {
         if (signal == null || signal.getStrikeKey() == null || signal.getAction() == null) return;
 
-        TradeConfigCombinedDTO config = findConfig(signal.getTradeConfigId());
+        // The ledger identity every gate below is keyed on. Since changeset 031 a
+        // config can be tagged with several strategies, so the config id alone no
+        // longer identifies a book: each strategy keeps its own caps, its own
+        // realised-loss budget, and its own position on a given leg.
+        Integer strategyId = signal.getStrategyId();
+
+        TradeConfigCombinedDTO config = findConfig(signal.getTradeConfigId(), strategyId);
         if (config == null) {
-            log.warn("Skipping signal — no config for tradeConfigId={}", signal.getTradeConfigId());
+            log.warn("Skipping signal — no config for tradeConfigId={} strategyId={}",
+                    signal.getTradeConfigId(), strategyId);
             return;
         }
 
@@ -98,9 +150,11 @@ public class OrderService {
         // Match by optionToken (unique per strike+expiry+type) — matching by
         // (instrumentToken, optionType) alone collides across strikes on the same
         // underlying, so a 24100 CE signal would falsely close a 24200 CE open.
+        // Scoped to the strategy too, so one strategy's exit cannot close a
+        // position another strategy opened on the same leg from the same config.
         Optional<TradeOrder> openOpt = tradeOrderRepository
-                .findFirstByTradeConfigIdAndOptionTokenAndStatus(
-                        signal.getTradeConfigId(), key.optionToken, STATUS_OPEN);
+                .findFirstByTradeConfigIdAndStrategyIdAndOptionTokenAndStatus(
+                        signal.getTradeConfigId(), strategyId, key.optionToken, STATUS_OPEN);
 
         if (openOpt.isPresent()) {
             TradeOrder open = openOpt.get();
@@ -125,10 +179,15 @@ public class OrderService {
             return;
         }
 
-        // Per-day cap: respect TradeConfig.numberOfTradesPerDay if set. Counts
-        // all entries for this config today (across all strikes, OPEN + CLOSED).
-        // Null / non-positive means no cap — re-entries are allowed by default,
-        // including on the same strike after a CLOSED trade earlier in the day.
+        // Per-day cap: respect TradeConfig.numberOfTradesPerDay if set. Counts all
+        // entries this strategy made from this config today (across all strikes,
+        // OPEN + CLOSED). Null / non-positive means no cap — re-entries are
+        // allowed by default, including on the same strike after a CLOSED trade
+        // earlier in the day.
+        //
+        // The budget is per strategy, not per config: two strategies tagged on one
+        // config would otherwise share a single numberOfTradesPerDay, and whichever
+        // happened to fire first would silence the other for the rest of the day.
         Integer maxPerDay = config.getTradeConfig() != null
                 ? config.getTradeConfig().getNumberOfTradesPerDay()
                 : null;
@@ -136,11 +195,11 @@ public class OrderService {
             LocalDateTime startOfDay = signal.getSignalTime().toLocalDate().atStartOfDay();
             LocalDateTime endOfDay   = startOfDay.plusDays(1).minusNanos(1);
             long todayCount = tradeOrderRepository
-                    .countByTradeConfigIdAndEntryTimeBetween(
-                            signal.getTradeConfigId(), startOfDay, endOfDay);
+                    .countByTradeConfigIdAndStrategyIdAndEntryTimeBetween(
+                            signal.getTradeConfigId(), strategyId, startOfDay, endOfDay);
             if (todayCount >= maxPerDay) {
-                log.debug("[order] skip signal — numberOfTradesPerDay={} reached for tradeConfigId={} (todayCount={})",
-                        maxPerDay, signal.getTradeConfigId(), todayCount);
+                log.debug("[order] skip signal — numberOfTradesPerDay={} reached for tradeConfigId={} strategyId={} (todayCount={})",
+                        maxPerDay, signal.getTradeConfigId(), strategyId, todayCount);
                 return;
             }
         }
@@ -158,47 +217,53 @@ public class OrderService {
             LocalDateTime sodMax = signal.getSignalTime().toLocalDate().atStartOfDay();
             LocalDateTime eodMax = sodMax.plusDays(1).minusNanos(1);
             BigDecimal realised = tradeOrderRepository.sumRealisedProfitForDay(
-                    signal.getTradeConfigId(), sodMax, eodMax);
+                    signal.getTradeConfigId(), strategyId, sodMax, eodMax);
             if (realised == null) realised = BigDecimal.ZERO;
             if (realised.compareTo(maxLoss.negate()) <= 0) {
-                log.debug("[order] skip signal — daily maxLoss={} reached for tradeConfigId={} (realised={})",
-                        maxLoss, signal.getTradeConfigId(), realised);
+                log.debug("[order] skip signal — daily maxLoss={} reached for tradeConfigId={} strategyId={} (realised={})",
+                        maxLoss, signal.getTradeConfigId(), strategyId, realised);
                 return;
             }
         }
 
         // Concurrent-direction cap: TradeConfig.numberOfParallelTrades caps how
-        // many OPEN trades in the same direction this config can hold at any
-        // moment. Counts only OPEN rows for this config + this signal's
-        // direction (BUY / SELL). Null / non-positive means no cap.
+        // many OPEN trades in the same direction this strategy can hold on this
+        // config at any moment. Counts only OPEN rows for this (config, strategy)
+        // + this signal's direction (BUY / SELL). Null / non-positive means no cap.
         Integer maxParallel = config.getTradeConfig() != null
                 ? config.getTradeConfig().getNumberOfParallelTrades()
                 : null;
         if (maxParallel != null && maxParallel > 0) {
             long openSameDir = tradeOrderRepository
-                    .countByTradeConfigIdAndEntryDirectionAndStatus(
+                    .countByTradeConfigIdAndStrategyIdAndEntryDirectionAndStatus(
                             signal.getTradeConfigId(),
+                            strategyId,
                             signal.getAction().name(),
                             STATUS_OPEN);
             if (openSameDir >= maxParallel) {
-                log.debug("[order] skip signal — numberOfParallelTrades={} reached for tradeConfigId={} dir={} (openSameDir={})",
-                        maxParallel, signal.getTradeConfigId(), signal.getAction(), openSameDir);
+                log.debug("[order] skip signal — numberOfParallelTrades={} reached for tradeConfigId={} strategyId={} dir={} (openSameDir={})",
+                        maxParallel, signal.getTradeConfigId(), strategyId, signal.getAction(), openSameDir);
                 return;
             }
         }
 
         // Exact-duplicate guard: re-runs of the backtest replay identical signals
         // and would otherwise create a fresh row each run. Skip when an existing
-        // row has the same (config, optionToken, direction, entryTime) — that's
-        // the same trade. Legitimate re-entries on the same strike later in the
-        // day fire at a different entryTime and are unaffected.
+        // row has the same (config, strategy, optionToken, direction, entryTime) —
+        // that's the same trade. Legitimate re-entries on the same strike later in
+        // the day fire at a different entryTime and are unaffected.
+        //
+        // The strategy belongs in the key: two strategies tagged on one config can
+        // legitimately cross on the same leg at the same candle, and without it the
+        // second one's entry would be discarded as a duplicate of the first.
         boolean exactDuplicate = tradeOrderRepository
-                .existsByTradeConfigIdAndOptionTokenAndEntryDirectionAndEntryTime(
-                        signal.getTradeConfigId(), key.optionToken,
+                .existsByTradeConfigIdAndStrategyIdAndOptionTokenAndEntryDirectionAndEntryTime(
+                        signal.getTradeConfigId(), strategyId, key.optionToken,
                         signal.getAction().name(), signal.getSignalTime());
         if (exactDuplicate) {
-            log.debug("[order] skip signal — exact duplicate exists: tradeConfigId={} optionToken={} dir={} entryTime={}",
-                    signal.getTradeConfigId(), key.optionToken, signal.getAction(), signal.getSignalTime());
+            log.debug("[order] skip signal — exact duplicate exists: tradeConfigId={} strategyId={} optionToken={} dir={} entryTime={}",
+                    signal.getTradeConfigId(), strategyId, key.optionToken,
+                    signal.getAction(), signal.getSignalTime());
             return;
         }
 
@@ -223,22 +288,37 @@ public class OrderService {
         order.setEntryTime(signal.getSignalTime());
         order.setEntryPrice(signal.getPrice());
         order.setEntryReason(buildEntryReason(signal));
-        order.setStrategyId(config != null && config.getTradeConfig() != null
-                ? config.getTradeConfig().getStratergyId() : null);
+        // From the signal, not from config.getStratergyId(): the config's primary
+        // strategy is not necessarily the one that fired, now that a config can
+        // carry several tags. The DTO's effective strategy is the fallback for a
+        // signal produced before strategies stamped themselves.
+        order.setStrategyId(signal.getStrategyId() != null
+                ? signal.getStrategyId()
+                : (config != null ? config.getStrategyId() : null));
         order.setStatus(STATUS_OPEN);
         order.setFillStatus(initialFillStatus(placement));
         // Snapshot SL / target so PositionService doesn't depend on SharedData
         // staying populated and so mid-trade config edits don't retroactively
         // close already-open trades.
         if (config != null && config.getTradeConfig() != null) {
+            // Same reasoning for quantity: it is what the broker order carries,
+            // and it is the only way rupee P&L and charges can be reconstructed
+            // from the ledger afterwards. Mirrors the quantity the placement
+            // services send (ZerodhaOrderPlacementService.quantity).
+            Integer lotQuantity = config.getTradeConfig().getLotQuantity();
+            order.setQuantity(lotQuantity != null && lotQuantity > 0 ? lotQuantity : 1);
+
             order.setTargetAtEntry(bracketAtEntry(
                     config.getTradeConfig().getTargetPct(),
                     config.getTradeConfig().getTarget(),
                     signal.getPrice()));
-            order.setStopLossAtEntry(bracketAtEntry(
-                    config.getTradeConfig().getSlPct(),
-                    config.getTradeConfig().getStopLoss(),
-                    signal.getPrice()));
+            order.setStopLossAtEntry(capStopLoss(
+                    bracketAtEntry(
+                            config.getTradeConfig().getSlPct(),
+                            config.getTradeConfig().getStopLoss(),
+                            signal.getPrice()),
+                    config.getTradeConfig().getMaxSlPoints()));
+            order.setTrailLadderAtEntry(trailLadderAtEntry(config.getTradeConfig(), order));
         }
         // Seed peak P&L tracking at the entry baseline (0). The position monitor
         // then reports max(0, observed P&L) and min(0, observed P&L) — which
@@ -261,6 +341,7 @@ public class OrderService {
                 order.getInstrumentName(), order.getOptionStrike(), order.getOptionType(), order.getEntryPrice(),
                 order.getEntryBrokerOrderId(), order.getFillStatus());
         notifier.alertOrderOpened(order);
+        journal(ObservationKind.ENTRY, order, order.getEntryTime(), intervalMinutesOf(signal));
     }
 
     /**
@@ -283,6 +364,51 @@ public class OrderService {
             return entryPrice.multiply(pct).setScale(2, RoundingMode.HALF_UP);
         }
         return absolute;
+    }
+
+    /**
+     * Applies {@code TradeConfig.maxSlPoints} to the resolved stop: whichever is
+     * lower wins.
+     *
+     * <p>The cap exists because {@code slPct} scales the stop to the premium the
+     * leg opened at, and rupee risk does not. At the top of the 80-250 band a 30%
+     * stop is 75 points — 5,625 rupees on one 75-unit lot — on a trade whose
+     * target is a fraction of that. Capping only ever tightens, so it cannot turn
+     * a losing config into one that stops out later. See changeset 036.</p>
+     *
+     * <p>Deliberately one-sided: there is no equivalent cap on the target. A short
+     * leg's gain is bounded by its premium while its loss is not, and that
+     * asymmetry argues for bounding the loss alone.</p>
+     */
+    private BigDecimal capStopLoss(BigDecimal resolved, BigDecimal maxSlPoints) {
+        if (resolved == null || maxSlPoints == null || maxSlPoints.signum() <= 0) {
+            return resolved;
+        }
+        return resolved.min(maxSlPoints);
+    }
+
+    /**
+     * Canonicalises the config's trailing ladder onto the order, so
+     * {@code PositionService} trails against the rungs as they stood at entry
+     * rather than as they stand now.
+     *
+     * <p>A malformed ladder degrades to "no trailing" rather than blocking the
+     * trade. {@code TradeConfigAdminService} rejects bad rungs at the form, so
+     * reaching here means the column was hand-edited in SQL — and refusing to
+     * open the trade would answer a config typo with a silent trading outage,
+     * which is the worse failure. The fixed {@code stopLossAtEntry} still
+     * applies, and the error names the config.</p>
+     */
+    private String trailLadderAtEntry(TradeConfig tradeConfig, TradeOrder order) {
+        try {
+            return TrailLadder.canonical(tradeConfig.getTrailLadder());
+        } catch (IllegalArgumentException ex) {
+            log.error("[order] tradeConfigId={} has an unusable trail_ladder \"{}\" — opening {} {}{} "
+                            + "without trailing, fixed stop-loss still applies: {}",
+                    tradeConfig.getId(), tradeConfig.getTrailLadder(), order.getInstrumentName(),
+                    order.getOptionStrike(), order.getOptionType(), ex.getMessage());
+            return null;
+        }
     }
 
     private void closeOrder(TradeOrder open, TradeSignal signal, TradeConfigCombinedDTO config,
@@ -313,6 +439,7 @@ public class OrderService {
                 open.getInstrumentName(), open.getEntryPrice(), open.getExitPrice(), open.getProfit(),
                 open.getExitBrokerOrderId(), open.getFillStatus());
         notifier.alertOrderClosed(open);
+        journal(ObservationKind.EXIT, open, open.getExitTime(), intervalMinutesOf(signal));
     }
 
     private String initialFillStatus(OrderPlacementService placement) {
@@ -394,7 +521,7 @@ public class OrderService {
         }
 
         OrderPlacementService placement = placementFactory.active();
-        TradeConfigCombinedDTO config = findConfig(order.getTradeConfigId());
+        TradeConfigCombinedDTO config = findConfig(order.getTradeConfigId(), order.getStrategyId());
 
         order.setExitTime(exitTime != null ? exitTime : LocalDateTime.now());
         order.setExitPrice(exitPrice);
@@ -417,6 +544,7 @@ public class OrderService {
         log.info("Closed order manually id={} reason={} entry={} → exit={} profit/share={}",
                 order.getId(), reason, order.getEntryPrice(), exitPrice, order.getProfit());
         notifier.alertOrderClosed(order);
+        journal(ObservationKind.EXIT, order, order.getExitTime(), null);
         return order;
     }
 
@@ -541,32 +669,18 @@ public class OrderService {
     }
 
     /**
-     * Pulls the last close price for {@code optionToken} from the cached
-     * {@code SharedData.strikeMarketDataByInstrumentAndInterval} entries — keys
-     * are {@code <instrumentToken>|<interval>|<optionType>|<strike>|<optionToken>|...},
-     * so we match by the optionToken segment. Returns {@code null} if no cached
-     * candle is available.
+     * Last cached close for {@code optionToken} at or before {@code atOrBefore},
+     * or {@code null} when nothing is cached for that contract.
+     *
+     * <p>Delegates to {@link SharedData#latestCachedCandle} so the force-close
+     * and the backtest position monitor resolve a price the same way. This used
+     * to scan the cache for the option-token segment of the key and take the
+     * first match, which left the interval to {@code ConcurrentHashMap}
+     * iteration order — the same defect the monitor had.
      */
     private BigDecimal lastPriceFor(String optionToken, LocalDateTime atOrBefore) {
-        if (optionToken == null) return null;
-        Map<String, List<MarketData>> cache = SharedData.strikeMarketDataByInstrumentAndInterval;
-        if (cache == null || cache.isEmpty()) return null;
-
-        for (Map.Entry<String, List<MarketData>> e : cache.entrySet()) {
-            String[] parts = e.getKey().split("\\|");
-            if (parts.length < 5) continue;
-            if (!optionToken.equals(parts[4])) continue;
-
-            List<MarketData> list = e.getValue();
-            if (list == null || list.isEmpty()) continue;
-            for (int i = list.size() - 1; i >= 0; i--) {
-                MarketData md = list.get(i);
-                if (md == null || md.getTimestamp() == null) continue;
-                if (md.getTimestamp().isAfter(atOrBefore)) continue;
-                if (md.getClose() != null) return md.getClose();
-            }
-        }
-        return null;
+        MarketData md = SharedData.latestCachedCandle(optionToken, atOrBefore);
+        return md != null ? md.getClose() : null;
     }
 
     /**
@@ -603,17 +717,42 @@ public class OrderService {
                 && entryDirection.equalsIgnoreCase(signalAction.name());
     }
 
-    private TradeConfigCombinedDTO findConfig(Integer tradeConfigId) {
+    /**
+     * Finds the DTO a signal (or an open order) belongs to.
+     *
+     * <p>Since changeset 031 {@code SharedData.combinedDto} holds one entry per
+     * <i>(config, strategy)</i> pair, so a config tagged with two strategies
+     * appears twice. The exact pair is preferred so {@code dto.getStrategyId()}
+     * is the one that actually fired.</p>
+     *
+     * <p><b>Falls back to a config-id match</b> when no pair matches — a tag
+     * disabled or re-tagged mid-day would otherwise strand an open trade: the
+     * caller treats a null config as "no broker call", which in live mode means
+     * closing the position in the ledger while leaving it open at the broker.
+     * The fallback is safe because the fan-out siblings share one
+     * {@code TradeConfig} instance and one timeframe list — they differ in
+     * nothing but {@code strategyId} — so a sibling carries identical lot size,
+     * bracket and instrument for the placement call.</p>
+     */
+    private TradeConfigCombinedDTO findConfig(Integer tradeConfigId, Integer strategyId) {
         if (tradeConfigId == null) return null;
         List<TradeConfigCombinedDTO> all = SharedData.combinedDto;
         if (all == null) return null;
+
+        TradeConfigCombinedDTO sameConfig = null;
         for (TradeConfigCombinedDTO dto : all) {
-            if (dto != null && dto.getTradeConfig() != null
-                    && tradeConfigId.equals(dto.getTradeConfig().getId())) {
+            if (dto == null || dto.getTradeConfig() == null) continue;
+            if (!tradeConfigId.equals(dto.getTradeConfig().getId())) continue;
+            if (strategyId == null || strategyId.equals(dto.getStrategyId())) {
                 return dto;
             }
+            if (sameConfig == null) sameConfig = dto;
         }
-        return null;
+        if (sameConfig != null) {
+            log.debug("[order] no DTO for tradeConfigId={} strategyId={} — falling back to a sibling tag",
+                    tradeConfigId, strategyId);
+        }
+        return sameConfig;
     }
 
     private String instrumentName(TradeConfigCombinedDTO config) {

@@ -36,6 +36,26 @@ public class MarketData {
     @Column(name = "instrumenttoken", nullable = false, length = 100)
     private String instrumenttoken;
 
+    /**
+     * Traded quantity for the bar. Nullable: the historical tables carry it, the
+     * broker path does not supply it yet, and a null must stay distinguishable
+     * from a genuine zero-volume bar.
+     */
+    @Column(name = "volume")
+    private Long volume;
+
+    /**
+     * Open interest for the bar. Options only - the spot feed has none.
+     *
+     * <p>Carried because it is among the most informative inputs for a premium
+     * SELLER: rising OI alongside a rising premium is fresh buying against the
+     * position, while falling OI is unwinding. It was previously read from
+     * historical_option_candles and then discarded, because this class had
+     * nowhere to put it.
+     */
+    @Column(name = "open_interest")
+    private Long openInterest;
+
     @Column(name = "sma_value20")
     private Double smaValue20;
 

@@ -87,11 +87,32 @@ public class SmaDowntrendRule {
     private BigDecimal slPct;
 
     /**
+     * Ceiling in premium points on the stop-loss a generated config resolves to,
+     * copied onto {@code trade_config.max_sl_points}. The effective stop is
+     * {@code min(slPct * entry, maxSlPoints)}.
+     *
+     * <p>NOT NULL for the reason {@link #slPct} is: Hibernate writes every column
+     * explicitly, so {@code trade_config}'s own default never reaches a generated
+     * row, and a null would leave the whole AUTO_DOWNTREND fleet uncapped at the
+     * expensive end of the premium band. See changeset 036.</p>
+     */
+    @Column(name = "max_sl_points", nullable = false, precision = 12, scale = 4)
+    private BigDecimal maxSlPoints;
+
+    /**
+     * Trailing stop-loss rungs copied onto {@code trade_config.trail_ladder}, as
+     * ascending {@code trigger:lock} pairs in premium points. Parsed only by
+     * {@code com.moneymaker.util.TrailLadder}. NOT NULL — see {@link #maxSlPoints}.
+     */
+    @Column(name = "trail_ladder", nullable = false, length = 128)
+    private String trailLadder;
+
+    /**
      * Lowest premium a generated config will open a trade at, copied onto
      * {@code trade_config.min_option_price}. Defaults to the desk's standing
      * 80 (changeset 026), the same floor manual configs get.
      *
-     * <p>NOT NULL by design: {@code Strategy1.isOutsideBand} reads a null bound
+     * <p>NOT NULL by design: {@code AbstractSmaCrossStrategy.outsidePriceBand} reads a null bound
      * as <i>unbounded</i>, and an unbounded auto-generated config is what let
      * the detector open 6-point legs against a 30-point target.</p>
      */

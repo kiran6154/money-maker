@@ -37,6 +37,17 @@ public class HistoricalIciciChartDashboardService {
     private static final int MAX_SMA_PERIOD = 500;
     private static final int LOOKBACK_BUFFER_CANDLES = 96;
 
+    /** Five-minute candles in one NSE session (09:15-15:30). */
+    private static final int CANDLES_PER_SESSION = 75;
+
+    /**
+     * Ceiling on how many calendar days a continuous window may fetch. A
+     * year of five-minute candles is ~18k rows per series, which is a chart
+     * nobody can read and a payload nobody wants; the cap keeps an
+     * accidental multi-year range from stalling the page.
+     */
+    private static final int MAX_WINDOW_DAYS = 90;
+
     private final HistoricalSpotCandleRepository spotCandleRepository;
     private final HistoricalOptionCandleRepository optionCandleRepository;
     private final ChartTimeframeAggregator chartTimeframeAggregator;
@@ -51,8 +62,9 @@ public class HistoricalIciciChartDashboardService {
 
     private MarketChartResponse getUnderlyingChart(MarketChartRequest request) {
         List<ChartCandleResponse> data = finish(
-                fetchSpotCandles(request.getIndexSymbol(), request.getDate()),
+                fetchSpotCandles(request.getIndexSymbol(), request.getFromDate(), request.getDate()),
                 request.getTimeframe(),
+                request.getFromDate(),
                 request.getDate()
         );
         return buildResponse(request, null, null, data);
@@ -62,7 +74,7 @@ public class HistoricalIciciChartDashboardService {
         // ATM is resolved off the *selected day's* spot candles, so this one is
         // filtered to the day without needing indicators.
         List<ChartCandleResponse> spotCandles = onSelectedDate(
-                fetchSpotCandles(request.getIndexSymbol(), request.getDate()),
+                fetchSpotCandles(request.getIndexSymbol(), null, request.getDate()),
                 request.getDate()
         );
         if (spotCandles.isEmpty()) {
@@ -82,14 +94,20 @@ public class HistoricalIciciChartDashboardService {
             return buildResponse(request, null, strike, List.of());
         }
 
+        // NOTE: expiry and strike are resolved from the selected date. An option
+        // series only exists within its own expiry cycle, so a range spanning an
+        // expiry shows candles only where THIS contract traded - the series stops
+        // rather than silently splicing in a different contract.
         List<ChartCandleResponse> data = finish(
                 fetchOptionCandles(
                         request.getIndexSymbol(),
                         expiryDate.get(),
                         strike,
                         request.getChartType(),
+                        request.getFromDate(),
                         request.getDate()),
                 request.getTimeframe(),
+                request.getFromDate(),
                 request.getDate()
         );
         return buildResponse(request, expiryDate.get(), strike, data);
@@ -105,7 +123,7 @@ public class HistoricalIciciChartDashboardService {
             return new StrikeOptionsResponse(null, null, List.of());
         }
 
-        List<ChartCandleResponse> spotCandles = onSelectedDate(fetchSpotCandles(indexSymbol, date), date);
+        List<ChartCandleResponse> spotCandles = onSelectedDate(fetchSpotCandles(indexSymbol, null, date), date);
         BigDecimal referencePrice = spotCandles.isEmpty() ? null : resolveReferencePrice(spotCandles);
         BigDecimal atmStrike = referencePrice == null ? null : calculateAtmStrike(indexSymbol, referencePrice);
 
@@ -126,28 +144,67 @@ public class HistoricalIciciChartDashboardService {
      */
     private List<ChartCandleResponse> finish(List<ChartCandleResponse> lookbackCandles,
                                              ChartTimeframe timeframe,
+                                             LocalDate fromDate,
                                              LocalDate tradingDate) {
         List<ChartCandleResponse> aggregated =
                 chartTimeframeAggregator.aggregate(lookbackCandles, timeframe);
         chartIndicatorService.applyIndicators(aggregated);
-        return onSelectedDate(aggregated, tradingDate);
+        return inWindow(aggregated, fromDate, tradingDate);
     }
 
     private List<ChartCandleResponse> onSelectedDate(List<ChartCandleResponse> candles, LocalDate tradingDate) {
+        return inWindow(candles, null, tradingDate);
+    }
+
+    /**
+     * Trims to {@code [from, to]} inclusive, or to {@code to} alone when
+     * {@code from} is null.
+     *
+     * <p>The lookback fetched for SMA continuity is deliberately wider than the
+     * window drawn - that is what makes the first bar of the window carry a real
+     * SMA instead of a null - so everything outside it is dropped here rather
+     * than at the query.
+     */
+    private List<ChartCandleResponse> inWindow(List<ChartCandleResponse> candles,
+                                               LocalDate from, LocalDate to) {
         return candles.stream()
-                .filter(candle -> candle.getTime() != null
-                        && tradingDate.equals(candle.getTime().toLocalDate()))
+                .filter(candle -> {
+                    if (candle.getTime() == null) return false;
+                    LocalDate d = candle.getTime().toLocalDate();
+                    if (d.isAfter(to)) return false;
+                    return from == null ? to.equals(d) : !d.isBefore(from);
+                })
                 .toList();
     }
 
+    /**
+     * Candles to fetch so the drawn window is fully covered <em>and</em> the
+     * longest SMA is warm at its first bar.
+     *
+     * <p>The fixed {@code MAX_SMA_PERIOD + LOOKBACK_BUFFER_CANDLES} page was
+     * sized for a single day. A continuous window needs the days themselves on
+     * top, or the chart silently starts partway through the range: 596 candles
+     * is only about eight sessions of five-minute data.
+     */
+    private int pageSizeFor(LocalDate from, LocalDate to) {
+        int windowCandles = 0;
+        if (from != null && to != null && !from.isAfter(to)) {
+            long days = java.time.temporal.ChronoUnit.DAYS.between(from, to) + 1;
+            windowCandles = (int) Math.min(days, MAX_WINDOW_DAYS) * CANDLES_PER_SESSION;
+        }
+        return MAX_SMA_PERIOD + LOOKBACK_BUFFER_CANDLES + windowCandles;
+    }
+
     /** Full lookback window, ascending, OHLC only. */
-    private List<ChartCandleResponse> fetchSpotCandles(IndexSymbol indexSymbol, LocalDate tradingDate) {
+    private List<ChartCandleResponse> fetchSpotCandles(IndexSymbol indexSymbol,
+                                                       LocalDate fromDate,
+                                                       LocalDate tradingDate) {
         LocalDateTime dayEnd = tradingDate.atTime(MARKET_CLOSE);
         List<HistoricalSpotCandle> recentCandles = spotCandleRepository.findRecentCandlesUpTo(
                 indexSymbol.name(),
                 SPOT_EXCHANGE,
                 dayEnd,
-                PageRequest.of(0, MAX_SMA_PERIOD + LOOKBACK_BUFFER_CANDLES)
+                PageRequest.of(0, pageSizeFor(fromDate, tradingDate))
         );
 
         return recentCandles.stream()
@@ -162,6 +219,7 @@ public class HistoricalIciciChartDashboardService {
                                                          LocalDate expiryDate,
                                                          BigDecimal strikePrice,
                                                          ChartType chartType,
+                                                         LocalDate fromDate,
                                                          LocalDate tradingDate) {
         LocalDateTime dayEnd = tradingDate.atTime(MARKET_CLOSE);
         List<HistoricalOptionCandle> recentCandles = optionCandleRepository.findRecentCandlesUpTo(
@@ -171,7 +229,7 @@ public class HistoricalIciciChartDashboardService {
                 strikePrice,
                 chartType.name(),
                 dayEnd,
-                PageRequest.of(0, MAX_SMA_PERIOD + LOOKBACK_BUFFER_CANDLES)
+                PageRequest.of(0, pageSizeFor(fromDate, tradingDate))
         );
 
         return recentCandles.stream()

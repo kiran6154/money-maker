@@ -8,12 +8,9 @@ import com.moneymaker.shared.data.SharedData;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-import java.util.Map;
-
 /**
  * Backtest position-monitor: pulls the latest cached candle for the option's
- * {@code optionToken} from {@link SharedData#strikeMarketDataByInstrumentAndInterval}.
+ * {@code optionToken} via {@link SharedData#latestCachedCandle}.
  * The cache is populated each backtest tick by {@code AnalysisScheduler}, so
  * "latest candle" naturally tracks the current tick. The candle's
  * {@link MarketData#getTimestamp() timestamp} becomes the {@link Quote#asOf()},
@@ -34,25 +31,19 @@ public class BacktestingPositionMonitorService implements PositionMonitorService
     @Override
     public Quote currentQuote(TradeOrder order) {
         if (order == null || order.getOptionToken() == null) return null;
-        Map<String, List<MarketData>> cache = SharedData.strikeMarketDataByInstrumentAndInterval;
-        if (cache == null || cache.isEmpty()) return null;
 
-        for (Map.Entry<String, List<MarketData>> e : cache.entrySet()) {
-            String[] parts = e.getKey().split("\\|");
-            if (parts.length < 5) continue;
-            if (!order.getOptionToken().equals(parts[4])) continue;
-
-            List<MarketData> list = e.getValue();
-            if (list == null || list.isEmpty()) continue;
-            for (int i = list.size() - 1; i >= 0; i--) {
-                MarketData md = list.get(i);
-                if (md != null && md.getClose() != null && md.getTimestamp() != null) {
-                    return new Quote(md.getClose(), md.getTimestamp());
-                }
-            }
+        // Delegated so this monitor and OrderService's force-close read the cache
+        // through one rule. Resolving it here by scanning for the option token and
+        // taking the first hit made the interval whatever hashed first, so a target
+        // or stop could be checked against a 10- or 15-minute bar whose close is up
+        // to fifteen minutes of price that had not happened at the timestamp then
+        // written to exit_time. See SharedData.latestCachedCandle.
+        MarketData md = SharedData.latestCachedCandle(order.getOptionToken(), null);
+        if (md == null) {
+            log.debug("Backtest monitor: no cached candle for optionToken={} (orderId={})",
+                    order.getOptionToken(), order.getId());
+            return null;
         }
-        log.debug("Backtest monitor: no cached candle for optionToken={} (orderId={})",
-                order.getOptionToken(), order.getId());
-        return null;
+        return new Quote(md.getClose(), md.getTimestamp());
     }
 }

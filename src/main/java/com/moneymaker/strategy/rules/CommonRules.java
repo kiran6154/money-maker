@@ -17,11 +17,86 @@ public final class CommonRules {
 
     // ----- Predicates -------------------------------------------------
 
-    /** True when the candle time is at or after 15:15 (typical market close time). */
+    /**
+     * True when the candle is at or after 15:15 (typical market close time)
+     * <b>of the session being evaluated</b>.
+     *
+     * <p>The date check is load-bearing, not defensive padding. Comparing only
+     * the time-of-day made every previous session's closing bar an eligible
+     * close signal, and the candle series a strategy reads spans the whole SMA
+     * lookback — so on the first ticks of a day, before a coarse timeframe's
+     * first bucket has settled, the newest bar available is yesterday's 15:15 or
+     * 15:30. That fired an exit carrying yesterday's timestamp and price.
+     *
+     * <p>{@code ctx.asOf} may be null for callers that do not supply it; the
+     * rule then degrades to the old time-only behaviour rather than silently
+     * refusing to ever fire.
+     */
     public static boolean isMarketCloseTime(RuleContext ctx) {
         if (ctx.candle == null || ctx.candle.getTimestamp() == null) return false;
-        java.time.LocalTime time = ctx.candle.getTimestamp().toLocalTime();
-        return time.compareTo(java.time.LocalTime.of(15, 15)) >= 0;
+        java.time.LocalDateTime ts = ctx.candle.getTimestamp();
+        if (ctx.asOf != null && !ts.toLocalDate().equals(ctx.asOf.toLocalDate())) return false;
+        return ts.toLocalTime().compareTo(java.time.LocalTime.of(15, 15)) >= 0;
+    }
+
+    /**
+     * True when the 20-period SMA is sloping <b>upward</b> at this candle —
+     * i.e. {@code sma20(this) > sma20(previous candle)}.
+     *
+     * <p>This is the instantaneous slope, deliberately <i>not</i>
+     * {@code candle.isSma20UpTrending()}. That flag is a whole-day verdict from
+     * {@link SmaTrendCalculator}: with {@code maxDeviations = 0} it means the
+     * SMA has risen on every candle since the open, and one flat bar at 09:20
+     * switches it off for the rest of the session. "Is the 20 SMA rising right
+     * now" is a much narrower question, and the one a per-tick entry filter
+     * needs.</p>
+     *
+     * <h3>When it returns false</h3>
+     * Both SMA values must be present, positive, and belong to the <b>same
+     * trading day</b>; otherwise the slope is unknown and this returns false.
+     * That is the permissive answer on purpose — callers use it to <i>block</i>
+     * entries, and "we cannot tell" must not block. Three cases hit it:
+     * <ul>
+     *   <li>the SMA-20 warm-up window (fewer than 20 candles fetched);</li>
+     *   <li>the first candle of a day, whose predecessor is the previous
+     *       session's close — an overnight gap, not a slope. {@code SmaTrendCalculator}
+     *       resets at the same boundary for the same reason;</li>
+     *   <li>a period with no SMA-20 column stamped on the series at all.</li>
+     * </ul>
+     *
+     * <p>{@code AnalysisScheduler} stamps every SMA period in
+     * {@code SharedData.allTimeFrameMap} (20/50/100/200/500) onto every strike
+     * series it caches, so SMA-20 is available regardless of which period the
+     * config itself trades on.</p>
+     */
+    public static boolean isSma20SlopeUp(RuleContext ctx) {
+        if (ctx == null || ctx.candle == null) return false;
+        Double curr = ctx.candle.getSmaValue20();
+        if (curr == null || curr <= 0) return false;
+
+        MarketData prev = previousSameDayCandle(ctx);
+        if (prev == null) return false;
+        Double previous = prev.getSmaValue20();
+        if (previous == null || previous <= 0) return false;
+
+        return curr > previous;
+    }
+
+    /**
+     * The candle immediately before {@code ctx.candle} in the same series, or
+     * null when there is none or it falls on an earlier trading day.
+     */
+    private static MarketData previousSameDayCandle(RuleContext ctx) {
+        if (ctx.allCandles == null || ctx.index <= 0 || ctx.index >= ctx.allCandles.size()) {
+            return null;
+        }
+        MarketData prev = ctx.allCandles.get(ctx.index - 1);
+        if (prev == null || prev.getTimestamp() == null || ctx.candle.getTimestamp() == null) {
+            return null;
+        }
+        LocalDate prevDay = prev.getTimestamp().toLocalDate();
+        LocalDate currDay = ctx.candle.getTimestamp().toLocalDate();
+        return prevDay.equals(currDay) ? prev : null;
     }
 
     /**

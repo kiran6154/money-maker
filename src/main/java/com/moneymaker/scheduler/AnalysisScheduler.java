@@ -4,12 +4,15 @@ import com.moneymaker.dto.AllTimeFramedto;
 import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.entity.Instrument;
 import com.moneymaker.entity.MarketData;
+import com.moneymaker.entity.SmaTimeframe;
 import com.moneymaker.entity.TradeConfig;
 import com.moneymaker.indicator.IndicatorConfig;
 import com.moneymaker.indicator.IndicatorService;
 import com.moneymaker.market.exception.HistoricalDataMissingException;
 import com.moneymaker.market.instrument.OptionInstrumentResolver;
 import com.moneymaker.market.instrument.UnderlyingSymbols;
+import com.moneymaker.journal.JournalRecorder;
+import com.moneymaker.journal.ObservationContextFactory;
 import com.moneymaker.market.service.MarketDataService;
 import com.moneymaker.market.service.MarketHoursService;
 import com.moneymaker.entity.TradeOrder;
@@ -42,6 +45,15 @@ public class AnalysisScheduler {
      */
     private final OptionInstrumentResolver instrumentResolver;
 
+    /**
+     * Journalling sits here, not in the strategies, because this is where every
+     * leg any strategy might trade is resolved. Recording at the strategy would
+     * only ever see the legs that strategy was handed, and could never answer
+     * "what about the strikes we passed over".
+     */
+    private final JournalRecorder journal;
+    private final ObservationContextFactory observations;
+
     @Value("${app.mode:live}")
     private String appMode;
 
@@ -50,13 +62,17 @@ public class AnalysisScheduler {
                              StrategyFactory strategyFactory,
                              MarketHoursService marketHours,
                              TradeOrderRepository tradeOrderRepository,
-                             OptionInstrumentResolver instrumentResolver) {
+                             OptionInstrumentResolver instrumentResolver,
+                             JournalRecorder journal,
+                             ObservationContextFactory observations) {
         this.marketDataService = Objects.requireNonNull(marketDataService, "marketDataService must not be null");
         this.indicatorService = Objects.requireNonNull(indicatorService, "indicatorService must not be null");
         this.strategyFactory = Objects.requireNonNull(strategyFactory, "strategyFactory must not be null");
         this.marketHours = Objects.requireNonNull(marketHours, "marketHours must not be null");
         this.tradeOrderRepository = Objects.requireNonNull(tradeOrderRepository, "tradeOrderRepository must not be null");
         this.instrumentResolver = Objects.requireNonNull(instrumentResolver, "instrumentResolver must not be null");
+        this.journal = Objects.requireNonNull(journal, "journal must not be null");
+        this.observations = Objects.requireNonNull(observations, "observations must not be null");
         logger.info("AnalysisScheduler initialized with instrument resolver: {}", instrumentResolver.getName());
     }
 
@@ -101,7 +117,25 @@ public class AnalysisScheduler {
             // returns — so every one of those repeated reads saw the same rows.
             List<TradeOrder> openOrders = tradeOrderRepository.findByStatus("OPEN");
 
+            // Since changeset 031 combinedDtoList holds one entry per
+            // (config × tagged strategy), so a config tagged with two strategies
+            // appears twice. What this loop fetches — underlying candles and the
+            // strike series around them — depends only on the config, so running
+            // it once per tag would double every MarketDataService call for
+            // identical data. That matters: those calls are rate-limited and
+            // Resilience4j-wrapped, and the strike fetch is the most expensive
+            // thing in the tick.
+            //
+            // Dispatch is unaffected: runStrategies() still walks every DTO, so
+            // each tagged strategy scans the shared cache this loop populated.
+            Set<Integer> fetchedConfigIds = new HashSet<>();
+
             for (TradeConfigCombinedDTO dto : combinedDtoList) {
+                Integer configId = dto.getTradeConfig() != null ? dto.getTradeConfig().getId() : null;
+                if (configId != null && !fetchedConfigIds.add(configId)) {
+                    continue; // another tag on this config already fetched its data
+                }
+
                 // The resolver owns what a "symbol" is: a broker instrument token
                 // normally, a historical natural key when replaying imported CSVs
                 // (where no instrument_details row exists at all).
@@ -112,17 +146,40 @@ public class AnalysisScheduler {
                     continue;
                 }
 
-                Map<Integer, List<Integer>>  timeframes = SharedData.allTimeFrameMap;
-                if (timeframes == null || timeframes.isEmpty()) {
+                // Only the intervals this config's own sma_timeframe rows name.
+                //
+                // This used to iterate the global SharedData.allTimeFrameMap, which
+                // is hardcoded to 5/10/15 — so every tick cached a 10-minute series
+                // that no strategy ever scans (sma_timeframe holds only 5- and
+                // 15-minute rows). That series was not merely wasted work: anything
+                // resolving a quote by option token alone could pick it up, which is
+                // how targets and stop-losses ended up priced off a 10-minute bar.
+                // Deriving the set from the config keeps the cache to what something
+                // actually reads, and drops roughly a third of the per-tick fetches.
+                Set<Integer> timeframes = timePeriodsOf(dto);
+                if (timeframes.isEmpty()) {
                     logger.warn("No timeframes configured for symbol: {}", symbol);
                     continue;
                 }
 
                 boolean indexLineEmitted = false;
-                for (Integer timeframe : timeframes.keySet()) {
+                for (Integer timeframe : timeframes) {
                     String interval = toMarketDataInterval(timeframe);
                     if (interval == null) {
                         logger.warn("Skipping instrument token {} because timeframe has no time period", symbol);
+                        continue;
+                    }
+                    // A timeframe with no registered SMA periods contributes nothing:
+                    // fetchAndShareStrikeMarketData would cache candles with no SMA
+                    // values on them and the strategy's gate would read 0. Skipping
+                    // here preserves the old behaviour for an unregistered timeframe,
+                    // which simply never got fetched when this loop walked the map.
+                    List<Integer> registeredSmaPeriods = SharedData.allTimeFrameMap != null
+                            ? SharedData.allTimeFrameMap.get(timeframe)
+                            : null;
+                    if (registeredSmaPeriods == null || registeredSmaPeriods.isEmpty()) {
+                        logger.warn("Skipping timeframe {} for symbol {} — no SMA periods registered for it",
+                                timeframe, symbol);
                         continue;
                     }
                     long start = System.nanoTime();
@@ -153,7 +210,7 @@ public class AnalysisScheduler {
                         indexLineEmitted = true;
                     }
 
-                    fetchAndShareStrikeMarketData(strikeList, dto.getInstrument(), dto.getTradeConfig(), timeframe, analysisDateTime.toLocalDate(), interval, startOfDay, analysisDateTime, marketDataKey);
+                    fetchAndShareStrikeMarketData(strikeList, dto.getInstrument(), dto.getTradeConfig(), timeframe, analysisDateTime.toLocalDate(), interval, startOfDay, analysisDateTime, marketDataKey, dto.getStrategyId(), analysisDateTime);
 
                 }
             }
@@ -170,6 +227,24 @@ public class AnalysisScheduler {
             logger.error("Error calculating indicators for date-time: {}", analysisDateTime, ex);
             throw new RuntimeException("Indicator calculation failed for date-time: " + analysisDateTime, ex);
         }
+    }
+
+    /**
+     * The distinct {@code time_period} values this config's timeframes name, in
+     * declaration order. Empty when the config carries no usable timeframe —
+     * the caller treats that as "nothing to fetch for this config".
+     */
+    private Set<Integer> timePeriodsOf(TradeConfigCombinedDTO dto) {
+        Set<Integer> periods = new LinkedHashSet<>();
+        if (dto == null || dto.getTimeframes() == null) {
+            return periods;
+        }
+        for (SmaTimeframe tf : dto.getTimeframes()) {
+            if (tf != null && tf.getTimePeriod() != null && tf.getTimePeriod() > 0) {
+                periods.add(tf.getTimePeriod());
+            }
+        }
+        return periods;
     }
 
     private String toMarketDataInterval(Integer timeframe) {
@@ -318,7 +393,9 @@ public class AnalysisScheduler {
                                                String interval,
                                                LocalDateTime startOfDay,
                                                LocalDateTime endOfDay,
-                                               String parentMarketDataKey) {
+                                               String parentMarketDataKey,
+                                               Integer strategyId,
+                                               LocalDateTime observedAt) {
         if (strikeList == null || strikeList.isEmpty()) {
             return;
         }
@@ -378,6 +455,28 @@ public class AnalysisScheduler {
             SharedData.strikeMarketDataByInstrumentAndInterval.put(
                     strikeMarketDataKey,
                     strikeMarketDataList);
+
+            // CANDIDATE: every leg evaluated this tick, whether or not it is
+            // traded. `selected` is left false here because nothing has decided
+            // yet - the strategies run after this - so it is the ENTRY row that
+            // marks what was taken. This is what makes "how would the strikes we
+            // passed over have done" a query rather than another backtest.
+            //
+            // Written AFTER the SMA stamping above, so the journalled features
+            // are the ones the strategy is about to read, not a recomputation.
+            if (journal.isEnabled()) {
+                journal.record(observations.forCandidate(
+                        observedAt,
+                        strategyId,
+                        tradeConfig != null ? tradeConfig.getId() : null,
+                        instrument != null ? instrument.getInsName() : null,
+                        optionToken,
+                        optionType,
+                        strike,
+                        timeframe,
+                        strikeMarketDataList,
+                        isSellSide(tradeConfig)), false);
+            }
         }
     }
 
@@ -432,6 +531,12 @@ public class AnalysisScheduler {
         return UnderlyingSymbols.canonicalName(instrument) + "|" + expiryDate + "|" + optionType + "|" + strike + "|" + interval;
     }
 
+    /** True when this config trades short premium; drives WITH/AGAINST tagging. */
+    private static boolean isSellSide(TradeConfig tradeConfig) {
+        String txn = tradeConfig == null ? null : tradeConfig.getTransactionType();
+        return txn == null || txn.isBlank() || "SELL".equalsIgnoreCase(txn.trim());
+    }
+
     private String toStrikeMarketDataKey(String parentMarketDataKey, Integer strike, String optionType, String optionToken, TradeConfig tradeConfig) {
         return parentMarketDataKey + "|" + optionType + "|" + strike + "|" + optionToken+ "|" + tradeConfig.getItmDepth()+ "|" + tradeConfig.getOtmDepth();
     }
@@ -476,7 +581,20 @@ public class AnalysisScheduler {
                 dto.getTradeConfig() != null ? dto.getTradeConfig().getId() : null);
     }
 
-    public void runStrategies() {
+    /**
+     * Dispatches every active config to its strategy for the moment {@code asOf}
+     * — the backtest tick, or wall-clock in live.
+     *
+     * <p>The parameter is not cosmetic. The candle series a strategy reads spans
+     * the whole SMA lookback, so the newest <i>settled</i> bar of a coarse
+     * timeframe stays the previous session's close until that timeframe's first
+     * bucket of the day completes: on a 15-minute series that is true until
+     * 09:30. Without knowing what "now" is, a strategy cannot tell that bar from
+     * a current one, and any signal it emits carries the previous session's
+     * timestamp and price. See the stale-bar guard in
+     * {@code AbstractSmaCrossStrategy.execute}.</p>
+     */
+    public void runStrategies(LocalDateTime asOf) {
         List<TradeConfigCombinedDTO> combinedDtoList = SharedData.combinedDto;
         if (combinedDtoList == null || combinedDtoList.isEmpty()) {
             logger.warn("No shared trade config data available; skipping strategy dispatch");
@@ -487,10 +605,13 @@ public class AnalysisScheduler {
                 continue;
             }
             try {
-                strategyFactory.execute(dto);
+                strategyFactory.execute(dto, asOf);
             } catch (Exception ex) {
-                logger.error("Strategy execution failed for tradeConfigId={}",
-                        dto.getTradeConfig().getId(), ex);
+                // Both ids: one config can appear here several times, once per
+                // strategy tagged on it, and the config id alone would not say
+                // which of those runs failed.
+                logger.error("Strategy execution failed for tradeConfigId={} strategyId={}",
+                        dto.getTradeConfig().getId(), dto.getStrategyId(), ex);
             }
         }
     }

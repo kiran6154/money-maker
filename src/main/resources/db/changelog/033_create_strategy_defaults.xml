@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      The per-strategy field block the EOD downtrend detector stamps on every
+      trade_config it generates.
+
+      What this replaces
+      ==================
+      EodDowntrendDetectionService.strategyDefaults(int) was a hardcoded switch:
+
+          case 1: return new StrategyDefaults("SELL", 1, 200, 1, 1);
+          default: return null;
+
+      Two problems with that. First, transaction_type / max_loss / no_of_trades /
+      no_of_parrellel_trades decide when a trade enters and how many fire, so per
+      CLAUDE.md #9 they are trading behaviour and must come from config, not from a
+      service constant. Second - and this is what actually blocked the feature -
+      the `default: return null` branch made processRule skip the rule outright, so
+      tagging a rule with any strategy other than 1 silently generated nothing.
+
+      Adding a strategy to the auto-config pipeline is now an INSERT here, not a
+      redeploy.
+
+      auto_config_enabled
+      ===================
+      Lets a strategy be parked without deleting its block. A rule tagged with a
+      disabled strategy is skipped with a warning that names it - never silently.
+
+      Seeded with strategy 1 only
+      ===========================
+      The values below are lifted verbatim from the switch being deleted, so
+      behaviour on an existing database is unchanged. Strategy 2 deliberately gets
+      NO row: its max_loss / no_of_trades / no_of_parrellel_trades are trading
+      decisions nobody has made yet, and CLAUDE.md #9 forbids guessing a default
+      for them. Until someone inserts that row the detector logs
+
+          rule id=N - strategy 2 has no strategy_defaults row, skipping
+
+      which is the correct loud failure. Adding it is one INSERT:
+
+          INSERT INTO strategy_defaults
+            (strategy_id, transaction_type, lot_quantity, max_loss,
+             no_of_trades, no_of_parallel_trades, auto_config_enabled)
+          VALUES (2, 'SELL', 1, <max_loss>, <trades>, <parallel>, TRUE);
+    -->
+    <changeSet id="033_create_strategy_defaults" author="moneymaker">
+        <createTable tableName="strategy_defaults">
+            <column name="strategy_id" type="INT">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="transaction_type" type="VARCHAR(8)">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Last-resort fallback only. The generated config takes its quantity
+                 from instrument.lot_qty when that is set, because NFO accepts whole
+                 lots and the contract is what defines one. -->
+            <column name="lot_quantity" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="max_loss" type="DECIMAL(12,4)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="no_of_trades" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="no_of_parallel_trades" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="auto_config_enabled" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="033_seed_strategy_defaults_strategy1" author="moneymaker">
+        <insert tableName="strategy_defaults">
+            <column name="strategy_id" valueNumeric="1"/>
+            <column name="transaction_type" value="SELL"/>
+            <column name="lot_quantity" valueNumeric="1"/>
+            <column name="max_loss" valueNumeric="200"/>
+            <column name="no_of_trades" valueNumeric="1"/>
+            <column name="no_of_parallel_trades" valueNumeric="1"/>
+            <column name="auto_config_enabled" valueBoolean="true"/>
+        </insert>
+    </changeSet>
+
+</databaseChangeLog>

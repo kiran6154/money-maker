@@ -11,6 +11,8 @@ import com.moneymaker.repository.TradeOrderRepository;
 import com.moneymaker.scheduler.TradeConfigScheduler;
 import com.moneymaker.shared.data.SharedData;
 import com.moneymaker.strategy.StrategyFactory;
+import com.moneymaker.util.StrategyIds;
+import com.moneymaker.util.TrailLadder;
 import com.moneymaker.tradeconfig.dto.AutoConfigCalendarDTO;
 import com.moneymaker.tradeconfig.dto.AutoDeleteRequestDTO;
 import com.moneymaker.tradeconfig.dto.AutoDeleteResultDTO;
@@ -183,6 +185,15 @@ public class TradeConfigAdminService {
      */
     public static final BigDecimal DEFAULT_MIN_OPTION_PRICE = new BigDecimal("80");
     public static final BigDecimal DEFAULT_MAX_OPTION_PRICE = new BigDecimal("250");
+
+    /**
+     * Standing ceiling on the stop-loss, in premium points (changeset 036).
+     * Applied when the form leaves the field blank, for the same reason the
+     * premium band has a standing value: an uncapped stop is not a neutral
+     * default, it is the 75-point stop at the top of the band that the cap
+     * exists to prevent.
+     */
+    public static final BigDecimal DEFAULT_MAX_SL_POINTS = new BigDecimal("60");
 
     /** Writes within this gap are treated as one generation run. */
     private static final Duration RUN_GAP = Duration.ofMinutes(2);
@@ -460,9 +471,23 @@ public class TradeConfigAdminService {
         if (slPct != null && slPct.signum() <= 0) {
             throw new IllegalArgumentException("slPct (" + slPct + ") must be positive");
         }
+        BigDecimal maxSlPoints = form.getMaxSlPoints();
+        if (maxSlPoints != null && maxSlPoints.signum() <= 0) {
+            throw new IllegalArgumentException("maxSlPoints (" + maxSlPoints
+                    + ") must be positive — it is a ceiling in premium points, and a zero or "
+                    + "negative ceiling would stop every trade out on entry");
+        }
+        // Throws with the offending rung named. Rejecting here is the whole reason
+        // OrderService can treat a malformed ladder as "hand-edited in SQL".
+        TrailLadder.parse(form.getTrailLadder());
     }
 
     private void applyForm(TradeConfig tc, TradeConfigFormDTO form) {
+        // Read before the setter below overwrites it. Null on create, the stored
+        // value on edit — which is what tells syncPrimaryStrategyId whether the
+        // user actually changed the strategy dropdown.
+        Integer previousPrimary = tc.getStratergyId();
+
         Instrument ref = instrumentRepository.getReferenceById(form.getInstrumentId());
         tc.setInstrument(ref);
         tc.setTradingDate(form.getTradingDate());
@@ -492,6 +517,16 @@ public class TradeConfigAdminService {
         tc.setTargetPct(form.getTargetPct());
         tc.setSlPct(form.getSlPct());
 
+        // Blank = the standing cap, matching the premium band above: this column
+        // bounds loss, so "the user cleared the field" must not resolve to
+        // "unbounded". Removing the cap entirely is a deliberate DB edit.
+        tc.setMaxSlPoints(form.getMaxSlPoints() != null
+                ? form.getMaxSlPoints() : DEFAULT_MAX_SL_POINTS);
+        // Blank here does mean off — a config with no ladder simply keeps its
+        // fixed stop, which is safe, so the form is allowed to say it. Stored
+        // canonicalised so the column never carries the spacing someone typed.
+        tc.setTrailLadder(TrailLadder.canonical(form.getTrailLadder()));
+
         // trade_config.source is NOT NULL (changeset 019) and Hibernate writes the
         // column explicitly, so the DB's DEFAULT 'MANUAL' never applies — leaving
         // it unset made every create through this service fail with a constraint
@@ -501,6 +536,47 @@ public class TradeConfigAdminService {
         if (tc.getSource() == null || tc.getSource().isBlank()) {
             tc.setSource(SOURCE_MANUAL);
         }
+
+        tc.setStrategyIds(syncPrimaryStrategyId(
+                tc.getStrategyIds(), previousPrimary, form.getStrategyId()));
+    }
+
+    /**
+     * Keeps {@code strategy_ids} in step with the single strategy the form carries,
+     * <b>without disturbing any other id in the column</b>.
+     *
+     * <p>The two sides have different owners and this is the seam between them.
+     * Running a config under several strategies is a DB-level edit (append an id to
+     * {@code strategy_ids}); the admin form still edits one strategy, the one
+     * mirrored in {@code trade_config.stratergy_id}. So:</p>
+     *
+     * <ul>
+     *   <li><b>Blank column</b> — set it to the form's strategy. Covers create, and
+     *       configs written before the column existed.</li>
+     *   <li><b>Strategy unchanged</b> — leave the column alone. This is the common
+     *       edit (someone adjusts a target) and it must not touch the list at all.</li>
+     *   <li><b>Strategy changed</b> — swap the old primary for the new one and keep
+     *       every other id. {@link StrategyIds} de-duplicates, so moving the primary
+     *       onto an id that is already listed collapses to a single entry rather
+     *       than doubling it.</li>
+     * </ul>
+     *
+     * <p>Deliberately not a blanket overwrite: that would silently discard
+     * hand-added ids on the next unrelated UI edit, which is exactly the drift this
+     * feature exists to remove.</p>
+     */
+    private static String syncPrimaryStrategyId(String csv, Integer previousPrimary, Integer newPrimary) {
+        if (newPrimary == null) {
+            return csv;
+        }
+        List<Integer> existing = StrategyIds.parse(csv);
+        if (existing.isEmpty()) {
+            return StrategyIds.format(List.of(newPrimary));
+        }
+        if (Objects.equals(previousPrimary, newPrimary)) {
+            return StrategyIds.format(existing);
+        }
+        return StrategyIds.without(StrategyIds.with(csv, newPrimary), previousPrimary);
     }
 
     /**
@@ -526,6 +602,7 @@ public class TradeConfigAdminService {
         }
         smaTimeframeRepository.saveAll(rows);
     }
+
 
     /**
      * Always invalidate the date-cache; if the mutation touches today's
@@ -555,21 +632,31 @@ public class TradeConfigAdminService {
         v.setTransactionType(tc.getTransactionType());
         v.setTarget(tc.getTarget());
         v.setStopLoss(tc.getStopLoss());
+        // Everything the form can edit has to come back out, or reopening a config
+        // and saving it writes the blank the form was rendered with. These six were
+        // missing: target_pct / sl_pct / the premium band were being cleared on
+        // every edit through the UI, and the list's bracket column rendered points
+        // only. Fixed here alongside the two new columns, which would otherwise
+        // have inherited the same bug.
+        v.setTargetPct(tc.getTargetPct());
+        v.setSlPct(tc.getSlPct());
+        v.setMinOptionPrice(tc.getMinOptionPrice());
+        v.setMaxOptionPrice(tc.getMaxOptionPrice());
+        v.setMaxSlPoints(tc.getMaxSlPoints());
+        v.setTrailLadder(tc.getTrailLadder());
+        v.setSource(tc.getSource());
+        v.setUpdatedDate(tc.getUpdatedDate());
         v.setMaxLoss(tc.getMaxLoss());
         v.setOptionDepth(tc.getOptionDepth());
         v.setLotQuantity(tc.getLotQuantity());
         v.setStrategyId(tc.getStratergyId());
-        v.setNumberOfTradesPerDay(tc.getNumberOfTradesPerDay());
-        v.setNumberOfParallelTrades(tc.getNumberOfParallelTrades());
-        v.setItmDepth(tc.getItmDepth());
-        v.setOtmDepth(tc.getOtmDepth());
-        v.setAtmDepth(tc.getAtmDepth());
-        v.setMinOptionPrice(tc.getMinOptionPrice());
-        v.setMaxOptionPrice(tc.getMaxOptionPrice());
-        v.setTargetPct(tc.getTargetPct());
-        v.setSlPct(tc.getSlPct());
-        v.setSource(tc.getSource());
-        v.setUpdatedDate(tc.getUpdatedDate());
+        // Every strategy the config actually runs under, not just the primary one.
+        // Falls back to the primary when the column is blank, mirroring the
+        // dispatch fallback in TradeConfigScheduler.
+        List<Integer> tagIds = StrategyIds.parse(tc.getStrategyIds());
+        v.setStrategyIds(tagIds.isEmpty() && tc.getStratergyId() != null
+                ? List.of(tc.getStratergyId())
+                : tagIds);
 
         List<SmaTimeframe> rows = (tc.getId() == null)
                 ? List.of()

@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      Until now trade_order recorded only per-share P&L. The quantity actually
+      sent to the broker came from TradeConfig.lotQuantity at placement time and
+      was never persisted, so:
+        * rupee P&L was not derivable from the ledger at all, and
+        * editing a config's lot size silently restated every historical trade.
+      Snapshotted at entry for the same reason target_at_entry / stop_loss_at_entry
+      are (changeset 011).
+    -->
+    <changeSet id="029_add_quantity_to_trade_order" author="moneymaker">
+        <addColumn tableName="trade_order">
+            <column name="quantity" type="INT"/>
+        </addColumn>
+    </changeSet>
+
+    <!--
+      Date-effective charge rates. A single flat rate would be wrong across any
+      range spanning a regulatory change - and the 2024 backtest range spans one:
+      STT on option selling moved from 0.0625% to 0.1% of premium on 2024-10-01,
+      and the NSE options transaction charge changed on the same date. Keyed by
+      effective_from so a trade is always costed with the rates in force on its
+      own entry date.
+
+      value is a FRACTION for percentage types (0.001 = 0.1%) and an absolute
+      rupee amount for BROKERAGE_FLAT_PER_ORDER.
+    -->
+    <changeSet id="029_create_charge_rate_table" author="moneymaker">
+        <createTable tableName="charge_rate">
+            <column name="id" type="INT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="charge_type" type="VARCHAR(48)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="segment" type="VARCHAR(24)" defaultValue="NFO_OPT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="effective_from" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="value" type="DECIMAL(16,10)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="notes" type="VARCHAR(255)"/>
+        </createTable>
+
+        <addUniqueConstraint tableName="charge_rate"
+                             columnNames="charge_type, segment, effective_from"
+                             constraintName="uk_charge_rate_type_segment_from"/>
+    </changeSet>
+
+    <!--
+      Seed: Zerodha NFO option rates.
+
+      *** THESE ARE UNVERIFIED DEFAULTS. ***
+      They are the publicly documented rates to the best of our knowledge, not
+      figures taken from a contract note. Statutory rates change, and brokerage
+      is broker-specific. Before trusting any net-P&L number this produces,
+      reconcile one real contract note against it and correct these rows - the
+      table is data, so a correction is an UPDATE, not a code change.
+
+      STT dominates option selling, so an error there matters far more than one
+      in brokerage.
+    -->
+    <changeSet id="029_seed_zerodha_option_charge_rates" author="moneymaker">
+        <insert tableName="charge_rate">
+            <column name="charge_type" value="BROKERAGE_FLAT_PER_ORDER"/>
+            <column name="segment" value="NFO_OPT"/>
+            <column name="effective_from" valueDate="2000-01-01"/>
+            <column name="value" valueNumeric="20"/>
+            <column name="notes" value="UNVERIFIED. Zerodha F and O: flat 20 per executed order, or the pct below, whichever is lower."/>
+        </insert>
+        <insert tableName="charge_rate">
+            <column name="charge_type" value="BROKERAGE_PCT_OF_TURNOVER"/>
+            <column name="segment" value="NFO_OPT"/>
+            <column name="effective_from" valueDate="2000-01-01"/>
+            <column name="value" valueNumeric="0.0003"/>
+            <column name="notes" value="UNVERIFIED. 0.03 pct of premium turnover; the flat cap above usually wins."/>
+        </insert>
+
+        <insert tableName="charge_rate">
+            <column name="charge_type" value="STT_SELL_PCT"/>
+            <column name="segment" value="NFO_OPT"/>
+            <column name="effective_from" valueDate="2000-01-01"/>
+            <column name="value" valueNumeric="0.000625"/>
+            <column name="notes" value="UNVERIFIED. 0.0625 pct of premium, sell side only, in force until 2024-09-30."/>
+        </insert>
+        <insert tableName="charge_rate">
+            <column name="charge_type" value="STT_SELL_PCT"/>
+            <column name="segment" value="NFO_OPT"/>
+            <column name="effective_from" valueDate="2024-10-01"/>
+            <column name="value" valueNumeric="0.001"/>
+            <column name="notes" value="UNVERIFIED. Raised to 0.1 pct of premium, sell side only, effective 2024-10-01."/>
+        </insert>
+
+        <insert tableName="charge_rate">
+            <column name="charge_type" value="EXCHANGE_TXN_PCT"/>
+            <column name="segment" value="NFO_OPT"/>
+            <column name="effective_from" valueDate="2000-01-01"/>
+            <column name="value" valueNumeric="0.00053"/>
+            <column name="notes" value="UNVERIFIED. NSE options transaction charge, 0.053 pct of premium, both legs."/>
+        </insert>
+        <insert tableName="charge_rate">
+            <column name="charge_type" value="EXCHANGE_TXN_PCT"/>
+            <column name="segment" value="NFO_OPT"/>
+            <column name="effective_from" valueDate="2024-10-01"/>
+            <column name="value" valueNumeric="0.0003503"/>
+            <column name="notes" value="UNVERIFIED. Revised to 0.03503 pct of premium effective 2024-10-01."/>
+        </insert>
+
+        <insert tableName="charge_rate">
+            <column name="charge_type" value="SEBI_PCT"/>
+            <column name="segment" value="NFO_OPT"/>
+            <column name="effective_from" valueDate="2000-01-01"/>
+            <column name="value" valueNumeric="0.000001"/>
+            <column name="notes" value="UNVERIFIED. SEBI turnover fee, 10 rupees per crore, both legs."/>
+        </insert>
+        <insert tableName="charge_rate">
+            <column name="charge_type" value="STAMP_DUTY_BUY_PCT"/>
+            <column name="segment" value="NFO_OPT"/>
+            <column name="effective_from" valueDate="2000-01-01"/>
+            <column name="value" valueNumeric="0.00003"/>
+            <column name="notes" value="UNVERIFIED. 0.003 pct on the buy leg only."/>
+        </insert>
+        <insert tableName="charge_rate">
+            <column name="charge_type" value="GST_PCT"/>
+            <column name="segment" value="NFO_OPT"/>
+            <column name="effective_from" valueDate="2000-01-01"/>
+            <column name="value" valueNumeric="0.18"/>
+            <column name="notes" value="UNVERIFIED. 18 pct on brokerage plus exchange transaction plus SEBI fee."/>
+        </insert>
+    </changeSet>
+
+</databaseChangeLog>

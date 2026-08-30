@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      Lets one configuration run under more than one strategy.
+
+      The problem
+      ===========
+      trade_config.stratergy_id is a single INT, so "run this exact config under
+      strategy 1 AND strategy 2" could only be expressed by duplicating the
+      trade_config row and every one of its sma_timeframe children. The copies
+      then drift: edit target_pct on one and the other silently keeps the old
+      bracket.
+
+      The shape
+      =========
+      A child tag table, deliberately mirroring sma_timeframe (id / tc_id FK /
+      payload) so the two children of trade_config look the same. One row per
+      strategy this config should be scanned by. TradeConfigScheduler fans the
+      config out into one TradeConfigCombinedDTO per enabled tag, so
+      StrategyFactory keeps dispatching exactly one strategy per DTO.
+
+      enabled, rather than deleting the row, so a strategy can be parked for a
+      day and switched back on without losing the tag.
+
+      Why stratergy_id survives
+      =========================
+      It is pinned by ordinal 10 of TradeConfigRepository.fetchCombinedByTradingDate
+      and its positional mapper, and it is what the orders ledger and the
+      trade-config Telegram already display. It stays as the config's *primary*
+      strategy - the first tag - and simply stops driving dispatch. Removing it
+      is a separate cleanup that must move the entity field, the native query,
+      and the mapper ordinals together.
+
+      Backfill
+      ========
+      Every existing config gets exactly one tag from its current stratergy_id,
+      so behaviour on an untouched database is identical: one config, one tag,
+      one DTO, one strategy. Configs with a NULL stratergy_id get no tag - they
+      could not be dispatched before this changeset either (StrategyFactory.get
+      throws on a null id), so there is nothing to preserve.
+    -->
+    <changeSet id="031_create_trade_config_strategy" author="moneymaker">
+        <createTable tableName="trade_config_strategy">
+            <column name="id" type="INT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="tc_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="strategy_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="enabled" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="trade_config_strategy"
+                                 baseColumnNames="tc_id"
+                                 referencedTableName="trade_config"
+                                 referencedColumnNames="id"
+                                 constraintName="fk_trade_config_strategy_trade_config"/>
+
+        <!-- A config cannot be tagged with the same strategy twice: the fan-out
+             would emit two identical DTOs, and the two would then collide on
+             every (trade_config_id, strategy_id) ledger gate in OrderService. -->
+        <addUniqueConstraint tableName="trade_config_strategy"
+                             columnNames="tc_id, strategy_id"
+                             constraintName="uk_trade_config_strategy_tc_strategy"/>
+    </changeSet>
+
+    <changeSet id="031_backfill_trade_config_strategy" author="moneymaker">
+        <sql>
+            INSERT INTO trade_config_strategy (tc_id, strategy_id, enabled)
+            SELECT tc.id, tc.stratergy_id, TRUE
+              FROM trade_config tc
+             WHERE tc.stratergy_id IS NOT NULL
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

@@ -33,6 +33,15 @@
                 </div>
             </div>
 
+            <div class="form-row chart-field chart-field-date">
+                <label for="chartFromDate">From <span style="font-weight:400;opacity:.7">(continuous)</span></label>
+                <div class="chart-date-control">
+                    <input id="chartFromDate" class="form-control" type="date"
+                           title="Leave blank to chart the single selected day. Set it to draw one continuous series from this date through the Date above, running across session boundaries." />
+                    <button id="clearFromDateBtn" class="btn btn-ghost chart-step-btn" type="button" title="Back to single-day view">&times;</button>
+                </div>
+            </div>
+
             <div class="form-row chart-field chart-field-source">
                 <label for="chartDataSource">Data Source</label>
                 <select id="chartDataSource" class="form-control">

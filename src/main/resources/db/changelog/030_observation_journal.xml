@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      historical_spot_candles and historical_option_candles both carry volume,
+      and the option table carries open_interest too - but MarketData had no
+      fields for either, so HistoricalIciciMarketDataProvider.toMarketData()
+      dropped them on every fetch. For an option SELLER, OI change is among the
+      most informative inputs available (rising OI against a rising premium is
+      fresh buying against the position; falling OI is unwinding), and it never
+      reached the strategy or any analysis.
+
+      Nullable: the broker path has no value for them until an adapter supplies
+      one, and a null must stay distinguishable from a genuine zero.
+    -->
+    <changeSet id="030_add_volume_oi_to_market_data" author="moneymaker">
+        <addColumn tableName="market_data">
+            <column name="volume" type="BIGINT"/>
+            <column name="open_interest" type="BIGINT"/>
+        </addColumn>
+    </changeSet>
+
+    <!--
+      The observation journal.
+
+      ONE table, because the question is not only "what did we know about the
+      trades we took" but "what did we know about the legs we passed over" -
+      counterfactuals need the rejected candidates recorded with the same feature
+      set as the taken ones. A per-trade metadata table cannot express that; a
+      row per observed leg per tick can.
+
+      Written from platform chokepoints (AnalysisScheduler / OrderService /
+      PositionService), never from a strategy, so every strategy present and
+      future is journalled without opting in.
+
+      Columns are typed only where they get aggregated or filtered - kind,
+      event_type, direction, and the leg identity. Everything else lives in
+      `features` JSON, so adding Supertrend, MACD, OI-delta or anything later is
+      a new FeatureContributor bean and no migration.
+
+      confirmable_at is load-bearing for structure rows: a swing is only knowable
+      N bars after it prints, so analysis must filter on confirmable_at. Reading
+      these at observed_at would reintroduce the look-ahead this codebase was just
+      cleaned of.
+    -->
+    <changeSet id="030_create_journal_observation_table" author="moneymaker">
+        <createTable tableName="journal_observation">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <!-- Groups one backtest run or one live session. -->
+            <column name="run_id" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="observed_at" type="DATETIME">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Structure rows only: when the fact became knowable. -->
+            <column name="confirmable_at" type="DATETIME"/>
+
+            <!-- CANDIDATE | ENTRY | MONITOR | EXIT | EVENT -->
+            <column name="kind" type="VARCHAR(16)">
+                <constraints nullable="false"/>
+            </column>
+            <!-- EVENT rows: BOS | CHOCH | SMA_FLIP | SUPERTREND_FLIP | ... -->
+            <column name="event_type" type="VARCHAR(32)"/>
+            <!-- WITH | AGAINST | NEUTRAL, relative to the position or intent -->
+            <column name="direction" type="VARCHAR(16)"/>
+
+            <column name="strategy_id" type="INT"/>
+            <column name="trade_config_id" type="INT"/>
+            <column name="trade_order_id" type="BIGINT"/>
+
+            <!-- UNDERLYING | OPTION -->
+            <column name="series" type="VARCHAR(16)"/>
+            <column name="instrument_name" type="VARCHAR(50)"/>
+            <column name="option_token" type="VARCHAR(100)"/>
+            <column name="option_type" type="VARCHAR(2)"/>
+            <column name="strike" type="INT"/>
+            <column name="interval_minutes" type="INT"/>
+
+            <!-- CANDIDATE rows: did this leg actually get traded at this tick. -->
+            <column name="selected" type="BOOLEAN" defaultValueBoolean="false"/>
+
+            <column name="features" type="JSON"/>
+        </createTable>
+
+        <createIndex tableName="journal_observation" indexName="idx_journal_run_time">
+            <column name="run_id"/>
+            <column name="observed_at"/>
+        </createIndex>
+        <createIndex tableName="journal_observation" indexName="idx_journal_order">
+            <column name="trade_order_id"/>
+        </createIndex>
+        <createIndex tableName="journal_observation" indexName="idx_journal_kind">
+            <column name="kind"/>
+            <column name="event_type"/>
+            <column name="direction"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

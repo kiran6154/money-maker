@@ -9,6 +9,25 @@ Operating instructions for **Claude Code** (and any other Claude-family agent) w
 
 This is a **Spring Boot 3 / Java 17** broker-automation app. The architecture is opinionated — please respect these invariants:
 
+> ### ⚠️ Rule 0 — highest priority, takes precedence over everything below
+>
+> **Every strategy gap, open question, or analysis follow-up goes in
+> [`docs/STRATEGY_ANALYSIS_TODO.md`](docs/STRATEGY_ANALYSIS_TODO.md).**
+> Not in `docs/GAPS.md`, not in a commit message, not as a `// TODO` in the tree.
+>
+> This applies to anything touching a `Strategy` bean, its `TradeRules`, the
+> predicates in `strategy/rules/`, or the `TradeSignal`s emitted — i.e. anything
+> that changes **what trades get taken**. `GAPS.md` is for infrastructure debt
+> only (schedulers, wiring, schema, delivery).
+>
+> Three standing constraints on those entries, spelled out in that file:
+> **(a)** write the entry the moment you notice it, before moving on;
+> **(b)** never state a trade-impact you have not measured — write
+> `Impact | Unquantified` and say what would measure it;
+> **(c)** never change a strategy's behaviour to close an entry without
+> confirming with the user first, then re-run the same backtest window before
+> and after and record both numbers.
+
 1. **One auth code path.** All broker login decisions go through `com.moneymaker.login.service.LoginOrchestrator`. Never re-implement the "ensure we're logged in" logic in a scheduler, controller, or backtest step. Call the orchestrator instead.
 2. **One adapter per broker.** Implement `BrokerLoginService`, `OrderPlacementService`, and `PositionMonitorService` in `com.moneymaker.broker.<name>`. Translate native responses into the standard DTOs (`BrokerSession`, `FillSnapshot`); don't leak broker-specific types upward.
 3. **Single global state holder.** Inject `com.moneymaker.state.AppState` rather than touching `BrokerSessionStore` or DB repositories directly when reading runtime status (logged-in flag, heartbeat, cached configs).
@@ -53,13 +72,13 @@ src/main/java/com/moneymaker/
 │                                          OrderScheduler, PositionScheduler
 ├── shared/data/SharedData                 Static caches (combinedDto, strikeMarketData…, tradeSignals)
 ├── state/AppState                         Global runtime facade
-├── strategy/                              Strategy interface + Strategy1 + rules/{RuleEngine, CommonRules, …}
+├── strategy/                              Strategy interface + AbstractSmaCrossStrategy + Strategy1/Strategy2 + rules/{…}
 ├── telegram/                              TelegramNotifier + NotificationService
 └── util/
 
 src/main/resources/
 ├── application.properties                 broker.* / telegram.* / app.mode / resilience4j.* keys
-├── db/changelog/                          Liquibase changesets (numbered NNN_*.xml, currently up to 028)
+├── db/changelog/                          Liquibase changesets (numbered NNN_*.xml, currently up to 036)
 ├── static/css/app.css                     Glassmorphism palette
 └── templates/                              Thymeleaf views (index, login, manual-login, backtest)
 ```
@@ -80,12 +99,15 @@ When changing anything in these areas, **read the relevant doc first**:
 | Backtest performance + live parity | [`docs/BACKTEST_PERFORMANCE.md`](docs/BACKTEST_PERFORMANCE.md) | Speed-up phases, per-phase live-mode impact, parity verification checklist |
 | Architecture overview | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | High-level layering and conventions |
 | Schedulers (all 5) | [`docs/SCHEDULERS.md`](docs/SCHEDULERS.md) | LoginScheduler, AnalysisScheduler, TradeConfigScheduler, OrderScheduler, PositionScheduler — cadence, pipeline, mode-gating |
+| **Strategy gaps / TODO** | [`docs/STRATEGY_ANALYSIS_TODO.md`](docs/STRATEGY_ANALYSIS_TODO.md) | **Rule 0 — every strategy gap, open question and analysis follow-up goes here, not in `GAPS.md`** |
+| Strategies (`stratergy_id`) | [`docs/STRATEGIES.md`](docs/STRATEGIES.md) | What each strategy id runs, the shared `AbstractSmaCrossStrategy` engine, Strategy2's SMA-20 slope filter, how to add one |
 | Orders + position monitoring | [`docs/ORDERS_AND_POSITIONS.md`](docs/ORDERS_AND_POSITIONS.md) | Order lifecycle, dedupe rules, broker factories, peak / SL / target tracking, `trade_order` columns |
 | Broker rate limiting + retry | [`docs/RATE_LIMITING.md`](docs/RATE_LIMITING.md) | Resilience4j wiring, the cache / reshape PR roadmap |
 | Telegram alerts + dedupe | [`docs/NOTIFICATIONS.md`](docs/NOTIFICATIONS.md) | `NotificationService` facade, `sendIfChanged` / `sendThrottled`, backtest gate |
 | EOD downtrend auto-config | [`docs/EOD_DOWNTREND.md`](docs/EOD_DOWNTREND.md) | `sma_downtrend_rule` table, end-of-day detector, `trade_config.source` marker, extension hooks |
 | Chart dashboard | [`docs/CHART_DASHBOARD.md`](docs/CHART_DASHBOARD.md) | Kite-style dashboard: frontend flow, ATM/expiry resolution, both chart data sources, debugging checklist |
 | Historical ICICI chart data | [`docs/HISTORICAL_CHART_DATA_PLAN.md`](docs/HISTORICAL_CHART_DATA_PLAN.md) | CSV import format, natural-key historical tables, dual-source chart design |
+| Observation journal + CHoCH/BOS | [`docs/OBSERVATION_JOURNAL.md`](docs/OBSERVATION_JOURNAL.md) | Platform-level capture of candidates/entries/exits, the `FeatureContributor` SPI, and market-structure detection (`confirmableAt` matters) |
 | Cross-workflow system map | [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md) | Every workflow end-to-end (trigger → steps → reads/writes), plus which workflows feed each other's data — the view none of the per-feature docs above gives on its own |
 
 If you add a doc, link it here. If you change behaviour described in a doc, update the doc in the same PR — see the next section.
@@ -102,6 +124,7 @@ Docs in this repo are first-class. They are how the next contributor (human or A
 
 **Update the relevant `docs/*.md` in the same change** when you:
 
+- Notice **anything about a strategy's behaviour** that is unresolved → add an entry to [`STRATEGY_ANALYSIS_TODO.md`](docs/STRATEGY_ANALYSIS_TODO.md) (see Rule 0). Do this even if you are not fixing it.
 - Add a new scheduler, alert type, exit reason, or `trade_order` column → update [`SCHEDULERS.md`](docs/SCHEDULERS.md), [`NOTIFICATIONS.md`](docs/NOTIFICATIONS.md), and [`ORDERS_AND_POSITIONS.md`](docs/ORDERS_AND_POSITIONS.md) as applicable.
 - Add a new broker → update the broker tables in [`ORDERS_AND_POSITIONS.md`](docs/ORDERS_AND_POSITIONS.md) and the recipe in [`Readme.md`](Readme.md).
 - Add a new Liquibase changeset → reference it in the relevant doc's "columns" or "schema" section.
@@ -139,7 +162,7 @@ Follow the recipe in [`Readme.md` → Adding a new broker](Readme.md#adding-a-ne
 See [`docs/SCHEDULERS.md` → Adding a new scheduler](docs/SCHEDULERS.md#adding-a-new-scheduler). Put the work in a service so backtest can replay it.
 
 ### Adding a DB column / table
-1. Create `src/main/resources/db/changelog/NNN_<purpose>.xml`. Numbering is sequential — current head is 028. Check the directory before picking a number: `018` is already used twice (`018_create_sma_downtrend_rule_table.xml` and `018_create_historical_chart_tables.xml`), so confirm your number is actually free.
+1. Create `src/main/resources/db/changelog/NNN_<purpose>.xml`. Numbering is sequential — current head is 036. Check the directory before picking a number: `018` is already used twice (`018_create_sma_downtrend_rule_table.xml` and `018_create_historical_chart_tables.xml`), so confirm your number is actually free.
 2. Include it in `db.changelog-master.xml`.
 3. Add / update the JPA entity with `@Column(name="…")`.
 4. Update relevant repositories.
@@ -170,6 +193,9 @@ See [`docs/NOTIFICATIONS.md` → How to add a new alert](docs/NOTIFICATIONS.md#h
 ```powershell
 # compile only
 mvn -q -DskipTests compile
+
+# run the unit tests (src/test — JUnit 5 + Mockito + AssertJ via spring-boot-starter-test)
+mvn test
 
 # run app on :8080 (requires MySQL)
 mvn spring-boot:run

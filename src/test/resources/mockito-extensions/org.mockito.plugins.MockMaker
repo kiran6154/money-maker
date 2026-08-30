@@ -1,0 +1,10 @@
+# Mockito's default (inline) mock maker installs a Byte Buddy agent by
+# self-attaching to the running JVM. That attach is blocked on this machine —
+# every Mockito test failed with "Could not self-attach to current VM using
+# external process" before this file existed, including the ones that predate it.
+#
+# The subclass mock maker needs no agent. The cost is that it cannot mock final
+# classes, final methods or statics; nothing in this suite does, and if that
+# changes the alternative is -Djdk.attach.allowAttachSelf=true on the surefire
+# argLine rather than reverting this.
+mock-maker-subclass

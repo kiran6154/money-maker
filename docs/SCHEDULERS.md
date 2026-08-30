@@ -11,7 +11,7 @@ Every `@Scheduled` bean in the app, what it does, when it runs, and what it depe
 | Scheduler | Package | Cadence (live) | Replays in backtest? | Reads | Writes |
 |---|---|---|---|---|---|
 | [`LoginScheduler`](#loginscheduler) | `com.moneymaker.scheduler` | `0 0 8 * * MON-FRI` (08:00 IST) + `fixedDelay=60s` heartbeat + `0 15 9 * * MON-FRI` (09:15 IST) options fetch | No (controller-driven) | `AppState`, `BrokerLoginManager` | `broker_session`, `market_data`/`options_data`, Telegram |
-| [`TradeConfigScheduler`](#tradeconfigscheduler) | `com.moneymaker.scheduler` | `ApplicationReadyEvent` (live, weekday) + `0 16 9 * * MON-FRI` | Yes (per-day fetch) | `trade_config`, `instrument`, `sma_timeframe` | `SharedData.combinedDto` |
+| [`TradeConfigScheduler`](#tradeconfigscheduler) | `com.moneymaker.scheduler` | `ApplicationReadyEvent` (live, weekday) + `0 16 9 * * MON-FRI` | Yes (per-day fetch) | `trade_config` (incl. `strategy_ids`), `instrument`, `sma_timeframe` | `SharedData.combinedDto` |
 | [`AnalysisScheduler`](#analysisscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI`, gated by [`MarketHoursService.isOpenNow()`](#market-hours-gating) | Yes (every backtest tick) | Broker historical data | `SharedData.strikeMarketDataByInstrumentAndInterval`, `SharedData.tradeSignals` |
 | [`OrderScheduler`](#orderscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI`, gated by [`MarketHoursService.isOpenNow()`](#market-hours-gating) | Yes (after `AnalysisScheduler` each tick) | `SharedData.tradeSignals` | `trade_order`, broker order endpoints, Telegram |
 | [`PositionScheduler`](#positionscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI`, gated by [`MarketHoursService.isOpenNow()`](#market-hours-gating) | Yes (after `OrderScheduler` each tick) | OPEN `trade_order` rows, broker LTP | `trade_order` (peak/last-monitored/exit), Telegram |
@@ -82,6 +82,9 @@ Detailed state machine and alert-rule matrix live in [HEARTBEAT.md](HEARTBEAT.md
 [`com.moneymaker.scheduler.TradeConfigScheduler`](../src/main/java/com/moneymaker/scheduler/TradeConfigScheduler.java)
 
 - Loads `TradeConfig` + `Instrument` + `InstrumentDetails` + `SmaTimeframe` for a given trading date and assembles them into `List<TradeConfigCombinedDTO>`.
+- **Fans each config out into one DTO per strategy named in `trade_config.strategy_ids`** (changesets 031/035) — same `tradeConfig`, different `strategyId`. This is the only place the fan-out happens, which is what lets `StrategyFactory` keep dispatching exactly one strategy per DTO. A config with a blank column yields a single DTO carrying its `stratergy_id`, so an untagged database behaves exactly as before. See [STRATEGIES.md](STRATEGIES.md#how-a-config-reaches-a-strategy).
+  - **The list length is the number of `(config, strategy)` pairs, not configs.** Anything reporting `combinedDto.size()` as a config count (the backtest day log, the Telegram digest header) counts pairs.
+  - Siblings share one `TradeConfig` instance and one timeframe list — they differ in nothing but `strategyId`. Nothing downstream writes to either; a caller that needs to mutate a config per strategy must copy first.
 - Stashes the result on `SharedData.combinedDto` so downstream schedulers can read configs without hitting the DB on every tick.
 - Has a `@Scheduled(cron = "0 16 9 * * MON-FRI")` job that does the live 09:16 IST load.
 - Also has an `ApplicationReadyEvent` listener (`seedConfigsOnStartup`) that does the same load once at boot in `app.mode=live` on weekdays. This covers the case where the JVM is started after 09:16 — without it, `SharedData.combinedDto` would stay empty until the next day's 09:16 cron and the Analysis/Order/Position pipeline would idle. Idempotent with the cron (date-keyed cache + `DailyEventGuard` on the Telegram report). Skipped in backtest mode — `BacktestAnalysisService` manages `combinedDto` per-day in its own loop.
@@ -101,14 +104,16 @@ After the live cron stores configs into `SharedData`, and at the top of each bac
 [`com.moneymaker.scheduler.AnalysisScheduler`](../src/main/java/com/moneymaker/scheduler/AnalysisScheduler.java)
 
 - **Cron `0 0/5 9-16 * * MON-FRI`** — every 5 minutes during NSE hours.
-- For each `TradeConfigCombinedDTO` and each timeframe in `SharedData.allTimeFrameMap` (`5min` / `10min` / `15min`):
+- For each `TradeConfigCombinedDTO` and each timeframe **that config's own `sma_timeframe` rows name** (`timePeriodsOf(dto)`):
   1. `MarketDataService.fetchHistoricalData(...)` for the underlying.
   2. `calculateStrikesForCandles(...)` to derive active strikes.
   3. For each active strike, fetch the option chain candles and stash them in `SharedData.strikeMarketDataByInstrumentAndInterval` keyed by `<instrumentToken>|<interval>|<optionType>|<strike>|<optionToken>|<itmDepth>|<otmDepth>`.
-  4. Compute SMA columns on each list (50, 100, 200, 500 — see [`AllTimeFramedto`](../src/main/java/com/moneymaker/dto/AllTimeFramedto.java)).
-- Then `runStrategies()` invokes every `Strategy` bean — currently `Strategy1` — which writes `TradeSignal`s into `SharedData.tradeSignals`.
+  4. Compute SMA columns on each list — **every** period registered for that timeframe in `allTimeFrameMap` (20, 50, 100, 200, 500 — see [`AllTimeFramedto`](../src/main/java/com/moneymaker/dto/AllTimeFramedto.java)), not just the one the config trades on. That is what lets a strategy filter on an SMA period other than its own, as `Strategy2` does with SMA-20.
+- **Only configured intervals are fetched.** This loop used to iterate `allTimeFrameMap`'s keys (`5` / `10` / `15`) regardless of what the day's configs asked for, so every tick cached a 10-minute series no strategy scans — `sma_timeframe` only ever holds 5- and 15-minute rows. That was not merely wasted work: `OrderService.lastPriceFor` and the backtest position monitor resolved a quote by option token alone and could land on it, which is how targets and stop-losses ended up priced off a 10-minute bar. A timeframe with no periods registered in `allTimeFrameMap` is skipped with a warning, which is what used to happen implicitly by never being fetched.
+- The data-fetch loop **de-duplicates by `trade_config.id`**. Since 031 `SharedData.combinedDto` holds one entry per `(config × tagged strategy)`, and what this loop fetches depends only on the config — so without the guard a config tagged with two strategies would issue every rate-limited `MarketDataService` call twice for identical data.
+- Then `runStrategies(asOf)` walks **every** DTO — including each tag of a fanned-out config — and invokes the `Strategy` bean that DTO was scoped to (`TradeConfigCombinedDTO.getStrategyId()`, falling back to `stratergy_id`) — see [STRATEGIES.md](STRATEGIES.md) — which writes `TradeSignal`s into `SharedData.tradeSignals`. Each signal carries the emitting `strategyId`.
 
-> **Entry legs are also filtered by premium.** `Strategy1` drops an entry signal
+> **Entry legs are also filtered by premium.** `AbstractSmaCrossStrategy` drops an entry signal
 > whose leg premium falls outside `trade_config.min_option_price` /
 > `max_option_price` — see
 > [ORDERS_AND_POSITIONS.md](ORDERS_AND_POSITIONS.md#option-premium-band-min_option_price--max_option_price).
@@ -117,14 +122,14 @@ After the live cron stores configs into `SharedData`, and at the top of each bac
 > **The cache is global; the key is the ownership record.** Every config for the
 > day writes into the same map, so a strategy reading it back must match *every*
 > segment the write pinned — `optionType` and the two depths included, not just
-> `<instrumentToken>|<interval>`. `Strategy1.keyMatches` does this. Matching only
+> `<instrumentToken>|<interval>`. `AbstractSmaCrossStrategy.keyMatches` does this. Matching only
 > the prefix makes a CE config scan the PE config's legs and vice versa, and
 > since a CE + PE pair per day is the normal shape, every signal then fires once
 > per config and the ledger records each trade twice.
 
 Inside `MarketDataService.fetchHistoricalData` the call is wrapped by Resilience4j RateLimiter + Retry — see [RATE_LIMITING.md](RATE_LIMITING.md) for the throttle / retry policy and the planned cache layers.
 
-In backtest mode, `BacktestAnalysisService.runForDateTime` calls `analysisScheduler.calculateIndicator(currentDateTime)` and then `analysisScheduler.runStrategies()` directly per tick — bypassing the cron.
+In backtest mode, `BacktestAnalysisService.runForDateTime` calls `analysisScheduler.calculateIndicator(currentDateTime)` and then `analysisScheduler.runStrategies(currentDateTime)` directly per tick — bypassing the cron.
 
 ### Symbol + expiry resolution
 
@@ -140,7 +145,7 @@ leg's symbol.
 
 Two consequences worth knowing:
 
-- **`Strategy1` uses the same resolver.** Its cache-key prefix filter must match
+- **The strategies use the same resolver.** Its cache-key prefix filter must match
   what the scheduler wrote at position 0 of the key. Deriving that prefix from
   `instrumentDetails` independently — as it once did — matches nothing the moment
   the symbol is not a broker token, and the strategy silently evaluates zero
@@ -170,7 +175,7 @@ first one's leg. Use `SharedData.optionTokenKey(...)` when touching it.
 
 Wraps each signal in `try/catch` so a single bad signal doesn't kill the rest of the queue.
 
-In backtest, `BacktestAnalysisService` calls `orderScheduler.processOrders()` directly after `analysisScheduler.runStrategies()` each tick.
+In backtest, `BacktestAnalysisService` calls `orderScheduler.processOrders()` directly after `analysisScheduler.runStrategies(asOf)` each tick.
 
 ---
 
@@ -183,7 +188,8 @@ In backtest, `BacktestAnalysisService` calls `orderScheduler.processOrders()` di
   1. `tradeOrderRepository.findByStatus("OPEN")`.
   2. For each open row, calls `PositionMonitorFactory.active().currentPrice(order)` — broker-specific live quote (Zerodha LTP, backtest cached candle, Groww/AngelOne TODO).
   3. Updates `peak_profit`, `peak_loss`, `last_monitored_price`, `last_monitored_at`.
-  4. Compares unrealised P&L against `tradeConfig.target` / `tradeConfig.stopLoss`. On breach, calls `OrderService.closeManually(orderId, price, now, "TARGET" | "STOP_LOSS")` — full close path (DB update + broker exit + Telegram alert).
+  4. Ratchets `trail_sl_at` up to the highest `trail_ladder_at_entry` rung `peak_profit` has reached (changeset 036). The floor never moves down.
+  5. Compares unrealised P&L against the thresholds **snapshotted on the row** (`target_at_entry` / `stop_loss_at_entry` / `trail_sl_at`), not the live config. On breach, calls `OrderService.closeManually(orderId, price, now, "TARGET" | "TRAIL_SL" | "STOP_LOSS")` — full close path (DB update + broker exit + Telegram alert).
 
 Fields and SL/target semantics documented in [ORDERS_AND_POSITIONS.md](ORDERS_AND_POSITIONS.md).
 
@@ -211,7 +217,7 @@ In backtest, `BacktestAnalysisService` calls `positionScheduler.processPositions
 `BacktestAnalysisService.run(fromDate, toDate)` walks each backtest day in 5-minute increments and **calls the same scheduler methods directly**. The cron annotations are inert in `app.mode=backtest`. Per tick, the call order is:
 
 1. `analysisScheduler.calculateIndicator(currentDateTime)`  (data fetch + SMAs)
-2. `analysisScheduler.runStrategies()`                       (strategy → signals)
+2. `analysisScheduler.runStrategies(asOf)`                   (strategy → signals)
 3. `orderScheduler.processOrders()`                         (signals → orders)
 4. `positionScheduler.processPositions()`                   (open orders → monitoring)
 

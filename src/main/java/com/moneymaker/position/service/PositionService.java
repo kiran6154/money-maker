@@ -4,6 +4,7 @@ import com.moneymaker.dto.Quote;
 import com.moneymaker.entity.TradeOrder;
 import com.moneymaker.order.service.OrderService;
 import com.moneymaker.repository.TradeOrderRepository;
+import com.moneymaker.util.TrailLadder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -16,10 +17,11 @@ import java.util.Objects;
  * Walks every {@link TradeOrder} in {@code OPEN} status each
  * {@code PositionScheduler} tick and updates monitor columns
  * ({@code peakProfit}, {@code peakLoss}, {@code lastMonitoredPrice},
- * {@code lastMonitoredAt}). When the unrealised P&L breaches the
- * {@code targetAtEntry} or {@code stopLossAtEntry} thresholds snapshotted on
- * the row at entry, delegates to {@code OrderService.closeManually} to record
- * the exit.
+ * {@code lastMonitoredAt}, {@code trailSlAt}). When the unrealised P&L breaches
+ * the {@code targetAtEntry} or {@code stopLossAtEntry} thresholds snapshotted on
+ * the row at entry — or the trailing floor this class ratchets up from
+ * {@code trailLadderAtEntry} — delegates to {@code OrderService.closeManually}
+ * to record the exit.
  *
  * <p>Quote source is broker-agnostic via {@link PositionMonitorFactory}:
  * backtest reads cached candles, live brokers call their LTP endpoint.
@@ -102,19 +104,26 @@ public class PositionService {
         order.setLastMonitoredPrice(price);
         order.setLastMonitoredAt(asOf);
 
+        // Move the trailing floor up first, so a tick that reaches a new rung is
+        // also judged against it. It cannot close the trade on that same tick —
+        // a rung locks strictly below its own trigger (TrailLadder.parse enforces
+        // it), so P&L at the moment of arming is always above the new floor.
+        applyTrail(order);
+
         // Threshold check using values snapshotted at entry — not the live config.
         String hit = thresholdBreach(order, pnl);
 
-        log.debug("[position] orderId={} {} {}{} entry={}@{} cur={}@{} pl={} maxPL={} maxLoss={} target={} stopLoss={} → {}",
+        log.debug("[position] orderId={} {} {}{} entry={}@{} cur={}@{} pl={} maxPL={} maxLoss={} target={} stopLoss={} trailSl={} → {}",
                 order.getId(), order.getInstrumentName(), order.getOptionStrike(), order.getOptionType(),
                 order.getEntryPrice(), order.getEntryTime(),
                 price, asOf, pnl, order.getPeakProfit(), order.getPeakLoss(),
-                order.getTargetAtEntry(), order.getStopLossAtEntry(),
+                order.getTargetAtEntry(), order.getStopLossAtEntry(), order.getTrailSlAt(),
                 hit != null ? hit : "hold");
 
         if (hit != null) {
-            log.info("[position] CLOSE orderId={} reason={} pnl={} (target={} stopLoss={}) at {}",
-                    order.getId(), hit, pnl, order.getTargetAtEntry(), order.getStopLossAtEntry(), asOf);
+            log.info("[position] CLOSE orderId={} reason={} pnl={} (target={} stopLoss={} trailSl={} peak={}) at {}",
+                    order.getId(), hit, pnl, order.getTargetAtEntry(), order.getStopLossAtEntry(),
+                    order.getTrailSlAt(), order.getPeakProfit(), asOf);
             // Save peak/last-monitored before closeManually loads the row again.
             tradeOrderRepository.save(order);
             orderService.closeManually(order.getId(), price, asOf, hit);
@@ -125,22 +134,80 @@ public class PositionService {
     }
 
     /**
-     * Returns the breached threshold name ({@code TARGET} or {@code STOP_LOSS})
-     * or {@code null} if neither is breached or neither is configured.
+     * Raises the trailing floor to whatever rung the trade's <b>peak</b> profit has
+     * earned, and never lowers it.
      *
-     * <p>Reads {@code targetAtEntry} / {@code stopLossAtEntry} from the order
-     * itself — the values are snapshotted at entry by {@link OrderService}.
-     * {@code stopLossAtEntry} is stored as a positive number, so the breach
-     * check negates it: {@code pnl <= -stopLoss}.
+     * <p>Peak, not current P&L, is what makes this a ratchet: a trade that touches
+     * +50 keeps its +25 floor even if price falls back to +30, so the excursion it
+     * actually achieved is converted into a floor instead of being given back. That
+     * is the whole point of the ladder — see changeset 036.</p>
+     *
+     * <p>The ladder is read from {@code trailLadderAtEntry} on the row, not from
+     * the live config, for the same reason the fixed bracket is: editing a ladder
+     * mid-session must not re-floor trades that are already open. It was
+     * canonicalised and validated at entry, so a parse failure here means the
+     * column was corrupted after the fact — log it and leave the trade on its fixed
+     * stop rather than letting the exception abort the tick for every other order.</p>
+     */
+    private void applyTrail(TradeOrder order) {
+        String ladder = order.getTrailLadderAtEntry();
+        if (ladder == null || ladder.isBlank()) return;
+
+        BigDecimal lock;
+        try {
+            lock = TrailLadder.lockFor(ladder, order.getPeakProfit());
+        } catch (IllegalArgumentException ex) {
+            log.error("[position] orderId={} has an unusable trail_ladder_at_entry \"{}\" — "
+                            + "trailing disabled for this trade, fixed stop-loss still applies: {}",
+                    order.getId(), ladder, ex.getMessage());
+            return;
+        }
+        if (lock == null) return; // no rung reached yet
+
+        BigDecimal current = order.getTrailSlAt();
+        if (current == null || lock.compareTo(current) > 0) {
+            log.info("[position] TRAIL orderId={} peak={} → stop-loss floor {} (was {}) ladder={}",
+                    order.getId(), order.getPeakProfit(), lock, current, ladder);
+            order.setTrailSlAt(lock);
+        }
+    }
+
+    /**
+     * Returns the breached threshold name ({@code TARGET}, {@code TRAIL_SL} or
+     * {@code STOP_LOSS}) or {@code null} if none is breached or none is configured.
+     *
+     * <p>Reads {@code targetAtEntry} / {@code stopLossAtEntry} / {@code trailSlAt}
+     * from the order itself — the first two are snapshotted at entry by
+     * {@link OrderService}, the third is maintained by {@link #applyTrail}.
+     * {@code stopLossAtEntry} is stored as a positive number, so the breach check
+     * negates it: {@code pnl <= -stopLoss}.</p>
+     *
+     * <p>The two stops are not checked in sequence but collapsed into the
+     * <b>higher</b> of the two floors, labelled by whichever put it there. Order of
+     * evaluation would otherwise decide the exit reason on a tick where both
+     * breach — which happens whenever a candle gaps straight through both — and
+     * the label is the only thing that tells a trailed exit apart from a stopped
+     * one afterwards.</p>
      */
     private String thresholdBreach(TradeOrder order, BigDecimal pnl) {
         BigDecimal target   = order.getTargetAtEntry();
         BigDecimal stopLoss = order.getStopLossAtEntry();
+        BigDecimal trailSl  = order.getTrailSlAt();
 
         if (target != null && pnl.compareTo(target) >= 0) {
             return "TARGET";
         }
-        if (stopLoss != null && pnl.compareTo(stopLoss.negate()) <= 0) {
+
+        BigDecimal fixedFloor = stopLoss != null ? stopLoss.negate() : null;
+        // Strictly above: a trail sitting exactly on the fixed stop moved nothing,
+        // so the exit is the one that would have happened without the ladder.
+        boolean trailIsTighter = trailSl != null
+                && (fixedFloor == null || trailSl.compareTo(fixedFloor) > 0);
+
+        if (trailIsTighter) {
+            return pnl.compareTo(trailSl) <= 0 ? "TRAIL_SL" : null;
+        }
+        if (fixedFloor != null && pnl.compareTo(fixedFloor) <= 0) {
             return "STOP_LOSS";
         }
         return null;

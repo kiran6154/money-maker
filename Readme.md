@@ -210,6 +210,7 @@ com.moneymaker
 ├── scheduler
 │   ├── LoginScheduler              08:00 cron + 1-min heartbeat
 │   ├── TradeConfigScheduler        09:16 cron + ApplicationReadyEvent — loads SharedData.combinedDto
+│   │                               (one DTO per config x strategy_ids entry — see docs/STRATEGIES.md)
 │   ├── AnalysisScheduler           5-min cron — OHLC fetch, SMA compute, strategy run (market-hours gated)
 │   ├── OrderScheduler              5-min cron — drains trade signals into trade_order (market-hours gated)
 │   ├── PositionScheduler           5-min cron — monitors OPEN trade_order rows, SL/target close (market-hours gated)
@@ -222,7 +223,9 @@ com.moneymaker
 │   └── DailyEventGuard             Once-per-day gating backed by alert_state
 │
 ├── strategy
-│   ├── Strategy1 (active) / Strategy2, StrategyFactory
+│   ├── AbstractSmaCrossStrategy    Shared SMA-cross scan/gate engine
+│   ├── Strategy1 / Strategy2       id 1 = baseline; id 2 = baseline + no SELL while SMA20 slopes up
+│   ├── StrategyFactory             Routes on TradeConfigCombinedDTO.strategyId (the tag it was fanned out for)
 │   └── rules/{RuleEngine, CommonRules, SmaTrendCalculator, TradeRule, TradeRules, RuleContext}
 │
 ├── telegram
@@ -318,7 +321,7 @@ spring.liquibase.change-log=classpath:db/changelog/db.changelog-master.xml
 |---|---|---|
 | `0 0 8 * * MON-FRI` (08:00 IST) | First-of-day login: `LoginOrchestrator.ensureLoggedIn()`. Silent if already valid. | `LoginScheduler.ensureSessionAtMarketOpen` |
 | `fixedDelay = 60_000ms` | Heartbeat: auth probe + data probe; updates `broker_session`, drives Telegram on state transitions. | `LoginScheduler.heartbeat` |
-| `0 16 9 * * MON-FRI` (09:16 IST) + `ApplicationReadyEvent` | Loads `trade_config` (+ instrument + `sma_timeframe`) for today into `SharedData.combinedDto`. | `TradeConfigScheduler` |
+| `0 16 9 * * MON-FRI` (09:16 IST) + `ApplicationReadyEvent` | Loads `trade_config` (+ instrument + `sma_timeframe`) for today into `SharedData.combinedDto`, fanned out to one entry per (config x strategy named in `trade_config.strategy_ids`). | `TradeConfigScheduler` |
 | `0 0/5 9-16 * * MON-FRI` (every 5 min, market-hours gated) | Fetch OHLC, compute SMAs, run strategies → trade signals. | `AnalysisScheduler` |
 | `0 0/5 9-16 * * MON-FRI` (same tick, after Analysis) | Drain trade signals into `trade_order` rows + broker order calls. | `OrderScheduler` |
 | `0 0/5 9-16 * * MON-FRI` (same tick, after Order) | Monitor OPEN `trade_order` rows; SL/target close. | `PositionScheduler` |

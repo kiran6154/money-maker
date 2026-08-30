@@ -41,9 +41,29 @@ For each trading day in a backtest run, after force-close at 15:20:
      for the next trading day (skip Sat/Sun), carrying the rule's
      `min_option_price` / `max_option_price` as its premium band.
    - Inserts **one** `sma_timeframe` child row per passing combo.
+   - Stamps `trade_config.strategy_ids` with every strategy sharing that config.
 
-Once any `AUTO_DOWNTREND` row exists for the next day, the whole write is
-skipped on re-runs (idempotency — delete those rows by hand to force a re-write).
+### Idempotency is per `(target day, strategy)`
+
+A strategy that already has an `AUTO_DOWNTREND` config for the next trading day
+is skipped; one that does not still generates. So:
+
+- **Replaying an unchanged range is a no-op** — the property the backtest relies
+  on when the same dates are run twice.
+- **Tagging a rule with a further strategy and replaying fills that strategy in**
+  for days another strategy had already covered.
+
+The second point is why the guard moved. It used to be per *day*: any
+`AUTO_DOWNTREND` row for the target date suppressed the whole run, which made
+the strategy tags un-actionable in hindsight — tag a second strategy after a day
+had generated and it could never appear for it, because the first strategy's
+config was enough to skip the day.
+
+Because existing rows are never rewritten, tagging strategies at *different*
+times yields one config per strategy (`"1"` and `"2"`), while tagging both before
+the first generation yields a single config (`"1,2"`). Both dispatch identically;
+only the row count differs. Delete a day's generated rows to force a full
+re-write.
 
 The generated config flows through the normal day-start path —
 `TradeConfigScheduler.getConfigsForDate` picks it up on the next backtest day
@@ -56,26 +76,62 @@ the same way it picks up any human-inserted config.
 The rules table is the **detection** config: which underlying to monitor,
 when to start counting, how strict, and how to derive target/SL.
 
-Everything else — the SMA grid the detector walks, the moneyness it
-monitors, and the strategy-specific `trade_config` conventions — is **in
-code** so that the table doesn't duplicate fields that already exist on
-`trade_config`.
+The SMA grid the detector walks and the moneyness it monitors stay **in code**.
+Everything that decides *what gets traded* is in a table.
 
 | Concern | Where it lives |
 |---|---|
 | Which SMAs are checked | `EodDowntrendDetectionService.SMA_PERIODS` (`{50, 100, 200, 500}`) |
 | Which timeframes are checked | `EodDowntrendDetectionService.TIMEFRAMES_MINUTES` (`{5, 15}`) |
 | Which strike type | hardcoded ATM in `computeAtmStrike` |
-| `transaction_type`, `max_loss`, `no_of_trades`, `no_of_parrellel_trades` for the generated config | `EodDowntrendDetectionService.strategyDefaults(strategyId)` — one switch branch per strategy |
-| `lot_quantity` | `instrument.lot_qty` — the contract's lot size, not a strategy constant (`strategyDefaults` is only a fallback) |
+| `transaction_type`, `max_loss`, `no_of_trades`, `no_of_parrellel_trades` for the generated config | [`strategy_defaults`](#table-strategy_defaults) — one row per strategy (changeset 033) |
+| Whether a strategy may generate at all | `strategy_defaults.auto_config_enabled` |
+| `lot_quantity` | `instrument.lot_qty` — the contract's lot size, not a strategy constant (`strategy_defaults.lot_quantity` is only a fallback) |
 | Detection threshold (`max_deviation`, `start_time`) | `sma_downtrend_rule` |
 | Target/SL derivation (`atr_periods`, `target_multiplier`, `sl_multiplier`, `target_pct`, `sl_pct`) | `sma_downtrend_rule` |
 | Premium band (`min_option_price`, `max_option_price`) | `sma_downtrend_rule` — copied verbatim onto the generated config |
-| Which strategy + underlying a rule applies to | `sma_downtrend_rule` |
+| Which underlying a rule applies to | `sma_downtrend_rule` |
+| **Which strategies a rule generates for** | [`sma_downtrend_rule_strategy`](#table-sma_downtrend_rule_strategy) — one row per strategy (changeset 034) |
 
-This split satisfies CLAUDE.md #9: detection thresholds, target/SL knobs and the
-premium band are config-driven; the strategy conventions are *strategy identity*,
-not trading-behaviour knobs, and live on the strategy.
+This split satisfies CLAUDE.md #9. It did not always: until changeset 033 the
+`transaction_type` / `max_loss` / trade-count block came from a hardcoded switch,
+
+```java
+case 1:  return new StrategyDefaults("SELL", 1, 200, 1, 1);
+default: return null;
+```
+
+which was both a trading-behaviour constant in a service *and* the reason
+tagging a rule with any other strategy silently generated nothing — the `default`
+branch made `processRule` skip the rule outright.
+
+---
+
+## Tagging a rule with several strategies
+
+A rule tagged with strategies 1 and 2 runs its scan **once** and writes **one**
+`trade_config` whose `strategy_ids` column names both — not one config per
+strategy. That matters twice over: the scan (the
+`{50,100,200,500} × {5min,15min}` grid against ATM on both CE and PE) is the
+expensive half of the detector, and duplicate configs are exactly the drift that
+[changeset 031](STRATEGIES.md#how-a-config-reaches-a-strategy) exists to remove.
+
+```sql
+-- generate for strategy 2 as well, from tomorrow's run onward
+INSERT INTO sma_downtrend_rule_strategy (rule_id, strategy_id, enabled)
+VALUES (1, 2, TRUE);
+```
+
+No UI, no redeploy. The strategy needs a `strategy_defaults` row first, or the
+detector skips it with a warning naming it.
+
+**When one config cannot serve both.** `transaction_type`, `max_loss`,
+`no_of_trades` and `no_of_parrellel_trades` live on `trade_config` itself, so two
+strategies can only share a row when their `strategy_defaults` blocks are
+identical — the usual case, since `Strategy2` is `Strategy1` plus a filter. When
+the blocks differ, `resolveConfigGroups` emits one config per distinct block, each
+tagged with the strategies that share it. The `[EOD-downtrend] inserted ...
+strategies=[...]` log line names them.
 
 ---
 
@@ -84,7 +140,7 @@ not trading-behaviour knobs, and live on the strategy.
 | Column                    | Notes |
 |---------------------------|-------|
 | `id`                      | PK    |
-| `strategy_id`             | Strategy whose trade_config gets generated. The detector also uses this to pick the `strategyDefaults(...)` block. |
+| `strategy_id`             | The rule's **primary** strategy. Since changeset 034 the strategies actually generated for come from `sma_downtrend_rule_strategy`; this column is what that table was backfilled from, and the fallback for a rule with no tag rows. |
 | `instrument_id`           | Underlying (FK to `instrument`). Drives both ATM strike selection and ATR. |
 | `max_deviation`           | Max number of candles where `curr_sma >= prev_sma` before the day is no longer "downtrending". 0 = strictly monotonic. |
 | `start_time`              | The deviation counter only includes candles `>= start_time`. Default `09:20:00`. |
@@ -93,11 +149,13 @@ not trading-behaviour knobs, and live on the strategy.
 | `sl_multiplier`           | `stop_loss = basis × sl_multiplier`. Default `0.45` since changeset 027. |
 | `target_pct`              | Target as a fraction of entry premium — `0.2000` = 20%. Copied onto `trade_config.target_pct`, which **overrides** the absolute `target`. `NOT NULL`, default `0.20`. |
 | `sl_pct`                  | Stop loss as a fraction of entry premium. `NOT NULL`, default `0.30`. |
+| `max_sl_points`           | Ceiling in premium points on the stop the config resolves to — the lower of `sl_pct × entry` and this wins. Copied onto `trade_config.max_sl_points`. `NOT NULL`, default `60` (changeset 036). |
+| `trail_ladder`            | Trailing stop rungs as ascending `trigger:lock` pairs in points — `25:2,50:25,75:50,100:75`. Copied onto `trade_config.trail_ladder`. `NOT NULL`, default as shown (changeset 036). |
 | `min_option_price`        | Copied verbatim onto `trade_config.min_option_price`. `NOT NULL`, default `80`. |
 | `max_option_price`        | Copied verbatim onto `trade_config.max_option_price`. `NOT NULL`, default `250`. |
 | `enabled`                 | Toggle the rule on/off without deleting. |
 
-The band columns are `NOT NULL` on purpose. `Strategy1.isOutsideBand` skips a
+The band columns are `NOT NULL` on purpose. `AbstractSmaCrossStrategy.outsidePriceBand` skips a
 null bound entirely, so a config with no band is an **unbounded** config — free
 to sell a 6-point leg against a 30-point target, which is the exact case
 changeset 024 was written to prevent. A rule whose band is null or inverted is
@@ -109,9 +167,11 @@ skipped with a warn rather than generating that config; see `hasUsableBand`.
 INSERT INTO sma_downtrend_rule
   (strategy_id, instrument_id, max_deviation, start_time, atr_periods,
    target_multiplier, sl_multiplier, target_pct, sl_pct,
+   max_sl_points, trail_ladder,
    min_option_price, max_option_price, enabled)
 VALUES
-  (1, 1, 5, '09:20:00', 14, 0.30, 0.45, 0.20, 0.30, 80, 250, TRUE);
+  (1, 1, 5, '09:20:00', 14, 0.30, 0.45, 0.20, 0.30,
+   60, '25:2,50:25,75:50,100:75', 80, 250, TRUE);
 ```
 
 That single row says: *"for Strategy 1 on instrument id=1, walk the full
@@ -123,7 +183,7 @@ premium each trade opens at; and only enter legs priced between 80 and 250."*
 
 ## Schema changes
 
-Four changesets back this feature. **`sma_downtrend_rule` is created fat, then
+Six changesets back this feature. **`sma_downtrend_rule` is created fat, then
 slimmed, then given a premium band — read 018, 020 and 026 together to get the
 table's current shape.**
 
@@ -133,11 +193,63 @@ table's current shape.**
 | [`019_add_source_to_trade_config.xml`](../src/main/resources/db/changelog/019_add_source_to_trade_config.xml) | Adds `trade_config.source` — `MANUAL` / `AUTO_DOWNTREND`, default `MANUAL`. |
 | [`020_drop_unused_sma_downtrend_rule_columns.xml`](../src/main/resources/db/changelog/020_drop_unused_sma_downtrend_rule_columns.xml) | Drops all nine of those columns, leaving the detection-only shape documented above. |
 | [`027_add_pct_bracket.xml`](../src/main/resources/db/changelog/027_add_pct_bracket.xml) | Adds `target_pct` / `sl_pct` to both `trade_config` (nullable — opt-in) and `sma_downtrend_rule` (`NOT NULL`, `0.20` / `0.30`), and retunes `target_multiplier` / `sl_multiplier` from `1.0` to `0.30` / `0.45` on rows still holding the original default. |
+| [`036_add_trailing_stop_loss.xml`](../src/main/resources/db/changelog/036_add_trailing_stop_loss.xml) | Adds `max_sl_points` / `trail_ladder` to `sma_downtrend_rule` (`NOT NULL`, `60` / `25:2,50:25,75:50,100:75`) and to `trade_config` (seeded with the same values on existing rows). |
 | [`026_add_option_price_range_to_sma_downtrend_rule.xml`](../src/main/resources/db/changelog/026_add_option_price_range_to_sma_downtrend_rule.xml) | Adds `min_option_price` / `max_option_price`, `NOT NULL` defaulting to 80 / 250, so generated configs stop being written with an unbounded band. Existing rows are backfilled with the defaults. |
+
+| [`033_create_strategy_defaults.xml`](../src/main/resources/db/changelog/033_create_strategy_defaults.xml) | Creates `strategy_defaults` and seeds strategy 1 from the hardcoded switch it replaces. See below. |
+| [`034_create_sma_downtrend_rule_strategy.xml`](../src/main/resources/db/changelog/034_create_sma_downtrend_rule_strategy.xml) | Creates `sma_downtrend_rule_strategy`, backfilled one tag per rule from `sma_downtrend_rule.strategy_id`. |
 
 Every existing `trade_config` row stays `MANUAL`. Auto-generated rows are
 stamped `AUTO_DOWNTREND` so the detector can dedupe its own output across
 re-runs.
+
+### Table: `strategy_defaults`
+
+One row per strategy, holding the `trade_config` field block the detector stamps
+on every config it generates for that strategy.
+
+| Column | Notes |
+|---|---|
+| `strategy_id` | PK. Matches `Strategy.getId()`. |
+| `transaction_type` | `BUY` / `SELL` — the side an entry signal must carry. |
+| `lot_quantity` | Fallback only; `instrument.lot_qty` wins when set, because NFO takes whole lots and the contract defines one. |
+| `max_loss` | → `trade_config.max_loss`. |
+| `no_of_trades` | → `trade_config.no_of_trades`. |
+| `no_of_parallel_trades` | → `trade_config.no_of_parrellel_trades` (the typo is in that schema, not here). |
+| `auto_config_enabled` | Parks a strategy without deleting its block. |
+
+**Only strategy 1 is seeded**, with the exact values from the switch that was
+deleted, so behaviour on an existing database is unchanged. Strategy 2 gets no
+row on purpose: its `max_loss` / trade counts are trading decisions nobody has
+made, and CLAUDE.md #9 forbids guessing them. Until the row exists the detector
+logs — and generates nothing for it:
+
+```
+WARN [EOD-downtrend] rule id=1 — strategy 2 has no strategy_defaults row, skipping it.
+     Insert one (see changeset 033) to generate configs for this strategy.
+```
+
+```sql
+INSERT INTO strategy_defaults
+  (strategy_id, transaction_type, lot_quantity, max_loss,
+   no_of_trades, no_of_parallel_trades, auto_config_enabled)
+VALUES (2, 'SELL', 1, <max_loss>, <trades>, <parallel>, TRUE);
+```
+
+### Table: `sma_downtrend_rule_strategy`
+
+Which strategies a rule generates for. One row per strategy; see
+[Tagging a rule with several strategies](#tagging-a-rule-with-several-strategies).
+
+| Column | Notes |
+|---|---|
+| `id` | PK |
+| `rule_id` | FK to `sma_downtrend_rule`. |
+| `strategy_id` | Needs a matching `strategy_defaults` row to generate anything. |
+| `enabled` | Park a tag without losing the row. |
+
+Unique on `(rule_id, strategy_id)` — tagging the same strategy twice would emit
+its config twice for one detected downtrend.
 
 > **If the sample INSERT below fails with `Field 'sma' doesn't have a default
 > value`, changeset 020 has not been applied to your database.** Check
@@ -153,10 +265,13 @@ re-runs.
 |---|---|
 | [`SmaDowntrendRule`](../src/main/java/com/moneymaker/entity/SmaDowntrendRule.java) | JPA entity for the rules table. |
 | [`SmaDowntrendRuleRepository`](../src/main/java/com/moneymaker/repository/SmaDowntrendRuleRepository.java) | Spring Data — exposes `findByEnabledTrue()`. |
-| [`EodDowntrendDetectionService`](../src/main/java/com/moneymaker/backtesting/EodDowntrendDetectionService.java) | Orchestrator. Public entry: `runForDay(LocalDate)`. Constants `SMA_PERIODS`, `TIMEFRAMES_MINUTES`. Per-strategy defaults: `strategyDefaults(int)`. |
+| [`EodDowntrendDetectionService`](../src/main/java/com/moneymaker/backtesting/EodDowntrendDetectionService.java) | Orchestrator. Public entry: `runForDay(LocalDate)`. Constants `SMA_PERIODS`, `TIMEFRAMES_MINUTES`. Resolves which configs to emit in `resolveConfigGroups(rule)`. |
+| [`StrategyDefaults`](../src/main/java/com/moneymaker/entity/StrategyDefaults.java) / [`StrategyDefaultsRepository`](../src/main/java/com/moneymaker/repository/StrategyDefaultsRepository.java) | The per-strategy `trade_config` field block. `configSignature()` is what decides whether two strategies can share one generated config. |
+| [`SmaDowntrendRuleStrategy`](../src/main/java/com/moneymaker/entity/SmaDowntrendRuleStrategy.java) / [`SmaDowntrendRuleStrategyRepository`](../src/main/java/com/moneymaker/repository/SmaDowntrendRuleStrategyRepository.java) | Which strategies a rule generates for. |
+| [`StrategyIds`](../src/main/java/com/moneymaker/util/StrategyIds.java) | The detector writes `trade_config.strategy_ids` through this — without it the config would be scanned by its `stratergy_id` alone. The only place that column is parsed or formatted. |
 | [`OptionInstrumentResolver`](../src/main/java/com/moneymaker/market/instrument/OptionInstrumentResolver.java) | Supplies every symbol the detector fetches on — underlying, expiry, option leg. Same indirection `AnalysisScheduler` uses, which is what makes the detector work on both data sources. |
 | [`BacktestAnalysisService`](../src/main/java/com/moneymaker/backtesting/BacktestAnalysisService.java) | Calls `runForDay(currentDate)` after force-close, inside the per-day try-block. |
-| [`TradeConfigRepository`](../src/main/java/com/moneymaker/repository/TradeConfigRepository.java) | New `findByTradingDateAndSource` powers the idempotency probe. |
+| [`TradeConfigRepository`](../src/main/java/com/moneymaker/repository/TradeConfigRepository.java) | `findByTradingDateAndSource` powers the idempotency probe — its rows are read for their `strategy_ids` to build the already-generated set. |
 
 ---
 
@@ -164,7 +279,9 @@ re-runs.
 
 | Need                                | Where to change |
 |-------------------------------------|-----------------|
-| New strategy with different fixed fields (e.g. `transaction_type=BUY`) | Add a `case <id>:` branch to `strategyDefaults(...)`, then insert a `sma_downtrend_rule` row with `strategy_id=<id>`. |
+| New strategy with different fixed fields (e.g. `transaction_type=BUY`) | Two INSERTs, no code: a `strategy_defaults` row for the strategy, and a `sma_downtrend_rule_strategy` row tagging it onto the rule. |
+| An existing rule should also generate for another strategy | One INSERT into `sma_downtrend_rule_strategy`. If the two strategies' `strategy_defaults` blocks match they share one generated config; if not, each gets its own. |
+| Stop generating for a strategy without losing the setup | `UPDATE strategy_defaults SET auto_config_enabled=FALSE` (all rules), or `UPDATE sma_downtrend_rule_strategy SET enabled=FALSE` (one rule). |
 | New SMA period beyond 20/50/100/200/500 | Add the period to `SMA_PERIODS`, extend [`MarketData`](../src/main/java/com/moneymaker/entity/MarketData.java) with the new `smaValueXX` field, update [`SmaTrendCalculator`](../src/main/java/com/moneymaker/strategy/rules/SmaTrendCalculator.java#L25) and the `smaDownFlag(...)` switch in `EodDowntrendDetectionService`. |
 | Additional timeframe (e.g. `30min`) | Add to `TIMEFRAMES_MINUTES`. That's it. |
 | Different strike type (ITM/OTM at depth N) | Replace `computeAtmStrike` with a `computeStrike(rule, side)` and add the depth columns back to the rule. |
@@ -394,6 +511,7 @@ The generated config then carries **both** bracket shapes:
 |---|---|---|
 | `target_pct` / `sl_pct` | copied off the rule | The bracket that decides exits. `OrderService` resolves `entryPrice × pct` into `trade_order.target_at_entry` / `stop_loss_at_entry` at open. |
 | `target` / `stop_loss` | `basis × multiplier`, capped by `clampToBandFloor` | Fallback when a config has no percentage, and the SMA-separation gate `CommonRules.profitTarget` reads at entry. |
+| `max_sl_points` / `trail_ladder` | copied off the rule | The asymmetric half of the bracket (changeset 036): the ceiling tightens whatever stop the row above resolves to, and the ladder ratchets a floor up as the trade runs. Both are `NOT NULL` on the rule because Hibernate writes every column explicitly — `trade_config`'s own DB default never reaches a generated row, so a null here would quietly hand the whole AUTO fleet an uncapped, non-trailing stop. |
 
 A percentage is used because the premium band is a 3× spread: one absolute points
 target is a 12% move at 250 and a 38% move at 80, so one end of the band always
@@ -533,3 +651,47 @@ Note the two opt-ins are independent and compose: `source: MANUAL` chooses
   "no active configs → skip day" guard, so it only fires on days that already
   have a `trade_config`. It extends a chain; it cannot start one. Seed day 1
   by hand.
+
+---
+
+## Detection is no longer gated on having traded (2026-08-29)
+
+`BacktestAnalysisService` used to `continue` past any day with no active config,
+which skipped `runForDay` along with everything else. Because `AUTO_DOWNTREND`
+configs are only ever written by the *previous* day's detection, one day that
+generated nothing ended the chain permanently - **a 31-day range stopped after 5
+days**, and every later day was skipped for want of a config that could no longer
+be created.
+
+Detection now runs on every trading day, whether or not anything traded. The
+question it answers - should we trade *tomorrow* - does not depend on whether we
+happened to trade today.
+
+### Why a day generates nothing, and why that is usually temporary
+
+The detector measures the ATM option leg, and in the imported data an option
+series exists only within its own expiry cycle. On the **first day of a cycle**
+the newly-nearest contract has only that morning's candles, so almost nothing in
+the SMA grid is computable:
+
+| At close of | Candles on the contract | Grid combos computable (of 8) |
+|---|---|---|
+| Day 1 of cycle | ~75 | **1** |
+| Day 2 | ~152 | 3 |
+| Day 3 | ~228 | 4 |
+| Day 4 | ~304 | 5 |
+
+So the day after each expiry rollover often generates no config. With detection
+decoupled that costs one day of trading, not the rest of the run - the next day's
+detection has ~152 candles and re-arms the chain.
+
+This is a limitation of the **export**, not of the market: a weekly contract
+trades for weeks before its cycle starts, but the CSVs window each expiry to
+`cycle_start .. expiry`. Re-exporting with a wider window removes it. See
+[`BACKTESTING.md` -> Importing a full ICICI export](BACKTESTING.md#importing-a-full-icici-export).
+
+### Next trading day is data-driven
+
+`nextTradingDay` no longer means "next weekday" - it comes from `TradingCalendar`,
+so a market holiday is never handed a config and a special Saturday session is
+never skipped.

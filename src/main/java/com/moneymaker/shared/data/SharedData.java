@@ -6,8 +6,10 @@ import com.moneymaker.dto.TradeSignal;
 import com.moneymaker.entity.MarketData;
 import com.zerodhatech.kiteconnect.KiteConnect;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -50,4 +52,76 @@ public class SharedData {
      * The order service drains this queue each tick.
      */
     public static Queue<TradeSignal> tradeSignals = new ConcurrentLinkedQueue<>();
+
+    /**
+     * The newest cached candle for {@code optionToken} at or before
+     * {@code atOrBefore}, taken from the <b>finest interval</b> cached for that
+     * contract. Returns null when nothing is cached for the token.
+     *
+     * <p><b>Why the interval has to be chosen rather than ignored.</b>
+     * {@link #strikeMarketDataByInstrumentAndInterval} holds one series per
+     * {@code (strike, interval)} and {@code AnalysisScheduler} writes several
+     * intervals for the same leg. Callers used to match on the option-token
+     * segment of the key alone and take the first hit, which is
+     * {@code ConcurrentHashMap} iteration order — so a target or stop-loss could
+     * be evaluated against a 10- or 15-minute bar, and a 10-minute series was
+     * being written even though no config asked for one. A bar stamped {@code T}
+     * only closes at {@code T + width}, so quoting off a coarse bar reads up to
+     * fifteen minutes of price that had not happened at the exit timestamp
+     * recorded on the row.
+     *
+     * <p>The finest interval is the right choice rather than the trade's own
+     * timeframe: live hands the position monitor a real LTP, so the closest
+     * backtest analogue is the shortest bar available. Keeping the monitor on
+     * the strategy's coarse timeframe would make backtest exits lag live ones.
+     *
+     * <p>Two configs can cache the same {@code (token, interval)} under keys that
+     * differ only in their depth segments. Those series are fetched with the same
+     * arguments and are value-identical, so ties need no further tie-break.
+     */
+    public static MarketData latestCachedCandle(String optionToken, LocalDateTime atOrBefore) {
+        if (optionToken == null) return null;
+        Map<String, List<MarketData>> cache = strikeMarketDataByInstrumentAndInterval;
+        if (cache == null || cache.isEmpty()) return null;
+
+        List<MarketData> finest = null;
+        int finestWidth = Integer.MAX_VALUE;
+        for (Map.Entry<String, List<MarketData>> e : cache.entrySet()) {
+            String[] parts = e.getKey().split("\\|");
+            if (parts.length < 5) continue;
+            if (!optionToken.equals(parts[4])) continue;
+            List<MarketData> list = e.getValue();
+            if (list == null || list.isEmpty()) continue;
+            int width = intervalMinutes(parts[1]);
+            if (width < finestWidth) {
+                finestWidth = width;
+                finest = list;
+            }
+        }
+        if (finest == null) return null;
+
+        for (int i = finest.size() - 1; i >= 0; i--) {
+            MarketData md = finest.get(i);
+            if (md == null || md.getTimestamp() == null || md.getClose() == null) continue;
+            if (atOrBefore != null && md.getTimestamp().isAfter(atOrBefore)) continue;
+            return md;
+        }
+        return null;
+    }
+
+    /**
+     * Bar width in minutes for an interval string such as {@code "5minute"}.
+     * Anything unparseable sorts last, so a malformed key never wins the
+     * finest-interval comparison in {@link #latestCachedCandle}.
+     */
+    private static int intervalMinutes(String interval) {
+        if (interval == null) return Integer.MAX_VALUE;
+        String normalized = interval.trim().toLowerCase(Locale.ROOT);
+        if (!normalized.endsWith("minute")) return Integer.MAX_VALUE;
+        try {
+            return Integer.parseInt(normalized.substring(0, normalized.length() - "minute".length()));
+        } catch (NumberFormatException ex) {
+            return Integer.MAX_VALUE;
+        }
+    }
 }

@@ -787,3 +787,38 @@ If a pane shows no data, check:
   instead of throwing a chart-breaking error.
 - `expiry_dates.instrument_id` exists in the entity, but the current chart
   expiry resolver uses weekday filtering on `expiry_date` only.
+
+---
+
+## Continuous (multi-day) charts
+
+`MarketChartRequest.fromDate` draws one continuous series across
+`[fromDate, date]` instead of a single day. Absent - the default - keeps the
+original single-day behaviour. Exposed as `fromDate` on
+`GET /api/charts/market-data` and as the **From (continuous)** control in the
+toolbar.
+
+Two things worth knowing:
+
+- **The candle page size scales with the window.** It was a fixed
+  `MAX_SMA_PERIOD + LOOKBACK_BUFFER_CANDLES` = 596 candles, sized for one day -
+  about **eight sessions** of 5-minute data. A longer range would have silently
+  started partway through. `pageSizeFor(from, to)` now adds the window itself,
+  capped at `MAX_WINDOW_DAYS` (90) so an accidental multi-year range cannot stall
+  the page.
+- **`TOKEN_BASED` ignores `fromDate`.** Continuous charts are `HISTORICAL_ICICI`
+  only. The token-based service was left alone rather than half-wired.
+
+A continuous **option** chart stops where that contract stops: expiry and strike
+are resolved from the selected date, and a series spanning an expiry shows only
+the days this contract traded rather than splicing in a different one.
+
+## Opening the chart for a trade
+
+Each Orders-ledger row carries a **Chart** link to
+`/charts/dashboard?date=…&indexSymbol=…&strike=…&dataSource=HISTORICAL_ICICI`.
+
+`hydrateDefaults()` lets query-string values **win over localStorage**. That
+ordering is the whole point: without it the dashboard would restore whatever the
+last manual session left behind and quietly show the wrong day for the trade you
+clicked.

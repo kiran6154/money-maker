@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      Fills the holes in trade_order.strategy_id left by rows written before
+      changeset 015 added the column.
+
+      Why this is not cosmetic
+      =======================
+      Changeset 031 makes (trade_config_id, strategy_id) the ledger identity: from
+      here on OrderService counts trades-per-day, parallel trades and realised
+      loss with strategy_id in the predicate, and matches open positions on it too.
+      Those are Spring Data derived queries, which compile to `strategy_id = ?` -
+      and in SQL, NULL = 1 is never true. A pre-015 row would therefore vanish
+      from every cap the moment 031 lands: an already-capped config would look
+      empty and re-enter.
+
+      A config's stratergy_id is the right source because until 031 it was the
+      *only* strategy a config could dispatch to, so it is exactly what
+      OrderService would have stamped had the column existed at the time.
+
+      Only fills NULLs. A row that already carries a strategy_id was stamped from
+      the config as it stood at open, and a config re-tagged since must not
+      restate it - that snapshot is the whole point of the column (see 015).
+    -->
+    <changeSet id="032_backfill_trade_order_strategy_id" author="moneymaker">
+        <sql>
+            UPDATE trade_order o
+              JOIN trade_config c ON c.id = o.trade_config_id
+               SET o.strategy_id = c.stratergy_id
+             WHERE o.strategy_id IS NULL
+               AND c.stratergy_id IS NOT NULL
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

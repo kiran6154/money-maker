@@ -63,8 +63,9 @@ Every other doc in this folder explains one feature in depth. This one is differ
 |---|---|
 | Trigger | `0 16 9 * * MON-FRI` (09:16 IST) + `ApplicationReadyEvent` at boot (live, weekday) |
 | Code | [`TradeConfigScheduler.getConfigsForDate(date)`](../src/main/java/com/moneymaker/scheduler/TradeConfigScheduler.java) |
-| Reads | `trade_config`, `instrument`, `instrument_details`, `sma_timeframe` |
+| Reads | `trade_config` (incl. `strategy_ids`), `instrument`, `instrument_details`, `sma_timeframe` |
 | Writes | `SharedData.combinedDto` (date-keyed in-JVM cache) + a once-per-day Telegram report (`reportConfigsForDay`, gated by `DailyEventGuard`) |
+| Fan-out | Emits **one DTO per (config x tagged strategy)**, so a config tagged with two strategies appears twice — same `tradeConfig`, different `strategyId`. The list length is pairs, not configs. Untagged configs fall back to `stratergy_id` and behave as before (changeset 031). |
 | Downstream | `SharedData.combinedDto` is **the sole input gate** for workflow ⑤ — if it's empty (e.g. JVM restarted after 09:16 with no `ApplicationReadyEvent` seed, or no configs exist for today), the entire trading pipeline silently has nothing to evaluate. |
 | Full detail | [SCHEDULERS.md#tradeconfigscheduler](SCHEDULERS.md#tradeconfigscheduler) |
 
@@ -89,9 +90,10 @@ Every other doc in this folder explains one feature in depth. This one is differ
 |---|---|
 | Trigger | Called from workflow ⑥ (backtest), once per simulated day, after 15:20 force-close |
 | Code | [`EodDowntrendDetectionService.runForDay(date)`](../src/main/java/com/moneymaker/backtesting/EodDowntrendDetectionService.java) |
-| Reads | `sma_downtrend_rule`, option-leg candles via `MarketDataService` (broker fetch, not `market_data` table) |
-| Writes | `trade_config` (`source='AUTO_DOWNTREND'`) + `sma_timeframe`, for the **next** trading day only |
-| Downstream | **Delayed cross-workflow effect**: the row it writes today is invisible to everything until workflow ② loads *tomorrow's* date. It cannot bootstrap a config chain from nothing — it only runs on days that already have a config (see "What this is not" in EOD_DOWNTREND.md). Reachable/reversible via workflow ③'s bulk-delete API (`/api/trade-configs/auto/*`). |
+| Reads | `sma_downtrend_rule`, `sma_downtrend_rule_strategy`, `strategy_defaults`, option-leg candles via `MarketDataService` (broker fetch, not `market_data` table) |
+| Writes | `trade_config` (`source='AUTO_DOWNTREND'`, with `strategy_ids`) + `sma_timeframe`, for the **next** trading day only |
+| Strategy tagging | Which strategies a rule generates for is DB-driven (`sma_downtrend_rule_strategy`, changeset 034); the `trade_config` field block comes from `strategy_defaults` (033). One scan produces **one** config carrying one tag per strategy — two configs only when two strategies' default blocks differ. |
+| Downstream | **Delayed cross-workflow effect**: the row it writes today is invisible to everything until workflow ② loads *tomorrow's* date. It cannot bootstrap a config chain from nothing, but since the 2026-08-29 decoupling it **does** run on every trading day, including days with no active config — that is what lets the chain restart after a day that generated nothing. Previously one empty day was terminal: a 31-day range stopped after 5. Reachable/reversible via workflow ③'s bulk-delete API (`/api/trade-configs/auto/*`). |
 | Full detail | [EOD_DOWNTREND.md](EOD_DOWNTREND.md) |
 
 ---
@@ -103,6 +105,7 @@ Every other doc in this folder explains one feature in depth. This one is differ
 | Trigger | `0 0/5 9-16 * * MON-FRI`, three schedulers on the same cadence, gated by `MarketHoursService.isOpenNow()` in live mode |
 | Code | [`AnalysisScheduler`](../src/main/java/com/moneymaker/scheduler/AnalysisScheduler.java) → [`OrderScheduler`](../src/main/java/com/moneymaker/scheduler/OrderScheduler.java) → [`PositionScheduler`](../src/main/java/com/moneymaker/scheduler/PositionScheduler.java) |
 | Reads | `SharedData.combinedDto` (from ②/③), broker OHLC (live fetch, not persisted), OPEN `trade_order` rows |
+| Strategy dispatch | `runStrategies` walks every DTO, so each tagged strategy scans independently; the market-data fetch loop de-duplicates on `trade_config.id` so the fan-out does not double broker calls. Ledger identity downstream is `(trade_config_id, strategy_id)`. |
 | Writes | `SharedData.strikeMarketData*`, `SharedData.tradeSignals`, `trade_order` (open/close), broker order calls, Telegram (order open/close/force-close) |
 | Downstream | This is the workflow every other config-producing workflow (②③④) ultimately feeds. Its own output (`trade_order`) feeds workflow ⑦. |
 | Full detail | [SCHEDULERS.md](SCHEDULERS.md), [ORDERS_AND_POSITIONS.md](ORDERS_AND_POSITIONS.md) |
@@ -197,7 +200,7 @@ The table every per-feature doc is missing: one row per shared resource, which w
 |---|---|---|---|
 | `trade_config` (+ `sma_timeframe`) | ③ (admin UI), ④ (auto-downtrend, backtest only) | ② (daily loader, which feeds ⑤/⑥) | ③'s edits to *today* reach ⑤ within one tick (live). ④'s writes reach ② only on the **next calendar day** — same-day bootstrap is impossible by design. |
 | `SharedData.combinedDto` | ② (cron/boot), ③ (same-day live refresh only) | ⑤, ⑥ | The pipeline's only input gate. Empty means the pipeline silently trades nothing — no error, no log spam, just zero signals. |
-| `SharedData.tradeSignals` | ⑤'s `AnalysisScheduler` (via `Strategy1`) | ⑤'s `OrderScheduler` (same tick) | Drained to empty every tick; also cleared at backtest run-end. Not a durable store — never read cross-day. |
+| `SharedData.tradeSignals` | ⑤'s `AnalysisScheduler` (via every tagged `Strategy`) | ⑤'s `OrderScheduler` (same tick) | Drained to empty every tick; also cleared at backtest run-end. Not a durable store — never read cross-day. |
 | `trade_order` | ⑤ and ⑥ (same code path, different broker adapters) | ⑤'s `PositionScheduler` (OPEN rows), ⑦ (today's rows), ③ (delete guard) | ⑥ writes through no-op broker adapters — the ledger looks identical to a live day's, but no real order was placed. |
 | `market_data` | ⑨ (bulk download, Zerodha-only) | ⑧ (`TOKEN_BASED` source only) | **Never read by ⑤/⑥.** The trading pipeline always fetches OHLC live from the broker; this table is a dead end for anything except charting. |
 | `historical_spot_candles` / `historical_option_candles` | ⑩ (CSV import) | ⑧ (`HISTORICAL_ICICI` source only) | Fully isolated from `market_data` / `instrument*` — natural keys only. Never touches the trading pipeline either. |

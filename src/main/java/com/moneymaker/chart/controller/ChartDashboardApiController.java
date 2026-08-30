@@ -38,7 +38,11 @@ public class ChartDashboardApiController {
             @RequestParam("timeframe") String timeframe,
             @RequestParam("smaPeriods") String smaPeriods,
             @RequestParam(value = "dataSource", defaultValue = "TOKEN_BASED") ChartDataSource dataSource,
-            @RequestParam(value = "strike", required = false) String strike) {
+            @RequestParam(value = "strike", required = false) String strike,
+            // Optional. Present => draw a continuous window [fromDate, date]
+            // instead of the single day. Absent keeps the original behaviour.
+            @RequestParam(value = "fromDate", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate) {
         try {
             MarketChartRequest request = new MarketChartRequest(
                     date,
@@ -47,6 +51,7 @@ public class ChartDashboardApiController {
                     ChartTimeframe.fromValue(timeframe),
                     parseSmaPeriods(smaPeriods),
                     dataSource,
+                    fromDate,
                     parseStrike(strike)
             );
             MarketChartResponse response = chartDashboardService.getMarketChartData(request);

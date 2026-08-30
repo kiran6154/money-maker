@@ -78,20 +78,35 @@ public interface TradeConfigRepository extends JpaRepository<TradeConfig, Intege
      *
      * <p>Index map consumed by the mappers:</p>
      * <ul>
-     *   <li>{@code 0..18}  — trade_config (min/max_option_price last)</li>
-     *   <li>{@code 19..23} — instrument</li>
-     *   <li>{@code 24..35} — instrument_details</li>
+     *   <li>{@code 0..21}  — trade_config ({@code trail_ladder} last)</li>
+     *   <li>{@code 22..26} — instrument</li>
+     *   <li>{@code 27..38} — instrument_details</li>
      * </ul>
      *
      * <p>If you add a column here, append it to the <i>end</i> of its own
-     * block and update the matching mapper — never insert into the middle.</p>
+     * block and update the matching mapper — never insert into the middle.
+     * Changeset 035 appended {@code strategy_ids} at index 19 and shifted both
+     * later blocks by one; changeset 036 appended {@code max_sl_points} and
+     * {@code trail_ladder} at 20-21 and shifted them by two more;
+     * {@code TradeConfigScheduler}'s mappers carry the matching start offsets.</p>
+     *
+     * <p><b>A column missing from this list is not a cosmetic omission — it is a
+     * feature that silently does not run.</b> The entity field stays null on every
+     * DTO in {@code SharedData.combinedDto}, and code reading it downstream takes
+     * its null branch with no error anywhere. That is what happened to
+     * {@code max_sl_points} / {@code trail_ladder} between 036 landing and this
+     * line being written, and it is still true of {@code target_pct} /
+     * {@code sl_pct} — see S6 in {@code docs/STRATEGY_ANALYSIS_TODO.md}.
+     * {@code TradeConfigCombinedQueryContractTest} pins the block boundaries so
+     * the next appended column cannot repeat it.</p>
      */
     @Query(value = "SELECT " +
             "  tc.id, tc.trading_side, tc.trading_date, tc.target, tc.stop_loss, " +
             "  tc.p_instrument, tc.max_loss, tc.option_depth, tc.transaction_type, " +
             "  tc.lot_quantity, tc.stratergy_id, tc.no_of_trades, tc.no_of_parrellel_trades, " +
             "  tc.itm_depth, tc.otm_depth, tc.atm_depth, tc.source, " +
-            "  tc.min_option_price, tc.max_option_price, " +
+            "  tc.min_option_price, tc.max_option_price, tc.strategy_ids, " +
+            "  tc.max_sl_points, tc.trail_ladder, " +
             "  i.id, i.ins_name, i.ins_id, i.lot_qty, i.strike_points, " +
             "  id.instrument_token, id.exchange_token, id.tradingsymbol, id.name, " +
             "  id.last_price, id.expiry, id.strike, id.tick_size, id.lot_size, " +

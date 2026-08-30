@@ -2,7 +2,9 @@ package com.moneymaker.order.controller;
 
 import com.moneymaker.entity.TradeOrder;
 import com.moneymaker.order.dto.OrderPurgeRequestDTO;
+import com.moneymaker.order.dto.TradeOrderView;
 import com.moneymaker.order.service.OrderService;
+import com.moneymaker.order.service.TradeChargeService;
 import com.moneymaker.repository.TradeOrderRepository;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -31,11 +33,14 @@ public class OrderController {
 
     private final TradeOrderRepository tradeOrderRepository;
     private final OrderService orderService;
+    private final TradeChargeService tradeChargeService;
 
     public OrderController(TradeOrderRepository tradeOrderRepository,
-                           OrderService orderService) {
+                           OrderService orderService,
+                           TradeChargeService tradeChargeService) {
         this.tradeOrderRepository = Objects.requireNonNull(tradeOrderRepository, "tradeOrderRepository must not be null");
         this.orderService = Objects.requireNonNull(orderService, "orderService must not be null");
+        this.tradeChargeService = Objects.requireNonNull(tradeChargeService, "tradeChargeService must not be null");
     }
 
     /**
@@ -43,20 +48,25 @@ public class OrderController {
      * all orders sorted by id (newest first).
      */
     @GetMapping
-    public List<TradeOrder> list(
+    public List<TradeOrderView> list(
             @RequestParam(value = "fromDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
             @RequestParam(value = "toDate",   required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
 
         List<TradeOrder> all = tradeOrderRepository.findAll();
-        if (fromDate == null && toDate == null) {
-            return all;
+        if (fromDate != null || toDate != null) {
+            LocalDateTime from = fromDate != null ? LocalDateTime.of(fromDate, LocalTime.MIN) : LocalDateTime.MIN;
+            LocalDateTime to   = toDate   != null ? LocalDateTime.of(toDate,   LocalTime.MAX) : LocalDateTime.MAX;
+            all = all.stream()
+                    .filter(o -> o.getEntryTime() != null
+                            && !o.getEntryTime().isBefore(from)
+                            && !o.getEntryTime().isAfter(to))
+                    .toList();
         }
-        LocalDateTime from = fromDate != null ? LocalDateTime.of(fromDate, LocalTime.MIN) : LocalDateTime.MIN;
-        LocalDateTime to   = toDate   != null ? LocalDateTime.of(toDate,   LocalTime.MAX) : LocalDateTime.MAX;
+
+        // One rate load for the whole page, not one per row.
+        TradeChargeService.RateResolver rates = tradeChargeService.resolver();
         return all.stream()
-                .filter(o -> o.getEntryTime() != null
-                        && !o.getEntryTime().isBefore(from)
-                        && !o.getEntryTime().isAfter(to))
+                .map(o -> new TradeOrderView(o, tradeChargeService.compute(o, rates)))
                 .toList();
     }
 

@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      Asymmetric exit bracket: cap the stop-loss, trail the profit.
+
+      Two separate problems, one changeset, because they are the two halves of
+      the same decision - let the target run, do not let the stop.
+
+      1. max_sl_points - the cap
+      ==========================
+      sl_pct (027) scales the stop to the entry premium, which is what makes one
+      config work across the 80-250 band. But it scales in both directions: at
+      the top of the band 0.30 of a 250-point leg is a 75-point stop, and a
+      75-point adverse move on one lot of 75 is 5,625 rupees on a trade whose
+      target is 50. The percentage is right about *shape* and wrong about
+      *absolute exposure*, because rupee risk is not a function of the premium
+      the leg happened to open at.
+
+      So the resolved stop is now min(resolved, max_sl_points). Whichever is
+      lower wins. Worked through the standing band with sl_pct = 0.30:
+
+        entry premium    0.30 of entry    capped stop    which applied
+              80             24               24          percentage
+             150             45               45          percentage
+             200             60               60          equal
+             250             75               60          cap
+
+      Only the top of the band is touched, which is the intent: the cap is a
+      ceiling on loss, not a second stop rule competing with the first.
+
+      No cap on the target side. A target that resolves high is a target on a
+      leg that has the room to travel; the payoff asymmetry that justifies
+      capping the loss (a short option's gain is bounded by the premium, its
+      loss is not) does not argue for bounding the gain as well.
+
+      2. trail_ladder - the ratchet
+      =============================
+      A fixed bracket exits at the same two prices it was born with, so a trade
+      that runs +55 and then reverses gives all of it back and closes at the
+      original stop. The ladder converts realised excursion into a floor:
+
+        peak profit reaches    stop moves to
+             25 pts               +2   (trade can no longer lose)
+             50 pts              +25
+             75 pts              +50
+            100 pts              +75
+
+      Read as "trigger:lock", both in premium points, ascending, comma
+      separated - the same one-column-one-owner encoding as strategy_ids (035),
+      parsed only by com.moneymaker.util.TrailLadder. Stored verbatim rather
+      than as step/giveback arithmetic so the rungs can be uneven: tightening
+      faster at the top of a move is a config edit, not a code change.
+
+      +2 rather than +0 on the first rung: a scratch exit still pays two legs of
+      brokerage, so a stop at breakeven closes at a net loss. 2 points on 75
+      units covers it.
+
+      Latched off trade_order.peak_profit, so the ladder is a ratchet - once
+      +50 is touched the +25 floor stays even if price falls back to +30. The
+      stop only ever tightens.
+
+      Ladder exits are recorded as exit_reason = TRAIL_SL, not STOP_LOSS. They
+      are the opposite outcome - a TRAIL_SL closes green, a STOP_LOSS closes red
+      - and folding them together would make the ledger's stop-loss rate
+      unreadable exactly when the ladder starts working.
+
+      NULL / blank ladder = no trailing, i.e. pre-036 behaviour. Existing rows
+      are seeded with the ladder above rather than left null: this is the
+      bracket the configs are meant to trade from now on, and a null would
+      silently keep them on the fixed stop this changeset exists to replace.
+
+      Interaction worth knowing
+      =========================
+      The first rung must be reachable before the target or the ladder never
+      arms. With target_pct = 0.20, an 80-point leg targets 16 - below the
+      25-point first rung - so the ladder is inert on the cheap end of the band
+      and only starts mattering above a ~125-point entry. That is not a bug to
+      fix here; it is the reason the rungs are per-config data.
+    -->
+    <changeSet id="036_add_trailing_sl_to_trade_config" author="moneymaker">
+        <addColumn tableName="trade_config">
+            <column name="max_sl_points" type="DECIMAL(12,4)" defaultValueNumeric="60"/>
+            <column name="trail_ladder" type="VARCHAR(128)" defaultValue="25:2,50:25,75:50,100:75"/>
+        </addColumn>
+    </changeSet>
+
+    <!--
+      addColumn's default covers rows inserted from here on; MySQL also
+      backfills existing rows with it. The explicit updates make that guarantee
+      independent of the DB engine's addColumn semantics, and are scoped to NULL
+      so a re-run cannot overwrite a ladder someone has since edited.
+    -->
+    <changeSet id="036_seed_trailing_sl_defaults" author="moneymaker">
+        <update tableName="trade_config">
+            <column name="max_sl_points" valueNumeric="60"/>
+            <where>max_sl_points IS NULL</where>
+        </update>
+        <update tableName="trade_config">
+            <column name="trail_ladder" value="25:2,50:25,75:50,100:75"/>
+            <where>trail_ladder IS NULL</where>
+        </update>
+    </changeSet>
+
+    <!--
+      The same two columns on the rule table the EOD detector generates configs
+      from, NOT NULL with defaults for the reason 026/027 gave: Hibernate writes
+      every column explicitly, so a generated config never picks up trade_config's
+      DB default. A null here would quietly hand every AUTO_DOWNTREND config an
+      uncapped stop and no ladder - i.e. exactly the behaviour this changeset
+      exists to replace, on the configs nobody hand-checks.
+    -->
+    <changeSet id="036_add_trailing_sl_to_sma_downtrend_rule" author="moneymaker">
+        <addColumn tableName="sma_downtrend_rule">
+            <column name="max_sl_points" type="DECIMAL(12,4)" defaultValueNumeric="60">
+                <constraints nullable="false"/>
+            </column>
+            <column name="trail_ladder" type="VARCHAR(128)" defaultValue="25:2,50:25,75:50,100:75">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <!--
+      Per-trade snapshot, for the same reason target_at_entry / stop_loss_at_entry
+      are snapshotted (011): PositionService reads the order row, never the live
+      config, so editing a ladder at 13:00 cannot retroactively re-floor a trade
+      that opened at 09:20.
+
+      trail_sl_at is the currently latched floor in signed premium points -
+      positive is locked profit. NULL means no rung has been reached yet, which
+      is also what every pre-036 row reads as.
+    -->
+    <changeSet id="036_add_trail_columns_to_trade_order" author="moneymaker">
+        <addColumn tableName="trade_order">
+            <column name="trail_ladder_at_entry" type="VARCHAR(128)"/>
+            <column name="trail_sl_at" type="DECIMAL(12,4)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

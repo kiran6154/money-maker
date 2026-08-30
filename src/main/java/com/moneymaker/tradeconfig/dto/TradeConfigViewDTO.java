@@ -20,7 +20,22 @@ public class TradeConfigViewDTO {
     private BigDecimal maxLoss;
     private Integer optionDepth;
     private Integer lotQuantity;
+    /** The config's primary strategy — what the edit form binds to. */
     private Integer strategyId;
+
+    /**
+     * Every strategy this config actually runs under, parsed from its
+     * {@code strategy_ids} column (changesets 031/035), ascending.
+     *
+     * <p>Read-only. Tagging is a DB-level operation by design, but the list view
+     * must not show a config running {@code [1, 2]} as plain "1" — that reads as
+     * "this runs one strategy" and is how someone mis-reads a doubled position as
+     * a duplicate-trade bug.</p>
+     *
+     * <p>Falls back to {@link #strategyId} when the config has no tags, matching
+     * what the dispatch fallback does.</p>
+     */
+    private List<Integer> strategyIds;
     private Integer numberOfTradesPerDay;
     private Integer numberOfParallelTrades;
     private Integer itmDepth;
@@ -34,6 +49,12 @@ public class TradeConfigViewDTO {
     /** Exit bracket as a fraction of entry premium; null = the absolute target / stopLoss applies. */
     private BigDecimal targetPct;
     private BigDecimal slPct;
+
+    /** Ceiling in premium points on the resolved stop-loss; the lower of the two applies. */
+    private BigDecimal maxSlPoints;
+
+    /** Trailing rungs, canonical {@code "25:2,50:25"}; null = this config does not trail. */
+    private String trailLadder;
     private List<SmaTimeframeDTO> timeframes;
 
     /** {@code MANUAL} or {@code AUTO_DOWNTREND} — drives the row badge. */

@@ -191,17 +191,29 @@
                         <th class="num" title="Highest unrealised P&L observed during the trade (≥ 0)">Peak +</th>
                         <th class="num" title="Lowest unrealised P&L observed during the trade (≤ 0)">Peak −</th>
                         <th class="num" title="Per-share profit that closes the trade as TARGET (P/L ≥ this). Snapshotted at entry from target_pct × entry premium, or the config's absolute target.">Target</th>
-                        <th class="num" title="Per-share loss that closes the trade as STOP_LOSS (P/L ≤ this). Stored positive in stop_loss_at_entry; shown signed here so it lines up with P/L and Peak −.">SL</th>
+                        <th class="num" title="Per-share loss that closes the trade as STOP_LOSS (P/L ≤ this). Snapshotted at entry as the lower of sl_pct × entry premium and the config's max_sl_points ceiling. Stored positive in stop_loss_at_entry; shown signed here so it lines up with P/L and Peak −.">SL</th>
+                        <th class="num" title="The trailing floor this trade reached, from trail_ladder_at_entry latched against Peak +. Signed: +25 is a stop 25 points into profit, and P/L ≤ this closes the trade as TRAIL_SL. — = no rung was ever reached.">Trail</th>
+                        <th class="num" title="Order quantity in units, snapshotted at entry (75 = one NIFTY lot)">Qty</th>
+                        <th class="num" title="Per-share P/L × quantity, before charges">Gross ₹</th>
+                        <th class="num" title="Brokerage + STT + exchange + SEBI + stamp duty + GST, both legs, at the rates in force on the entry date. Rates are UNVERIFIED defaults — reconcile against a real contract note.">Chg ₹</th>
+                        <th class="num" title="Gross minus charges">Net ₹</th>
                         <th>Status</th>
-                        <th title="Why the trade exited: SIGNAL / TARGET / STOP_LOSS / FORCE_CLOSE">Exit reason</th>
+                        <th title="Why the trade exited: SIGNAL / TARGET / STOP_LOSS / TRAIL_SL / FORCE_CLOSE. TRAIL_SL closed on the trailing floor — always green, unlike STOP_LOSS.">Exit reason</th>
                         <th>Fill</th>
                         <th>Broker IDs</th>
+                        <th title="Open the chart dashboard on this trade's date, index and strike"></th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody id="orders-rows"></tbody>
             </table>
         </div>
+        <div id="orders-totals" style="padding: 12px 4px 2px; font-size: 13px;"></div>
+        <p style="color: var(--text-muted); font-size: 11px; margin: 6px 0 0;">
+            Charges use date-effective rates from <code>charge_rate</code> (STT and the NSE
+            transaction charge both changed on 2024-10-01). The seeded rates are
+            <b>unverified defaults</b> — reconcile one real contract note before trusting a net figure.
+        </p>
         <div id="orders-empty" style="text-align:center; padding: 20px 0; color: var(--text-muted);">
             No orders yet. Run an analysis above to populate the ledger.
         </div>
@@ -338,6 +350,45 @@
         if (n === 0) return '0.00';
         return (sign < 0 ? '−' : '') + Math.abs(n).toFixed(2);
     }
+    // Deep link into the chart dashboard for one trade: its entry date, index
+    // and strike. The dashboard reads these from the query string and lets them
+    // win over whatever it last remembered, so the chart that opens is the one
+    // for THIS trade rather than the last one browsed manually.
+    function chartLink(o) {
+        if (!o.entryTime) return '<span style="color:var(--text-muted);font-size:11px;">—</span>';
+        const day = String(o.entryTime).replace('T', ' ').substring(0, 10);
+        const p = new URLSearchParams({ date: day, dataSource: 'HISTORICAL_ICICI' });
+        if (o.instrumentName) p.set('indexSymbol', o.instrumentName);
+        if (o.optionStrike !== null && o.optionStrike !== undefined) p.set('strike', o.optionStrike);
+        return '<a class="btn btn-ghost" style="padding:2px 8px;font-size:11px;" target="_blank" rel="noopener"'
+             + ' title="Open ' + day + ' in the chart dashboard"'
+             + ' href="/charts/dashboard?' + p.toString() + '">Chart</a>';
+    }
+
+    function rupeeClass(v) {
+        if (v === null || v === undefined || v === false) return '';
+        return Number(v) >= 0 ? 'pl-pos' : 'pl-neg';
+    }
+    // Portfolio line under the ledger. Gross/charges/net only cover rows that
+    // could actually be costed; the rest are called out rather than folded in
+    // as zero, so the total never quietly understates cost.
+    function renderTotals(gross, charges, net, costed, uncosted) {
+        const el = document.getElementById('orders-totals');
+        if (!el) return;
+        if (costed === 0) {
+            el.innerHTML = uncosted
+                ? '<span style="color:var(--text-muted)">' + uncosted + ' row(s) not costed — no quantity or still OPEN.</span>'
+                : '';
+            return;
+        }
+        const cls = net >= 0 ? 'pl-pos' : 'pl-neg';
+        el.innerHTML =
+            '<b>' + costed + ' costed trade' + (costed === 1 ? '' : 's') + '</b> &nbsp;·&nbsp; ' +
+            'gross <span class="' + (gross >= 0 ? 'pl-pos' : 'pl-neg') + '">₹' + gross.toFixed(2) + '</span>' +
+            ' &nbsp;−&nbsp; charges ₹' + charges.toFixed(2) +
+            ' &nbsp;=&nbsp; <b>net <span class="' + cls + '">₹' + net.toFixed(2) + '</span></b>' +
+            (uncosted ? ' &nbsp;·&nbsp; <span style="color:var(--text-muted)">' + uncosted + ' not costed</span>' : '');
+    }
     function fmtTime(v) {
         if (!v) return '—';
         return String(v).replace('T', ' ');
@@ -351,7 +402,20 @@
             const r = await fetch('/api/orders?' + params.toString());
             const list = await r.json();
             ordersRows.innerHTML = '';
+            let totGross = 0, totChg = 0, totNet = 0, costed = 0, uncosted = 0;
             list.forEach(o => {
+                // /api/orders returns the order fields flattened alongside a
+                // `charges` object. charges is null for an OPEN position (no exit
+                // leg yet) or a pre-changeset-029 row with no quantity.
+                const c = o.charges;
+                if (c) {
+                    totGross += Number(c.grossPl) || 0;
+                    totChg   += Number(c.totalCharges) || 0;
+                    totNet   += Number(c.netPl) || 0;
+                    costed++;
+                } else {
+                    uncosted++;
+                }
                 const tr = document.createElement('tr');
                 const brokerIds = [
                     o.entryBrokerOrderId ? 'E:' + o.entryBrokerOrderId : null,
@@ -386,16 +450,26 @@
                     '<td class="num ' + peakLossClass + '">' + fmtNum(o.peakLoss) + '</td>' +
                     '<td class="num">' + fmtNum(o.targetAtEntry) + '</td>' +
                     '<td class="num">' + fmtSigned(o.stopLossAtEntry, -1) + '</td>' +
+                    '<td class="num">' + (o.trailSlAt != null
+                            ? '<span title="ladder ' + (o.trailLadderAtEntry || '—') + '">'
+                              + fmtNum(o.trailSlAt) + '</span>'
+                            : '—') + '</td>' +
+                    '<td class="num">' + fmt(o.quantity) + '</td>' +
+                    '<td class="num ' + rupeeClass(c && c.grossPl) + '">' + fmtNum(c && c.grossPl) + '</td>' +
+                    '<td class="num">' + (c ? fmtNum(c.totalCharges) : '—') + '</td>' +
+                    '<td class="num ' + rupeeClass(c && c.netPl) + '">' + fmtNum(c && c.netPl) + '</td>' +
                     '<td><span class="pill ' + statusPill + '">' + fmt(o.status) + '</span></td>' +
                     '<td>' + fmt(o.exitReason) + '</td>' +
                     '<td>' + fmt(o.fillStatus) + '</td>' +
                     '<td><code style="font-size:11px;">' + brokerIds + '</code></td>' +
+                    '<td>' + chartLink(o) + '</td>' +
                     '<td>' + (canSync
                         ? '<button class="btn btn-ghost" data-sync-id="' + o.id + '">↻ Sync</button>'
                         : '<span style="color:var(--text-muted);font-size:11px;">—</span>')
                     + '</td>';
                 ordersRows.appendChild(tr);
             });
+            renderTotals(totGross, totChg, totNet, costed, uncosted);
             ordersCount.textContent = list.length + ' row' + (list.length === 1 ? '' : 's');
             ordersTbl.style.display    = list.length ? '' : 'none';
             ordersEmpty.style.display  = list.length ? 'none' : '';

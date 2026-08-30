@@ -15,6 +15,7 @@
     const LS_PREFIX = 'mm.chartDashboard.';
     const LS_KEYS = {
         date: LS_PREFIX + 'date',
+        fromDate: LS_PREFIX + 'fromDate',
         dataSource: LS_PREFIX + 'dataSource',
         indexSymbol: LS_PREFIX + 'indexSymbol',
         timeframes: LS_PREFIX + 'timeframes',
@@ -77,6 +78,8 @@
 
     const state = {
         date: '',
+        /** Blank = single-day view; set = continuous window ending at `date`. */
+        fromDate: '',
         dataSource: DEFAULT_DATA_SOURCE,
         indexSymbol: DEFAULT_INDEX,
         timeframes: [DEFAULT_TIMEFRAME],
@@ -103,6 +106,8 @@
 
     const els = {
         date: document.getElementById('chartDate'),
+        fromDate: document.getElementById('chartFromDate'),
+        clearFromDate: document.getElementById('clearFromDateBtn'),
         dataSource: document.getElementById('chartDataSource'),
         indexSymbol: document.getElementById('chartIndexSymbol'),
         timeframes: document.getElementById('chartTimeframes'),
@@ -173,6 +178,20 @@
     }
 
     function hydrateDefaults() {
+        // A deep link wins over remembered state. This is what lets the orders
+        // ledger open "the chart for this trade": the row links here with the
+        // trade's date, index and strike, and those must not be silently
+        // overwritten by whatever the last manual session happened to leave in
+        // localStorage.
+        const url = new URLSearchParams(window.location.search);
+        const linked = {
+            date: url.get('date'),
+            fromDate: url.get('fromDate'),
+            indexSymbol: url.get('indexSymbol'),
+            dataSource: url.get('dataSource'),
+            strike: url.get('strike')
+        };
+
         const storedDate = readStoredValue(LS_KEYS.date);
         const storedDataSource = readStoredValue(LS_KEYS.dataSource);
         const storedIndex = readStoredValue(LS_KEYS.indexSymbol);
@@ -186,10 +205,10 @@
         const storedOverlays = readStoredListAllowEmpty(LS_KEYS.overlays, DEFAULT_OVERLAYS);
 
         if (els.indexSymbol) {
-            els.indexSymbol.value = storedIndex || els.indexSymbol.value || DEFAULT_INDEX;
+            els.indexSymbol.value = linked.indexSymbol || storedIndex || els.indexSymbol.value || DEFAULT_INDEX;
         }
         if (els.dataSource) {
-            els.dataSource.value = storedDataSource || els.dataSource.value || DEFAULT_DATA_SOURCE;
+            els.dataSource.value = linked.dataSource || storedDataSource || els.dataSource.value || DEFAULT_DATA_SOURCE;
         }
 
         setMultiSelectValues(els.timeframes, storedTimeframes);
@@ -199,17 +218,26 @@
             state.activeTimeframe = storedActiveTimeframe;
         }
 
-        if (els.date && !els.date.value) {
-            els.date.value = storedDate || localDateString(new Date());
+        if (els.date && (linked.date || !els.date.value)) {
+            els.date.value = linked.date || storedDate || localDateString(new Date());
         }
+        if (els.fromDate) {
+            els.fromDate.value = linked.fromDate || readStoredValue(LS_KEYS.fromDate) || '';
+        }
+        state.fromDate = els.fromDate ? els.fromDate.value : '';
 
         // The ladder itself loads async in init(); remember the choice so
         // reloadStrikeOptions can re-select it if it is still available.
-        state.strike = storedStrike || '';
+        state.strike = linked.strike || storedStrike || '';
     }
 
     function bindEvents() {
         if (els.date) els.date.addEventListener('change', onLadderFiltersChanged);
+        if (els.fromDate) els.fromDate.addEventListener('change', onLadderFiltersChanged);
+        if (els.clearFromDate) els.clearFromDate.addEventListener('click', function () {
+            if (els.fromDate) els.fromDate.value = '';
+            onLadderFiltersChanged();
+        });
         if (els.dataSource) els.dataSource.addEventListener('change', onLadderFiltersChanged);
         if (els.indexSymbol) els.indexSymbol.addEventListener('change', onLadderFiltersChanged);
         bindChipGroup(els.timeframes, onFiltersChanged, { single: true });
@@ -359,6 +387,13 @@
 
     function updateStateFromControls() {
         state.date = els.date ? els.date.value : '';
+        // Guard the inverted range here rather than at the API: a from-date after
+        // the to-date would otherwise come back as a silently empty chart.
+        const rawFrom = els.fromDate ? els.fromDate.value : '';
+        state.fromDate = (rawFrom && state.date && rawFrom < state.date) ? rawFrom : '';
+        if (rawFrom && !state.fromDate && els.fromDate) {
+            els.fromDate.value = '';
+        }
         state.dataSource = els.dataSource && els.dataSource.value ? els.dataSource.value : DEFAULT_DATA_SOURCE;
         state.indexSymbol = els.indexSymbol && els.indexSymbol.value ? els.indexSymbol.value : DEFAULT_INDEX;
         state.timeframes = getSelectedValues(els.timeframes, [DEFAULT_TIMEFRAME]);
@@ -493,6 +528,12 @@
             timeframe: timeframe,
             smaPeriods: state.smaPeriods.join(',')
         });
+
+        // Continuous mode. Absent => the backend draws the single day, which is
+        // the original behaviour; present => one series across [fromDate, date].
+        if (state.fromDate) {
+            params.set('fromDate', state.fromDate);
+        }
 
         // Blank strike = ATM (auto); the backend resolves it. The underlying
         // chart has no strike, so never send one for it.
@@ -1328,6 +1369,7 @@
     function persistState() {
         try {
             localStorage.setItem(LS_KEYS.date, state.date || '');
+            localStorage.setItem(LS_KEYS.fromDate, state.fromDate || '');
             localStorage.setItem(LS_KEYS.dataSource, state.dataSource || DEFAULT_DATA_SOURCE);
             localStorage.setItem(LS_KEYS.indexSymbol, state.indexSymbol || DEFAULT_INDEX);
             localStorage.setItem(LS_KEYS.timeframes, JSON.stringify(state.timeframes || [DEFAULT_TIMEFRAME]));

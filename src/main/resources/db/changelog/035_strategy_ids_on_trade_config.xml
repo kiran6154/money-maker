@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      Replaces the trade_config_strategy child table (031) with a comma-separated
+      column on trade_config itself.
+
+      Why this reverses 031's shape
+      =============================
+      The child table was normalised by reflex, and on review it bought nothing here:
+
+        * No referential integrity to gain. There is no `strategy` table - strategies
+          are Spring beans discovered by StrategyFactory - so trade_config_strategy
+          .strategy_id had no foreign key either. The tag table was an unenforced
+          list of ints in a table of its own.
+        * Nothing queries by strategy. Not one call site asks "which configs run
+          strategy N", so the index a child table would give is unused.
+        * The per-tag `enabled` flag was speculative. strategy_defaults
+          .auto_config_enabled already parks a strategy globally; nobody asked to
+          park one config's strategy while leaving another's running.
+        * The set is tiny and bounded - two strategies today.
+
+      And it cost something real: every trade_config delete had to clear the child
+      first or die on the FK, which is friction on the exact operation people perform
+      most (deleting configs from the admin UI, wiping a test database).
+
+      Contrast sma_timeframe, which stays a child table and should: its rows carry
+      three fields (sma, time_period, slope), so they are records, not a list.
+
+      Shape
+      =====
+      VARCHAR(64) holding ascending ids, no spaces: '1', '1,2'. Parsing and
+      formatting live in exactly one place, com.moneymaker.util.StrategyIds - nothing
+      else may split or join this column.
+
+      NULL / blank means "no tags", which TradeConfigScheduler resolves to the
+      config's stratergy_id, exactly as an empty tag list did before.
+    -->
+    <changeSet id="035_add_strategy_ids_to_trade_config" author="moneymaker">
+        <!--
+          Guarded because this project runs spring.jpa.hibernate.ddl-auto=update.
+          If the entity ships before this changeset is wired into the master (or a
+          developer boots a branch where it is not), Hibernate creates the column
+          itself and a bare addColumn then fails on next start with "Duplicate
+          column name". Same hazard changeset 022 was written to clean up after.
+        -->
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="trade_config" columnName="strategy_ids"/>
+            </not>
+        </preConditions>
+        <addColumn tableName="trade_config">
+            <column name="strategy_ids" type="VARCHAR(64)"/>
+        </addColumn>
+    </changeSet>
+
+    <!--
+      Carry the tags over. GROUP_CONCAT with ORDER BY keeps the ascending order the
+      fan-out relies on for a stable dispatch sequence across replays.
+      Only enabled tags migrate: a disabled tag meant "do not dispatch this", and the
+      CSV column has no way to say that other than by absence.
+    -->
+    <changeSet id="035_migrate_trade_config_strategy_to_csv" author="moneymaker">
+        <preConditions onFail="MARK_RAN">
+            <tableExists tableName="trade_config_strategy"/>
+        </preConditions>
+        <sql>
+            UPDATE trade_config c
+               SET c.strategy_ids = (
+                     SELECT GROUP_CONCAT(t.strategy_id ORDER BY t.strategy_id SEPARATOR ',')
+                       FROM trade_config_strategy t
+                      WHERE t.tc_id = c.id
+                        AND t.enabled = TRUE)
+        </sql>
+    </changeSet>
+
+    <!--
+      Configs that never had a tag row (or had only disabled ones) fall back to the
+      primary strategy, so the column is populated for every config that can trade.
+      Belt and braces: the loader applies the same fallback at read time.
+    -->
+    <changeSet id="035_backfill_strategy_ids_from_primary" author="moneymaker">
+        <sql>
+            UPDATE trade_config
+               SET strategy_ids = CAST(stratergy_id AS CHAR)
+             WHERE (strategy_ids IS NULL OR strategy_ids = '')
+               AND stratergy_id IS NOT NULL
+        </sql>
+    </changeSet>
+
+    <changeSet id="035_drop_trade_config_strategy" author="moneymaker">
+        <preConditions onFail="MARK_RAN">
+            <tableExists tableName="trade_config_strategy"/>
+        </preConditions>
+        <dropTable tableName="trade_config_strategy"/>
+    </changeSet>
+
+</databaseChangeLog>

@@ -24,7 +24,7 @@ public final class TradeRules {
     /**
      * The "no rules defined" sentinel — evaluates to <b>false</b>, i.e. no signal.
      *
-     * <p>Returned by {@code Strategy1.sellRulesFor} / {@code buyRulesFor} for an
+     * <p>Returned by {@code AbstractSmaCrossStrategy.sellRulesFor} / {@code buyRulesFor} for an
      * SMA period with no {@code case} branch. Do not use it to express "this side
      * has no extra conditions beyond the gate" — that reads as fail-closed too.
      * For that, put the condition in the list explicitly.

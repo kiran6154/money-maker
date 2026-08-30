@@ -19,19 +19,29 @@ public interface TradeOrderRepository extends JpaRepository<TradeOrder, Long> {
      * Returns the open trade for an option contract identified by its option token
      * (unique per strike+expiry+type). Used by {@code OrderService} to decide
      * whether an incoming signal closes the existing position or opens a new one.
+     *
+     * <p>Scoped by {@code strategyId} as well as the config: since changeset 031
+     * one config can be tagged with several strategies, and each holds its own
+     * position on the same leg. Without the strategy in the predicate one
+     * strategy's exit signal would close the other strategy's open trade.</p>
      */
-    Optional<TradeOrder> findFirstByTradeConfigIdAndOptionTokenAndStatus(
-            Integer tradeConfigId, String optionToken, String status);
+    Optional<TradeOrder> findFirstByTradeConfigIdAndStrategyIdAndOptionTokenAndStatus(
+            Integer tradeConfigId, Integer strategyId, String optionToken, String status);
 
     /**
-     * Counts all trades for a given trade config whose entry timestamp falls in
-     * the window — used by {@code OrderService} to enforce the
+     * Counts all trades for a given {@code (config, strategy)} whose entry
+     * timestamp falls in the window — used by {@code OrderService} to enforce the
      * {@code TradeConfig.numberOfTradesPerDay} cap. Counts across all option
      * tokens (strikes), all statuses (OPEN + CLOSED) — i.e. "how many entries
-     * has this config produced today, total".
+     * has this strategy produced from this config today, total".
+     *
+     * <p>The cap is <b>per strategy</b>, not shared across the strategies tagged
+     * on one config (changeset 031): two strategies on the same config each get
+     * their own {@code numberOfTradesPerDay} budget, otherwise whichever fired
+     * first would starve the other for the rest of the day.</p>
      */
-    long countByTradeConfigIdAndEntryTimeBetween(
-            Integer tradeConfigId,
+    long countByTradeConfigIdAndStrategyIdAndEntryTimeBetween(
+            Integer tradeConfigId, Integer strategyId,
             LocalDateTime fromInclusive, LocalDateTime toInclusive);
 
     /**
@@ -69,41 +79,57 @@ public interface TradeOrderRepository extends JpaRepository<TradeOrder, Long> {
             String status, LocalDateTime fromInclusive, LocalDateTime toInclusive);
 
     /**
-     * Counts trades in {@code status} for a given config and entry direction.
-     * Used by {@code OrderService} to enforce the
+     * Counts trades in {@code status} for a given {@code (config, strategy)} and
+     * entry direction. Used by {@code OrderService} to enforce the
      * {@code TradeConfig.numberOfParallelTrades} cap — i.e. "max simultaneous
-     * OPEN trades in the same direction for this config".
+     * OPEN trades in the same direction for this strategy on this config".
+     *
+     * <p>Per strategy for the same reason the per-day cap is — see
+     * {@link #countByTradeConfigIdAndStrategyIdAndEntryTimeBetween}.</p>
      */
-    long countByTradeConfigIdAndEntryDirectionAndStatus(
-            Integer tradeConfigId, String entryDirection, String status);
+    long countByTradeConfigIdAndStrategyIdAndEntryDirectionAndStatus(
+            Integer tradeConfigId, Integer strategyId, String entryDirection, String status);
 
     /**
      * True when a row already exists with this exact
-     * {@code (configId, optionToken, entryDirection, entryTime)} key —
+     * {@code (configId, strategyId, optionToken, entryDirection, entryTime)} key —
      * regardless of {@code status}. Used by {@code OrderService} to suppress
      * duplicate inserts when the same backtest is re-run, or when the same
      * tick somehow queues the same signal twice. Legitimate re-entries on the
      * same strike later in the day fire at a different {@code entryTime} and
      * are unaffected.
+     *
+     * <p>{@code strategyId} is part of the key because two strategies tagged on
+     * one config legitimately produce the same {@code (optionToken, direction,
+     * entryTime)} on the same candle. Without it the second strategy's entry
+     * would be silently swallowed as a duplicate, and it would look as though
+     * that strategy never fired.</p>
      */
-    boolean existsByTradeConfigIdAndOptionTokenAndEntryDirectionAndEntryTime(
-            Integer tradeConfigId, String optionToken, String entryDirection, LocalDateTime entryTime);
+    boolean existsByTradeConfigIdAndStrategyIdAndOptionTokenAndEntryDirectionAndEntryTime(
+            Integer tradeConfigId, Integer strategyId, String optionToken,
+            String entryDirection, LocalDateTime entryTime);
 
     /**
-     * Sums the realised per-share P&L from CLOSED trades for this config
-     * whose entry timestamp falls inside the window. Returns 0 when no rows
-     * match. Used by {@code OrderService} to enforce the
+     * Sums the realised per-share P&L from CLOSED trades for this
+     * {@code (config, strategy)} whose entry timestamp falls inside the window.
+     * Returns 0 when no rows match. Used by {@code OrderService} to enforce the
      * {@code TradeConfig.maxLoss} daily cap — i.e. "stop opening new trades
      * for this strategy once it has bled more than the configured per-day
      * loss". Only CLOSED trades count because OPEN positions still have
      * floating P&L; the {@code max_loss} cap is a *realised-loss* gate.
+     *
+     * <p>Per strategy since changeset 031: a losing strategy must not be able to
+     * spend the daily loss budget of another strategy tagged on the same
+     * config.</p>
      */
     @Query("SELECT COALESCE(SUM(t.profit), 0) FROM TradeOrder t " +
             "WHERE t.tradeConfigId = :tradeConfigId " +
+            "AND t.strategyId = :strategyId " +
             "AND t.status = 'CLOSED' " +
             "AND t.entryTime BETWEEN :fromInclusive AND :toInclusive")
     BigDecimal sumRealisedProfitForDay(
             @Param("tradeConfigId") Integer tradeConfigId,
+            @Param("strategyId") Integer strategyId,
             @Param("fromInclusive") LocalDateTime fromInclusive,
             @Param("toInclusive") LocalDateTime toInclusive);
 

@@ -143,6 +143,13 @@
             font-weight: 600;
             margin-right: 4px;
         }
+        /* The points ceiling riding alongside a % stop — secondary to the
+           bracket it caps, so it reads as an annotation, not a second number. */
+        .tc-cap {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
         .empty-state {
             text-align: center; padding: 28px 0; color: var(--text-muted);
         }
@@ -455,6 +462,14 @@
                 <input id="tc-sl-pct" type="number" step="0.5" min="0" class="form-control" placeholder="use points" />
             </div>
             <div class="form-row">
+                <label for="tc-max-sl" title="Hard ceiling in points on the stop loss, whichever is lower. A 30% stop on a 250-point leg is 75 points; this caps it. Blank = the standing 60.">Max stop loss (points)</label>
+                <input id="tc-max-sl" type="number" step="0.01" min="0" class="form-control" placeholder="60" />
+            </div>
+            <div class="form-row">
+                <label for="tc-trail-ladder" title="Trailing stop rungs as trigger:lock in points, e.g. 25:2,50:25 — once the trade has been 25 points in profit the stop moves to +2, at 50 it moves to +25. Latched off peak profit, so it never loosens. Blank = no trailing.">Trail ladder</label>
+                <input id="tc-trail-ladder" type="text" class="form-control" placeholder="none" />
+            </div>
+            <div class="form-row">
                 <label for="tc-max-loss">Max loss / day</label>
                 <input id="tc-max-loss" type="number" step="0.01" class="form-control" />
             </div>
@@ -534,7 +549,8 @@
                         <th>Txn</th>
                         <th>Strategy</th>
                         <th class="num" title="Exit target. A % is of the premium at entry and overrides the points value.">Target</th>
-                        <th class="num" title="Exit stop loss. A % is of the premium at entry and overrides the points value.">SL</th>
+                        <th class="num" title="Exit stop loss. A % is of the premium at entry and overrides the points value. A ≤ suffix is the points ceiling applied on top — whichever is lower wins.">SL</th>
+                        <th class="num" title="Trailing stop rungs, trigger:lock in points. 25:2 = once the trade has been 25 points in profit the stop moves to +2. Latched off peak profit, so it never loosens. — = no trailing.">Trail</th>
                         <th class="num">Lots</th>
                         <th class="num">Trades/day</th>
                         <th class="num">Parallel</th>
@@ -584,6 +600,11 @@
     // rather than looking like "no limit".
     const DEFAULT_MIN_PRICE = 80;
     const DEFAULT_MAX_PRICE = 250;
+    // Mirrors TradeConfigAdminService.DEFAULT_MAX_SL_POINTS and changeset 036's
+    // seeded ladder, so a new config opens the form already showing the bracket
+    // it will actually trade with.
+    const DEFAULT_MAX_SL      = 60;
+    const DEFAULT_TRAIL_LADDER = '25:2,50:25,75:50,100:75';
 
     const els = {
         filterDate:   document.getElementById('tc-filter-date'),
@@ -611,6 +632,8 @@
         sl:           document.getElementById('tc-sl'),
         targetPct:    document.getElementById('tc-target-pct'),
         slPct:        document.getElementById('tc-sl-pct'),
+        maxSl:        document.getElementById('tc-max-sl'),
+        trailLadder:  document.getElementById('tc-trail-ladder'),
         maxLoss:      document.getElementById('tc-max-loss'),
         lots:         document.getElementById('tc-lots'),
         tradesDay:    document.getElementById('tc-trades-day'),
@@ -752,6 +775,10 @@
          els.otm].forEach(e => e.value = '');
         els.minPrice.value = DEFAULT_MIN_PRICE;
         els.maxPrice.value = DEFAULT_MAX_PRICE;
+        // Prefilled rather than left blank: blank ladder means "no trailing", so a
+        // new config would silently opt out of it.
+        els.maxSl.value    = DEFAULT_MAX_SL;
+        els.trailLadder.value = DEFAULT_TRAIL_LADDER;
         els.instrument.value = '';
         els.strategy.value = '';
         els.side.value = '';
@@ -789,6 +816,11 @@
         // leaving the field empty and implying "no limit".
         els.minPrice.value    = view.minOptionPrice ?? DEFAULT_MIN_PRICE;
         els.maxPrice.value    = view.maxOptionPrice ?? DEFAULT_MAX_PRICE;
+        els.maxSl.value       = view.maxSlPoints ?? DEFAULT_MAX_SL;
+        // No ?? default here — a stored null means the config deliberately does
+        // not trail, and showing the default would turn trailing back on the next
+        // time someone opens and saves the row.
+        els.trailLadder.value = view.trailLadder ?? '';
         els.tfRows.innerHTML = '';
         (view.timeframes || []).forEach(addTimeframeRow);
         updateTfEmpty();
@@ -858,6 +890,8 @@
             otmDepth:                 num(els.otm),
             minOptionPrice:           num(els.minPrice),
             maxOptionPrice:           num(els.maxPrice),
+            maxSlPoints:              num(els.maxSl),
+            trailLadder:              els.trailLadder.value.trim() || null,
             timeframes:               collectTimeframes()
         };
     }
@@ -938,6 +972,16 @@
         return lo + '–' + hi;
     }
 
+    // The stop the trade will actually exit on: the resolved bracket, then the
+    // points ceiling that can only tighten it. Shown together because neither
+    // number alone tells you where the stop is.
+    function stopBracket(points, pct, maxSlPoints) {
+        const shown = bracket(points, pct);
+        if (maxSlPoints === null || maxSlPoints === undefined) return shown;
+        return shown + ' <span class="tc-cap" title="Hard ceiling in points — the lower of the two applies">≤'
+            + (+maxSlPoints) + '</span>';
+    }
+
     // The bracket the trade will actually exit on. A percentage overrides the
     // points value, so show the percentage and keep the points in the tooltip.
     function bracket(points, pct) {
@@ -971,9 +1015,14 @@
                 '<td>' + fmtNum(v.instrumentName) + '</td>' +
                 '<td>' + fmtNum(v.tradingSide) + '</td>' +
                 '<td>' + fmtNum(v.transactionType) + '</td>' +
-                '<td>' + fmtNum(v.strategyId) + '</td>' +
+                '<td>' + ((v.strategyIds && v.strategyIds.length)
+                            ? v.strategyIds.join(', ')
+                            : fmtNum(v.strategyId)) + '</td>' +
                 '<td class="num">' + bracket(v.target, v.targetPct) + '</td>' +
-                '<td class="num">' + bracket(v.stopLoss, v.slPct) + '</td>' +
+                '<td class="num">' + stopBracket(v.stopLoss, v.slPct, v.maxSlPoints) + '</td>' +
+                '<td class="num">' + (v.trailLadder
+                        ? '<span class="pill-tf">' + v.trailLadder + '</span>'
+                        : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
                 '<td class="num">' + fmtNum(v.lotQuantity) + '</td>' +
                 '<td class="num">' + fmtNum(v.numberOfTradesPerDay) + '</td>' +
                 '<td class="num">' + fmtNum(v.numberOfParallelTrades) + '</td>' +

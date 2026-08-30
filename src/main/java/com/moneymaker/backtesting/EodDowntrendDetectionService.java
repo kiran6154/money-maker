@@ -3,7 +3,9 @@ package com.moneymaker.backtesting;
 import com.moneymaker.entity.Instrument;
 import com.moneymaker.entity.MarketData;
 import com.moneymaker.entity.SmaDowntrendRule;
+import com.moneymaker.entity.SmaDowntrendRuleStrategy;
 import com.moneymaker.entity.SmaTimeframe;
+import com.moneymaker.entity.StrategyDefaults;
 import com.moneymaker.entity.TradeConfig;
 import com.moneymaker.indicator.IndicatorConfig;
 import com.moneymaker.indicator.IndicatorService;
@@ -12,9 +14,12 @@ import com.moneymaker.market.instrument.OptionInstrumentResolver;
 import com.moneymaker.market.service.MarketDataService;
 import com.moneymaker.market.service.TradingCalendar;
 import com.moneymaker.repository.SmaDowntrendRuleRepository;
+import com.moneymaker.repository.SmaDowntrendRuleStrategyRepository;
 import com.moneymaker.repository.SmaTimeframeRepository;
+import com.moneymaker.repository.StrategyDefaultsRepository;
 import com.moneymaker.repository.TradeConfigRepository;
 import com.moneymaker.strategy.rules.SmaTrendCalculator;
+import com.moneymaker.util.StrategyIds;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -24,7 +29,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * End-of-day downtrend detector.
@@ -40,7 +50,7 @@ import java.util.List;
  *
  * <p>For each side with at least one passing combo we insert exactly one
  * {@link TradeConfig} (next trading day, {@code source='AUTO_DOWNTREND'},
- * fields from the {@link #strategyDefaults(int)} block) plus one
+ * fields from the strategy's {@link com.moneymaker.entity.StrategyDefaults} row) plus one
  * {@link SmaTimeframe} child per passing combo.</p>
  *
  * <p><b>Exit bracket.</b> The generated config carries both shapes. The
@@ -53,10 +63,12 @@ import java.util.List;
  * config will trade, times the rule's multipliers, capped by
  * {@link #clampToBandFloor}.</p>
  *
- * <p><b>Idempotency:</b> if any {@code trade_config} row with
- * {@code source='AUTO_DOWNTREND'} already exists for the next trading day,
- * the whole write is skipped — first run wins. Delete those rows by hand
- * to force a re-write.</p>
+ * <p><b>Idempotency is per {@code (target day, strategy)}.</b> A strategy that
+ * already has an {@code AUTO_DOWNTREND} config for the next trading day is
+ * skipped; one that does not still generates. So replaying an unchanged range is
+ * a no-op, while tagging a rule with a further strategy and replaying does fill
+ * in that strategy's configs for days already covered by another. Delete a day's
+ * generated rows to force a full re-write.</p>
  *
  * <p>Backtest-only today. Service is a Spring bean and the public entry
  * {@link #runForDay(LocalDate)} takes nothing backtest-specific, so a
@@ -101,6 +113,8 @@ public class EodDowntrendDetectionService {
     private final SmaDowntrendRuleRepository ruleRepository;
     private final TradeConfigRepository tradeConfigRepository;
     private final SmaTimeframeRepository smaTimeframeRepository;
+    private final SmaDowntrendRuleStrategyRepository ruleStrategyRepository;
+    private final StrategyDefaultsRepository strategyDefaultsRepository;
     private final OptionInstrumentResolver instrumentResolver;
     private final MarketDataService marketDataService;
     private final IndicatorService indicatorService;
@@ -109,6 +123,8 @@ public class EodDowntrendDetectionService {
     public EodDowntrendDetectionService(SmaDowntrendRuleRepository ruleRepository,
                                         TradeConfigRepository tradeConfigRepository,
                                         SmaTimeframeRepository smaTimeframeRepository,
+                                        SmaDowntrendRuleStrategyRepository ruleStrategyRepository,
+                                        StrategyDefaultsRepository strategyDefaultsRepository,
                                         OptionInstrumentResolver instrumentResolver,
                                         MarketDataService marketDataService,
                                         IndicatorService indicatorService,
@@ -116,6 +132,8 @@ public class EodDowntrendDetectionService {
         this.ruleRepository = ruleRepository;
         this.tradeConfigRepository = tradeConfigRepository;
         this.smaTimeframeRepository = smaTimeframeRepository;
+        this.ruleStrategyRepository = ruleStrategyRepository;
+        this.strategyDefaultsRepository = strategyDefaultsRepository;
         this.instrumentResolver = instrumentResolver;
         this.marketDataService = marketDataService;
         this.indicatorService = indicatorService;
@@ -145,16 +163,31 @@ public class EodDowntrendDetectionService {
             return;
         }
 
-        if (!tradeConfigRepository.findByTradingDateAndSource(nextDay, SOURCE_AUTO).isEmpty()) {
-            log.info("[EOD-downtrend] {} — AUTO_DOWNTREND configs already exist for {}, skipping",
-                    tradingDay, nextDay);
-            return;
+        // Which strategies already have a generated config for the target day.
+        //
+        // The guard used to be per *day*: any AUTO_DOWNTREND row for nextDay skipped
+        // the whole run. That made the strategy tags un-actionable in hindsight —
+        // tag a rule with a second strategy after a day had already generated, and
+        // that strategy could never appear for it, because strategy 1's config was
+        // enough to suppress the entire day.
+        //
+        // Now the unit is (day, strategy): a strategy that already generated for
+        // nextDay is skipped, one that has not still generates. Re-running an
+        // unchanged setup remains a no-op, which is the property the backtest relies
+        // on when the same range is replayed.
+        Set<Integer> alreadyGenerated = new HashSet<>();
+        for (TradeConfig existing : tradeConfigRepository.findByTradingDateAndSource(nextDay, SOURCE_AUTO)) {
+            alreadyGenerated.addAll(StrategyIds.parse(existing.getStrategyIds()));
+            if (existing.getStratergyId() != null) {
+                // Pre-035 rows may carry only the primary column.
+                alreadyGenerated.add(existing.getStratergyId());
+            }
         }
 
         int inserted = 0;
         for (SmaDowntrendRule rule : rules) {
             try {
-                inserted += processRule(rule, tradingDay, nextDay);
+                inserted += processRule(rule, tradingDay, nextDay, alreadyGenerated);
             } catch (Exception ex) {
                 log.error("[EOD-downtrend] {} — rule id={} failed", tradingDay, rule.getId(), ex);
             }
@@ -167,17 +200,20 @@ public class EodDowntrendDetectionService {
     // Per-rule pipeline
     // ------------------------------------------------------------------
 
-    private int processRule(SmaDowntrendRule rule, LocalDate tradingDay, LocalDate nextDay) {
+    private int processRule(SmaDowntrendRule rule, LocalDate tradingDay, LocalDate nextDay,
+                            Set<Integer> alreadyGenerated) {
         Instrument instrument = rule.getInstrument();
         if (instrument == null || instrument.getInsName() == null) {
             log.warn("[EOD-downtrend] rule id={} has no instrument, skipping", rule.getId());
             return 0;
         }
 
-        StrategyDefaults defaults = strategyDefaults(rule.getStrategyId());
-        if (defaults == null) {
-            log.warn("[EOD-downtrend] rule id={} — no defaults for strategy {}, skipping",
-                    rule.getId(), rule.getStrategyId());
+        // One entry per generated config: its field block plus the strategies tagged
+        // onto it. Usually a single entry covering every tagged strategy — see
+        // resolveConfigGroups.
+        List<ConfigGroup> groups = resolveConfigGroups(rule, alreadyGenerated);
+        if (groups.isEmpty()) {
+            log.warn("[EOD-downtrend] rule id={} — no usable strategy, skipping", rule.getId());
             return 0;
         }
 
@@ -282,8 +318,14 @@ public class EodDowntrendDetectionService {
                     continue;
                 }
 
-                insertAutoTradeConfig(rule, defaults, nextDay, side, basis, passing, instrument, strikeDepth);
-                written++;
+                // The scan above runs once per side no matter how many strategies are
+                // tagged — it depends on the downtrend, not on who trades it. Only
+                // the write below repeats, and only when two tagged strategies want
+                // different trade_config conventions.
+                for (ConfigGroup group : groups) {
+                    insertAutoTradeConfig(rule, group, nextDay, side, basis, passing, instrument, strikeDepth);
+                    written++;
+                }
             } catch (HistoricalDataMissingException ex) {
                 log.warn("[EOD-downtrend] rule id={} {} — no imported series for token={} on {}, skipping side: {}",
                         rule.getId(), side, optionToken, tradingDay, ex.getMessage());
@@ -456,7 +498,7 @@ public class EodDowntrendDetectionService {
      *
      * <p>Both columns are {@code NOT NULL} as of changeset 026, so a null here
      * means the migration has not been applied — and writing the config anyway
-     * would hand {@code Strategy1} a null bound, which it reads as
+     * would hand {@code AbstractSmaCrossStrategy} a null bound, which it reads as
      * <i>unbounded</i>. Skipping loudly is better than silently generating the
      * any-premium config the band exists to prevent.</p>
      *
@@ -665,30 +707,90 @@ public class EodDowntrendDetectionService {
     // ------------------------------------------------------------------
 
     /**
-     * Per-strategy fixed-field block applied to the auto-generated
-     * {@code trade_config}. Add a new branch when a new strategy starts
-     * producing auto-downtrend configs.
+     * One generated {@code trade_config}: the field block it carries, and every
+     * strategy that gets tagged onto it.
+     *
+     * <p>Several strategies share one config whenever their
+     * {@link StrategyDefaults} blocks are identical, which is the usual case —
+     * {@code Strategy2} is {@code Strategy1} plus a filter, so both trade the same
+     * side under the same caps. When two tagged strategies genuinely want
+     * different conventions they cannot share a row, because those fields live on
+     * {@code trade_config} itself; {@link #resolveConfigGroups} then emits one
+     * config per distinct block.</p>
      */
-    private record StrategyDefaults(String transactionType,
-                                    Integer lotQuantity,
-                                    BigDecimal maxLoss,
-                                    Integer noOfTrades,
-                                    Integer noOfParallelTrades) {}
+    record ConfigGroup(StrategyDefaults defaults, List<Integer> strategyIds) {}
 
-    private StrategyDefaults strategyDefaults(Integer strategyId) {
-        if (strategyId == null) return null;
-        switch (strategyId) {
-            case 1:
-                // Strategy 1 (the sell-the-rip strategy).
-                return new StrategyDefaults(
-                        "SELL",
-                        1,
-                        BigDecimal.valueOf(200),
-                        1,
-                        1);
-            default:
-                return null;
+    /**
+     * The configs one rule should generate, resolved from its
+     * {@code sma_downtrend_rule_strategy} tags.
+     *
+     * <p>Replaces a hardcoded {@code switch} that handled strategy 1 and returned
+     * {@code null} for everything else — which silently dropped any rule tagged
+     * with another strategy. The block now comes from {@code strategy_defaults}
+     * (changeset 033), so adding a strategy to the auto-config pipeline is an
+     * INSERT rather than a redeploy.</p>
+     *
+     * <p>A rule with no tag rows falls back to its own {@code strategy_id}, so a
+     * database whose tags were never written behaves exactly as before changeset
+     * 034.</p>
+     *
+     * <p>Every skip is logged and names the strategy. A missing or disabled
+     * {@code strategy_defaults} row is a configuration mistake, and a detector
+     * that quietly generated nothing is precisely the failure this replaces.</p>
+     */
+    // Package-private rather than private so the branch matrix (no tags / missing
+    // defaults row / disabled / shared block / distinct blocks) is unit-testable
+    // without standing up the whole detector against a database.
+    List<ConfigGroup> resolveConfigGroups(SmaDowntrendRule rule, Set<Integer> alreadyGenerated) {
+        List<Integer> tagged = rule.getId() == null
+                ? List.of()
+                : ruleStrategyRepository.findByRuleIdAndEnabledTrueOrderByStrategyIdAsc(rule.getId())
+                        .stream()
+                        .map(SmaDowntrendRuleStrategy::getStrategyId)
+                        .filter(Objects::nonNull)
+                        .toList();
+
+        if (tagged.isEmpty()) {
+            if (rule.getStrategyId() == null) {
+                log.warn("[EOD-downtrend] rule id={} has no strategy tags and no strategy_id, skipping",
+                        rule.getId());
+                return List.of();
+            }
+            tagged = List.of(rule.getStrategyId());
         }
+
+        // LinkedHashMap so the emitted order follows the ascending strategy order
+        // the repository query pins — a re-run of the same backtest day must write
+        // the same configs in the same sequence.
+        Map<String, ConfigGroup> groups = new LinkedHashMap<>();
+        for (Integer strategyId : tagged) {
+            StrategyDefaults defaults = strategyDefaultsRepository.findById(strategyId).orElse(null);
+            if (defaults == null) {
+                log.warn("[EOD-downtrend] rule id={} — strategy {} has no strategy_defaults row, skipping it. "
+                                + "Insert one (see changeset 033) to generate configs for this strategy.",
+                        rule.getId(), strategyId);
+                continue;
+            }
+            if (!Boolean.TRUE.equals(defaults.getAutoConfigEnabled())) {
+                log.warn("[EOD-downtrend] rule id={} — strategy {} has auto_config_enabled=false, skipping it",
+                        rule.getId(), strategyId);
+                continue;
+            }
+            if (alreadyGenerated != null && alreadyGenerated.contains(strategyId)) {
+                log.debug("[EOD-downtrend] rule id={} — strategy {} already has a config for the "
+                        + "target day, skipping it", rule.getId(), strategyId);
+                continue;
+            }
+            ConfigGroup existing = groups.get(defaults.configSignature());
+            if (existing == null) {
+                List<Integer> ids = new ArrayList<>();
+                ids.add(strategyId);
+                groups.put(defaults.configSignature(), new ConfigGroup(defaults, ids));
+            } else {
+                existing.strategyIds().add(strategyId);
+            }
+        }
+        return new ArrayList<>(groups.values());
     }
 
     // ------------------------------------------------------------------
@@ -696,18 +798,28 @@ public class EodDowntrendDetectionService {
     // ------------------------------------------------------------------
 
     private void insertAutoTradeConfig(SmaDowntrendRule rule,
-                                       StrategyDefaults defaults,
+                                       ConfigGroup group,
                                        LocalDate nextDay,
                                        String side,
                                        BigDecimal basis,
                                        List<int[]> passing,
                                        Instrument instrument,
                                        int strikeDepth) {
+        StrategyDefaults defaults = group.defaults();
         TradeConfig tc = new TradeConfig();
         tc.setTradingDate(nextDay);
         tc.setTradingSide(side);
         tc.setInstrument(rule.getInstrument());
-        tc.setStratergyId(rule.getStrategyId());
+        // Primary strategy = the lowest-numbered one sharing this config, matching
+        // what TradeConfigAdminService keeps in the column for hand-made configs.
+        // Dispatch is driven by strategy_ids below, not by this column — see
+        // changesets 031/035.
+        tc.setStratergyId(group.strategyIds().get(0));
+
+        // What actually makes the config run. Without this the config would fall
+        // back to its stratergy_id and be scanned by that one strategy only — which
+        // is the whole point of tagging the rule with more than one.
+        tc.setStrategyIds(StrategyIds.format(group.strategyIds()));
         tc.setSource(SOURCE_AUTO);
 
         // The bracket that actually decides exits: a fraction of whatever premium
@@ -715,6 +827,13 @@ public class EodDowntrendDetectionService {
         // stop_loss_at_entry. Straight off the rule — see changeset 027.
         tc.setTargetPct(rule.getTargetPct());
         tc.setSlPct(rule.getSlPct());
+        // The asymmetric half of the bracket (changeset 036): cap the stop the
+        // percentage above resolves to, and trail the profit. Copied verbatim like
+        // the percentages — the rule table is where a generated config's bracket
+        // is decided, and both columns are NOT NULL there so this cannot write a
+        // config that silently reverts to an uncapped, non-trailing stop.
+        tc.setMaxSlPoints(rule.getMaxSlPoints());
+        tc.setTrailLadder(rule.getTrailLadder());
 
         // Absolute fallback, in premium points — the same unit PositionService
         // compares against. Used when a config carries no percentage, and read by
@@ -725,16 +844,18 @@ public class EodDowntrendDetectionService {
                 rule));
         tc.setStopLoss(basis.multiply(rule.getSlMultiplier()).setScale(2, RoundingMode.HALF_UP));
 
-        tc.setTransactionType(defaults.transactionType());
-        tc.setMaxLoss(defaults.maxLoss());
-        tc.setNumberOfTradesPerDay(defaults.noOfTrades());
-        tc.setNumberOfParallelTrades(defaults.noOfParallelTrades());
+        // The per-strategy convention block, from strategy_defaults (changeset 033)
+        // rather than the hardcoded switch this used to carry.
+        tc.setTransactionType(defaults.getTransactionType());
+        tc.setMaxLoss(defaults.getMaxLoss());
+        tc.setNumberOfTradesPerDay(defaults.getNoOfTrades());
+        tc.setNumberOfParallelTrades(defaults.getNoOfParallelTrades());
 
         // Order quantity goes to the broker verbatim, and NFO only accepts whole
         // lots — so it comes from the contract, not from a strategy constant.
-        // strategyDefaults' value is a last-resort fallback.
+        // strategy_defaults.lot_quantity is a last-resort fallback.
         Integer lotQty = instrument == null ? null : instrument.getLotQty();
-        tc.setLotQuantity(lotQty != null && lotQty > 0 ? lotQty : defaults.lotQuantity());
+        tc.setLotQuantity(lotQty != null && lotQty > 0 ? lotQty : defaults.getLotQuantity());
 
         // Symmetric band around ATM, sized by strikeDepthFor(...).
         //
@@ -748,7 +869,7 @@ public class EodDowntrendDetectionService {
         tc.setAtmDepth(0);
 
         // Premium band, straight off the rule. Leaving these null is not "no
-        // opinion" — Strategy1.isOutsideBand skips a null bound entirely, so an
+        // opinion" — AbstractSmaCrossStrategy.outsidePriceBand skips a null bound entirely, so an
         // unset band is an *unbounded* config, free to sell a 6-point leg against
         // a 30-point target. Every generated config carries a band for the same
         // reason every hand-made one does; see changesets 024-026.
@@ -765,10 +886,11 @@ public class EodDowntrendDetectionService {
             smaTimeframeRepository.save(tf);
         }
 
-        log.info("[EOD-downtrend] inserted AUTO_DOWNTREND trade_config id={} for {} side={} "
-                        + "target={}%/{}pts sl={}%/{}pts basis={} band={}-{} combos={}",
-                saved.getId(), nextDay, side,
-                tc.getTargetPct(), tc.getTarget(), tc.getSlPct(), tc.getStopLoss(), basis,
+        log.info("[EOD-downtrend] inserted AUTO_DOWNTREND trade_config id={} for {} side={} strategies={} "
+                        + "target={}%/{}pts sl={}%/{}pts maxSl={}pts trail={} basis={} band={}-{} combos={}",
+                saved.getId(), nextDay, side, group.strategyIds(),
+                tc.getTargetPct(), tc.getTarget(), tc.getSlPct(), tc.getStopLoss(),
+                tc.getMaxSlPoints(), tc.getTrailLadder(), basis,
                 tc.getMinOptionPrice(), tc.getMaxOptionPrice(), summarise(passing));
     }
 

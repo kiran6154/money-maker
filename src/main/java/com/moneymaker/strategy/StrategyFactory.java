@@ -5,6 +5,7 @@ import com.moneymaker.entity.TradeConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -28,9 +29,6 @@ public class StrategyFactory {
     }
 
     /**
-     * Look up a strategy by its numeric id.
-     */
-    /**
      * Returns the registered strategy ids in ascending order — used by the
      * trade-config admin UI to populate the strategy dropdown without
      * hardcoding the list.
@@ -52,15 +50,24 @@ public class StrategyFactory {
 
     /**
      * Resolve the strategy from the combined DTO and execute it.
+     *
+     * <p>The id comes from {@link TradeConfigCombinedDTO#getStrategyId()} — the
+     * strategy this DTO was fanned out for — not from
+     * {@code TradeConfig.stratergyId} directly. A config tagged with several
+     * strategies arrives here once per tag, and reading the config's primary id
+     * would run the same strategy every time. The DTO getter falls back to
+     * {@code stratergyId} when nothing was tagged, so an untagged config
+     * dispatches exactly as it did before changeset 031.</p>
      */
-    public void execute(TradeConfigCombinedDTO config) {
+    public void execute(TradeConfigCombinedDTO config, LocalDateTime asOf) {
         if (config == null || config.getTradeConfig() == null) {
             throw new IllegalArgumentException("TradeConfigCombinedDTO or its TradeConfig is null");
         }
-        Integer id = config.getTradeConfig().getStratergyId();
+        Integer id = config.getStrategyId();
         Strategy strategy = get(id);
-        log.debug("Dispatching to strategy id={} ({})", id, strategy.getClass().getSimpleName());
-        strategy.execute(config);
+        log.debug("Dispatching tradeConfigId={} to strategy id={} ({}) asOf={}",
+                config.getTradeConfig().getId(), id, strategy.getClass().getSimpleName(), asOf);
+        strategy.execute(config, asOf);
     }
 }
 

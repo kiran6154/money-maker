@@ -33,5 +33,13 @@
     <include file="db/changelog/026_add_option_price_range_to_sma_downtrend_rule.xml"/>
     <include file="db/changelog/027_add_pct_bracket.xml"/>
     <include file="db/changelog/028_drop_duplicate_historical_indexes.xml"/>
+    <include file="db/changelog/029_add_quantity_and_charge_rates.xml"/>
+    <include file="db/changelog/030_observation_journal.xml"/>
+    <include file="db/changelog/031_create_trade_config_strategy.xml"/>
+    <include file="db/changelog/032_backfill_trade_order_strategy_id.xml"/>
+    <include file="db/changelog/033_create_strategy_defaults.xml"/>
+    <include file="db/changelog/034_create_sma_downtrend_rule_strategy.xml"/>
+    <include file="db/changelog/035_strategy_ids_on_trade_config.xml"/>
+    <include file="db/changelog/036_add_trailing_stop_loss.xml"/>
 
 </databaseChangeLog>

@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      Which strategies a downtrend rule generates configs for.
+
+      Why a tag table and not a second rule row
+      =========================================
+      sma_downtrend_rule.strategy_id is a single INT, so "detect this downtrend and
+      run it under strategies 1 and 2" could only be said by duplicating the whole
+      rule. That is worse than it looks: the scan is the expensive half of the
+      detector (the {50,100,200,500} x {5min,15min} SMA grid against ATM on both CE
+      and PE), and two rules with the same instrument / max_deviation / start_time
+      would run it twice for an identical answer. It would also emit two separate
+      trade_config rows - reintroducing exactly the config duplication that
+      changeset 031 exists to remove.
+
+      With this table one scan produces one trade_config carrying one
+      trade_config_strategy tag per tagged strategy.
+
+      Deliberately mirrors trade_config_strategy (031): same child-table shape,
+      same enabled flag, same unique constraint. Two tag tables that look alike
+      are easier to reason about than two that do not.
+
+      A strategy tagged here still needs a strategy_defaults row (033) before it
+      generates anything - that table holds the transaction_type / max_loss /
+      trade-count block the generated config carries.
+
+      Backfill
+      ========
+      One tag per existing rule from its current strategy_id, so behaviour on an
+      untouched database is identical.
+    -->
+    <changeSet id="034_create_sma_downtrend_rule_strategy" author="moneymaker">
+        <createTable tableName="sma_downtrend_rule_strategy">
+            <column name="id" type="INT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="rule_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="strategy_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="enabled" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="sma_downtrend_rule_strategy"
+                                 baseColumnNames="rule_id"
+                                 referencedTableName="sma_downtrend_rule"
+                                 referencedColumnNames="id"
+                                 constraintName="fk_sma_downtrend_rule_strategy_rule"/>
+
+        <!-- Tagging the same strategy twice would make the detector emit its config
+             twice for one detected downtrend. -->
+        <addUniqueConstraint tableName="sma_downtrend_rule_strategy"
+                             columnNames="rule_id, strategy_id"
+                             constraintName="uk_sma_downtrend_rule_strategy_rule_strategy"/>
+    </changeSet>
+
+    <changeSet id="034_backfill_sma_downtrend_rule_strategy" author="moneymaker">
+        <sql>
+            INSERT INTO sma_downtrend_rule_strategy (rule_id, strategy_id, enabled)
+            SELECT r.id, r.strategy_id, TRUE
+              FROM sma_downtrend_rule r
+             WHERE r.strategy_id IS NOT NULL
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

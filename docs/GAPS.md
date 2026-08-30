@@ -5,6 +5,12 @@ market-hours gate + end-of-day summary. Captured here as a single backlog so
 priorities can be set in one place rather than chasing TODO comments through
 the tree.
 
+> **Strategy gaps do not belong in this file.** Anything that changes *what trades
+> get taken* — a `Strategy` bean, its rules, the signals it emits — goes in
+> **[STRATEGY_ANALYSIS_TODO.md](STRATEGY_ANALYSIS_TODO.md)** instead. This file is
+> infrastructure debt: schedulers, wiring, schema, delivery. Entries #19 and #21
+> were moved there and left as stubs so the numbering and inbound links still work.
+
 Each entry: **what** / **where** / **why it matters** / **fix sketch** /
 **effort hint**. Priority intentionally left blank — to be filled in by the
 user.
@@ -115,7 +121,7 @@ Legend for effort:
 |---|---|
 | Where | [`TradeConfig.java`](../src/main/java/com/moneymaker/entity/TradeConfig.java) line `@Column(name="stratergy_id")`; same name in changeset 003 |
 | Why | Annoying every time someone autocompletes; bug-bait. |
-| Fix sketch | Liquibase `renameColumn` from `stratergy_id` → `strategy_id`, rename entity field, update grep-able references. ~10 callers per quick scan. |
+| Fix sketch | Liquibase `renameColumn` from `stratergy_id` → `strategy_id`, rename entity field, update grep-able references. Note `trade_config.strategy_ids`, `trade_order.strategy_id` and `strategy_defaults.strategy_id` all already use the correct spelling, so after the rename the odd one out disappears — but the native `fetchCombinedByTradingDate` query and its positional mapper must move in the same commit. |
 | Effort | **M** — straightforward but cross-cutting. |
 | Priority | _TBD_ |
 
@@ -207,16 +213,11 @@ Legend for effort:
 | Resolution | Key is now `expiry\|strike\|optionType` via `SharedData.optionTokenKey(...)`, and `BacktestAnalysisService` clears the map in its day-end `finally` block alongside the other per-day caches. |
 | Effort | **S** |
 
-## 19. `Strategy1` scanned every config's legs, not its own — **RESOLVED 2026-08-25**
+## 19. `Strategy1` scanned every config's legs, not its own — **RESOLVED 2026-08-25** *(moved)*
 
-| | |
-|---|---|
-| Where | [`Strategy1.keyMatches`](../src/main/java/com/moneymaker/strategy/Strategy1.java), reading [`SharedData.strikeMarketDataByInstrumentAndInterval`](../src/main/java/com/moneymaker/shared/data/SharedData.java) written by [`AnalysisScheduler.toStrikeMarketDataKey`](../src/main/java/com/moneymaker/scheduler/AnalysisScheduler.java) |
-| Why | The writer keys each entry `instrumentToken\|interval\|optionType\|strike\|optionToken\|itmDepth\|otmDepth` and contributes only the legs of the config that fetched them. The reader matched a `instrumentToken\|interval\|` **prefix** only — `optionType` and both depths were never compared. `trading_side` reached the strategy solely as the sort direction (`strikeComparator(isCe)`), never as a filter, so every config scanned the union of all configs' legs. |
-| Impact | On any day with the normal CE + PE config pair, each signal fired once under each config id and the ledger recorded **every trade twice**, with half the rows carrying an option type contradicting their own config's `trading_side` (e.g. a PE trade booked under a CE config). Realised P&L over such a run is doubled. The `existsByTradeConfigIdAndOptionTokenAndEntryDirectionAndEntryTime` dedupe guard could not catch it — it keys on `tradeConfigId`, so the pairs are legitimately distinct rows. Where several legs fired on one tick the two configs landed on *different* strikes instead of identical ones, because they sort in opposite directions and `no_of_parrellel_trades` cut the scan short at opposite ends — which is why the duplication was not uniform and read as "sometimes the wrong strike". |
-| Resolution | `keyMatches` now splits the key and compares `optionType` against the config's resolved `trading_side` plus both depth segments against the config's own. `isCallSide` became `resolveOptionType`, mirroring `AnalysisScheduler.resolveOptionType` including its null-on-unresolved behaviour — the writer skips the fetch for an unresolved side, so defaulting to CE would have made such a config scan someone else's legs. |
-| Related | Sibling of [#18](#18-shareddataoptiontokenmap-was-keyed-by-strike-alone--resolved-2026-08-22) — same root shape (a shared cache whose key was less specific than its contents), different map. |
-| Effort | **S** |
+> Strategy gaps now live in **[STRATEGY_ANALYSIS_TODO.md](STRATEGY_ANALYSIS_TODO.md)**.
+> This entry is [S2](STRATEGY_ANALYSIS_TODO.md#s2-strategy1-scanned-every-configs-legs-not-its-own--resolved-2026-08-25).
+> Number kept so #20 and the [#18] cross-reference still resolve.
 
 ## 20. `MarketDataProviderFactory.java` is an empty file
 
@@ -227,3 +228,14 @@ Legend for effort:
 | Fix sketch | Fill the factory: inject `List<MarketDataProvider>`, select by an explicit property, and have `KiteHistoricalFetcher` depend on the factory rather than on a single bean. Then drop `matchIfMissing` and the `@Primary` workaround, and either wire up or delete the two dead providers. |
 | Effort | **M** — touches provider wiring; needs a live-mode start-up check. |
 | Priority | _TBD_ |
+
+## 21. `Strategy2`'s SMA-20 slope filter is inert when the slope is unknown *(moved)*
+
+> Strategy gaps now live in **[STRATEGY_ANALYSIS_TODO.md](STRATEGY_ANALYSIS_TODO.md)**.
+> This entry is [S1](STRATEGY_ANALYSIS_TODO.md#s1-strategy2s-sma-20-slope-filter-is-inert-when-the-slope-is-unknown--parked-2026-08-30).
+
+## 22. Session-window constants are hardcoded while `app.market.*` already exists *(moved)*
+
+> Strategy gaps now live in **[STRATEGY_ANALYSIS_TODO.md](STRATEGY_ANALYSIS_TODO.md)**.
+> This entry is [S5](STRATEGY_ANALYSIS_TODO.md#s5-session-window-constants-are-hardcoded-while-appmarket-already-exists).
+> Filed here first by mistake before Rule 0 landed; number kept so a later #23 does not collide.

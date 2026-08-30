@@ -49,6 +49,28 @@ public class TradeConfig {
     @Column(name = "stratergy_id")
     private Integer stratergyId;
 
+    /**
+     * Every strategy that should scan this config, as ascending comma-separated
+     * ids: {@code "1"}, {@code "1,2"}.
+     *
+     * <p>This is what lets one configuration be run by several strategies without
+     * duplicating the row and its {@code sma_timeframe} children.
+     * {@code TradeConfigScheduler} fans the config out into one
+     * {@code TradeConfigCombinedDTO} per id, so dispatch still handles exactly one
+     * strategy per DTO, and {@code (trade_config_id, strategy_id)} is the ledger
+     * identity {@code OrderService} applies its caps against.</p>
+     *
+     * <p>Null or blank means "no tags" and resolves to {@link #stratergyId}, which
+     * keeps every pre-existing config working unchanged.</p>
+     *
+     * <p><b>Parse and format only via {@code com.moneymaker.util.StrategyIds}.</b>
+     * A comma-separated column is only sound while exactly one piece of code owns
+     * its encoding. Replaced the {@code trade_config_strategy} child table in
+     * changeset 035 — see that file for why the table was not worth its cost.</p>
+     */
+    @Column(name = "strategy_ids", length = 64)
+    private String strategyIds;
+
     @Column(name = "no_of_trades")
     private Integer numberOfTradesPerDay;
 
@@ -105,6 +127,44 @@ public class TradeConfig {
     /** Stop-loss as a fraction of entry premium. See {@link #targetPct}. */
     @Column(name = "sl_pct", precision = 6, scale = 4)
     private BigDecimal slPct;
+
+    /**
+     * Absolute ceiling, in premium points, on the stop-loss this config can
+     * resolve to. The effective stop is {@code min(resolved, maxSlPoints)} —
+     * whichever is lower. {@code null} = no ceiling.
+     *
+     * <p>Exists because {@link #slPct} is right about shape and wrong about
+     * absolute exposure: 0.30 is a 24-point stop at the bottom of the 80-250
+     * premium band and a 75-point stop at the top, but rupee risk is not a
+     * function of the premium the leg happened to open at. The cap binds only at
+     * the expensive end — see changeset 036 for the worked band.</p>
+     *
+     * <p>There is deliberately no matching cap on {@link #target}. A short
+     * option's gain is bounded by the premium while its loss is not, and that
+     * asymmetry is an argument for bounding the loss, not the gain.</p>
+     *
+     * <p>Applied once at entry by {@code OrderService}, so
+     * {@code trade_order.stop_loss_at_entry} already carries the capped value
+     * and {@code PositionService} needs no knowledge of the cap.</p>
+     */
+    @Column(name = "max_sl_points", precision = 12, scale = 4)
+    private BigDecimal maxSlPoints;
+
+    /**
+     * Trailing stop-loss rungs as ascending {@code trigger:lock} pairs in
+     * premium points: {@code "25:2,50:25,75:50"}. Null or blank = no trailing,
+     * i.e. the fixed {@link #stopLoss} applies for the whole trade.
+     *
+     * <p><b>Parse and format only via {@code com.moneymaker.util.TrailLadder}</b>
+     * — same one-owner rule as {@link #strategyIds}, and stricter, because a
+     * silently dropped rung changes exits only on the trades nobody is watching.</p>
+     *
+     * <p>Latched off {@code trade_order.peak_profit}, so the ladder is a ratchet:
+     * touching +50 fixes the +25 floor even if price falls back. Snapshotted onto
+     * the order at entry like the rest of the bracket.</p>
+     */
+    @Column(name = "trail_ladder", length = 128)
+    private String trailLadder;
 
     /**
      * Origin marker. {@code MANUAL} = inserted by hand (default). {@code AUTO_DOWNTREND}

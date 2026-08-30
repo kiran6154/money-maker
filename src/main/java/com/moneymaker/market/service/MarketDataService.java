@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -91,7 +92,7 @@ public class MarketDataService {
 
             List<MarketData> hit = cache.slice(symbol, interval, from, to);
             if (hit != null && !hit.isEmpty()) {
-                return hit;
+                return dropIncompleteBars(hit, to, interval);
             }
 
             // Backtest cache miss — fetch a superset once, cache it, then slice.
@@ -100,11 +101,80 @@ public class MarketDataService {
             cache.put(symbol, interval, wide, wideFrom, wideTo);
 
             List<MarketData> sliced = cache.slice(symbol, interval, from, to);
-            return sliced != null ? sliced : wide;
+            return dropIncompleteBars(sliced != null ? sliced : wide, to, interval);
         }
 
-        // Live path — exact same call shape as before Phase 1.
-        return fetchFromSource(symbol, from, to, interval);
+        // Live path — same call shape as before Phase 1, then the same
+        // completed-bars-only rule the backtest applies.
+        return dropIncompleteBars(fetchFromSource(symbol, from, to, interval), to, interval);
+    }
+
+    /**
+     * Drops trailing bars whose period has not finished by {@code asOf}.
+     *
+     * <p><b>Why this is not a backtest concern only.</b> A bar stamped {@code T}
+     * covers {@code [T, T + width)}. A broker asked for data "up to now" returns
+     * the current bar <em>partially formed</em>, and the strategy gate reads that
+     * bar's open and close — so whether a signal fires depends on how far into the
+     * bar the 5-minute cron happened to land. Two runs of the same live day, with
+     * the cron firing a few seconds apart, can disagree. Evaluating only settled
+     * bars removes that non-determinism.
+     *
+     * <p>In backtest the same rule removes an outright look-ahead: the candle
+     * stamped {@code T} is <em>complete</em> in imported data, so including it fed
+     * the strategy five minutes of price action that had not happened at {@code T}
+     * and then stamped the trade at {@code T}. The newest admissible bar is the
+     * one stamped {@code T - width}, which closed exactly at {@code T} — so its
+     * close is the price actually transactable at {@code T}.
+     *
+     * <p>Intervals this cannot size — {@code day} in particular — are left alone.
+     * {@code EodDowntrendDetectionService} asks for {@code day} bars at 15:20 for
+     * its ATR, and the session's own bar is exactly what it wants; dropping it
+     * would silently shorten every ATR window by a day.
+     */
+    private List<MarketData> dropIncompleteBars(List<MarketData> bars, LocalDateTime asOf, String interval) {
+        if (bars == null || bars.isEmpty() || asOf == null) {
+            return bars;
+        }
+        int width = barWidthMinutes(interval);
+        if (width <= 0) {
+            return bars;
+        }
+
+        int end = bars.size();
+        while (end > 0) {
+            MarketData last = bars.get(end - 1);
+            LocalDateTime ts = last == null ? null : last.getTimestamp();
+            // Complete when the bar's period ends at or before asOf.
+            if (ts == null || !ts.plusMinutes(width).isAfter(asOf)) {
+                break;
+            }
+            end--;
+        }
+        if (end == bars.size()) {
+            return bars;
+        }
+        log.debug("[market-data] dropped {} forming bar(s) for symbol={} interval={} asOf={}",
+                bars.size() - end, symbolSafe(bars), interval, asOf);
+        return new ArrayList<>(bars.subList(0, end));
+    }
+
+    /** Bar width in minutes, or 0 for an interval this cannot size (e.g. {@code day}). */
+    private static int barWidthMinutes(String interval) {
+        if (interval == null) return 0;
+        String normalized = interval.trim().toLowerCase(Locale.ROOT);
+        if (!normalized.endsWith("minute")) return 0;
+        try {
+            return Integer.parseInt(normalized.substring(0, normalized.length() - "minute".length()));
+        } catch (NumberFormatException ex) {
+            return 0;
+        }
+    }
+
+    /** Symbol off the first candle, for the debug line only. */
+    private static String symbolSafe(List<MarketData> bars) {
+        MarketData first = bars.isEmpty() ? null : bars.get(0);
+        return first == null ? "?" : String.valueOf(first.getInstrumenttoken());
     }
 
     /**
@@ -128,17 +198,33 @@ public class MarketDataService {
                                            String interval, LocalDateTime wideFrom, LocalDateTime wideTo) {
         String baseInterval = HistoricalIciciMarketDataProvider.BASE_INTERVAL;
 
-        List<MarketData> base = cache.slice(symbol, baseInterval, from, to);
+        // EXCLUSIVE upper bound. A candle stamped T covers [T, T + width), so it
+        // has not finished forming at T — its close is the price at T + width and
+        // its high/low describe five minutes that, at T, have not happened.
+        // Including it let the strategy evaluate a completed future bar and stamp
+        // the resulting trade at T: a look-ahead on the decision, not merely on
+        // the fill. Assuming close(T) == open(T + width) does not rescue it, since
+        // the gate reads the bar's whole shape, not just its last price.
+        //
+        // The newest admissible bar at T is therefore the one stamped T - width,
+        // which completed exactly at T and whose close IS the price at T — so the
+        // fill stays realistic while the decision uses only settled data.
+        LocalDateTime lastCompleted = to.minusNanos(1);
+
+        List<MarketData> base = cache.slice(symbol, baseInterval, from, lastCompleted);
         if (base == null || base.isEmpty()) {
             List<MarketData> wide = historicalProvider.fetchBaseCandles(symbol, wideFrom, wideTo, interval);
             cache.put(symbol, baseInterval, wide, wideFrom, wideTo);
 
-            base = cache.slice(symbol, baseInterval, from, to);
+            base = cache.slice(symbol, baseInterval, from, lastCompleted);
             if (base == null) {
                 base = wide;
             }
         }
-        return historicalProvider.aggregateTo(base, symbol, interval);
+        // The roll-up can still produce a trailing partial bucket (at 09:40 the
+        // 15-minute bucket 09:30 holds only 09:30 and 09:35). dropIncompleteBars
+        // removes it, so both paths return settled bars only.
+        return dropIncompleteBars(historicalProvider.aggregateTo(base, symbol, interval), to, interval);
     }
 
     public List<Double> extractClosePrices(List<MarketData> marketDataList) {

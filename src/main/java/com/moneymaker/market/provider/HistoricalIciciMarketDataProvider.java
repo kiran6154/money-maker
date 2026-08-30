@@ -176,8 +176,10 @@ public class HistoricalIciciMarketDataProvider implements MarketDataProvider {
 
         List<MarketData> candles = new ArrayList<>(rows.size());
         for (HistoricalSpotCandle row : rows) {
-            candles.add(toMarketData(symbol, row.getDateTime(),
-                    row.getOpen(), row.getHigh(), row.getLow(), row.getClose()));
+            MarketData md = toMarketData(symbol, row.getDateTime(),
+                    row.getOpen(), row.getHigh(), row.getLow(), row.getClose());
+            md.setVolume(row.getVolume());
+            candles.add(md);
         }
         return candles;
     }
@@ -190,8 +192,11 @@ public class HistoricalIciciMarketDataProvider implements MarketDataProvider {
 
         List<MarketData> candles = new ArrayList<>(rows.size());
         for (HistoricalOptionCandle row : rows) {
-            candles.add(toMarketData(symbol, row.getDateTime(),
-                    row.getOpen(), row.getHigh(), row.getLow(), row.getClose()));
+            MarketData md = toMarketData(symbol, row.getDateTime(),
+                    row.getOpen(), row.getHigh(), row.getLow(), row.getClose());
+            md.setVolume(row.getVolume());
+            md.setOpenInterest(row.getOpenInterest());
+            candles.add(md);
         }
         return candles;
     }
@@ -277,6 +282,10 @@ public class HistoricalIciciMarketDataProvider implements MarketDataProvider {
         BigDecimal high = null;
         BigDecimal low = null;
         BigDecimal close = null;
+        // Volume SUMS across the bucket; open interest is a level, not a flow,
+        // so the bucket carries its LAST value rather than a total.
+        Long volume = null;
+        Long openInterest = null;
 
         for (MarketData candle : base) {
             LocalDateTime ts = candle.getTimestamp();
@@ -291,7 +300,7 @@ public class HistoricalIciciMarketDataProvider implements MarketDataProvider {
 
             if (!date.equals(bucketDate) || index != bucketIndex) {
                 if (timestamp != null) {
-                    aggregated.add(toMarketData(symbol, timestamp, open, high, low, close));
+                    aggregated.add(bucketBar(symbol, timestamp, open, high, low, close, volume, openInterest));
                 }
                 bucketDate = date;
                 bucketIndex = index;
@@ -300,6 +309,13 @@ public class HistoricalIciciMarketDataProvider implements MarketDataProvider {
                 open = candle.getOpen();
                 high = candle.getHigh();
                 low = candle.getLow();
+                volume = null;
+            }
+            if (candle.getVolume() != null) {
+                volume = (volume == null ? 0L : volume) + candle.getVolume();
+            }
+            if (candle.getOpenInterest() != null) {
+                openInterest = candle.getOpenInterest();
             }
 
             if (candle.getHigh() != null && (high == null || candle.getHigh().compareTo(high) > 0)) {
@@ -312,8 +328,18 @@ public class HistoricalIciciMarketDataProvider implements MarketDataProvider {
         }
 
         if (timestamp != null) {
-            aggregated.add(toMarketData(symbol, timestamp, open, high, low, close));
+            aggregated.add(bucketBar(symbol, timestamp, open, high, low, close, volume, openInterest));
         }
         return aggregated;
+    }
+
+    /** {@link #toMarketData} plus the bucket's accumulated volume / last OI. */
+    private MarketData bucketBar(String symbol, LocalDateTime timestamp,
+                                 BigDecimal open, BigDecimal high, BigDecimal low, BigDecimal close,
+                                 Long volume, Long openInterest) {
+        MarketData bar = toMarketData(symbol, timestamp, open, high, low, close);
+        bar.setVolume(volume);
+        bar.setOpenInterest(openInterest);
+        return bar;
     }
 }

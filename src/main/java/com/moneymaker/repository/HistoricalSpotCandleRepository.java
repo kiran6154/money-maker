@@ -45,7 +45,7 @@ public interface HistoricalSpotCandleRepository extends JpaRepository<Historical
      * market-data provider.
      *
      * <p>Ascending order is load-bearing: {@code BacktestMarketDataCache.slice}
-     * stops at the first candle after its upper bound, and {@code Strategy1}
+     * stops at the first candle after its upper bound, and {@code AbstractSmaCrossStrategy}
      * treats {@code list.get(size - 1)} as the latest candle.
      */
     @Query("""

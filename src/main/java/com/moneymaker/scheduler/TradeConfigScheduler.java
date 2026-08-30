@@ -11,6 +11,7 @@ import com.moneymaker.shared.data.SharedData;
 import com.moneymaker.state.DailyEventGuard;
 import com.moneymaker.telegram.NotificationService;
 import com.moneymaker.util.ConverterUtility;
+import com.moneymaker.util.StrategyIds;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,6 +26,8 @@ import java.time.DayOfWeek;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Collections;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -142,20 +145,65 @@ public class TradeConfigScheduler {
         configsCache.clear();
     }
 
+    /**
+     * Loads the configs for a date and <b>fans each one out into one DTO per
+     * strategy tagged on it</b> ({@code trade_config.strategy_ids}, changesets 031/035).
+     *
+     * <p>A config tagged with strategies 1 and 2 therefore appears twice in the
+     * returned list — same {@link TradeConfig}, different
+     * {@link TradeConfigCombinedDTO#getStrategyId()}. This is the only place the
+     * fan-out happens, which is what lets {@code StrategyFactory} keep
+     * dispatching exactly one strategy per DTO.</p>
+     *
+     * <p>A config with no enabled tag falls back to a single DTO carrying its
+     * {@code stratergy_id}, so an untagged database behaves exactly as it did
+     * before 031.</p>
+     *
+     * <p><b>The returned siblings share one {@link TradeConfig} instance</b> (and
+     * one timeframe list) rather than each getting a copy. Nothing downstream
+     * writes to either — strategies and {@code OrderService} read config values
+     * and snapshot what they need onto {@code trade_order} — and copying would
+     * mean maintaining a deep-copy constructor that must not miss a column. If a
+     * caller ever does need to mutate a config per strategy, it must copy first.</p>
+     *
+     * <p>Note for callers that count: the size of this list is the number of
+     * <i>(config, strategy)</i> pairs, not the number of configs.</p>
+     */
     public List<TradeConfigCombinedDTO> fetchTradeConfigsByDate(LocalDate date) {
 
         List<Object[]> results = tradeConfigRepository.fetchCombinedByTradingDate(date);
         log.debug("Fetched combined trade configs for date {}: {}", date, results.size());
-        List<TradeConfigCombinedDTO> tradeConfigCombinedDTOList = results.stream().map(row -> {
+        List<TradeConfigCombinedDTO> tradeConfigCombinedDTOList = results.stream().flatMap(row -> {
             TradeConfig tradeConfig = mapToTradeConfig(row);
             Instrument instrument = mapToInstrument(row, tradeConfig);
             InstrumentDetails instrumentDetails = mapToInstrumentDetails(row, tradeConfig, instrument);
             List<SmaTimeframe> timeFrameList = tradeConfig.getId() == null
                     ? new ArrayList<>()
                     : smaTimeframeRepository.findByTradeConfigId(tradeConfig.getId());
-            return new TradeConfigCombinedDTO(tradeConfig, instrument, instrumentDetails,timeFrameList);
+            return strategyIdsFor(tradeConfig).stream()
+                    .map(strategyId -> new TradeConfigCombinedDTO(
+                            tradeConfig, instrument, instrumentDetails, timeFrameList, strategyId));
         }).toList();
-return tradeConfigCombinedDTOList;
+        return tradeConfigCombinedDTOList;
+    }
+
+    /**
+     * The strategies this config should be scanned by: its
+     * {@code strategy_ids} column, or — when that is blank — the single
+     * {@code stratergy_id} it carries.
+     *
+     * <p>Returns a single-element list holding {@code null} for a config with
+     * neither, so the config still yields one DTO and is reported / logged like
+     * any other. {@code StrategyFactory.execute} is what rejects it, with the
+     * same "no strategy registered" error it raised before changeset 031 — swallowing it
+     * here would make a mis-configured row silently invisible.</p>
+     */
+    private List<Integer> strategyIdsFor(TradeConfig tradeConfig) {
+        List<Integer> tagged = StrategyIds.parse(tradeConfig.getStrategyIds());
+        if (!tagged.isEmpty()) {
+            return tagged;
+        }
+        return Collections.singletonList(tradeConfig.getStratergyId());
     }
 
     /**
@@ -215,7 +263,10 @@ return tradeConfigCombinedDTOList;
             sb.append("  lots        : ").append(tc.getLotQuantity()).append(nl);
             sb.append("  trades/day  : ").append(tc.getNumberOfTradesPerDay()).append(nl);
             sb.append("  parallel    : ").append(tc.getNumberOfParallelTrades()).append(nl);
-            sb.append("  strategy    : ").append(tc.getStratergyId()).append(nl);
+            // The DTO's own strategy, not tc.getStratergyId(): a config tagged with
+            // several strategies appears once per tag, and printing the primary id
+            // on each would render the same config twice with no visible difference.
+            sb.append("  strategy    : ").append(dto.getStrategyId()).append(nl);
 
             List<SmaTimeframe> tfs = dto.getTimeframes();
             if (tfs != null && !tfs.isEmpty()) {
@@ -237,9 +288,9 @@ return tradeConfigCombinedDTOList;
     // column to the query, append it to the end of its block and extend the
     // matching mapper. Never reorder.
     //
-    //   0..18  trade_config    (min/max_option_price last)
-    //   19..23 instrument
-    //   24..35 instrument_details
+    //   0..19  trade_config    (strategy_ids last)
+    //   20..24 instrument
+    //   25..36 instrument_details
     // ------------------------------------------------------------------
 
     // Helper to safely convert to BigDecimal
@@ -265,6 +316,12 @@ return tradeConfigCombinedDTOList;
         tc.setSource(ConverterUtility.toString(row[i++])); // source (MANUAL / AUTO_DOWNTREND)
         tc.setMinOptionPrice(toBigDecimal(row[i++])); // min_option_price (nullable)
         tc.setMaxOptionPrice(toBigDecimal(row[i++])); // max_option_price (nullable)
+        tc.setStrategyIds(ConverterUtility.toString(row[i++])); // strategy_ids CSV (changeset 035)
+        // Changeset 036. Both must be selected AND mapped or the feature is inert:
+        // a null maxSlPoints leaves OrderService.capStopLoss a no-op and a null
+        // trailLadder means no trade ever trails, with nothing logged either way.
+        tc.setMaxSlPoints(toBigDecimal(row[i++])); // max_sl_points
+        tc.setTrailLadder(ConverterUtility.toString(row[i++])); // trail_ladder
 
 
         // Instrument will be set separately by mapToInstrument
@@ -272,10 +329,10 @@ return tradeConfigCombinedDTOList;
     }
 
     private Instrument mapToInstrument(Object[] row, TradeConfig tc) {
-        // Instrument starts after the 19 trade_config columns (0..18, the option
-        // price band last). Bump this whenever a column is appended to the
-        // trade_config block of fetchCombinedByTradingDate.
-        int i = 19;  // Starting index for Instrument fields
+        // Instrument starts after the 22 trade_config columns (0..21, trail_ladder
+        // last). Bump this whenever a column is appended to the trade_config block
+        // of fetchCombinedByTradingDate.
+        int i = 22;  // Starting index for Instrument fields
         Instrument ins = new Instrument();
         ins.setId(toInteger(row[i++])); // id
         ins.setInsName(ConverterUtility.toString(row[i++])); // ins_name
@@ -288,8 +345,8 @@ return tradeConfigCombinedDTOList;
     }
 
     private InstrumentDetails mapToInstrumentDetails(Object[] row, TradeConfig tc, Instrument ins) {
-        // InstrumentDetails starts after trade_config (19) + instrument (5) columns
-        int i = 24;  // Starting index for InstrumentDetails fields
+        // InstrumentDetails starts after trade_config (22) + instrument (5) columns
+        int i = 27;  // Starting index for InstrumentDetails fields
         InstrumentDetails id = new InstrumentDetails();
         id.setInstrumentToken(toInteger(row[i++])); // instrument_token
         id.setExchangeToken(toInteger(row[i++])); // exchange_token
