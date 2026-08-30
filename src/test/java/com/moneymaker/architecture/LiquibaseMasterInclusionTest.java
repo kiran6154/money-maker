@@ -65,16 +65,12 @@ class LiquibaseMasterInclusionTest {
      * explains why — an undocumented entry here defeats the point of the test.
      */
     private static final Set<String> ALLOWLIST = Set.of(
-            // docs/GAPS.md #23 -- 005_create_market_data_table.xml predates this
-            // project's Liquibase adoption for the market_data table:
-            // spring.jpa.hibernate.ddl-auto=update already created the table in
-            // every environment that has ever run this app, and this changeset
-            // (unlike 016/017) carries no tableExists precondition, so wiring it
-            // into master today would throw "table already exists" against any
-            // real database. Discovered while resolving GAPS #13/#14 but out of
-            // that entry's scope (which covers only 016/017) -- left here
-            // pending its own fix (add a tableExists precondition, then include).
-            "005_create_market_data_table.xml"
+            // Empty. 005_create_market_data_table.xml was removed 2026-08-31 when
+            // GAPS #23 was resolved: it gained a tableExists precondition
+            // (onFail=MARK_RAN) and is now included in the master ahead of the
+            // changesets that ALTER market_data. Verified against a throwaway H2
+            // schema by LiquibaseMasterAppliesOnH2Test, both fresh and
+            // Hibernate-created.
     );
 
     private static List<String> changesetFilesOnDisk() {
@@ -138,6 +134,62 @@ class LiquibaseMasterInclusionTest {
         assertThat(stale)
                 .as("ALLOWLIST entries that are no longer real orphans (file deleted, or now "
                         + "included in the master) -- remove them from ALLOWLIST: " + stale)
+                .isEmpty();
+    }
+
+    /**
+     * A changeset's {@code xsi:schemaLocation} must name an XSD that the
+     * liquibase-core on the classpath actually ships. Liquibase runs with
+     * {@code secureParsing=true}, so an unbundled name is <b>not</b> fetched over
+     * the network — parsing fails outright and the application never starts.
+     *
+     * <p>Not hypothetical: {@code 005_create_market_data_table.xml} declared
+     * {@code dbchangelog-4.23.0.xsd}, which does not exist (the bundled file is
+     * {@code dbchangelog-4.23.xsd}). It went unnoticed for as long as it did only
+     * because the file was an orphan — nothing ever parsed it. The moment GAPS #23
+     * wired it into the master, startup would have died at parse time, before any
+     * precondition was evaluated. This test is that failure, moved to build time.
+     */
+    @Test
+    @DisplayName("every changeset declares an XSD that the bundled Liquibase actually ships")
+    void schema_locations_resolve_to_a_bundled_xsd() {
+        // Read the attribute, not the file text: a comment that merely mentions a
+        // bad XSD name is documentation, and matching it would be a false positive.
+        Pattern xsdRef = Pattern.compile("dbchangelog-[^\"'\\s/]+\\.xsd");
+
+        List<String> unresolvable = new ArrayList<>();
+        List<String> names = new ArrayList<>(changesetFilesOnDisk());
+        names.add(MASTER_FILE.getFileName().toString());
+
+        for (String name : names) {
+            String schemaLocation;
+            try {
+                Document doc = DocumentBuilderFactory.newInstance()
+                        .newDocumentBuilder().parse(CHANGELOG_DIR.resolve(name).toFile());
+                schemaLocation = doc.getDocumentElement().getAttributeNS(
+                        "http://www.w3.org/2001/XMLSchema-instance", "schemaLocation");
+            } catch (Exception e) {
+                unresolvable.add(name + " (unparseable: " + e.getMessage() + ")");
+                continue;
+            }
+            java.util.regex.Matcher m = xsdRef.matcher(schemaLocation == null ? "" : schemaLocation);
+            while (m.find()) {
+                String xsd = m.group();
+                // Liquibase ships these on the classpath under the namespace path
+                // it also uses as the remote URL.
+                if (getClass().getClassLoader()
+                        .getResource("www.liquibase.org/xml/ns/dbchangelog/" + xsd) == null) {
+                    unresolvable.add(name + " -> " + xsd);
+                }
+            }
+        }
+
+        assertThat(unresolvable)
+                .as("Changeset(s) whose xsi:schemaLocation names an XSD that liquibase-core does not "
+                        + "bundle. With secureParsing=true these are not fetched remotely -- the changelog "
+                        + "fails to parse and the app will not boot. Use dbchangelog-latest.xsd, or a "
+                        + "version the bundled jar actually contains (note: '4.23' is bundled, '4.23.0' "
+                        + "is not).")
                 .isEmpty();
     }
 
