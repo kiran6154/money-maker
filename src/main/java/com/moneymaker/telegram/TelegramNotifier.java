@@ -48,18 +48,38 @@ public class TelegramNotifier {
         this.backtestMode = "backtest".equalsIgnoreCase(appMode == null ? "" : appMode.trim());
     }
 
-    public void send(String message) {
+    /**
+     * Posts {@code message} to the configured chat.
+     *
+     * <p>The return value answers exactly one question — <b>"is there anything a
+     * retry could fix?"</b> — and nothing else:</p>
+     * <ul>
+     *   <li>{@code true} — the POST succeeded, <i>or</i> no POST was attempted
+     *       because sending is switched off for this run (disabled, suppressed in
+     *       backtest, bot-token / chat-id not configured). Retrying any of those
+     *       produces the same non-send, so a caller that gates a
+     *       "already delivered" marker on this value must treat them as settled.</li>
+     *   <li>{@code false} — a POST was attempted and the Telegram API call threw.
+     *       This is the transient case (network blip, 429) worth retrying.</li>
+     * </ul>
+     *
+     * <p>Most callers ignore the result; {@code NotificationService.alertDaySummary}
+     * is the one that propagates it, because {@code DaySummaryScheduler} only
+     * writes its {@code day-summary-telegram} guard row once the digest is
+     * actually out (GAPS #5).</p>
+     */
+    public boolean send(String message) {
         if (!properties.isEnabled()) {
             log.debug("[Telegram] disabled - skipping: {}", message);
-            return;
+            return true;
         }
         if (backtestMode && !properties.isBacktestEnabled()) {
             log.debug("[Telegram] suppressed in backtest (telegram.backtest-enabled=false): {}", message);
-            return;
+            return true;
         }
         if (isBlank(properties.getBotToken()) || isBlank(properties.getChatId())) {
             log.warn("[Telegram] bot-token or chat-id not configured - skipping message");
-            return;
+            return true;
         }
         synchronized (sendLock) {
             throttle();
@@ -80,8 +100,10 @@ public class TelegramNotifier {
                 body.put("disable_web_page_preview", true);
 
                 http.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
+                return true;
             } catch (Exception e) {
                 log.warn("[Telegram] sendMessage failed: {}", e.getMessage());
+                return false;
             } finally {
                 lastSendAt = System.currentTimeMillis();
             }

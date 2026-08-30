@@ -15,7 +15,7 @@ Every `@Scheduled` bean in the app, what it does, when it runs, and what it depe
 | [`AnalysisScheduler`](#analysisscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI`, gated by [`MarketHoursService.isOpenNow()`](#market-hours-gating) | Yes (every backtest tick) | Broker historical data | `SharedData.strikeMarketDataByInstrumentAndInterval`, `SharedData.tradeSignals` |
 | [`OrderScheduler`](#orderscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI`, gated by [`MarketHoursService.isOpenNow()`](#market-hours-gating) | Yes (after `AnalysisScheduler` each tick) | `SharedData.tradeSignals` | `trade_order`, broker order endpoints, Telegram |
 | [`PositionScheduler`](#positionscheduler) | `com.moneymaker.scheduler` | `0 0/5 9-16 * * MON-FRI`, gated by [`MarketHoursService.isOpenNow()`](#market-hours-gating) | Yes (after `OrderScheduler` each tick) | OPEN `trade_order` rows, broker LTP | `trade_order` (peak/last-monitored/exit), Telegram |
-| [`DaySummaryScheduler`](#daysummaryscheduler) | `com.moneymaker.scheduler` | `0 31 15 * * MON-FRI` (15:31 IST), live only | No (`BacktestAnalysisService` force-closes per day itself) | `trade_order`, `MarketHoursService` | Force-closed `trade_order` rows, Telegram digest |
+| [`DaySummaryScheduler`](#daysummaryscheduler) | `com.moneymaker.scheduler` | `0 31 15 * * MON-FRI` (15:31 IST), live only | No (`BacktestAnalysisService` force-closes per day itself) | `trade_order`, `trade_config` (lot quantity), `MarketHoursService` | Force-closed `trade_order` rows **+ live broker exits**, Telegram digest |
 
 Live cadence stays inside NSE trading hours (`9-16` Mon-Fri). Off-hours the cron just doesn't fire.
 
@@ -202,12 +202,26 @@ In backtest, `BacktestAnalysisService` calls `positionScheduler.processPositions
 [`com.moneymaker.scheduler.DaySummaryScheduler`](../src/main/java/com/moneymaker/scheduler/DaySummaryScheduler.java)
 
 - **Cron `0 31 15 * * MON-FRI`** (configurable via `app.market.summary-cron`) — one minute after the configured close, giving the last 15:30 `PositionScheduler` tick time to settle first.
-- **Live only.** `runEndOfDay()` returns immediately unless `app.mode=live`; skipped on Sat/Sun.
-- Guarded by [`DailyEventGuard.firstTime("day-summary", today)`](../src/main/java/com/moneymaker/state/DailyEventGuard.java) (same `alert_state`-backed mechanism as `TradeConfigScheduler.reportConfigsForDay`) — a JVM restart at 17:00 will **not** re-fire the summary.
+- **Live only.** `runEndOfDay()` returns immediately unless `app.mode=live`, then delegates to the package-private `runEndOfDayFor(LocalDate)` — the date is a parameter rather than an ambient `LocalDate.now(...)`, which is what the tests drive and what a manual re-run endpoint (GAPS #6) would call. Skipped on Sat/Sun.
 - Steps, in order:
-  1. `OrderService.forceCloseOpenPositions(today, marketHours.marketCloseToday())` — closes any `trade_order` row still `OPEN` at close, so the ledger is complete before summarizing. Exceptions are caught and logged; a force-close failure does not stop the summary from being built.
-  2. `buildSummary(today, forceClosed)` — aggregates the day's `trade_order` rows into a compact text digest: trade/closed/open-left counts, win/loss/scratch counts, total per-share P&L, biggest winner/loser, exit-reason breakdown, per-config P&L.
-  3. `NotificationService.alertDaySummary(body)` — one Telegram message, no dedupe beyond the guard in step 0.
+  1. `OrderService.forceCloseOpenPositions(today, marketHours.marketCloseToday())` — closes any `trade_order` row still `OPEN` at close, so the ledger is complete before summarizing. **In live mode this now places a real broker exit per row** (GAPS #1) — see [ORDERS_AND_POSITIONS.md](ORDERS_AND_POSITIONS.md#force-close-live-vs-backtest). Exceptions are caught and logged; a force-close failure does not stop the summary from being built.
+  2. `buildSummary(today, forceClosed)` — aggregates the day's `trade_order` rows into a compact text digest: trade/closed/open-left counts, win/loss/scratch counts, **both** the per-share and the lot-multiplied (net) P&L, biggest winner/loser in both units, exit-reason breakdown, per-config net P&L. The net multiplier is `TradeConfig.lotQuantity`, joined per config; trades whose config no longer resolves are excluded from net and declared on a `no lot qty` line rather than counted at ×1 (GAPS #2).
+  3. `NotificationService.alertDaySummary(body)` — one Telegram message.
+
+### Two guard keys, not one
+
+Both halves are gated by [`DailyEventGuard`](../src/main/java/com/moneymaker/state/DailyEventGuard.java) (same `alert_state`-backed mechanism as `TradeConfigScheduler.reportConfigsForDay`), but with **separate keys**, because they fail for unrelated reasons:
+
+| Key | Written when | Effect of it being missing |
+|---|---|---|
+| `day-summary-forceclose` | `forceCloseOpenPositions` returned cleanly | The next tick force-closes again. Safe — the method only ever selects rows still `OPEN`. |
+| `day-summary-telegram` | `alertDaySummary` reported the message actually went out | The next tick re-sends the digest **only** — it does not force-close again. |
+| `day-summary` (legacy) | The pre-split build wrote this before doing anything | Still read. If present, both halves are treated as done, so deploying this change mid-afternoon doesn't re-send a summary the old build already delivered. |
+
+Previously a single `day-summary` key was written *up front*, so one failed Telegram POST lost the day's digest permanently while the guard reported the day as done (GAPS #5). Delivery is now confirmed — `TelegramNotifier.send` returns whether a retry could help; see [NOTIFICATIONS.md](NOTIFICATIONS.md#delivery-confirmed-sends).
+
+With the default once-a-day cron there is no second tick to retry on. The gate does make a repeating `app.market.summary-cron` safe to set (both halves are idempotent), but that's an operator choice; the intended recovery path is GAPS #6's manual re-run endpoint.
+
 - **Not replayed in backtest.** `BacktestAnalysisService` already calls `orderService.forceCloseOpenPositions(date, dateEnd)` at the end of every simulated day (see below), so a second live-style digest per backtest day isn't needed — and would spam Telegram on every backtest boot if it were wired the same way.
 
 ---

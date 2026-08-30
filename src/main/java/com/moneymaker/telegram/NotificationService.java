@@ -201,14 +201,44 @@ public class NotificationService {
     }
 
     /**
+     * Fired when a row was force-closed in the local ledger but the matching
+     * broker exit could <b>not</b> be dispatched — the DB says CLOSED while the
+     * real position is still live at the broker. That divergence is the whole
+     * reason this alert exists, so it is deliberately <b>not</b> deduped: every
+     * stranded row needs its own line, and each one is a manual square-off.
+     *
+     * <p>Silence used to be the behaviour here (GAPS #1); a missed message is
+     * worse than a repeated one.</p>
+     */
+    public void alertForceCloseExitFailed(TradeOrder o, String reason) {
+        if (o == null) return;
+        StringBuilder sb = new StringBuilder("[ALERT] FORCE-CLOSE EXIT NOT PLACED").append('\n');
+        sb.append("  id         : ").append(o.getId()).append('\n');
+        sb.append("  config     : ").append(o.getTradeConfigId()).append('\n');
+        sb.append("  instrument : ").append(safe(o.getInstrumentName())).append('\n');
+        sb.append("  strike     : ").append(o.getOptionStrike()).append(' ').append(safe(o.getOptionType())).append('\n');
+        sb.append("  direction  : ").append(safe(o.getEntryDirection())).append('\n');
+        sb.append("  option tkn : ").append(safe(o.getOptionToken())).append('\n');
+        sb.append("  reason     : ").append(safe(reason)).append('\n');
+        sb.append("  ACTION     : ledger row is CLOSED but the broker position may still be OPEN — square off manually");
+        telegram.send(sb.toString());
+    }
+
+    /**
      * End-of-day digest. One message per trading day; once-per-day gating is
      * the caller's responsibility (see {@code DaySummaryScheduler} +
      * {@link com.moneymaker.state.DailyEventGuard}). Body is pre-formatted by
      * the scheduler so this method stays a thin pass-through.
+     *
+     * @return {@code false} only when the send was attempted and failed — the
+     *         caller must leave its "already sent" marker unwritten so the next
+     *         tick retries. A blank body, a disabled notifier and a
+     *         backtest-suppressed send all return {@code true}: there is nothing
+     *         a retry would recover. See {@link TelegramNotifier#send(String)}.
      */
-    public void alertDaySummary(String body) {
-        if (body == null || body.isBlank()) return;
-        telegram.send(body);
+    public boolean alertDaySummary(String body) {
+        if (body == null || body.isBlank()) return true;
+        return telegram.send(body);
     }
 
     public void alertOrderRejected(String brokerName, Long orderId, String reason) {

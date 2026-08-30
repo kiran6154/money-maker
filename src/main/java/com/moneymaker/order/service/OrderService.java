@@ -552,11 +552,42 @@ public class OrderService {
      * Force-closes every {@link #STATUS_OPEN} trade entered on {@code tradingDate}
      * at {@code closeAt}. Used by {@code BacktestAnalysisService} at end-of-day so
      * intraday strategies don't carry positions overnight when the close-signal
-     * strike has fallen out of the active-strike set before market close.
+     * strike has fallen out of the active-strike set before market close, and by
+     * {@code DaySummaryScheduler} at 15:31 for the same reason in live mode.
      *
      * <p>Exit price is taken from the cached {@code SharedData} candle data for
      * the option (latest candle ≤ {@code closeAt}); falls back to entry price
      * (zero P&L) if no cached price is available.
+     *
+     * <h4>Live vs backtest (GAPS #1)</h4>
+     * The ledger update below is identical in both modes — it runs first, so the
+     * row is persisted before any broker call, exactly like every other close
+     * path. What differs is what happens afterwards:
+     *
+     * <ul>
+     *   <li><b>Backtest</b> — nothing. The simulated placement service has no
+     *       venue to call, and the persisted row <i>is</i> the backtest ledger.
+     *       This branch is byte-for-byte what the method did before the live
+     *       exit was wired, so a replay produces the same rows as it always did.</li>
+     *   <li><b>Live</b> — the opposite-side exit goes to the active broker
+     *       through the same {@link OrderPlacementService#place} call that
+     *       {@link #closeOrder} and {@link #closeManually} use; the row's status
+     *       is already {@code CLOSED}, which is how the placement service knows
+     *       to invert the side. A broker order id comes back → it is persisted
+     *       and {@code fill_status} moves to {@code PENDING}, same as any other
+     *       exit leg.</li>
+     * </ul>
+     *
+     * <p>When the live exit cannot be dispatched the row still ends up
+     * {@code CLOSED} — that is the pre-existing behaviour and this change does
+     * not alter it — but the divergence is now <b>loud</b>: an {@code [ALERT]}
+     * per stranded row via
+     * {@link NotificationService#alertForceCloseExitFailed(TradeOrder, String)}.
+     * The failure is expected today for Zerodha, whose {@code resolveTradingSymbol}
+     * is still a stub returning {@code null} (see "Things that are still pending"
+     * in {@code docs/ORDERS_AND_POSITIONS.md}); until that lands the alert is the
+     * deliverable — an operator who gets one squares the position off by hand
+     * instead of discovering it overnight.
      */
     public int forceCloseOpenPositions(LocalDate tradingDate, LocalDateTime closeAt) {
         LocalDateTime startOfDay = tradingDate.atStartOfDay();
@@ -565,6 +596,20 @@ public class OrderService {
         List<TradeOrder> openToday = tradeOrderRepository
                 .findByStatusAndEntryTimeBetween(STATUS_OPEN, startOfDay, endOfDay);
         if (openToday.isEmpty()) return 0;
+
+        // Resolved once, defensively: a misconfigured broker.active makes
+        // active() throw, and that must not turn "close the ledger" into "close
+        // nothing". A null placement takes the same path as a failed placement —
+        // local close plus an alert.
+        OrderPlacementService placement = null;
+        String placementError = null;
+        try {
+            placement = placementFactory.active();
+        } catch (RuntimeException ex) {
+            placementError = "no active OrderPlacementService: " + ex.getMessage();
+            log.error("Force-close: could not resolve the active placement service", ex);
+        }
+        boolean simulated = placement != null && BACKTESTING_NAME.equalsIgnoreCase(placement.getName());
 
         int closed = 0;
         for (TradeOrder order : openToday) {
@@ -580,17 +625,78 @@ public class OrderService {
             order.setProfit(perShareProfit(order.getEntryDirection(), order.getEntryPrice(), exitPrice));
             order.setStatus(STATUS_CLOSED);
             order.setExitReason("FORCE_CLOSE");
-            // The fill state stays whatever it was (BACKTEST in backtest, PENDING
-            // for live — live force-closes need a real broker exit, which is a
-            // bigger change; for now we just mark the row CLOSED locally).
+            // fill_status is deliberately left alone here. In backtest it is
+            // already BACKTEST from the entry leg; in live it stays whatever the
+            // entry leg left behind until a broker id actually comes back below.
             order = tradeOrderRepository.save(order);
             log.info("[order] FORCE_CLOSE id={} dir={} entry={} → exit={} profit/share={}",
                     order.getId(), order.getEntryDirection(),
                     order.getEntryPrice(), exitPrice, order.getProfit());
             notifier.alertOrderForceClosed(order);
             closed++;
+
+            if (!simulated) {
+                order = placeForceCloseExit(order, placement, placementError);
+            }
         }
         return closed;
+    }
+
+    /**
+     * Live half of {@link #forceCloseOpenPositions}: dispatches the opposite-side
+     * exit for one already-CLOSED row and reconciles the broker id back onto it.
+     * Never throws — a broker problem on one row must not strand the rest of the
+     * batch as OPEN.
+     *
+     * @return the row, re-saved when a broker id was captured
+     */
+    private TradeOrder placeForceCloseExit(TradeOrder order,
+                                           OrderPlacementService placement,
+                                           String placementError) {
+        if (placement == null) {
+            notifier.alertForceCloseExitFailed(order, placementError == null
+                    ? "no active OrderPlacementService" : placementError);
+            return order;
+        }
+
+        // Quantity comes off the config, so placing without one would send the
+        // placement service's fallback quantity of 1 against a real lot. Not
+        // closing is recoverable by hand; closing the wrong size is not.
+        TradeConfigCombinedDTO config = findConfig(order.getTradeConfigId(), order.getStrategyId());
+        if (config == null) {
+            log.error("[order] FORCE_CLOSE id={} — broker exit NOT placed: no config cached for tradeConfigId={}",
+                    order.getId(), order.getTradeConfigId());
+            notifier.alertForceCloseExitFailed(order,
+                    "no cached trade config for id " + order.getTradeConfigId() + " — exit quantity unknown");
+            return order;
+        }
+
+        String brokerOrderId;
+        try {
+            brokerOrderId = placement.place(order, config);
+        } catch (Exception ex) {
+            log.error("[order] FORCE_CLOSE id={} — broker exit threw via {}",
+                    order.getId(), placement.getName(), ex);
+            notifier.alertForceCloseExitFailed(order, ex.getMessage() == null
+                    ? ex.getClass().getSimpleName() : ex.getMessage());
+            return order;
+        }
+
+        if (brokerOrderId == null) {
+            log.error("[order] FORCE_CLOSE id={} — broker exit NOT placed by {} (no order id returned); "
+                            + "ledger row is CLOSED but the broker position may still be open",
+                    order.getId(), placement.getName());
+            notifier.alertForceCloseExitFailed(order,
+                    placement.getName() + " returned no order id (not logged in, or symbol unresolved)");
+            return order;
+        }
+
+        order.setExitBrokerOrderId(brokerOrderId);
+        order.setFillStatus(FILL_PENDING);
+        order = tradeOrderRepository.save(order);
+        log.info("[order] FORCE_CLOSE id={} — broker exit placed via {} brokerOrderId={} fillStatus={}",
+                order.getId(), placement.getName(), brokerOrderId, order.getFillStatus());
+        return order;
     }
 
     /**

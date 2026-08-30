@@ -143,9 +143,37 @@ The dedupe key is `option_token`, **not** `(instrument_token, option_type)`. Ear
 |---|---|---|---|
 | `OrderService.closeOrder(...)` | Strategy signal of opposite direction matches an open row | `SIGNAL` | Yes |
 | `OrderService.closeManually(...)` | `PositionService` detects target / trailing-floor / stop-loss breach | `TARGET` / `TRAIL_SL` / `STOP_LOSS` (caller passes) | Yes |
-| `OrderService.forceCloseOpenPositions(date, closeAt)` | End-of-day cleanup from `BacktestAnalysisService` | `FORCE_CLOSE` | No (local-only — live force-close needs a separate broker exit, deferred PR) |
+| `OrderService.forceCloseOpenPositions(date, closeAt)` | End-of-day cleanup — `BacktestAnalysisService` per replay day, `DaySummaryScheduler` at 15:31 live | `FORCE_CLOSE` | **Live: yes.** Backtest: no (the simulated placement has no venue) |
 
 All three persist the row before any broker call so the ledger is always the source of truth.
+
+### Force-close: live vs backtest
+
+`forceCloseOpenPositions` runs one loop for both modes. The ledger update — exit
+time, exit price, profit, `status=CLOSED`, `exit_reason=FORCE_CLOSE` — is
+identical, and happens first. What follows differs:
+
+- **Backtest** (placement name `BACKTESTING`) — nothing. The persisted row *is*
+  the backtest ledger, and this branch is byte-for-byte what the method did
+  before the live exit was wired, so re-running a range produces the same rows.
+  `exit_broker_order_id` stays null and `fill_status` stays `BACKTEST`.
+- **Live** — the opposite-side exit goes out through the same
+  `OrderPlacementService.place(order, config)` the other two close paths use. The
+  row is already `CLOSED` when placement sees it, which is how the service knows
+  to invert the side (`transactionType(order)` in the broker adapter). A returned
+  broker id lands on `exit_broker_order_id` and `fill_status` moves to `PENDING`.
+
+When the live exit can't be dispatched the row still ends up `CLOSED` — the local
+ledger and the broker have diverged, and the point is that this is now **loud**
+rather than silent. `NotificationService.alertForceCloseExitFailed(order, reason)`
+fires per stranded row and says to square off manually. Four things reach it:
+
+| Cause | Why it doesn't just place anyway |
+|---|---|
+| Broker returned no order id | Not logged in, or symbol unresolved. **This is today's Zerodha default** — `resolveTradingSymbol` is still a stub returning `null`, so every live force-close exit currently takes this path. |
+| Broker threw | Network / API failure. Caught per row so one bad leg doesn't strand the rest of the batch as OPEN. |
+| No cached `TradeConfigCombinedDTO` for the row's config | Quantity comes off the config; placement services fall back to quantity `1`. One unit against a 75-unit lot is a *new position*, not a close. Not closing is recoverable by hand; closing the wrong size isn't. |
+| `OrderPlacementFactory.active()` unresolvable | A misconfigured `broker.active`. Resolved once, defensively — "close nothing" would be the worse answer than "close the ledger and shout". |
 
 ---
 
@@ -325,6 +353,7 @@ range the ledger table is filtered by, previewing first.
 | Order closed (signal) | `alertOrderClosed(o)` | none |
 | Order closed (target / SL) | `alertOrderClosed(o)` (via `closeManually`) | none |
 | Order force-closed (EOD) | `alertOrderForceClosed(o)` | none |
+| Force-close exit not placed (live) | `alertForceCloseExitFailed(o, reason)` | none — deliberately. Each stranded row is its own manual square-off, so a missed message is worse than a repeated one. |
 | Broker rejected an order | `alertOrderRejected(broker, id, reason)` | `sendIfChanged("order-rejected:<broker>", ...)` |
 
 Backtest mode is gated at `TelegramNotifier.send()` — `telegram.backtest-enabled=false` (default) silences everything. See [NOTIFICATIONS.md](NOTIFICATIONS.md).
@@ -531,9 +560,10 @@ These aren't trading-behaviour rules per se (they're broker / exchange constants
 
 - **Zerodha tradingsymbol resolution.** `ZerodhaOrderPlacementService.resolveTradingSymbol` returns `null`, so live `place(...)` short-circuits before hitting Kite. Needs a cached NFO instruments dump fetched at login + a `(name, expiry, strike, optionType)` lookup. Once that lands, the rest of the pipeline is wired.
 - **Groww + Angel One real REST clients** for both `OrderPlacementService` and `PositionMonitorService`.
-- **Live force-close.** `forceCloseOpenPositions` updates the local row but does not place a real broker exit. For live mode, that needs a per-row `closeManually(...)` call so the broker actually unwinds.
+- (Live force-close now places a real broker exit — see "Force-close: live vs backtest" above. It is gated behind Zerodha tradingsymbol resolution, the first bullet in this list, and alerts per row until that lands. GAPS #1.)
 - (Both `numberOfTradesPerDay` and `numberOfParallelTrades` are now enforced — see steps 3 and 4 in "Open / close decision rules" above.)
-- **Lot-size aware quantity** — `quantity()` in placement services treats `tradeConfig.lotQuantity` as raw quantity. Multiplying by lot size (50 for NIFTY etc.) needs a data source decision.
+- **Lot-size aware quantity** — `quantity()` in placement services treats `tradeConfig.lotQuantity` as raw quantity. Multiplying by lot size (50 for NIFTY etc.) needs a data source decision. The end-of-day digest's net P&L uses the *same* number as its multiplier (GAPS #2), deliberately — so if this bullet is ever resolved, the digest has to move with it or the two will disagree.
+- **`lot_quantity_at_entry` snapshot.** `trade_order` has no lot-size snapshot, so the day-summary net P&L joins `TradeConfig.lotQuantity` live. Editing a config's lot quantity mid-day therefore re-prices trades that already closed — the staleness `target_at_entry` (changeset 011) exists to prevent. Remaining half of GAPS #2.
 - **Per-position audit trail** — peak / last-monitored is overwritten each tick. If we ever need a full price-vs-time history per trade, an `order_monitor_history` table is the next step. Not added today because it would explode write volume for marginal benefit.
 
 ---

@@ -136,6 +136,19 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 
 ---
 
+### S9. A carryover `OPEN` row silently consumes a parallel-trades slot forever
+
+| | |
+|---|---|
+| Where | [`OrderService.forceCloseOpenPositions`](../src/main/java/com/moneymaker/order/service/OrderService.java) selects `findByStatusAndEntryTimeBetween(OPEN, startOfToday, endOfToday)`; the same `OPEN` rows are what the parallel-trades cap counts when admitting a new signal. Surfaced by the GAPS #1 live force-close work (see the note under that entry) — filed here because of the entry-capacity half. |
+| Why | The end-of-day sweep only ever sees positions *entered today*. A row left `OPEN` by a previous day — JVM down at 15:31, or a live exit that failed and was never squared off — is invisible to every later sweep: never force-closed, never alerted. The infrastructure half (a stranded broker position) lives in GAPS #1's note; the reason this entry exists is the strategy half: that stale row **keeps counting against `numberOfParallelTrades` for its config indefinitely**, so the config can be blocked from entering new trades by a position that no longer meaningfully exists. |
+| Impact | **Unquantified.** Requires the failure to occur first (a missed 15:31 sweep or failed exit), so a ledger scan is the measurement: count `OPEN` rows with `entry_time` before the current session across the historical DB, and check whether any config's admission was refused while one existed. |
+| Fix sketch | Widening the sweep's selector to all `OPEN` rows is a one-line change, but it decides whether a stale row gets a market exit at *today's* price — a real-money call needing sign-off. The cap-counting side could alternatively exclude rows older than the session from the parallel-trades count, which changes what gets entered and is equally Rule 0. Neither attempted. |
+| Effort | **S** for either lever; the decision is the work. |
+| Priority | _TBD — filed 2026-08-31 on merge of the GAPS #1 fix, not yet raised with the user._ |
+
+---
+
 ## Resolved
 
 ### S2. `Strategy1` scanned every config's legs, not its own — **RESOLVED 2026-08-25**
