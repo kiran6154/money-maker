@@ -61,15 +61,18 @@ Legend for effort:
 | Priority | _TBD_ |
 | Tests | [`DaySummaryLotMultipliedPnlTest`](../src/test/java/com/moneymaker/scheduler/DaySummaryLotMultipliedPnlTest.java). |
 
-## 3. Heartbeat runs 24/7
+## 3. Heartbeat runs 24/7 -- **RESOLVED 2026-08-31**
 
 | | |
 |---|---|
-| Where | [`LoginScheduler.heartbeat`](../src/main/java/com/moneymaker/scheduler/LoginScheduler.java#L62) â€” `@Scheduled(fixedDelay = 60_000L)` |
+| Where | [`LoginScheduler.heartbeat`](../src/main/java/com/moneymaker/scheduler/LoginScheduler.java) â€” `@Scheduled(fixedDelay = 60_000L)` |
 | Why | This was left alone in the market-hours work because heartbeat is the only thing that catches token death. But it really only matters during a day window where login/options-fetch crons run â€” outside ~07:50â€“15:40 IST the broker session staying valid is moot until tomorrow's 08:00 login. Cost today is small (1 quote/min), but it produces noise in logs and the AUTH_FAIL Telegram could fire at 22:00 on a Friday for no reason. |
-| Fix sketch | Add `MarketHoursService.isWithinHeartbeatWindow()` (default 07:50â€“15:40, configurable), short-circuit `heartbeat()` outside that range. Document the looser window in `HEARTBEAT.md`. |
-| Effort | **S** |
-| Priority | _TBD_ |
+| Resolution | The fix sketch as written. `MarketHoursService.isWithinHeartbeatWindow()` returns true on weekdays between `app.market.heartbeat-start` and `app.market.heartbeat-end` inclusive, defaulting to the 07:50-15:40 this entry proposed; `LoginScheduler.heartbeat()` short-circuits outside it and does not read the session or touch the broker. The probe moved to a package-private `runHeartbeat()` with no clock opinion, so the `@Scheduled` method holds only the wall-clock concern -- the same wrapper/method split GAPS #4 applied to the pipeline schedulers. |
+| Why absolute times and not offsets | The other derived session times in `MarketHoursService` (close-signal, replay bounds) are offsets from open/close, and these deliberately are not. What the lower bound has to clear is the **08:00 login cron**, not the session open: alerts fire on transitions, so a token that died overnight must be probed before login runs for the alert to reach a human in time. An offset from `app.market.open` would drift past 08:00 the moment someone moved the open, which is exactly the case where the margin matters. |
+| Live parity | Unchanged during trading hours, and not merely by inspection: `MarketHoursService.init` throws if the configured window does not contain `[open, close]`, so a window that clipped the session cannot start the app. A test also walks every minute of 09:15-15:30 and asserts the gate is open. |
+| New properties | `app.market.heartbeat-start` (07:50), `app.market.heartbeat-end` (15:40). |
+| Not changed | The 08:00 login cron, the 09:15 options fetch, the state machine, and the alert rules. Only *when the probe runs*. |
+| Tests | [`HeartbeatWindowTest`](../src/test/java/com/moneymaker/scheduler/HeartbeatWindowTest.java) â€” tick inert outside / probing inside, `runHeartbeat()` unaffected by the window, boundary inclusivity, the 08:00 cron covered, full session coverage, weekends out, and both directions of the startup validation. |
 
 ## 4. Pipeline cron annotations fire in backtest mode too â€” **RESOLVED 2026-08-31**
 

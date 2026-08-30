@@ -67,12 +67,39 @@ public class MarketHoursService {
     @Value("${app.market.replay-last-tick-offset-minutes:10}")
     private int replayLastTickOffsetMinutes;
 
+    /**
+     * Start of the window in which {@code LoginScheduler.heartbeat} probes the
+     * broker session. Default 07:50.
+     *
+     * <p>Deliberately an absolute time and <b>not</b> an offset from
+     * {@code app.market.open}, unlike the three above. What this boundary has to
+     * clear is the <i>08:00 login cron</i>, not the session open: the window's
+     * whole job before the market opens is to catch a dead token early enough
+     * that the AUTH_FAIL alert reaches a human before the day's first login runs.
+     * An offset from the open would silently drift past 08:00 the moment someone
+     * changed the open time, which is exactly the case where the margin matters.
+     * 07:50 leaves ten minutes.
+     */
+    @Value("${app.market.heartbeat-start:07:50}")
+    private String heartbeatStartStr;
+
+    /**
+     * End of the heartbeat window. Default 15:40 — ten minutes past the standard
+     * close, so the 15:31 day-summary run and any straggling position work are
+     * still covered by a live session check. After it, a valid session is moot
+     * until tomorrow's 08:00 login.
+     */
+    @Value("${app.market.heartbeat-end:15:40}")
+    private String heartbeatEndStr;
+
     private LocalTime open;
     private LocalTime close;
     private ZoneId zone;
     private LocalTime closeSignalTime;
     private LocalTime replayFirstTick;
     private LocalTime replayLastTick;
+    private LocalTime heartbeatStart;
+    private LocalTime heartbeatEnd;
 
     @PostConstruct
     void init() {
@@ -96,8 +123,21 @@ public class MarketHoursService {
                     + " falls outside the session " + open + "-" + close
                     + " (check app.market.close-signal-offset-minutes)");
         }
-        log.info("[market-hours] window={}-{} {} (MON-FRI), close-signal={}, replay={}-{}",
-                open, close, zone, closeSignalTime, replayFirstTick, replayLastTick);
+
+        this.heartbeatStart = LocalTime.parse(heartbeatStartStr.trim(), HHMM);
+        this.heartbeatEnd = LocalTime.parse(heartbeatEndStr.trim(), HHMM);
+        // The heartbeat is the only thing that catches token death, so a window
+        // narrower than the trading session would stop probing exactly when a dead
+        // session costs money. Refuse to start rather than run half-blind.
+        if (heartbeatStart.isAfter(open) || heartbeatEnd.isBefore(close)) {
+            throw new IllegalStateException("heartbeat window " + heartbeatStart + "-" + heartbeatEnd
+                    + " does not cover the trading session " + open + "-" + close
+                    + " (check app.market.heartbeat-start / app.market.heartbeat-end)");
+        }
+
+        log.info("[market-hours] window={}-{} {} (MON-FRI), close-signal={}, replay={}-{}, heartbeat={}-{}",
+                open, close, zone, closeSignalTime, replayFirstTick, replayLastTick,
+                heartbeatStart, heartbeatEnd);
     }
 
     /**
@@ -112,6 +152,44 @@ public class MarketHoursService {
         if (dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY) return false;
         LocalTime t = now.toLocalTime();
         return !t.isBefore(open) && !t.isAfter(close);
+    }
+
+    /**
+     * True when a broker-session heartbeat is worth running: a weekday, between
+     * {@code app.market.heartbeat-start} and {@code app.market.heartbeat-end}
+     * inclusive (07:50–15:40 by default).
+     *
+     * <p>Wider than {@link #isOpenNow()} on both sides, on purpose. The margin
+     * before the open exists so a dead token is detected — and alerted, since
+     * alerts fire on transitions — <i>before</i> the 08:00 login cron runs, and
+     * the margin after the close covers the 15:31 day-summary sweep. Outside it,
+     * whether the session is still valid is moot until tomorrow's login, so
+     * probing only produces log noise and the occasional Friday-evening AUTH_FAIL
+     * Telegram about a session nothing was going to use (GAPS #3).
+     *
+     * <p>Startup guarantees this window contains {@code [open, close]}, so nothing
+     * this returns can suppress a heartbeat during trading hours.
+     */
+    public boolean isWithinHeartbeatWindow() {
+        return isWithinHeartbeatWindow(ZonedDateTime.now(zone));
+    }
+
+    /** Same decision against a supplied moment, so the boundaries are testable. */
+    boolean isWithinHeartbeatWindow(ZonedDateTime now) {
+        DayOfWeek dow = now.getDayOfWeek();
+        if (dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY) return false;
+        LocalTime t = now.toLocalTime();
+        return !t.isBefore(heartbeatStart) && !t.isAfter(heartbeatEnd);
+    }
+
+    /** Configured start of the heartbeat window. 07:50 by default. */
+    public LocalTime heartbeatStart() {
+        return heartbeatStart;
+    }
+
+    /** Configured end of the heartbeat window. 15:40 by default. */
+    public LocalTime heartbeatEnd() {
+        return heartbeatEnd;
     }
 
     /** Today's close moment in the configured zone. */

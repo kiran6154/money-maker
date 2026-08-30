@@ -16,7 +16,48 @@ How `LoginScheduler.heartbeat()` decides whether the broker connection is health
 | Network / 5xx | unhandled exception while probing | `HTTP_ERROR` |
 | No active session | `AppState.currentSession().isEmpty()` | `NO_SESSION` |
 
-Cadence: `@Scheduled(fixedDelay = 60_000L, initialDelay = 30_000L)` — roughly once a minute, regardless of market hours. (Off-hours we still get an `OK` from validateSession; data probe will return stale ticks but the adapter accepts those.)
+Cadence: `@Scheduled(fixedDelay = 60_000L, initialDelay = 30_000L)` — roughly once a minute, **inside the heartbeat window only**.
+
+---
+
+## The heartbeat window
+
+`MarketHoursService.isWithinHeartbeatWindow()` gates the tick: weekdays,
+`app.market.heartbeat-start`..`app.market.heartbeat-end` inclusive, **07:50–15:40
+IST** by default.
+
+| Property | Default | What it is |
+|---|---|---|
+| `app.market.heartbeat-start` | `07:50` | First probe of the day. |
+| `app.market.heartbeat-end` | `15:40` | Last probe of the day. |
+
+Deliberately **wider than market hours on both sides**, and deliberately
+absolute times rather than offsets from `app.market.open`/`close`:
+
+- **The morning margin is the point of the lower bound.** Alerts fire only on
+  *transitions*, so a token that died overnight has to be probed — and alerted —
+  before the 08:00 login cron runs, or the operator finds out by watching the
+  login fail. 07:50 leaves ten minutes. Expressed as an offset from the open,
+  the boundary would silently drift past 08:00 the moment someone moved
+  `app.market.open`, which is precisely the case where the margin matters.
+- **The evening margin** covers the 15:31 `DaySummaryScheduler` sweep, which
+  force-closes leftover positions through the broker and therefore wants a
+  session it knows is alive.
+
+Startup **refuses** a window that does not contain `[open, close]`
+(`IllegalStateException` from `MarketHoursService.init`). The heartbeat is the
+only thing that catches token death, so a gate that clipped even a minute of the
+trading session would be a regression rather than a cleanup; the check makes
+that unrepresentable rather than merely unlikely.
+
+Outside the window nothing is probed at all — no session read, no broker call.
+Before this (GAPS #3) the tick ran every minute forever, which cost one quote a
+minute and could fire an `AUTH_FAIL` Telegram at 22:00 on a Friday about a
+session nothing was going to use until Monday.
+
+The gate lives on the `@Scheduled` wrapper; `LoginScheduler.runHeartbeat()`
+underneath has no clock opinion and probes whenever called — the same
+wall-clock-wrapper / replayable-method split the pipeline schedulers use.
 
 ---
 
