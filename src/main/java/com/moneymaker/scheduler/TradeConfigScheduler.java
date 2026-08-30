@@ -288,9 +288,9 @@ public class TradeConfigScheduler {
     // column to the query, append it to the end of its block and extend the
     // matching mapper. Never reorder.
     //
-    //   0..19  trade_config    (strategy_ids last)
-    //   20..24 instrument
-    //   25..36 instrument_details
+    //   0..23  trade_config    (sl_pct last)
+    //   24..28 instrument
+    //   29..40 instrument_details
     // ------------------------------------------------------------------
 
     // Helper to safely convert to BigDecimal
@@ -322,17 +322,22 @@ public class TradeConfigScheduler {
         // trailLadder means no trade ever trails, with nothing logged either way.
         tc.setMaxSlPoints(toBigDecimal(row[i++])); // max_sl_points
         tc.setTrailLadder(ConverterUtility.toString(row[i++])); // trail_ladder
-
+        // Changeset 027, wired 2026-08-31. Same inertness trap as 036 above: these
+        // were on the entity and in the DB since 027 but were never selected or
+        // mapped, so OrderService.bracketAtEntry always took its absolute-column
+        // fallback and no trade has ever exited on the percentage bracket.
+        tc.setTargetPct(toBigDecimal(row[i++])); // target_pct
+        tc.setSlPct(toBigDecimal(row[i++])); // sl_pct
 
         // Instrument will be set separately by mapToInstrument
         return tc;
     }
 
     private Instrument mapToInstrument(Object[] row, TradeConfig tc) {
-        // Instrument starts after the 22 trade_config columns (0..21, trail_ladder
+        // Instrument starts after the 24 trade_config columns (0..23, sl_pct
         // last). Bump this whenever a column is appended to the trade_config block
         // of fetchCombinedByTradingDate.
-        int i = 22;  // Starting index for Instrument fields
+        int i = 24;  // Starting index for Instrument fields
         Instrument ins = new Instrument();
         ins.setId(toInteger(row[i++])); // id
         ins.setInsName(ConverterUtility.toString(row[i++])); // ins_name
@@ -345,8 +350,8 @@ public class TradeConfigScheduler {
     }
 
     private InstrumentDetails mapToInstrumentDetails(Object[] row, TradeConfig tc, Instrument ins) {
-        // InstrumentDetails starts after trade_config (22) + instrument (5) columns
-        int i = 27;  // Starting index for InstrumentDetails fields
+        // InstrumentDetails starts after trade_config (24) + instrument (5) columns
+        int i = 29;  // Starting index for InstrumentDetails fields
         InstrumentDetails id = new InstrumentDetails();
         id.setInstrumentToken(toInteger(row[i++])); // instrument_token
         id.setExchangeToken(toInteger(row[i++])); // exchange_token

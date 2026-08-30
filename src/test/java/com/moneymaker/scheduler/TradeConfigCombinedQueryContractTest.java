@@ -32,10 +32,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  *       Downstream code takes its null branch and the feature simply never runs.
  *       That is what happened to {@code max_sl_points} / {@code trail_ladder}
  *       when changeset 036 landed: the trailing stop and the SL ceiling were
- *       dead in both live and backtest, with nothing logged. It is still true of
- *       {@code target_pct} / {@code sl_pct} from changeset 027 (S6 in
- *       {@code docs/STRATEGY_ANALYSIS_TODO.md}), which is deliberately left
- *       unwired pending a decision, hence no assertion on them here.</li>
+ *       dead in both live and backtest, with nothing logged. It happened again,
+ *       for longer, to {@code target_pct} / {@code sl_pct} from changeset 027
+ *       (S6 in {@code docs/STRATEGY_ANALYSIS_TODO.md}): every trade between 027
+ *       and 2026-08-31 exited on the absolute {@code target} / {@code stop_loss}
+ *       points while the UI, the docs and the detector all said otherwise. Both
+ *       pairs are now wired and both are asserted below — that is the point of
+ *       this file: a column that reaches the DB but not this SELECT list is a
+ *       feature that does not exist at runtime.</li>
  *   <li><b>Silent shifting.</b> A column inserted in the <i>middle</i> slides
  *       every later index by one, so the instrument block starts reading
  *       trade_config values. That is the {@code NumberFormatException} on
@@ -53,22 +57,23 @@ class TradeConfigCombinedQueryContractTest {
      * rather than shift a later block silently.
      */
     private static final List<String> EXPECTED_COLUMNS = List.of(
-            // trade_config: 0..21
+            // trade_config: 0..23
             "tc.id", "tc.trading_side", "tc.trading_date", "tc.target", "tc.stop_loss",
             "tc.p_instrument", "tc.max_loss", "tc.option_depth", "tc.transaction_type",
             "tc.lot_quantity", "tc.stratergy_id", "tc.no_of_trades", "tc.no_of_parrellel_trades",
             "tc.itm_depth", "tc.otm_depth", "tc.atm_depth", "tc.source",
             "tc.min_option_price", "tc.max_option_price", "tc.strategy_ids",
             "tc.max_sl_points", "tc.trail_ladder",
-            // instrument: 22..26
+            "tc.target_pct", "tc.sl_pct",
+            // instrument: 24..28
             "i.id", "i.ins_name", "i.ins_id", "i.lot_qty", "i.strike_points",
-            // instrument_details: 27..38
+            // instrument_details: 29..40
             "id.instrument_token", "id.exchange_token", "id.tradingsymbol", "id.name",
             "id.last_price", "id.expiry", "id.strike", "id.tick_size", "id.lot_size",
             "id.instrument_type", "id.segment", "id.exchange");
 
-    private static final int INSTRUMENT_START = 22;
-    private static final int DETAILS_START = 27;
+    private static final int INSTRUMENT_START = 24;
+    private static final int DETAILS_START = 29;
 
     private static List<String> selectedColumns() throws Exception {
         Method m = TradeConfigRepository.class
@@ -135,13 +140,15 @@ class TradeConfigCombinedQueryContractTest {
         row.add("1,2");                               // strategy_ids
         row.add(new BigDecimal("60"));                // max_sl_points
         row.add("25:2,50:25");                        // trail_ladder
-        // instrument 22..26
+        row.add(new BigDecimal("0.20"));              // target_pct
+        row.add(new BigDecimal("0.30"));              // sl_pct
+        // instrument 24..28
         row.add(11);                                  // i.id
         row.add("NIFTY");                             // ins_name
         row.add("256265");                            // ins_id
         row.add(75);                                  // lot_qty
         row.add(new BigDecimal("50"));                // strike_points
-        // instrument_details 27..38
+        // instrument_details 29..40
         row.add(256265);                              // instrument_token
         row.add(1001);                                // exchange_token
         row.add("NIFTY26MAY24000CE");                 // tradingsymbol
@@ -175,6 +182,21 @@ class TradeConfigCombinedQueryContractTest {
 
         assertThat(tc.getMaxSlPoints()).isEqualByComparingTo("60");
         assertThat(tc.getTrailLadder()).isEqualTo("25:2,50:25");
+    }
+
+    @Test
+    @DisplayName("027's percentage bracket actually reaches the DTO — unwired from 027 until 2026-08-31")
+    void percentageBracketReachesTheConfig() throws Exception {
+        // The same regression as above, older and wider: OrderService.bracketAtEntry
+        // prefers these over the absolute columns, so while they were null every
+        // trade silently exited on trade_config.target / stop_loss instead. Wiring
+        // them is a live behaviour change on every config — see S6 for the paired
+        // before/after measurement that signed it off.
+        TradeConfig tc = (TradeConfig) invokePrivate(new TradeConfigScheduler(), "mapToTradeConfig",
+                new Class<?>[]{Object[].class}, new Object[]{syntheticRow()});
+
+        assertThat(tc.getTargetPct()).isEqualByComparingTo("0.20");
+        assertThat(tc.getSlPct()).isEqualByComparingTo("0.30");
     }
 
     @Test

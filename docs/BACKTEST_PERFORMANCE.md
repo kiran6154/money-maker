@@ -585,29 +585,34 @@ standing between "faster" and "different".
 > Re-baseline by replaying the range once with both fixes in place, then diff
 > subsequent phases against that.
 
-> **Current baseline ledger (2026-08-31).** `trade_order` now holds **Run B of the
-> S4 measurement**: 2024-01-01 → 2024-01-31, `HISTORICAL_ICICI`, 16 rows, written
-> with `trade_config.max_sl_points = 60` and
-> `trail_ladder = '25:2,50:25,75:50,100:75'` — i.e. **036 semantics, the seeded
-> production values**. It was produced on the working tree at `f64af84` with both
-> fixes above in place and with `target_pct` / `sl_pct` still unwired (S6), so the
-> bracket resolved from the absolute `trade_config.target` / `stop_loss` columns.
-> The 105 pre-existing rows it replaced are exported to
-> `analysis/s4-measurement/trade_order-preexisting.csv`; the paired 035 arm is
-> `run-A-ledger.csv` and the two are compared in
-> [`analysis/s4-measurement/RESULTS.md`](../analysis/s4-measurement/RESULTS.md).
+> **Current baseline ledger (2026-08-31, superseding the S4 one below).**
+> `trade_order` holds **Arm B of the S6 measurement**: 2024-01-01 → 2024-01-31,
+> `HISTORICAL_ICICI`, **21 rows**, written with the **fully wired bracket** —
+> `target_pct = 0.20` / `sl_pct = 0.30` reaching the pipeline for the first time,
+> on top of the seeded 036 `max_sl_points = 60` /
+> `trail_ladder = '25:2,50:25,75:50,100:75'`. Produced on `6ed316b` plus the S6
+> wiring change. This is the configuration the system now runs, so it is the
+> baseline to diff future phases against. Comparison:
+> [`analysis/s6-measurement/RESULTS.md`](../analysis/s6-measurement/RESULTS.md).
 >
-> Two things about this baseline that a later diff must not misread:
+> Three things a later diff must not misread:
 >
-> - **It is a 036 ledger.** Diffing it against anything produced while
->   `max_sl_points` / `trail_ladder` were null measures the bracket, not your phase.
-> - **Wiring S6 will move it.** That change is signed off and queued; when it lands
->   the bracket switches from absolute points to a fraction of entry premium on
->   every config, so this baseline retires and the range must be replayed again.
+> - **It is a wired-bracket ledger.** Diffing it against anything produced while
+>   `target_pct` / `sl_pct` were null measures S6, not your phase. The 16-row S4
+>   Run B ledger is that older shape and is **retired as a baseline** — kept only
+>   as the S4 comparison arm.
+> - **It is also a 036 ledger.** The ladder and ceiling are live in it.
+> - **The S6 pair re-verified the merge.** S6's Arm A reproduced S4's Run B
+>   **byte-identically on every column except the autoincrement `id`**, on a newer
+>   build carrying the live force-close and day-summary work. That is a stronger
+>   parity check than the checklist below asks for, and it confirms both that the
+>   merged infra does not touch the backtest ledger and that the S6 wiring is inert
+>   while the columns are null.
 >
-> Both runs used `logging.level.com.moneymaker*=INFO` via command-line overrides
-> rather than the DEBUG preset the properties file ships with — per Phase 5,
-> logging does not affect decisions, and the level was identical in both arms.
+> All four runs (S4 A/B, S6 A/B) used `logging.level.com.moneymaker*=INFO` via
+> command-line overrides rather than the DEBUG preset the properties file ships
+> with — per Phase 5, logging does not affect decisions, and the level was
+> identical across every arm.
 
 **Reset between runs.** Both runs must start from the same ledger, or the
 second one sees the first one's positions and diverges for reasons that have
