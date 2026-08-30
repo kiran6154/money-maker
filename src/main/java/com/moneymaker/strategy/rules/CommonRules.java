@@ -18,8 +18,11 @@ public final class CommonRules {
     // ----- Predicates -------------------------------------------------
 
     /**
-     * True when the candle is at or after 15:15 (typical market close time)
-     * <b>of the session being evaluated</b>.
+     * True when the candle is at or after the close-signal time
+     * <b>of the session being evaluated</b>. The time comes from
+     * {@code ctx.closeSignalTime} (derived from {@code app.market.close} minus
+     * {@code app.market.close-signal-offset-minutes}); a null falls back to the
+     * legacy 15:15 constant so manually built contexts keep the old behaviour.
      *
      * <p>The date check is load-bearing, not defensive padding. Comparing only
      * the time-of-day made every previous session's closing bar an eligible
@@ -36,7 +39,9 @@ public final class CommonRules {
         if (ctx.candle == null || ctx.candle.getTimestamp() == null) return false;
         java.time.LocalDateTime ts = ctx.candle.getTimestamp();
         if (ctx.asOf != null && !ts.toLocalDate().equals(ctx.asOf.toLocalDate())) return false;
-        return ts.toLocalTime().compareTo(java.time.LocalTime.of(15, 15)) >= 0;
+        java.time.LocalTime trigger = ctx.closeSignalTime != null
+                ? ctx.closeSignalTime : java.time.LocalTime.of(15, 15);
+        return ts.toLocalTime().compareTo(trigger) >= 0;
     }
 
     /**

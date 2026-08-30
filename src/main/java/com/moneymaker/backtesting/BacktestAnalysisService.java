@@ -46,6 +46,7 @@ public class BacktestAnalysisService {
     private final EodDowntrendDetectionService eodDowntrendDetectionService;
     private final TradingCalendar tradingCalendar;
     private final JournalRecorder journal;
+    private final com.moneymaker.market.service.MarketHoursService marketHours;
 
     public BacktestAnalysisService(
             TradeConfigScheduler tradeConfigScheduler,
@@ -60,7 +61,8 @@ public class BacktestAnalysisService {
             BacktestMarketDataCache marketDataCache,
             EodDowntrendDetectionService eodDowntrendDetectionService,
             TradingCalendar tradingCalendar,
-            JournalRecorder journal) {
+            JournalRecorder journal,
+            com.moneymaker.market.service.MarketHoursService marketHours) {
         this.tradeConfigScheduler = tradeConfigScheduler;
         this.analysisScheduler = analysisScheduler;
         this.orderScheduler = orderScheduler;
@@ -74,6 +76,7 @@ public class BacktestAnalysisService {
         this.eodDowntrendDetectionService = eodDowntrendDetectionService;
         this.tradingCalendar = tradingCalendar;
         this.journal = journal;
+        this.marketHours = marketHours;
     }
 
     public BacktestRunResult run(LocalDate fromDate, LocalDate toDate) {
@@ -95,13 +98,15 @@ public class BacktestAnalysisService {
         // indistinguishable pile.
         journal.beginRun("bt-" + fromDate + "_" + toDate + "-" + startedAt.toEpochMilli());
 
-        // Market hours: 09:15–15:30. We stop the strategy loop and force-close
-        // every still-OPEN intraday position at 15:20 — that's the de-facto
-        // broker square-off cutoff for index options. Closes at 15:30 (the
-        // hard market close) get rejected by most brokers in live mode, and
-        // SEBI's 5-minute pre-close auction phase distorts last-tick prices.
-        LocalTime marketStart = LocalTime.of(9, 20);
-        LocalTime marketEnd = LocalTime.of(15, 20);
+        // Replay bounds come from MarketHoursService — the declared source of
+        // truth for the session window — as open/close plus the
+        // app.market.replay-*-offset-minutes keys (defaults reproduce the old
+        // 09:20 / 15:20 constants exactly). The early stop at the last tick is
+        // the de-facto broker square-off cutoff for index options: closes at
+        // 15:30 (the hard market close) get rejected by most brokers in live
+        // mode, and SEBI's 5-minute pre-close auction distorts last-tick prices.
+        LocalTime marketStart = marketHours.replayFirstTick();
+        LocalTime marketEnd = marketHours.replayLastTick();
 
         // Loop through each date. Configs and time-periods are fetched *per day*
         // — the same way the live 09:16 cron does it. A 50-day run does NOT

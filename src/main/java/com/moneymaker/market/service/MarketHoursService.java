@@ -43,9 +43,36 @@ public class MarketHoursService {
     @Value("${app.market.timezone:Asia/Kolkata}")
     private String timezoneStr;
 
+    /**
+     * Minutes before {@code app.market.close} at which the strategies' close
+     * signal fires ({@code CommonRules.isMarketCloseTime}). Default 15 → 15:15
+     * with the standard 15:30 close, matching the constant it replaced.
+     */
+    @Value("${app.market.close-signal-offset-minutes:15}")
+    private int closeSignalOffsetMinutes;
+
+    /**
+     * Minutes after {@code app.market.open} at which a backtest day's first
+     * tick fires. Default 5 → 09:20, matching the constant it replaced.
+     */
+    @Value("${app.market.replay-first-tick-offset-minutes:5}")
+    private int replayFirstTickOffsetMinutes;
+
+    /**
+     * Minutes before {@code app.market.close} at which a backtest day's loop
+     * stops and leftover positions are force-closed — the de-facto broker
+     * square-off cutoff for index options. Default 10 → 15:20, matching the
+     * constant it replaced.
+     */
+    @Value("${app.market.replay-last-tick-offset-minutes:10}")
+    private int replayLastTickOffsetMinutes;
+
     private LocalTime open;
     private LocalTime close;
     private ZoneId zone;
+    private LocalTime closeSignalTime;
+    private LocalTime replayFirstTick;
+    private LocalTime replayLastTick;
 
     @PostConstruct
     void init() {
@@ -56,7 +83,21 @@ public class MarketHoursService {
             throw new IllegalStateException(
                     "app.market.close (" + closeStr + ") must be after app.market.open (" + openStr + ")");
         }
-        log.info("[market-hours] window={}-{} {} (MON-FRI)", open, close, zone);
+        this.closeSignalTime = close.minusMinutes(closeSignalOffsetMinutes);
+        this.replayFirstTick = open.plusMinutes(replayFirstTickOffsetMinutes);
+        this.replayLastTick = close.minusMinutes(replayLastTickOffsetMinutes);
+        if (!replayFirstTick.isBefore(replayLastTick)) {
+            throw new IllegalStateException("replay window is empty: first tick " + replayFirstTick
+                    + " is not before last tick " + replayLastTick
+                    + " (check app.market.replay-*-offset-minutes)");
+        }
+        if (closeSignalTime.isBefore(open) || closeSignalTime.isAfter(close)) {
+            throw new IllegalStateException("close-signal time " + closeSignalTime
+                    + " falls outside the session " + open + "-" + close
+                    + " (check app.market.close-signal-offset-minutes)");
+        }
+        log.info("[market-hours] window={}-{} {} (MON-FRI), close-signal={}, replay={}-{}",
+                open, close, zone, closeSignalTime, replayFirstTick, replayLastTick);
     }
 
     /**
@@ -99,5 +140,30 @@ public class MarketHoursService {
     /** Configured session close. */
     public LocalTime close() {
         return close;
+    }
+
+    /**
+     * The time-of-day at which the strategies' market-close exit signal fires:
+     * {@code close − app.market.close-signal-offset-minutes}. 15:15 by default.
+     */
+    public LocalTime closeSignalTime() {
+        return closeSignalTime;
+    }
+
+    /**
+     * First tick of a replayed backtest day:
+     * {@code open + app.market.replay-first-tick-offset-minutes}. 09:20 by default.
+     */
+    public LocalTime replayFirstTick() {
+        return replayFirstTick;
+    }
+
+    /**
+     * Last tick of a replayed backtest day, after which leftover positions are
+     * force-closed: {@code close − app.market.replay-last-tick-offset-minutes}.
+     * 15:20 by default.
+     */
+    public LocalTime replayLastTick() {
+        return replayLastTick;
     }
 }

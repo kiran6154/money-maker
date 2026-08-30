@@ -58,6 +58,15 @@ public abstract class AbstractSmaCrossStrategy implements Strategy {
      */
     protected final OptionInstrumentResolver instrumentResolver;
 
+    /**
+     * Source of the close-signal time handed to {@code RuleContext}. Optional
+     * ({@code required = false}) so a manually constructed strategy — unit
+     * tests — leaves it null and {@code CommonRules.isMarketCloseTime} degrades
+     * to its legacy 15:15 fallback instead of failing to construct.
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    protected com.moneymaker.market.service.MarketHoursService marketHours;
+
     protected AbstractSmaCrossStrategy(OptionInstrumentResolver instrumentResolver) {
         this.instrumentResolver = instrumentResolver;
     }
@@ -178,7 +187,8 @@ public abstract class AbstractSmaCrossStrategy implements Strategy {
                 boolean buyGate  = false; // raw buy-cross intentionally disabled
 
                 RuleContext ctx = new RuleContext(lastCandle, dataList.size() - 1,
-                        dataList, primarySma, config, asOf);
+                        dataList, primarySma, config, asOf,
+                        marketHours != null ? marketHours.closeSignalTime() : null);
                 RuleEngine.Decision decision = RuleEngine.decide(ctx, sellRules, buyRules);
 
                 String strikeLabel = parseStrikeLabel(key);

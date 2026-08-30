@@ -113,7 +113,7 @@ Baseline rules, identical in both strategies:
 | Primary SMA | Sell (required) | Buy (anyOf) |
 |---|---|---|
 | 20 | *(case commented out — no signals)* | *(case commented out)* |
-| 50 / 100 / 200 / 500 | `isSmaNNDownTrending` | `isMarketCloseTime` (≥ 15:15 **of the session being evaluated**) |
+| 50 / 100 / 200 / 500 | `isSmaNNDownTrending` | `isMarketCloseTime` (≥ the close-signal time **of the session being evaluated** — `app.market.close` − `app.market.close-signal-offset-minutes`, 15:15 by default) |
 
 ---
 
