@@ -166,6 +166,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 
 ---
 
+### S11. Wall-clock scheduler threads mutate replay state mid-run
+
+| | |
+|---|---|
+| Where | [`TradeConfigScheduler.checkTradeConfigAt916AM`](../src/main/java/com/moneymaker/scheduler/TradeConfigScheduler.java) — `@Scheduled(cron = "0 16 9 * * MON-FRI")`, ungated by mode. Historically also the three pipeline crons, gated 2026-08-31 under [`GAPS.md` #4](GAPS.md#4-pipeline-cron-annotations-fire-in-backtest-mode-too--resolved-2026-08-31). |
+| Why | A backtest replay and the live cron threads share one JVM and one set of statics. `SharedData.combinedDto` — the list of `(config, strategy)` pairs the strategies are dispatched over — is assigned by `BacktestAnalysisService.runForDate` at the top of **every** tick, and independently by this cron at wall-clock 09:16 from *today's* DB rows. The per-tick reassignment means the exposure is a race, not a standing clobber: the cron thread can swap the list between the replay's `calculateIndicator(asOf)` and its `runStrategies(asOf)`, so that one tick dispatches today's live configs against the replayed window's cached candles. It also seeds the date-keyed config cache with today's date and, if `telegram.backtest-enabled=true`, fires the day's config report out of a replay. |
+| Why it is here and not in `GAPS.md` | It decides **which configs get dispatched**, i.e. what trades get taken — the `GAPS.md` #4 half of the same problem is filed there because it was cron plumbing; this half is not. |
+| Impact | **Unquantified.** Two separate things need measuring, and neither is done. **(a)** The live race above: replay a fixed window with the JVM clock crossing 09:16 on a weekday and diff the ledger against the same window replayed outside that minute — a single-tick divergence is what a hit looks like, so the diff must be per-order, not on totals. **(b)** More consequential: **every backtest ledger recorded before 2026-08-31 came from a JVM where the three pipeline crons ran their full bodies in backtest mode** (see the `GAPS.md` #4 note — the market-hours guard only short-circuits in live mode, so it never fired in backtest). Any run started on a weekday between 09:00 and 16:55 IST had a second wall-clock pipeline draining `SharedData.tradeSignals`, writing today's candles into the strike map, and monitoring the replay's OPEN rows against wall-clock quotes. That covers the numbers recorded in [S4](#s4-the-036-exit-bracket--sl-ceiling--trailing-ladder--is-shipped-but-unmeasured), [S6](#s6-target_pct--sl_pct-never-reach-the-running-pipeline--the-percentage-bracket-has-never-actually-run), the S7 re-entry count and the S8 observation. Measuring it means re-running those windows on the post-fix code and comparing — cheap, since the windows and the arms are already written down in each entry. |
+| Fix sketch | For the remaining `TradeConfigScheduler` cron, the same shape `GAPS.md` #4 used: gate the `@Scheduled` entry point on `app.mode`, leaving `getConfigsForDate` / `reportConfigsForDay` untouched so the replay's own calls are unaffected. That is infrastructure and could be done without sign-off — **but it changes what a replay dispatches**, so per working rule 3 it needs the user first, and ideally lands with the re-measurement in (b) rather than silently shifting the baseline underneath the recorded numbers. |
+| Effort | **S** for the gate; **M** including the re-measurement of the four entries above. |
+| Priority | _TBD — found 2026-08-31 while gating the pipeline crons for `GAPS.md` #4, not yet raised with the user._ |
+
+---
+
 ## Resolved
 
 ### S2. `Strategy1` scanned every config's legs, not its own — **RESOLVED 2026-08-25**

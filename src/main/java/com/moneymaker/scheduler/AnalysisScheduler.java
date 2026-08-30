@@ -54,8 +54,12 @@ public class AnalysisScheduler {
     private final JournalRecorder journal;
     private final ObservationContextFactory observations;
 
-    @Value("${app.mode:live}")
-    private String appMode;
+    /**
+     * Run mode, from the same {@code app.mode} key the Telegram backtest gate
+     * reads ({@code TelegramNotifier}). Constructor-injected rather than
+     * field-injected so a unit test can build the bean in either mode.
+     */
+    private final String appMode;
 
     public AnalysisScheduler(MarketDataService marketDataService,
                              IndicatorService indicatorService,
@@ -64,7 +68,8 @@ public class AnalysisScheduler {
                              TradeOrderRepository tradeOrderRepository,
                              OptionInstrumentResolver instrumentResolver,
                              JournalRecorder journal,
-                             ObservationContextFactory observations) {
+                             ObservationContextFactory observations,
+                             @Value("${app.mode:live}") String appMode) {
         this.marketDataService = Objects.requireNonNull(marketDataService, "marketDataService must not be null");
         this.indicatorService = Objects.requireNonNull(indicatorService, "indicatorService must not be null");
         this.strategyFactory = Objects.requireNonNull(strategyFactory, "strategyFactory must not be null");
@@ -73,11 +78,33 @@ public class AnalysisScheduler {
         this.instrumentResolver = Objects.requireNonNull(instrumentResolver, "instrumentResolver must not be null");
         this.journal = Objects.requireNonNull(journal, "journal must not be null");
         this.observations = Objects.requireNonNull(observations, "observations must not be null");
+        this.appMode = appMode == null ? "" : appMode.trim();
         logger.info("AnalysisScheduler initialized with instrument resolver: {}", instrumentResolver.getName());
     }
 
+    /**
+     * The wall-clock entry point: every 5 minutes during NSE trading hours.
+     *
+     * <p>Carries only wall-clock concerns — the backtest gate and the live
+     * market-hours gate. The replayable work is
+     * {@link #calculateIndicator(LocalDateTime)} + {@link #runStrategies(LocalDateTime)},
+     * which {@code BacktestAnalysisService} calls directly with the simulated
+     * timestamp; neither may grow a mode check (invariant 8).</p>
+     *
+     * <p>In {@code app.mode=backtest} the trigger still fires — the bean is
+     * needed by the replay, so it cannot be {@code @ConditionalOnProperty}-ed
+     * away — but does no work, and in particular never calls
+     * {@code calculateIndicator(LocalDateTime.now())}, which would fetch and
+     * cache <i>today's</i> candles into the same
+     * {@code SharedData.strikeMarketDataByInstrumentAndInterval} map the replay
+     * is reading. See {@code docs/GAPS.md} #4.</p>
+     */
     @Scheduled(cron = "0 0/5 9-16 * * MON-FRI")
     public void analyzeMarketData() {
+        if ("backtest".equalsIgnoreCase(appMode)) {
+            logger.debug("AnalysisScheduler cron tick ignored - app.mode=backtest drives calculateIndicator() directly");
+            return;
+        }
         if ("live".equalsIgnoreCase(appMode) && !marketHours.isOpenNow()) {
             logger.debug("AnalysisScheduler skipped: outside market hours");
             return;

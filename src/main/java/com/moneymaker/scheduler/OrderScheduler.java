@@ -16,26 +16,54 @@ public class OrderScheduler {
     private final OrderService orderService;
     private final MarketHoursService marketHours;
 
-    @Value("${app.mode:live}")
-    private String appMode;
+    /**
+     * Run mode, from the same {@code app.mode} key the Telegram backtest gate
+     * reads ({@code TelegramNotifier}). Constructor-injected rather than
+     * field-injected so a unit test can build the bean in either mode.
+     */
+    private final String appMode;
 
-    public OrderScheduler(OrderService orderService, MarketHoursService marketHours) {
+    public OrderScheduler(OrderService orderService,
+                          MarketHoursService marketHours,
+                          @Value("${app.mode:live}") String appMode) {
         this.orderService = Objects.requireNonNull(orderService, "orderService must not be null");
         this.marketHours = Objects.requireNonNull(marketHours, "marketHours must not be null");
+        this.appMode = appMode == null ? "" : appMode.trim();
     }
 
     /**
-     * Every 5 minutes during NSE trading hours. In live mode the tick
-     * additionally honours {@link MarketHoursService#isOpenNow()} so we don't
-     * burn cycles after market close; backtest replays through this body
-     * straight from {@code BacktestAnalysisService}.
+     * The wall-clock entry point: every 5 minutes during NSE trading hours.
+     *
+     * <p>This method holds <b>only</b> wall-clock concerns — the backtest gate
+     * and the live market-hours gate — and nothing the replay needs. That is
+     * the split invariant 8 asks for: {@code BacktestAnalysisService} calls
+     * {@link #processOrders()} below directly, so a mode check placed there
+     * would silence the replay itself.</p>
+     *
+     * <p>In {@code app.mode=backtest} the trigger still fires (the bean is
+     * needed by the replay, so it cannot be {@code @ConditionalOnProperty}-ed
+     * away) but does no work — the simulated clock, not the wall clock, drives
+     * the pipeline. See {@code docs/GAPS.md} #4.</p>
      */
     @Scheduled(cron = "0 0/5 9-16 * * MON-FRI")
-    public void processOrders() {
+    public void scheduledTick() {
+        if ("backtest".equalsIgnoreCase(appMode)) {
+            log.debug("OrderScheduler cron tick ignored - app.mode=backtest drives processOrders() directly");
+            return;
+        }
         if ("live".equalsIgnoreCase(appMode) && !marketHours.isOpenNow()) {
             log.debug("OrderScheduler skipped: outside market hours");
             return;
         }
+        processOrders();
+    }
+
+    /**
+     * Drains {@code SharedData.tradeSignals} once. Called by {@link #scheduledTick()}
+     * in live mode and by {@code BacktestAnalysisService} per replayed tick — the
+     * body is identical in both, and deliberately carries no mode branch.
+     */
+    public void processOrders() {
         log.debug("OrderScheduler tick");
         try {
             orderService.processOrders();
