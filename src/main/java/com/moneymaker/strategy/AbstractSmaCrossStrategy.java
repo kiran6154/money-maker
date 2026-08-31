@@ -360,10 +360,31 @@ public abstract class AbstractSmaCrossStrategy implements Strategy {
         if (asOf == null) return true;
         java.time.LocalDateTime stamp = SharedData.strikeMarketDataTick.get(key);
         if (asOf.equals(stamp)) return true;
-        log.info("[tick] tradeConfigId={} skipping stale strike key (written {}, tick {}): {}",
-                tradeConfigId, stamp, asOf, key);
+        // Visible once per (key, session): a strike leaving the ATM window is
+        // worth one INFO line, but it then stays stale for every remaining tick
+        // of the day — ~8,300 repeats per replayed month at INFO measurably
+        // slowed year-long runs (IntelliJ console I/O). Repeats go to DEBUG.
+        String onceKey = asOf.toLocalDate() + "|" + key;
+        if (staleKeyLoggedToday.size() > 4096) staleKeyLoggedToday.clear();
+        if (staleKeyLoggedToday.add(onceKey)) {
+            log.info("[tick] tradeConfigId={} skipping stale strike key (written {}, tick {}): {} "
+                    + "(further skips of this key today logged at DEBUG)",
+                    tradeConfigId, stamp, asOf, key);
+        } else {
+            log.debug("[tick] tradeConfigId={} skipping stale strike key (written {}, tick {}): {}",
+                    tradeConfigId, stamp, asOf, key);
+        }
         return false;
     }
+
+    /**
+     * (date|key) pairs already INFO-logged as stale. Bounded by the size-cap
+     * clear in {@link #isWrittenByThisTick} — a clear only costs a few repeat
+     * INFO lines, never correctness — so a year-long replay cannot accumulate
+     * every session's keys.
+     */
+    private static final java.util.Set<String> staleKeyLoggedToday =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     private boolean keyMatches(String key, String instrumentToken, String interval,
                                String optionType, String itmDepth, String otmDepth) {
