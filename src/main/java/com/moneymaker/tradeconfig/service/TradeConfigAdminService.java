@@ -663,9 +663,14 @@ public class TradeConfigAdminService {
 
         boolean force = request.isForce();
 
+        // De-duplicated by id: a matches query that fans out (or a repeated id
+        // in a request) must not count — or try to delete — the same config
+        // twice.
         List<TradeConfig> deletable = new ArrayList<>();
         List<Integer> tradedIds = new ArrayList<>();
+        java.util.Set<Integer> seen = new java.util.HashSet<>();
         for (TradeConfig tc : matches) {
+            if (tc.getId() == null || !seen.add(tc.getId())) continue;
             if (tradeOrderRepository.existsByTradeConfigId(tc.getId())) {
                 tradedIds.add(tc.getId());
                 if (force) deletable.add(tc);
@@ -701,12 +706,13 @@ public class TradeConfigAdminService {
             removedTradeOrders = tradeOrderRepository.deleteByTradeConfigIdIn(tradedIds);
         }
 
-        long removedTimeframes = 0;
-        for (TradeConfig tc : deletable) {
-            removedTimeframes += smaTimeframeRepository.findByTradeConfigId(tc.getId()).size();
-            smaTimeframeRepository.deleteByTradeConfigId(tc.getId());
-        }
-        tradeConfigRepository.deleteAll(deletable);
+        // Bulk deletes throughout — one statement per table, no per-row count
+        // expectations. The old count-then-derived-delete loop queued entity
+        // deletions that Hibernate verified at the next iteration's auto-flush,
+        // and any row already gone (concurrent request, duplicate id) threw
+        // StaleStateException and rolled the whole delete back.
+        long removedTimeframes = ids.isEmpty() ? 0 : smaTimeframeRepository.deleteByTradeConfigIdIn(ids);
+        if (!ids.isEmpty()) tradeConfigRepository.deleteAllByIdInBatch(ids);
         // Journal hygiene: everything citing the deleted configs goes with
         // them (their trades' rows included, when force removed the trades).
         journal.deleteForTradeConfigs(deletable.stream().map(TradeConfig::getId).toList());

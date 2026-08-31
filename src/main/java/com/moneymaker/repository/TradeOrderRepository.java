@@ -175,6 +175,15 @@ public interface TradeOrderRepository extends JpaRepository<TradeOrder, Long> {
      * Deletes every trade row belonging to the given configs and returns how
      * many went. Only reachable from the bulk auto-config delete with
      * {@code force=true} — the audit trail is otherwise immutable from the app.
+     *
+     * <p>Bulk JPQL rather than a derived delete: the derived form loads every
+     * entity and issues per-row deletes whose counts Hibernate verifies at
+     * flush, so any row that vanished concurrently fails the whole operation
+     * with {@code StaleStateException}. One statement, no expectations.</p>
      */
-    long deleteByTradeConfigIdIn(Collection<Integer> tradeConfigIds);
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query(
+            "delete from TradeOrder o where o.tradeConfigId in :tradeConfigIds")
+    int deleteByTradeConfigIdIn(
+            @org.springframework.data.repository.query.Param("tradeConfigIds") Collection<Integer> tradeConfigIds);
 }

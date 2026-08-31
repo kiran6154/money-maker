@@ -768,7 +768,9 @@ public class OrderService {
                     purgeSummary(matches.size(), deletable.size(), skippedIds.size(), true));
         }
 
-        tradeOrderRepository.deleteAll(deletable);
+        // Batch id-delete: one IN statement, no per-row count expectations, so
+        // a row purged concurrently can't fail the whole operation.
+        tradeOrderRepository.deleteAllByIdInBatch(deletable.stream().map(TradeOrder::getId).toList());
         // Journal hygiene: cascade the purged trades' observation rows, then
         // sweep any rows orphaned by purges that predate the cascade.
         journal.deleteForTradeOrders(deletable.stream().map(TradeOrder::getId).toList());
