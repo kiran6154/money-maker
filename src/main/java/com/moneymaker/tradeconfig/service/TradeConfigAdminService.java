@@ -70,6 +70,7 @@ public class TradeConfigAdminService {
     private final TradeOrderRepository tradeOrderRepository;
     private final TradeConfigScheduler tradeConfigScheduler;
     private final StrategyFactory strategyFactory;
+    private final com.moneymaker.journal.JournalRecorder journal;
 
     @Value("${app.mode:live}")
     private String appMode;
@@ -195,6 +196,10 @@ public class TradeConfigAdminService {
                     "POST /api/trade-configs/" + id + "/active?value=false");
         }
         smaTimeframeRepository.deleteByTradeConfigId(id);
+        // Journal hygiene: a hard delete is only reachable with no trade
+        // history, so the config's journal rows are all CANDIDATEs describing
+        // something that no longer exists — remove them with it.
+        journal.deleteForTradeConfigs(List.of(id));
         tradeConfigRepository.deleteById(id);
         afterMutation(tc.getTradingDate());
         log.info("[trade-config] deleted id={}", id);
@@ -702,6 +707,10 @@ public class TradeConfigAdminService {
             smaTimeframeRepository.deleteByTradeConfigId(tc.getId());
         }
         tradeConfigRepository.deleteAll(deletable);
+        // Journal hygiene: everything citing the deleted configs goes with
+        // them (their trades' rows included, when force removed the trades).
+        journal.deleteForTradeConfigs(deletable.stream().map(TradeConfig::getId).toList());
+        journal.deleteOrphanedTradeRows();
 
         // Same cache refresh the single delete performs, once per affected date.
         byDate.keySet().forEach(this::afterMutation);

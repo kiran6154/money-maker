@@ -769,6 +769,10 @@ public class OrderService {
         }
 
         tradeOrderRepository.deleteAll(deletable);
+        // Journal hygiene: cascade the purged trades' observation rows, then
+        // sweep any rows orphaned by purges that predate the cascade.
+        journal.deleteForTradeOrders(deletable.stream().map(TradeOrder::getId).toList());
+        journal.deleteOrphanedTradeRows();
         log.info("[order] purged {} of {} ledger row(s) between {} and {}; skippedOpen={}",
                 deletable.size(), matches.size(), from, to, skippedIds.size());
 

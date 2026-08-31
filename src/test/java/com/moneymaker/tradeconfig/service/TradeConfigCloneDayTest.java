@@ -75,7 +75,8 @@ class TradeConfigCloneDayTest {
         when(tradeConfigRepository.findByTradingDate(any(LocalDate.class))).thenReturn(new ArrayList<>());
 
         service = new TradeConfigAdminService(tradeConfigRepository, smaTimeframeRepository,
-                instrumentRepository, tradeOrderRepository, scheduler, strategyFactory);
+                instrumentRepository, tradeOrderRepository, scheduler, strategyFactory,
+                mock(com.moneymaker.journal.JournalRecorder.class));
         ReflectionTestUtils.setField(service, "appMode", "backtest");
     }
 

@@ -88,7 +88,8 @@ class TradeConfigRetireAndConfirmTest {
         when(strategyFactory.availableStrategyIds()).thenReturn(List.of(1, 2));
 
         service = new TradeConfigAdminService(tradeConfigRepository, smaTimeframeRepository,
-                instrumentRepository, tradeOrderRepository, scheduler, strategyFactory);
+                instrumentRepository, tradeOrderRepository, scheduler, strategyFactory,
+                mock(com.moneymaker.journal.JournalRecorder.class));
         // Not "live", so afterMutation stops at the cache invalidation and does not
         // try to rebuild SharedData.combinedDto from a mocked scheduler.
         ReflectionTestUtils.setField(service, "appMode", "backtest");

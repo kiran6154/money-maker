@@ -320,6 +320,28 @@
         </div>
     </div>
 
+    <!-- ─────────── Generate AUTO configs (trade-config domain, not backtest) ─────────── -->
+    <div class="glass-card" style="margin-bottom: 18px;">
+        <div class="card-header">
+            <h3>⚙ Generate AUTO configs</h3>
+            <span class="badge badge-info" id="gen-status">idle</span>
+            <div class="spacer"></div>
+            <span class="bd-hint">Runs the EOD downtrend detector per session — idempotent, skips covered days</span>
+        </div>
+        <div style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; padding-top:6px;">
+            <div class="form-row">
+                <label for="gen-from">From</label>
+                <input id="gen-from" type="date" class="form-control" />
+            </div>
+            <div class="form-row">
+                <label for="gen-to">To</label>
+                <input id="gen-to" type="date" class="form-control" />
+            </div>
+            <button id="gen-run" class="btn btn-primary" type="button">⚙ Generate</button>
+        </div>
+        <div id="gen-result" style="margin-top:10px; font-size:13px; color:var(--text-muted);"></div>
+    </div>
+
     <!-- ─────────── Bulk delete of auto-generated configs (collapsed) ─────────── -->
     <div id="bd-card" class="glass-card bd-collapsed" style="margin-bottom: 18px;">
         <div class="bd-header" id="bd-toggle">
@@ -927,21 +949,13 @@
             if (r.status === 409) {
                 const warn = await r.json().catch(() => ({}));
                 if (warn.confirmRequired) {
-                    const lines = (warn.changes || []).map(c => '  • ' + c).join('
-');
+                    const lines = (warn.changes || []).map(c => '  • ' + c).join('\n');
                     const ok = confirm(
-                        'This config has ' + warn.openTrades + ' open trade(s).
-
-' +
-                        'These changes affect the rest of today’s behaviour on it:
-' +
-                        lines + '
-
-' +
+                        'This config has ' + warn.openTrades + ' open trade(s).\n\n' +
+                        'These changes affect the rest of today’s behaviour on it:\n' +
+                        lines + '\n\n' +
                         'Open positions keep the target / stop-loss they entered with — those are ' +
-                        'snapshotted on the order — but the fields above are read live.
-
-' +
+                        'snapshotted on the order — but the fields above are read live.\n\n' +
                         'Apply anyway?');
                     if (!ok) { setAlert('Edit cancelled — nothing was changed.', 'error'); return; }
                     r = await send(true);
@@ -981,9 +995,7 @@
     async function cloneDay() {
         const to = state.date || today();
         const from = prompt(
-            'Clone configs onto ' + to + '.
-
-Copy from which trading date? (YYYY-MM-DD)',
+            'Clone configs onto ' + to + '.\n\nCopy from which trading date? (YYYY-MM-DD)',
             isoShift(to, -1));
         if (!from) return;
 
@@ -994,17 +1006,11 @@ Copy from which trading date? (YYYY-MM-DD)',
         if (preview.cloned === 0) { alert(preview.summary); return; }
 
         const detail =
-            preview.summary + '
-
-' +
-            'Clones are stamped MANUAL and start active.
-' +
-            (preview.skippedRetired ? 'Retired configs are left behind.
-' : '') +
-            (preview.skippedExisting ? 'Configs already on ' + to + ' are skipped.
-' : '') +
-            '
-Proceed?';
+            preview.summary + '\n\n' +
+            'Clones are stamped MANUAL and start active.\n' +
+            (preview.skippedRetired ? 'Retired configs are left behind.\n' : '') +
+            (preview.skippedExisting ? 'Configs already on ' + to + ' are skipped.\n' : '') +
+            '\nProceed?';
         if (!confirm(detail)) return;
 
         const result = await postClone(from, to, false);
@@ -1034,16 +1040,10 @@ Proceed?';
     // ---------- retire / reinstate (GAPS #7) ----------
     async function setActive(id, value) {
         if (!value && !confirm(
-                'Retire trade config #' + id + '?
-
-' +
+                'Retire trade config #' + id + '?\n\n' +
                 'It stops being dispatched, so nothing new opens against it. Its history and any ' +
-                'trade_order rows are kept, and trades already open run to their own exits.
-
-' +
-                'Reversible — use Reinstate to bring it back.
-
-' +
+                'trade_order rows are kept, and trades already open run to their own exits.\n\n' +
+                'Reversible — use Reinstate to bring it back.\n\n' +
                 'Note: a config with trades still OPEN cannot be retired — close them first.')) return;
         const r = await fetch('/api/trade-configs/' + id + '/active?value=' + value, { method: 'POST' });
         if (!r.ok) {
@@ -1564,6 +1564,45 @@ Proceed?';
         // Refresh the table below so it cannot show rows that no longer exist.
         document.getElementById('tc-refresh')?.click();
         alert(data.message);
+    });
+})();
+</script>
+<script>
+// ─────────── Generate AUTO configs panel ───────────
+// Config generation is trade-config-domain work (POST /api/trade-configs/generate),
+// deliberately NOT on the backtest page: producing configs and replaying them
+// are separate tasks (user decision 2026-08-31).
+(function () {
+    const from   = document.getElementById('gen-from');
+    const to     = document.getElementById('gen-to');
+    const run    = document.getElementById('gen-run');
+    const status = document.getElementById('gen-status');
+    const result = document.getElementById('gen-result');
+    const today = new Date().toISOString().slice(0, 10);
+    from.value = today; to.value = today;
+    function setStatus(text, cls) { status.textContent = text; status.className = 'badge ' + cls; }
+    run.addEventListener('click', async () => {
+        if (!from.value || !to.value) { setStatus('pick dates', 'badge-warn'); return; }
+        run.disabled = true;
+        setStatus('running…', 'badge-info');
+        result.textContent = '';
+        try {
+            const r = await fetch('/api/trade-configs/generate?fromDate=' + from.value + '&toDate=' + to.value,
+                { method: 'POST' });
+            const j = await r.json();
+            if (!r.ok) {
+                setStatus('error', 'badge-danger');
+                result.textContent = j.error || ('HTTP ' + r.status);
+                return;
+            }
+            setStatus('done', 'badge-success');
+            result.textContent = j.sessionsProcessed + ' session(s) processed in ' + j.durationMs + ' ms'
+                + (j.failures ? (' — ' + j.failures + ' failed: ' + (j.failedDates || []).join(', ')) : ' — no failures')
+                + '. Refresh the list to see generated configs.';
+        } catch (e) {
+            setStatus('error', 'badge-danger');
+            result.textContent = String(e);
+        } finally { run.disabled = false; }
     });
 })();
 </script>

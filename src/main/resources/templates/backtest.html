@@ -143,6 +143,12 @@
                     <label for="an-to">To</label>
                     <input id="an-to" type="date" class="form-control" />
                 </div>
+                <div class="form-row">
+                    <label title="Scopes the run to the ticked strategies. None ticked = every strategy tagged on the window's configs.">Strategies</label>
+                    <div id="an-strategies" style="display:flex; gap:14px; align-items:center; min-height:34px; flex-wrap:wrap;">
+                        <span style="color: var(--text-muted); font-size: 12px;">loading…</span>
+                    </div>
+                </div>
             </div>
             <div class="bt-actions">
                 <button id="an-run" class="btn btn-primary"
@@ -171,6 +177,7 @@
             Filtered by the date range above — <b>Clear ledger</b> purges exactly the rows shown.
             Click <b>↻ Sync</b> to resolve the broker fill price for live rows.
         </p>
+        <div id="orders-strategy-filter" style="display:none; gap:8px; margin: 0 0 10px; flex-wrap:wrap; align-items:center;"></div>
         <div class="orders-scroll">
             <table class="orders-table" id="orders-table">
                 <thead>
@@ -301,13 +308,41 @@
     anFrom.addEventListener('change', persistDates);
     anTo.addEventListener('change',   persistDates);
 
+    // -------- Strategy scope (run form) --------
+    // Ticked strategies become the run's strategyIds param; none ticked = all.
+    const anStrategies = document.getElementById('an-strategies');
+    (async function loadStrategyOptions() {
+        try {
+            const r = await fetch('/api/trade-configs/strategies');
+            const list = await r.json();
+            anStrategies.innerHTML = '';
+            (list || []).forEach(s => {
+                const lbl = document.createElement('label');
+                lbl.style.cssText = 'display:flex; gap:5px; align-items:center; font-size:13px; cursor:pointer;';
+                lbl.innerHTML = '<input type="checkbox" class="an-strat" value="' + s.id + '"> '
+                    + (s.name || ('Strategy ' + s.id));
+                anStrategies.appendChild(lbl);
+            });
+            if (!list || !list.length) {
+                anStrategies.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">none registered</span>';
+            }
+        } catch (e) {
+            anStrategies.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">unavailable</span>';
+        }
+    })();
+    function selectedStrategyIds() {
+        return Array.from(document.querySelectorAll('.an-strat:checked')).map(cb => cb.value);
+    }
+
     anRun.addEventListener('click', async () => {
         if (!backtestEnabled) return;
         if (!anFrom.value || !anTo.value) { setAn('pick dates', 'badge-warn'); return; }
         anRun.disabled = true;
         setAn('running…', 'badge-info');
         try {
-            const url = '/api/backtest/analysis?fromDate=' + anFrom.value + '&toDate=' + anTo.value;
+            let url = '/api/backtest/analysis?fromDate=' + anFrom.value + '&toDate=' + anTo.value;
+            const scope = selectedStrategyIds();
+            if (scope.length) url += '&strategyIds=' + scope.join(',');
             const r = await fetch(url, { method: 'POST' });
             if (r.status === 404) { setAn('disabled', 'badge-warn'); return; }
             const j = await r.json();
@@ -394,15 +429,68 @@
         return String(v).replace('T', ' ');
     }
 
+    // Fetched rows are kept so the strategy filter re-renders without a
+    // round-trip; the filter is client-side because every row already carries
+    // its strategyId.
+    let allOrders = [];
+    let stratFilter = null; // null = all
+    const stratFilterBar = document.getElementById('orders-strategy-filter');
+
+    function buildStrategyFilter() {
+        const ids = Array.from(new Set(allOrders.map(o => o.strategyId).filter(v => v !== null && v !== undefined)))
+            .sort((a, b) => a - b);
+        if (ids.length < 2 && stratFilter === null) { stratFilterBar.style.display = 'none'; return; }
+        stratFilterBar.style.display = 'flex';
+        const mk = (label, val) => {
+            const active = (val === stratFilter) || (val === null && stratFilter === null);
+            return '<button class="btn ' + (active ? 'btn-primary' : 'btn-ghost') + '" data-strat-filter="'
+                + (val === null ? '' : val) + '" style="font-size:12px; padding:4px 12px;">' + label + '</button>';
+        };
+        stratFilterBar.innerHTML =
+            '<span style="font-size:12px; color:var(--text-muted);">Strategy:</span>'
+            + mk('All', null)
+            + ids.map(id => mk('S' + id, id)).join('');
+    }
+    stratFilterBar.addEventListener('click', (ev) => {
+        const btn = ev.target.closest('[data-strat-filter]');
+        if (!btn) return;
+        const v = btn.getAttribute('data-strat-filter');
+        stratFilter = v === '' ? null : Number(v);
+        buildStrategyFilter();
+        renderOrders();
+    });
+
     async function loadOrders() {
         const params = new URLSearchParams();
         if (anFrom.value) params.set('fromDate', anFrom.value);
         if (anTo.value)   params.set('toDate', anTo.value);
         try {
             const r = await fetch('/api/orders?' + params.toString());
-            const list = await r.json();
+            allOrders = await r.json();
+            buildStrategyFilter();
+            renderOrders();
+        } catch (e) {
+            ordersCount.textContent = 'fetch failed';
+        }
+    }
+
+    function renderOrders() {
+        const list = stratFilter === null
+            ? allOrders
+            : allOrders.filter(o => o.strategyId === stratFilter);
+        {
             ordersRows.innerHTML = '';
             let totGross = 0, totChg = 0, totNet = 0, costed = 0, uncosted = 0;
+            // Per-strategy per-share P/L subtotals, shown when a mixed ledger
+            // is being read unfiltered.
+            const byStrat = new Map();
+            list.forEach(o => {
+                if (o.strategyId !== null && o.strategyId !== undefined && o.profit !== null && o.profit !== undefined) {
+                    const cur = byStrat.get(o.strategyId) || { n: 0, pl: 0 };
+                    cur.n++; cur.pl += Number(o.profit) || 0;
+                    byStrat.set(o.strategyId, cur);
+                }
+            });
             list.forEach(o => {
                 // /api/orders returns the order fields flattened alongside a
                 // `charges` object. charges is null for an OPEN position (no exit
@@ -470,11 +558,21 @@
                 ordersRows.appendChild(tr);
             });
             renderTotals(totGross, totChg, totNet, costed, uncosted);
-            ordersCount.textContent = list.length + ' row' + (list.length === 1 ? '' : 's');
+            // Per-strategy per-share subtotal line, appended under the rupee
+            // totals so a mixed ledger reads at a glance.
+            if (byStrat.size > 1) {
+                const parts = Array.from(byStrat.entries())
+                    .sort((a, b) => a[0] - b[0])
+                    .map(([id, v]) => 'S' + id + ': ' + v.n + ' trade' + (v.n === 1 ? '' : 's')
+                        + ', P/L/sh ' + v.pl.toFixed(2));
+                const el = document.getElementById('orders-totals');
+                el.innerHTML += '<div style="margin-top:4px; color:var(--text-muted);">By strategy — '
+                    + parts.join(' · ') + '</div>';
+            }
+            const suffix = stratFilter === null ? '' : ' (S' + stratFilter + ')';
+            ordersCount.textContent = list.length + ' row' + (list.length === 1 ? '' : 's') + suffix;
             ordersTbl.style.display    = list.length ? '' : 'none';
             ordersEmpty.style.display  = list.length ? 'none' : '';
-        } catch (e) {
-            ordersCount.textContent = 'fetch failed';
         }
     }
 

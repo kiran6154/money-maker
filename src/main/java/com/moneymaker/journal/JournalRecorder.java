@@ -86,6 +86,57 @@ public class JournalRecorder {
     }
 
     /**
+     * Deletes the journal rows of purged trades, so an analysis join never
+     * includes ghosts (rows citing a {@code trade_order_id} that no longer
+     * exists). Called by {@code OrderService.purge} and the force path of the
+     * config bulk-delete — the journal has no FK on purpose (append-only hot
+     * path), so referential hygiene lives here. CANDIDATE rows carry no trade
+     * id and are untouched. Runs even when journalling is disabled: rows
+     * written by an earlier enabled run still need cleaning.
+     */
+    public int deleteForTradeOrders(List<Long> tradeOrderIds) {
+        if (tradeOrderIds == null || tradeOrderIds.isEmpty()) return 0;
+        String in = String.join(",", java.util.Collections.nCopies(tradeOrderIds.size(), "?"));
+        int n = jdbcTemplate.update(
+                "DELETE FROM journal_observation WHERE trade_order_id IN (" + in + ")",
+                tradeOrderIds.toArray());
+        if (n > 0) log.info("[journal] deleted {} observation row(s) for {} purged trade(s)", n, tradeOrderIds.size());
+        return n;
+    }
+
+    /**
+     * Deletes every journal row citing the given configs — including their
+     * CANDIDATE rows, since a deleted config's evaluations describe something
+     * that no longer exists. Called when a config is hard-deleted (which the
+     * admin service only permits when it has no trade history).
+     */
+    public int deleteForTradeConfigs(List<Integer> tradeConfigIds) {
+        if (tradeConfigIds == null || tradeConfigIds.isEmpty()) return 0;
+        String in = String.join(",", java.util.Collections.nCopies(tradeConfigIds.size(), "?"));
+        int n = jdbcTemplate.update(
+                "DELETE FROM journal_observation WHERE trade_config_id IN (" + in + ")",
+                tradeConfigIds.toArray());
+        if (n > 0) log.info("[journal] deleted {} observation row(s) for {} deleted config(s)", n, tradeConfigIds.size());
+        return n;
+    }
+
+    /**
+     * Self-healing sweep for rows orphaned before the cascades above existed:
+     * any row citing a trade id that is no longer in {@code trade_order}.
+     * Piggybacked on every ledger purge, so historical orphans disappear on
+     * the next purge without a manual migration.
+     */
+    public int deleteOrphanedTradeRows() {
+        int n = jdbcTemplate.update("""
+                DELETE j FROM journal_observation j
+                LEFT JOIN trade_order t ON t.id = j.trade_order_id
+                WHERE j.trade_order_id IS NOT NULL AND t.id IS NULL
+                """);
+        if (n > 0) log.info("[journal] swept {} orphaned observation row(s)", n);
+        return n;
+    }
+
+    /**
      * Names the run every subsequent observation belongs to, and flushes anything
      * left from a previous one. Called by {@code BacktestAnalysisService} at run
      * start; live falls back to the date.
