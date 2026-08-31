@@ -188,21 +188,23 @@ public class TradeConfigAdminService {
     public void delete(Integer id) {
         TradeConfig tc = tradeConfigRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("No trade config with id=" + id));
-        if (tradeOrderRepository.existsByTradeConfigId(id)) {
+        // Deleting a config takes its trades and every reference with it
+        // (user decision 2026-08-31). The one refusal: an OPEN trade, which
+        // may be a live broker position - force-close it (or retire the
+        // config) first.
+        if (tradeOrderRepository.existsByTradeConfigIdAndStatus(id, "OPEN")) {
             throw new IllegalStateException(
-                    "Cannot delete trade config " + id + " â€” trade_order rows reference it. " +
-                    "Configs with executed trades are kept for audit. " +
-                    "To stop it running without losing its history, retire it instead: " +
+                    "Cannot delete trade config " + id + " - it has OPEN trade(s), which may be a live " +
+                    "broker position. Force-close them first, or retire the config instead: " +
                     "POST /api/trade-configs/" + id + "/active?value=false");
         }
+        long removedTrades = tradeOrderRepository.deleteByTradeConfigIdIn(List.of(id));
         smaTimeframeRepository.deleteByTradeConfigId(id);
-        // Journal hygiene: a hard delete is only reachable with no trade
-        // history, so the config's journal rows are all CANDIDATEs describing
-        // something that no longer exists — remove them with it.
         journal.deleteForTradeConfigs(List.of(id));
+        journal.deleteOrphanedTradeRows();
         tradeConfigRepository.deleteById(id);
         afterMutation(tc.getTradingDate());
-        log.info("[trade-config] deleted id={}", id);
+        log.info("[trade-config] deleted id={} with {} trade row(s)", id, removedTrades);
     }
 
     /**
@@ -661,29 +663,38 @@ public class TradeConfigAdminService {
             }
         };
 
-        boolean force = request.isForce();
-
+        // Deleting a config takes its trades and every reference with it —
+        // ledger rows, timeframe children, journal rows (user decision
+        // 2026-08-31: "trades and its references should also get deleted").
+        // The one refusal left: a config with an OPEN trade, which may be a
+        // live broker position — force-close it first, then delete. The old
+        // `force` flag is accepted for compatibility but no longer gates
+        // anything.
+        //
         // De-duplicated by id: a matches query that fans out (or a repeated id
         // in a request) must not count — or try to delete — the same config
         // twice.
         List<TradeConfig> deletable = new ArrayList<>();
+        List<Integer> openIds = new ArrayList<>();
         List<Integer> tradedIds = new ArrayList<>();
         java.util.Set<Integer> seen = new java.util.HashSet<>();
         for (TradeConfig tc : matches) {
             if (tc.getId() == null || !seen.add(tc.getId())) continue;
+            if (tradeOrderRepository.existsByTradeConfigIdAndStatus(tc.getId(), "OPEN")) {
+                openIds.add(tc.getId());
+                continue;
+            }
             if (tradeOrderRepository.existsByTradeConfigId(tc.getId())) {
                 tradedIds.add(tc.getId());
-                if (force) deletable.add(tc);
-            } else {
-                deletable.add(tc);
             }
+            deletable.add(tc);
         }
-        // Counted even when force is off, so the confirm dialog can state what an
-        // opt-in would cost before the user ticks the box.
+        // Counted up front so the confirm dialog states exactly how much
+        // history goes with the configs before the user agrees.
         long tradeOrders = tradedIds.isEmpty()
                 ? 0L
                 : tradeOrderRepository.countByTradeConfigIdIn(tradedIds);
-        List<Integer> skippedIds = force ? List.of() : List.copyOf(tradedIds);
+        List<Integer> skippedIds = List.copyOf(openIds);
 
         Map<LocalDate, Long> byDate = new TreeMap<>();
         for (TradeConfig tc : deletable) {
@@ -696,15 +707,14 @@ public class TradeConfigAdminService {
                     matches.size(), 0, 0, byDate, ids,
                     tradedIds.size(), tradeOrders, skippedIds.size(), skippedIds, true,
                     summary(matches.size(), deletable.size(), skippedIds.size(),
-                            force ? tradeOrders : 0, true));
+                            tradeOrders, true));
         }
 
         // Trade rows first: once the configs are gone their ids are unrecoverable,
         // so an interrupted delete must not be able to strand the ledger.
-        long removedTradeOrders = 0;
-        if (force && !tradedIds.isEmpty()) {
-            removedTradeOrders = tradeOrderRepository.deleteByTradeConfigIdIn(tradedIds);
-        }
+        long removedTradeOrders = tradedIds.isEmpty()
+                ? 0
+                : tradeOrderRepository.deleteByTradeConfigIdIn(tradedIds);
 
         // Bulk deletes throughout — one statement per table, no per-row count
         // expectations. The old count-then-derived-delete loop queued entity
@@ -721,22 +731,23 @@ public class TradeConfigAdminService {
         // Same cache refresh the single delete performs, once per affected date.
         byDate.keySet().forEach(this::afterMutation);
 
-        log.info("[trade-config] bulk-deleted {} config(s) + {} timeframe row(s); "
-                        + "force={} tradeOrdersRemoved={} skipped={} with trades; dates={}",
-                deletable.size(), removedTimeframes, force, removedTradeOrders,
+        log.info("[trade-config] bulk-deleted {} config(s) + {} timeframe row(s) + {} trade row(s); "
+                        + "skippedOpen={}; dates={}",
+                deletable.size(), removedTimeframes, removedTradeOrders,
                 skippedIds.size(), byDate.keySet());
 
         return new AutoDeleteResultDTO(
                 matches.size(), deletable.size(), removedTimeframes, byDate, ids,
-                tradedIds.size(), force ? removedTradeOrders : tradeOrders,
+                tradedIds.size(), removedTradeOrders,
                 skippedIds.size(), skippedIds, false,
                 summary(matches.size(), deletable.size(), skippedIds.size(),
                         removedTradeOrders, false));
     }
 
     /**
-     * @param removedTradeOrders trade rows that went (or would go) with the configs;
-     *                           always 0 unless {@code force} was set.
+     * @param removedTradeOrders trade rows that went (or, on a dry run, would
+     *                           go) with the configs — deletion cascades the
+     *                           ledger since 2026-08-31.
      */
     private String summary(long matched, long deletable, long skipped,
                            long removedTradeOrders, boolean dryRun) {
@@ -745,11 +756,11 @@ public class TradeConfigAdminService {
         }
         String verb = dryRun ? "Would delete" : "Deleted";
         String base = verb + " " + deletable + " of " + matched + " matched config(s)";
-        if (skipped > 0) {
-            return base + "; " + skipped + " kept because trades reference them.";
-        }
         if (removedTradeOrders > 0) {
-            return base + " and " + removedTradeOrders + " linked trade_order row(s).";
+            base += " and " + removedTradeOrders + " linked trade_order row(s)";
+        }
+        if (skipped > 0) {
+            return base + "; " + skipped + " skipped — OPEN trade(s) attached (force-close them first).";
         }
         return base + ".";
     }

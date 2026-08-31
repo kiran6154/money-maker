@@ -172,6 +172,14 @@ public interface TradeOrderRepository extends JpaRepository<TradeOrder, Long> {
     long countByTradeConfigIdIn(Collection<Integer> tradeConfigIds);
 
     /**
+     * Whether a config still has a trade in the given status. The delete paths
+     * use it with {@code OPEN}: deleting a config cascades its trades (user
+     * decision 2026-08-31), but an OPEN row may be a live broker position, so
+     * such a config is skipped until the position is closed.
+     */
+    boolean existsByTradeConfigIdAndStatus(Integer tradeConfigId, String status);
+
+    /**
      * Deletes every trade row belonging to the given configs and returns how
      * many went. Only reachable from the bulk auto-config delete with
      * {@code force=true} — the audit trail is otherwise immutable from the app.

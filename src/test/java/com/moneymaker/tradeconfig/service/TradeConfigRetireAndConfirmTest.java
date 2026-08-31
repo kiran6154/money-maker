@@ -187,14 +187,30 @@ class TradeConfigRetireAndConfirmTest {
     }
 
     @Test
-    @DisplayName("delete of a traded config still refuses, and now points at the retire path")
-    void delete_still_refuses_but_names_the_alternative() {
-        when(tradeOrderRepository.existsByTradeConfigId(ID)).thenReturn(true);
+    @DisplayName("delete refuses only for OPEN trades, and points at force-close / retire")
+    void delete_refuses_only_open_trades() {
+        // New contract (user decision 2026-08-31): CLOSED trade history is
+        // deleted WITH the config; only an OPEN trade — possibly a live broker
+        // position — blocks the delete.
+        when(tradeOrderRepository.existsByTradeConfigIdAndStatus(ID, "OPEN")).thenReturn(true);
 
         assertThatThrownBy(() -> service.delete(ID))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("kept for audit")
+                .hasMessageContaining("OPEN trade")
                 .hasMessageContaining("/active?value=false");
+    }
+
+    @Test
+    @DisplayName("delete of a config with only CLOSED trades cascades the trades and journal rows")
+    void delete_cascades_closed_trades() {
+        when(tradeOrderRepository.existsByTradeConfigIdAndStatus(ID, "OPEN")).thenReturn(false);
+        when(tradeOrderRepository.deleteByTradeConfigIdIn(java.util.List.of(ID))).thenReturn(3);
+
+        service.delete(ID);
+
+        verify(tradeOrderRepository).deleteByTradeConfigIdIn(java.util.List.of(ID));
+        verify(smaTimeframeRepository).deleteByTradeConfigId(ID);
+        verify(tradeConfigRepository).deleteById(ID);
     }
 
     /* ================= GAPS #8 — confirm ================= */

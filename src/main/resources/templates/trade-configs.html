@@ -408,10 +408,10 @@
             <div id="bd-summary" class="bd-summary">Nothing selected.</div>
 
             <div class="bd-actions">
-                <label class="bd-force" title="Deletes the matching configs even when trade_order rows reference them — those trade rows are deleted too, permanently.">
-                    <input id="bd-force" type="checkbox" />
-                    <span>Also delete configs that have trades (removes their trade_order rows)</span>
-                </label>
+                <span class="bd-hint" title="Deleting a config removes its trade_order rows, timeframe children and journal rows with it. Only configs with OPEN trades are skipped — force-close those positions first.">
+                    Deletes each config's trades and references with it; configs with OPEN trades are skipped.
+                </span>
+                <input id="bd-force" type="checkbox" style="display:none;" checked />
                 <button id="bd-clear" class="btn btn-ghost" type="button">Clear</button>
                 <button id="bd-delete" class="btn btn-danger" type="button" disabled>🗑 Delete selected</button>
             </div>
@@ -1057,7 +1057,9 @@
 
     // ---------- delete ----------
     async function remove(id) {
-        if (!confirm('Delete trade config #' + id + '?')) return;
+        if (!confirm('Delete trade config #' + id + '?\n\n' +
+                'Its trade_order rows, timeframes and journal rows are deleted with it — permanently. ' +
+                'Refused only if it still has OPEN trade(s).')) return;
         const r = await fetch('/api/trade-configs/' + id, { method: 'DELETE' });
         if (!r.ok) {
             const err = await r.json().catch(() => ({}));
@@ -1528,14 +1530,13 @@
                   + `regenerable detector output.</p>`;
         }
         if (data.skippedWithTrades > 0) {
-            html += `<p class="bd-warn">⚠ ${data.skippedWithTrades} config(s) will be kept `
-                  + `because ${data.tradeOrders} trade_order row(s) reference them — deleting those `
-                  + `would break the audit trail. Tick <b>“Also delete configs that have trades”</b> `
-                  + `to remove them anyway.</p>`;
-        } else if (state.pending.force && data.configsWithTrades > 0) {
+            html += `<p class="bd-warn">⚠ ${data.skippedWithTrades} config(s) will be skipped — they have `
+                  + `<b>OPEN</b> trade(s), possibly live positions. Force-close those first, then re-run.</p>`;
+        }
+        if (data.configsWithTrades > 0) {
             html += `<p class="bd-warn">⚠ ${data.configsWithTrades} of these config(s) have trades: `
                   + `<b>${data.tradeOrders} trade_order row(s) will be permanently deleted</b> with `
-                  + `them. That history is not recoverable.</p>`;
+                  + `them, along with their journal rows. That history is not recoverable.</p>`;
         }
         html += `<p><b>This cannot be undone.</b></p>`;
         modalBody.innerHTML = html;

@@ -40,7 +40,7 @@ import java.util.Map;
  *   <li>{@code GET  /api/trade-configs/{id}}              – single config</li>
  *   <li>{@code POST /api/trade-configs}                   – create</li>
  *   <li>{@code PUT  /api/trade-configs/{id}?confirm=}     – update (409 + {@code confirmRequired} while trades are open)</li>
- *   <li>{@code DELETE /api/trade-configs/{id}}            – delete (blocked if executed trades exist)</li>
+ *   <li>{@code DELETE /api/trade-configs/{id}}            – delete, cascading trades + journal rows (blocked only while OPEN trades exist)</li>
  *   <li>{@code POST /api/trade-configs/{id}/active?value=} – retire / reinstate without deleting</li>
  *   <li>{@code POST /api/trade-configs/clone?fromDate=&toDate=&dryRun=} – bulk clone a day's configs</li>
  *   <li>{@code POST /api/trade-configs/generate?fromDate=&toDate=} – run the EOD downtrend detector over a window</li>
