@@ -27,12 +27,12 @@ public interface SmaTimeframeRepository extends JpaRepository<SmaTimeframe, Inte
      */
     @Transactional
     @Modifying
-    @Query("delete from SmaTimeframe t where t.tradeConfigId = :tradeConfigId")
+    @Query("delete from SmaTimeframe t where t.tradeConfig.id = :tradeConfigId")
     int deleteByTradeConfigId(@Param("tradeConfigId") Integer tradeConfigId);
 
     /** Bulk variant for the auto-config bulk delete. Same rationale as above. */
     @Transactional
     @Modifying
-    @Query("delete from SmaTimeframe t where t.tradeConfigId in :tradeConfigIds")
+    @Query("delete from SmaTimeframe t where t.tradeConfig.id in :tradeConfigIds")
     int deleteByTradeConfigIdIn(@Param("tradeConfigIds") Collection<Integer> tradeConfigIds);
 }
