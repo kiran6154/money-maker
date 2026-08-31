@@ -16,6 +16,8 @@ import com.moneymaker.util.TrailLadder;
 import com.moneymaker.tradeconfig.dto.AutoConfigCalendarDTO;
 import com.moneymaker.tradeconfig.dto.AutoDeleteRequestDTO;
 import com.moneymaker.tradeconfig.dto.AutoDeleteResultDTO;
+import com.moneymaker.tradeconfig.dto.BulkUpdateRequestDTO;
+import com.moneymaker.tradeconfig.dto.BulkUpdateResultDTO;
 import com.moneymaker.tradeconfig.dto.CloneResultDTO;
 import com.moneymaker.tradeconfig.dto.InstrumentOptionDTO;
 import com.moneymaker.tradeconfig.dto.PagedResponse;
@@ -51,13 +53,13 @@ import java.util.TreeMap;
  *   <li>Invalidate {@link TradeConfigScheduler}'s in-JVM date cache so the
  *       next analysis tick refetches from the DB.</li>
  *   <li>If the config is for <i>today</i> and we are in live mode, rebuild
- *       {@link SharedData#combinedDto} immediately â€” otherwise the running
+ *       {@link SharedData#combinedDto} immediately — otherwise the running
  *       5-min schedulers continue to operate on a stale snapshot until the
  *       next 09:16 cron / JVM restart.</li>
  * </ol>
  *
  * <p>Controllers must call this service rather than the repositories directly
- * â€” see {@code CLAUDE.md} invariant on trade-config writes.</p>
+ * — see {@code CLAUDE.md} invariant on trade-config writes.</p>
  */
 @Slf4j
 @Service
@@ -118,6 +120,32 @@ public class TradeConfigAdminService {
         TradeConfig tc = tradeConfigRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("No trade config with id=" + id));
         return toView(tc);
+    }
+
+    /**
+     * Every config in a trading-date window, oldest date first — the source for
+     * the backtest page's "limit to selected configs" picker. Unpaged on
+     * purpose: a picker needs the whole window at once, and a backtest window
+     * is days-to-weeks, not years. {@code source} narrows to one origin
+     * ({@code null} = both).
+     */
+    public List<TradeConfigViewDTO> listRange(LocalDate from, LocalDate to,
+                                              AutoDeleteRequestDTO.Source source) {
+        if (from == null || to == null) {
+            throw new IllegalArgumentException("from and to are required");
+        }
+        if (to.isBefore(from)) {
+            throw new IllegalArgumentException("to must not be before from");
+        }
+        return tradeConfigRepository.findByTradingDateBetween(from, to).stream()
+                .filter(tc -> source == null || source.name().equals(tc.getSource()))
+                .sorted(Comparator
+                        .comparing(TradeConfig::getTradingDate,
+                                Comparator.nullsLast(LocalDate::compareTo))
+                        .thenComparing(TradeConfig::getId,
+                                Comparator.nullsLast(Integer::compareTo)))
+                .map(this::toView)
+                .toList();
     }
 
     /* ---------------- mutations ---------------- */
@@ -214,7 +242,7 @@ public class TradeConfigAdminService {
      * {@code TradeConfigRepository.fetchCombinedByTradingDate}, so no strategy
      * scans it and no new trade opens against it. It keeps its id, its
      * {@code sma_timeframe} children and every {@code trade_order} row that
-     * references it â€” which is exactly what hard delete cannot offer for a config
+     * references it — which is exactly what hard delete cannot offer for a config
      * that has traded, and what forcing {@code tradingDate} into the past was
      * being abused to fake.</p>
      *
@@ -223,14 +251,14 @@ public class TradeConfigAdminService {
      * and {@code OrderService.findConfig} resolves an open row's config from exactly
      * that list when it needs the quantity for an <b>exit</b>. With no DTO the exit
      * is never dispatched: the ledger row is marked CLOSED while the broker position
-     * stays open â€” the failure GAPS #1's {@code alertForceCloseExitFailed} exists to
+     * stays open — the failure GAPS #1's {@code alertForceCloseExitFailed} exists to
      * shout about. Retiring is supposed to mean "open nothing further"; also meaning
      * "and strand what is open" is not a trade-off worth offering behind a
      * confirmation dialog, so this refuses and says what to do instead.
      *
-     * <p>The underlying hazard is older than this method â€” editing a config's
+     * <p>The underlying hazard is older than this method — editing a config's
      * {@code tradingDate} into the past does the same thing, and that is precisely
-     * the workaround GAPS #7 exists to replace â€” and is filed as
+     * the workaround GAPS #7 exists to replace — and is filed as
      * {@code STRATEGY_ANALYSIS_TODO.md} S13. When it is fixed, this refusal can
      * relax to a warning.</p>
      *
@@ -244,7 +272,7 @@ public class TradeConfigAdminService {
         long openTrades = tradeOrderRepository.countByTradeConfigIdAndStatus(id, STATUS_OPEN);
         if (!active && openTrades > 0) {
             throw new IllegalStateException(
-                    "Cannot retire trade config " + id + " â€” it has " + openTrades + " open trade(s). "
+                    "Cannot retire trade config " + id + " — it has " + openTrades + " open trade(s). "
                             + "A retired config leaves SharedData.combinedDto, and an exit leg is sized from "
                             + "that cached config, so those positions would be closed in the ledger without an "
                             + "order reaching the broker. Close them first (or let the 15:31 sweep close them), "
@@ -259,7 +287,7 @@ public class TradeConfigAdminService {
         return findById(id);
     }
 
-    /** Ledger status for a live position â€” matches {@code OrderService}'s vocabulary. */
+    /** Ledger status for a live position — matches {@code OrderService}'s vocabulary. */
     private static final String STATUS_OPEN = "OPEN";
 
     /**
@@ -267,9 +295,9 @@ public class TradeConfigAdminService {
      * worth stopping the user for (GAPS #8).
      *
      * <p>The rule is one line: <b>a field is consequential unless the order
-     * snapshotted it at entry.</b> The bracket did get snapshotted â€”
+     * snapshotted it at entry.</b> The bracket did get snapshotted —
      * {@code target_at_entry} / {@code stop_loss_at_entry} (changeset 011),
-     * {@code trail_ladder_at_entry} (036) â€” precisely so a mid-day edit could not
+     * {@code trail_ladder_at_entry} (036) — precisely so a mid-day edit could not
      * retroactively re-price an open position, so target / stop-loss / their
      * percentage forms / the max-SL cap / the ladder are all deliberately absent
      * from this list. Editing them mid-trade is safe by construction and warning
@@ -277,20 +305,20 @@ public class TradeConfigAdminService {
      *
      * <p>What is <i>not</i> snapshotted, and therefore is listed:</p>
      * <ul>
-     *   <li>{@code transactionType} / {@code tradingSide} â€” which side and which
+     *   <li>{@code transactionType} / {@code tradingSide} — which side and which
      *       leg the rest of the day trades.</li>
-     *   <li>{@code lotQuantity} â€” {@code trade_order.quantity} is snapshotted
+     *   <li>{@code lotQuantity} — {@code trade_order.quantity} is snapshotted
      *       (029), but the placement services size an order from the <i>config</i>
      *       ({@code ZerodhaOrderPlacementService.quantity}), so an open trade
      *       would exit at a different size than it entered. That is a partial
      *       close or an accidental reversal, not a resize.</li>
-     *   <li>{@code numberOfTradesPerDay} / {@code numberOfParallelTrades} â€” the
+     *   <li>{@code numberOfTradesPerDay} / {@code numberOfParallelTrades} — the
      *       caps the rest of the day is counted against, with trades already
      *       counting toward them.</li>
-     *   <li>{@code strategyId} â€” {@code (trade_config_id, strategy_id)} is the
+     *   <li>{@code strategyId} — {@code (trade_config_id, strategy_id)} is the
      *       identity those caps are applied against, so moving it re-buckets the
      *       open trades' accounting.</li>
-     *   <li>{@code instrumentId} / {@code tradingDate} â€” at that point it is a
+     *   <li>{@code instrumentId} / {@code tradingDate} — at that point it is a
      *       different config wearing the same id.</li>
      * </ul>
      */
@@ -307,6 +335,11 @@ public class TradeConfigAdminService {
                 current.getNumberOfTradesPerDay(), form.getNumberOfTradesPerDay());
         addIfChanged(changes, "numberOfParallelTrades",
                 current.getNumberOfParallelTrades(), form.getNumberOfParallelTrades());
+        // Null = "keep current" (see apply), so only a real value can differ.
+        if (form.getMaxParallelPerSide() != null) {
+            addIfChanged(changes, "maxParallelPerSide",
+                    current.getMaxParallelPerSide(), form.getMaxParallelPerSide());
+        }
         addIfChanged(changes, "strategyId", current.getStratergyId(), form.getStrategyId());
         return changes;
     }
@@ -325,8 +358,8 @@ public class TradeConfigAdminService {
      *
      * <p>This is the most-skipped step in real ops: a user with eight configs was
      * otherwise recreating them by hand every morning, or running
-     * {@code INSERT â€¦ SELECT â€¦ WHERE trading_date='yesterday'} against the
-     * database â€” which bypasses this service and therefore the cache-invalidation
+     * {@code INSERT … SELECT … WHERE trading_date='yesterday'} against the
+     * database — which bypasses this service and therefore the cache-invalidation
      * contract, so the configs exist but the running pipeline cannot see them
      * until the next restart.</p>
      *
@@ -342,7 +375,7 @@ public class TradeConfigAdminService {
      *   <li><b>Clones are stamped {@code MANUAL}, whatever the source was.</b> A
      *       clone is a human action. Keeping {@code AUTO_DOWNTREND} would hand the
      *       row to the detector's dedupe key, which treats "a config already exists
-     *       for this (day, strategy)" as "I already generated" â€” so cloning an AUTO
+     *       for this (day, strategy)" as "I already generated" — so cloning an AUTO
      *       config forward would silently suppress the detector's own output for
      *       that day. Stamping MANUAL keeps the two populations separate, which is
      *       what the bulk-delete panel and the calendar both assume.</li>
@@ -350,7 +383,7 @@ public class TradeConfigAdminService {
      *
      * <h3>Idempotency</h3>
      * Re-running is safe. A source config is skipped when {@code toDate} already
-     * carries an equivalent one â€” same instrument, trading side, transaction type
+     * carries an equivalent one — same instrument, trading side, transaction type
      * and primary strategy. That tuple is not a database key (nothing stops two
      * genuinely different configs sharing it), so this is a deliberate
      * best-effort: clone twice and you get one set, but a hand-built config that
@@ -365,7 +398,7 @@ public class TradeConfigAdminService {
         }
         if (fromDate.equals(toDate)) {
             throw new IllegalArgumentException("fromDate and toDate are the same day (" + fromDate
-                    + ") â€” a clone onto itself would only duplicate every config");
+                    + ") — a clone onto itself would only duplicate every config");
         }
 
         List<TradeConfig> source = tradeConfigRepository.findByTradingDate(fromDate);
@@ -431,7 +464,7 @@ public class TradeConfigAdminService {
 
     /**
      * What makes two configs "the same config on a different day" for clone
-     * de-duplication. Not a database constraint â€” see the idempotency note on
+     * de-duplication. Not a database constraint — see the idempotency note on
      * {@link #cloneDay}.
      */
     private static String identityKey(TradeConfig tc) {
@@ -446,7 +479,7 @@ public class TradeConfigAdminService {
      * <p>Written out longhand rather than reflected or serialised: a new column
      * that nobody adds here is silently dropped from every clone, and a loud
      * compile-time list is the only thing that makes that omission visible. Same
-     * reason {@code applyForm} / {@code toView} are longhand â€” see the note in
+     * reason {@code applyForm} / {@code toView} are longhand — see the note in
      * {@code ORDERS_AND_POSITIONS.md} about a column missing from one of the four
      * places.</p>
      */
@@ -467,6 +500,7 @@ public class TradeConfigAdminService {
         c.setStrategyIds(from.getStrategyIds());
         c.setNumberOfTradesPerDay(from.getNumberOfTradesPerDay());
         c.setNumberOfParallelTrades(from.getNumberOfParallelTrades());
+        c.setMaxParallelPerSide(from.getMaxParallelPerSide());
         c.setItmDepth(from.getItmDepth());
         c.setOtmDepth(from.getOtmDepth());
         c.setAtmDepth(from.getAtmDepth());
@@ -474,7 +508,7 @@ public class TradeConfigAdminService {
         c.setMaxOptionPrice(from.getMaxOptionPrice());
         c.setMaxSlPoints(from.getMaxSlPoints());
         c.setTrailLadder(from.getTrailLadder());
-        // Not copied, on purpose: `source` (a clone is a human action â€” see the
+        // Not copied, on purpose: `source` (a clone is a human action — see the
         // javadoc on cloneDay), `isActive` (a new config starts runnable), `id`,
         // and `updatedDate` (stamped by @PrePersist).
         c.setSource(SOURCE_MANUAL);
@@ -504,7 +538,7 @@ public class TradeConfigAdminService {
     /** The only source this bulk API will ever touch. Never client-supplied. */
     public static final String SOURCE_AUTO = "AUTO_DOWNTREND";
 
-    /** Origin stamped on configs created through this service â€” i.e. by a human. */
+    /** Origin stamped on configs created through this service — i.e. by a human. */
     public static final String SOURCE_MANUAL = "MANUAL";
 
     /**
@@ -513,7 +547,7 @@ public class TradeConfigAdminService {
      * <p>Mirrors the DB defaults in changeset {@code 025_default_option_price_range}
      * and must be kept in step with them. Duplicated deliberately: Hibernate names
      * every column in its INSERT, so a null field is written as an explicit NULL
-     * and the DB default never fires on a JPA insert â€” the same trap that made
+     * and the DB default never fires on a JPA insert — the same trap that made
      * {@code source} break every create through this service.</p>
      */
     public static final BigDecimal DEFAULT_MIN_OPTION_PRICE = new BigDecimal("80");
@@ -625,13 +659,13 @@ public class TradeConfigAdminService {
      *       ever reach disposable detector output. Selecting
      *       {@link AutoDeleteRequestDTO.Source#MANUAL} is the only way to touch
      *       hand-written configs, and {@code mode=UPDATED_RANGE} stays pinned to
-     *       AUTO regardless â€” a "generation run" is a detector concept, and most
+     *       AUTO regardless — a "generation run" is a detector concept, and most
      *       MANUAL rows have no {@code updated_date} to match on anyway.</li>
      *   <li><b>{@code dryRun} reports without deleting</b>, and the UI always
      *       previews first so the confirmed number is the server's own count.</li>
      *   <li><b>Configs with trade_order rows are skipped, not deleted</b>, matching
      *       the audit protection on the single-config delete. They are reported
-     *       separately rather than failing the batch â€” unless the caller opts in
+     *       separately rather than failing the batch — unless the caller opts in
      *       with {@code force}, which deletes those configs <i>and their trade
      *       rows</i>. That is the one path in the app that removes trade history,
      *       so it is never the default and the UI requires a separate tick.</li>
@@ -765,6 +799,188 @@ public class TradeConfigAdminService {
         return base + ".";
     }
 
+    /* ---------------- bulk update: one field-set across many configs ---------------- */
+
+    /**
+     * Applies one set of field values to every config matching the selector, in
+     * a single transaction — the "retune every AUTO config's SL / target at
+     * once" provision. {@code null} fields are left untouched on every row, so
+     * a request naming only {@code slPct} is a one-column patch.
+     *
+     * <p>Shares the bulk-delete panel's contract: {@code source} defaults to
+     * {@code AUTO_DOWNTREND} so hand-written configs need an explicit opt-in,
+     * and {@code dryRun} defaults to {@code true} so the count confirmed in the
+     * UI is the server's own.</p>
+     *
+     * <p><b>No open-trade confirmation, deliberately.</b> Every field this
+     * accepts is either snapshotted onto {@code trade_order} at entry (the
+     * whole bracket — changesets 011/036) or an entry gate (the premium band,
+     * {@code maxLoss}), so applying it mid-day cannot re-price an open
+     * position; the same reasoning keeps these fields out of
+     * {@link #consequentialChanges}. Fields that <i>would</i> affect open
+     * trades (side, quantities, caps, strategy) are not offered here at all —
+     * that is what the single-config edit and its confirm dialog are for.</p>
+     *
+     * <p><b>Side effect worth knowing:</b> every updated row gets a fresh
+     * {@code updated_date} (the {@code @PreUpdate} stamp), so the bulk-delete
+     * panel's "generation run" clustering will show this edit as its own run.
+     * That is honest — the rows were rewritten — but it means UPDATED_RANGE
+     * selections made from a pre-edit runs list no longer match these rows.</p>
+     */
+    @Transactional
+    public BulkUpdateResultDTO bulkUpdate(BulkUpdateRequestDTO request) {
+        if (request == null) throw new IllegalArgumentException("request payload missing");
+        if ((request.getFromDate() == null) != (request.getToDate() == null)) {
+            throw new IllegalArgumentException("fromDate and toDate must be set together (or both omitted)");
+        }
+        if (request.getFromDate() != null && request.getToDate().isBefore(request.getFromDate())) {
+            throw new IllegalArgumentException("toDate must not be before fromDate");
+        }
+
+        List<String> changes = describeAssignments(request);
+        if (changes.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Nothing to update — set at least one field (target, stopLoss, targetPct, slPct, "
+                            + "maxSlPoints, maxLoss, minOptionPrice, maxOptionPrice, trailLadder)");
+        }
+        validateBulkValues(request);
+
+        AutoDeleteRequestDTO.Source src = request.getSource() == null
+                ? AutoDeleteRequestDTO.Source.AUTO_DOWNTREND
+                : request.getSource();
+
+        List<TradeConfig> matches = request.getFromDate() == null
+                ? tradeConfigRepository.findBySource(src.name())
+                : tradeConfigRepository.findBySourceAndTradingDateBetween(
+                        src.name(), request.getFromDate(), request.getToDate());
+
+        // Strategy filter: the strategies a config actually runs under — its
+        // strategy_ids tags, or the primary stratergy_id when untagged. Same
+        // resolution TradeConfigScheduler uses for dispatch.
+        Integer strategyId = request.getStrategyId();
+        if (strategyId != null) {
+            matches = matches.stream()
+                    .filter(tc -> {
+                        List<Integer> tags = StrategyIds.parse(tc.getStrategyIds());
+                        return tags.isEmpty()
+                                ? strategyId.equals(tc.getStratergyId())
+                                : tags.contains(strategyId);
+                    })
+                    .toList();
+        }
+
+        // Fail loudly on a row the patch would leave with an inverted premium
+        // band — a config that can never trade while looking perfectly healthy.
+        // Whole batch rejected rather than partially applied: this runs in one
+        // transaction and a silent partial apply is the confusing outcome.
+        if (request.getMinOptionPrice() != null || request.getMaxOptionPrice() != null) {
+            for (TradeConfig tc : matches) {
+                BigDecimal effMin = request.getMinOptionPrice() != null
+                        ? request.getMinOptionPrice() : tc.getMinOptionPrice();
+                BigDecimal effMax = request.getMaxOptionPrice() != null
+                        ? request.getMaxOptionPrice() : tc.getMaxOptionPrice();
+                if (effMin != null && effMax != null && effMax.compareTo(effMin) < 0) {
+                    throw new IllegalArgumentException(
+                            "Update would leave config " + tc.getId() + " with an inverted premium band ("
+                                    + effMin + " > " + effMax + ") — nothing was changed");
+                }
+            }
+        }
+
+        Map<LocalDate, Long> byDate = new TreeMap<>();
+        for (TradeConfig tc : matches) {
+            byDate.merge(tc.getTradingDate(), 1L, Long::sum);
+        }
+        List<Integer> ids = matches.stream().map(TradeConfig::getId).toList();
+
+        if (request.isDryRun()) {
+            return new BulkUpdateResultDTO(matches.size(), 0, byDate, ids, changes, true,
+                    bulkUpdateSummary(matches.size(), changes, true));
+        }
+
+        String canonicalLadder = request.getTrailLadder() == null
+                ? null : TrailLadder.canonical(request.getTrailLadder());
+        for (TradeConfig tc : matches) {
+            if (request.getTarget() != null) tc.setTarget(request.getTarget());
+            if (request.getStopLoss() != null) tc.setStopLoss(request.getStopLoss());
+            if (request.getTargetPct() != null) tc.setTargetPct(request.getTargetPct());
+            if (request.getSlPct() != null) tc.setSlPct(request.getSlPct());
+            if (request.getMaxSlPoints() != null) tc.setMaxSlPoints(request.getMaxSlPoints());
+            if (request.getMaxLoss() != null) tc.setMaxLoss(request.getMaxLoss());
+            if (request.getMinOptionPrice() != null) tc.setMinOptionPrice(request.getMinOptionPrice());
+            if (request.getMaxOptionPrice() != null) tc.setMaxOptionPrice(request.getMaxOptionPrice());
+            // Blank means "remove the ladder" (fixed stop applies), null means
+            // keep — the canonical() call maps blank to null for us, but only a
+            // non-null request field reaches the setter at all.
+            if (request.getTrailLadder() != null) tc.setTrailLadder(canonicalLadder);
+        }
+        tradeConfigRepository.saveAll(matches);
+
+        // Same cache refresh every other mutation performs, once per affected
+        // date — skipping it is exactly the "persisted but invisible until
+        // restart" trap the CLAUDE.md invariant warns about.
+        byDate.keySet().forEach(this::afterMutation);
+
+        log.info("[trade-config] bulk-updated {} config(s) (source={}, strategy={}, window={}..{}): {}",
+                matches.size(), src, strategyId, request.getFromDate(), request.getToDate(), changes);
+
+        return new BulkUpdateResultDTO(matches.size(), matches.size(), byDate, ids, changes, false,
+                bulkUpdateSummary(matches.size(), changes, false));
+    }
+
+    /** The non-null assignments a bulk update carries, rendered for the confirm dialog. */
+    private static List<String> describeAssignments(BulkUpdateRequestDTO r) {
+        List<String> changes = new ArrayList<>();
+        if (r.getTarget() != null) changes.add("target = " + r.getTarget());
+        if (r.getStopLoss() != null) changes.add("stopLoss = " + r.getStopLoss());
+        if (r.getTargetPct() != null) changes.add("targetPct = " + r.getTargetPct());
+        if (r.getSlPct() != null) changes.add("slPct = " + r.getSlPct());
+        if (r.getMaxSlPoints() != null) changes.add("maxSlPoints = " + r.getMaxSlPoints());
+        if (r.getMaxLoss() != null) changes.add("maxLoss = " + r.getMaxLoss());
+        if (r.getMinOptionPrice() != null) changes.add("minOptionPrice = " + r.getMinOptionPrice());
+        if (r.getMaxOptionPrice() != null) changes.add("maxOptionPrice = " + r.getMaxOptionPrice());
+        if (r.getTrailLadder() != null) {
+            changes.add(r.getTrailLadder().isBlank()
+                    ? "trailLadder removed (fixed stop applies)"
+                    : "trailLadder = " + r.getTrailLadder());
+        }
+        return changes;
+    }
+
+    /** Same value rules the single-config form enforces — one field-set, one rulebook. */
+    private static void validateBulkValues(BulkUpdateRequestDTO r) {
+        BigDecimal targetPct = r.getTargetPct();
+        if (targetPct != null && (targetPct.signum() <= 0 || targetPct.compareTo(BigDecimal.ONE) >= 0)) {
+            throw new IllegalArgumentException(
+                    "targetPct (" + targetPct + ") must be between 0 and 1 exclusive — it is a fraction "
+                            + "of entry premium, and a short leg cannot gain more than the premium sold");
+        }
+        if (r.getSlPct() != null && r.getSlPct().signum() <= 0) {
+            throw new IllegalArgumentException("slPct (" + r.getSlPct() + ") must be positive");
+        }
+        if (r.getMaxSlPoints() != null && r.getMaxSlPoints().signum() <= 0) {
+            throw new IllegalArgumentException("maxSlPoints (" + r.getMaxSlPoints()
+                    + ") must be positive — it is a ceiling in premium points, and a zero or "
+                    + "negative ceiling would stop every trade out on entry");
+        }
+        if (r.getMinOptionPrice() != null && r.getMinOptionPrice().signum() < 0) {
+            throw new IllegalArgumentException("minOptionPrice must not be negative");
+        }
+        if (r.getMaxOptionPrice() != null && r.getMaxOptionPrice().signum() < 0) {
+            throw new IllegalArgumentException("maxOptionPrice must not be negative");
+        }
+        // Throws with the offending rung named — same gate the form goes through.
+        TrailLadder.parse(r.getTrailLadder());
+    }
+
+    private static String bulkUpdateSummary(long matched, List<String> changes, boolean dryRun) {
+        if (matched == 0) {
+            return "No configs matched the selection.";
+        }
+        return (dryRun ? "Would update " : "Updated ") + matched + " config(s): "
+                + String.join("; ", changes) + ".";
+    }
+
     private static LocalDate toLocalDate(Object v) {
         if (v == null) return null;
         if (v instanceof java.sql.Date d) return d.toLocalDate();
@@ -817,7 +1033,7 @@ public class TradeConfigAdminService {
         BigDecimal slPct = form.getSlPct();
         if (targetPct != null && (targetPct.signum() <= 0 || targetPct.compareTo(BigDecimal.ONE) >= 0)) {
             throw new IllegalArgumentException(
-                    "targetPct (" + targetPct + ") must be between 0 and 1 exclusive â€” it is a fraction "
+                    "targetPct (" + targetPct + ") must be between 0 and 1 exclusive — it is a fraction "
                             + "of entry premium, and a short leg cannot gain more than the premium sold");
         }
         if (slPct != null && slPct.signum() <= 0) {
@@ -826,7 +1042,7 @@ public class TradeConfigAdminService {
         BigDecimal maxSlPoints = form.getMaxSlPoints();
         if (maxSlPoints != null && maxSlPoints.signum() <= 0) {
             throw new IllegalArgumentException("maxSlPoints (" + maxSlPoints
-                    + ") must be positive â€” it is a ceiling in premium points, and a zero or "
+                    + ") must be positive — it is a ceiling in premium points, and a zero or "
                     + "negative ceiling would stop every trade out on entry");
         }
         // Throws with the offending rung named. Rejecting here is the whole reason
@@ -836,7 +1052,7 @@ public class TradeConfigAdminService {
 
     private void applyForm(TradeConfig tc, TradeConfigFormDTO form) {
         // Read before the setter below overwrites it. Null on create, the stored
-        // value on edit â€” which is what tells syncPrimaryStrategyId whether the
+        // value on edit — which is what tells syncPrimaryStrategyId whether the
         // user actually changed the strategy dropdown.
         Integer previousPrimary = tc.getStratergyId();
 
@@ -853,17 +1069,24 @@ public class TradeConfigAdminService {
         tc.setStratergyId(form.getStrategyId());
         tc.setNumberOfTradesPerDay(form.getNumberOfTradesPerDay());
         tc.setNumberOfParallelTrades(form.getNumberOfParallelTrades());
+        // Null from the form (blank input, or a client that predates the
+        // field) means KEEP the current value — never write null into the
+        // NOT NULL column, and never silently reset a widened cap to 1. New
+        // entities are born with the safe default via the entity initialiser.
+        if (form.getMaxParallelPerSide() != null) {
+            tc.setMaxParallelPerSide(form.getMaxParallelPerSide());
+        }
         tc.setItmDepth(form.getItmDepth());
         tc.setOtmDepth(form.getOtmDepth());
         tc.setAtmDepth(form.getAtmDepth());
-        // Unset means "use the standing band", not "unbounded" â€” an unbounded
+        // Unset means "use the standing band", not "unbounded" — an unbounded
         // config is what produced 6-point entries with a 30-point target.
         tc.setMinOptionPrice(form.getMinOptionPrice() != null
                 ? form.getMinOptionPrice() : DEFAULT_MIN_OPTION_PRICE);
         tc.setMaxOptionPrice(form.getMaxOptionPrice() != null
                 ? form.getMaxOptionPrice() : DEFAULT_MAX_OPTION_PRICE);
 
-        // Unlike the band, blank here really does mean "no percentage" â€” the
+        // Unlike the band, blank here really does mean "no percentage" — the
         // absolute target / stopLoss above then apply, which is how every config
         // predating changeset 027 behaves.
         tc.setTargetPct(form.getTargetPct());
@@ -874,13 +1097,13 @@ public class TradeConfigAdminService {
         // "unbounded". Removing the cap entirely is a deliberate DB edit.
         tc.setMaxSlPoints(form.getMaxSlPoints() != null
                 ? form.getMaxSlPoints() : DEFAULT_MAX_SL_POINTS);
-        // Blank here does mean off â€” a config with no ladder simply keeps its
+        // Blank here does mean off — a config with no ladder simply keeps its
         // fixed stop, which is safe, so the form is allowed to say it. Stored
         // canonicalised so the column never carries the spacing someone typed.
         tc.setTrailLadder(TrailLadder.canonical(form.getTrailLadder()));
 
         // trade_config.source is NOT NULL (changeset 019) and Hibernate writes the
-        // column explicitly, so the DB's DEFAULT 'MANUAL' never applies â€” leaving
+        // column explicitly, so the DB's DEFAULT 'MANUAL' never applies — leaving
         // it unset made every create through this service fail with a constraint
         // violation. Only stamp it when absent: an edit of a generated config must
         // keep its AUTO_DOWNTREND marker, or the detector loses its dedupe key and
@@ -903,11 +1126,11 @@ public class TradeConfigAdminService {
      * mirrored in {@code trade_config.stratergy_id}. So:</p>
      *
      * <ul>
-     *   <li><b>Blank column</b> â€” set it to the form's strategy. Covers create, and
+     *   <li><b>Blank column</b> — set it to the form's strategy. Covers create, and
      *       configs written before the column existed.</li>
-     *   <li><b>Strategy unchanged</b> â€” leave the column alone. This is the common
+     *   <li><b>Strategy unchanged</b> — leave the column alone. This is the common
      *       edit (someone adjusts a target) and it must not touch the list at all.</li>
-     *   <li><b>Strategy changed</b> â€” swap the old primary for the new one and keep
+     *   <li><b>Strategy changed</b> — swap the old primary for the new one and keep
      *       every other id. {@link StrategyIds} de-duplicates, so moving the primary
      *       onto an id that is already listed collapses to a single entry rather
      *       than doubling it.</li>
@@ -996,6 +1219,7 @@ public class TradeConfigAdminService {
         v.setMaxOptionPrice(tc.getMaxOptionPrice());
         v.setMaxSlPoints(tc.getMaxSlPoints());
         v.setTrailLadder(tc.getTrailLadder());
+        v.setMaxParallelPerSide(tc.getMaxParallelPerSide());
         v.setSource(tc.getSource());
         v.setUpdatedDate(tc.getUpdatedDate());
         // Null on rows written before changeset 037 reads as active, matching the

@@ -38,6 +38,7 @@ public class TradeConfigViewDTO {
     private List<Integer> strategyIds;
     private Integer numberOfTradesPerDay;
     private Integer numberOfParallelTrades;
+    private Integer maxParallelPerSide;
     private Integer itmDepth;
     private Integer otmDepth;
     private Integer atmDepth;

@@ -94,6 +94,20 @@ public class BacktestAnalysisService {
      * stage — fetch, dispatch, orders, positions — sees only the scoped pairs.
      */
     public BacktestRunResult run(LocalDate fromDate, LocalDate toDate, Set<Integer> strategyIds) {
+        return run(fromDate, toDate, strategyIds, null);
+    }
+
+    /**
+     * Replay scoped to strategies <i>and</i> to specific {@code trade_config}
+     * ids ({@code null} or empty = all, for either). The two compose: a
+     * {@code (config, strategy)} pair survives only when the strategy is in
+     * {@code strategyIds} and the config's id is in {@code configIds}. This is
+     * what lets a run measure one strategy against a hand-picked subset of the
+     * generated (or manual) configs rather than everything on the window's
+     * dates. Config ids outside the window simply match nothing — no error.
+     */
+    public BacktestRunResult run(LocalDate fromDate, LocalDate toDate,
+                                 Set<Integer> strategyIds, Set<Integer> configIds) {
         if (fromDate == null) {
             throw new IllegalArgumentException("fromDate must not be null");
         }
@@ -157,6 +171,22 @@ public class BacktestAnalysisService {
                         .toList();
                 log.info("[Backtest] day={} strategy scope {} keeps {} of {} (config, strategy) pairs",
                         currentDate, strategyIds, scoped.size(), combinedDto.size());
+                combinedDto = scoped;
+            }
+
+            // Config scoping: keep only the pairs whose trade_config id was
+            // requested. Same soundness argument as the strategy scope above —
+            // caps and dedupe are keyed per (tradeConfigId, strategyId), so
+            // configs do not compete for each other's slots and a scoped run's
+            // ledger matches what those configs produce inside a full run.
+            if (configIds != null && !configIds.isEmpty()) {
+                List<TradeConfigCombinedDTO> scoped = combinedDto.stream()
+                        .filter(dto -> dto != null && dto.getTradeConfig() != null
+                                && dto.getTradeConfig().getId() != null
+                                && configIds.contains(dto.getTradeConfig().getId()))
+                        .toList();
+                log.info("[Backtest] day={} config scope keeps {} of {} (config, strategy) pairs",
+                        currentDate, scoped.size(), combinedDto.size());
                 combinedDto = scoped;
             }
             Set<Integer> timePeriodsMinutes = uniqueTimePeriodsFor(combinedDto);

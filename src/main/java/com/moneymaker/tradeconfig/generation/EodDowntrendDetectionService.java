@@ -143,9 +143,23 @@ public class EodDowntrendDetectionService {
     /**
      * Runs every enabled rule against {@code tradingDay}'s close, emitting
      * one next-day {@code trade_config} per side per rule when at least one
-     * (sma, timeframe) combo passes.
+     * (sma, timeframe) combo passes. Unscoped — every tagged strategy generates.
      */
     public void runForDay(LocalDate tradingDay) {
+        runForDay(tradingDay, null);
+    }
+
+    /**
+     * Scoped variant: only strategies in {@code strategyScope} generate
+     * ({@code null} or empty = all). The scope is a per-run selection on top of
+     * the standing DB setup — a strategy still needs its
+     * {@code sma_downtrend_rule_strategy} tag (or the rule's fallback
+     * {@code strategy_id}) plus an enabled {@code strategy_defaults} row; the
+     * scope can only narrow that set, never widen it. Idempotency is untouched:
+     * a scoped run skips strategies that already generated for the target day
+     * and leaves the others' existing configs alone.
+     */
+    public void runForDay(LocalDate tradingDay, Set<Integer> strategyScope) {
         if (tradingDay == null) return;
 
         List<SmaDowntrendRule> rules = ruleRepository.findByEnabledTrue();
@@ -187,13 +201,14 @@ public class EodDowntrendDetectionService {
         int inserted = 0;
         for (SmaDowntrendRule rule : rules) {
             try {
-                inserted += processRule(rule, tradingDay, nextDay, alreadyGenerated);
+                inserted += processRule(rule, tradingDay, nextDay, alreadyGenerated, strategyScope);
             } catch (Exception ex) {
                 log.error("[EOD-downtrend] {} — rule id={} failed", tradingDay, rule.getId(), ex);
             }
         }
-        log.info("[EOD-downtrend] {} — inserted {} AUTO_DOWNTREND trade_config(s) for {}",
-                tradingDay, inserted, nextDay);
+        log.info("[EOD-downtrend] {} — inserted {} AUTO_DOWNTREND trade_config(s) for {}{}",
+                tradingDay, inserted, nextDay,
+                strategyScope == null || strategyScope.isEmpty() ? "" : " (strategy scope " + strategyScope + ")");
     }
 
     // ------------------------------------------------------------------
@@ -201,7 +216,7 @@ public class EodDowntrendDetectionService {
     // ------------------------------------------------------------------
 
     private int processRule(SmaDowntrendRule rule, LocalDate tradingDay, LocalDate nextDay,
-                            Set<Integer> alreadyGenerated) {
+                            Set<Integer> alreadyGenerated, Set<Integer> strategyScope) {
         Instrument instrument = rule.getInstrument();
         if (instrument == null || instrument.getInsName() == null) {
             log.warn("[EOD-downtrend] rule id={} has no instrument, skipping", rule.getId());
@@ -211,9 +226,14 @@ public class EodDowntrendDetectionService {
         // One entry per generated config: its field block plus the strategies tagged
         // onto it. Usually a single entry covering every tagged strategy — see
         // resolveConfigGroups.
-        List<ConfigGroup> groups = resolveConfigGroups(rule, alreadyGenerated);
+        List<ConfigGroup> groups = resolveConfigGroups(rule, alreadyGenerated, strategyScope);
         if (groups.isEmpty()) {
-            log.warn("[EOD-downtrend] rule id={} — no usable strategy, skipping", rule.getId());
+            // Quiet when a scope is active: a rule whose strategies are simply not
+            // selected this run is expected, not a misconfiguration. The per-strategy
+            // skip reasons are still logged inside resolveConfigGroups either way.
+            if (strategyScope == null || strategyScope.isEmpty()) {
+                log.warn("[EOD-downtrend] rule id={} — no usable strategy, skipping", rule.getId());
+            }
             return 0;
         }
 
@@ -739,9 +759,10 @@ public class EodDowntrendDetectionService {
      * that quietly generated nothing is precisely the failure this replaces.</p>
      */
     // Package-private rather than private so the branch matrix (no tags / missing
-    // defaults row / disabled / shared block / distinct blocks) is unit-testable
-    // without standing up the whole detector against a database.
-    List<ConfigGroup> resolveConfigGroups(SmaDowntrendRule rule, Set<Integer> alreadyGenerated) {
+    // defaults row / disabled / shared block / distinct blocks / run scope) is
+    // unit-testable without standing up the whole detector against a database.
+    List<ConfigGroup> resolveConfigGroups(SmaDowntrendRule rule, Set<Integer> alreadyGenerated,
+                                          Set<Integer> strategyScope) {
         List<Integer> tagged = rule.getId() == null
                 ? List.of()
                 : ruleStrategyRepository.findByRuleIdAndEnabledTrueOrderByStrategyIdAsc(rule.getId())
@@ -757,6 +778,20 @@ public class EodDowntrendDetectionService {
                 return List.of();
             }
             tagged = List.of(rule.getStrategyId());
+        }
+
+        // Per-run selection (the strategyIds request param): applied after the
+        // fallback above so an untagged rule whose strategy_id is out of scope is
+        // excluded too. The scope only narrows; a strategy it names that the rule
+        // is not tagged with still generates nothing.
+        if (strategyScope != null && !strategyScope.isEmpty()) {
+            List<Integer> inScope = tagged.stream().filter(strategyScope::contains).toList();
+            if (inScope.isEmpty()) {
+                log.debug("[EOD-downtrend] rule id={} — strategies {} all outside the requested scope {}, skipping rule",
+                        rule.getId(), tagged, strategyScope);
+                return List.of();
+            }
+            tagged = inScope;
         }
 
         // LinkedHashMap so the emitted order follows the ascending strategy order

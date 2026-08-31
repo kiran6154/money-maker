@@ -77,6 +77,17 @@ public class TradeConfig {
     @Column(name = "no_of_parrellel_trades")
     private Integer numberOfParallelTrades;
 
+    /**
+     * Caps OPEN trades per option <b>side</b> (CE / PE) for this
+     * (config, strategy), regardless of strike — the second parallel-trades
+     * variant (user decision 2026-08-31): with the default 1, one CE and one
+     * PE may run concurrently but never two CE. {@code numberOfParallelTrades}
+     * above stays the total/direction cap. Initialised to 1 so entity inserts
+     * satisfy the NOT NULL column and new configs get the safe default.
+     */
+    @Column(name = "max_parallel_per_side")
+    private Integer maxParallelPerSide = 1;
+
     @Column(name = "itm_depth")
     private Integer itmDepth;
 

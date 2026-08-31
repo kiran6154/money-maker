@@ -180,6 +180,15 @@ public interface TradeOrderRepository extends JpaRepository<TradeOrder, Long> {
     boolean existsByTradeConfigIdAndStatus(Integer tradeConfigId, String status);
 
     /**
+     * OPEN trades on one option side (CE / PE) for a (config, strategy) —
+     * the same-side parallel cap ({@code trade_config.max_parallel_per_side}):
+     * one CE and one PE may run concurrently, but the same side never stacks
+     * beyond the cap, whatever the strikes.
+     */
+    long countByTradeConfigIdAndStrategyIdAndOptionTypeAndStatus(
+            Integer tradeConfigId, Integer strategyId, String optionType, String status);
+
+    /**
      * Deletes every trade row belonging to the given configs and returns how
      * many went. Only reachable from the bulk auto-config delete with
      * {@code force=true} — the audit trail is otherwise immutable from the app.

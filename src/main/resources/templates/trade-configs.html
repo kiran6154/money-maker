@@ -516,6 +516,10 @@
                 <label for="tc-parallel">Max parallel trades</label>
                 <input id="tc-parallel" type="number" step="1" class="form-control" />
             </div>
+            <div class="form-row">
+                <label for="tc-parallel-side" title="Caps OPEN trades per option side (CE / PE) regardless of strike. 1 = one CE and one PE may run together, never two CE. Blank keeps the current value (new configs default to 1).">Max parallel per side</label>
+                <input id="tc-parallel-side" type="number" step="1" min="1" placeholder="1" class="form-control" />
+            </div>
         </div>
 
         <div class="tc-section-title">Strike depth</div>
@@ -584,7 +588,7 @@
                         <th class="num" title="Trailing stop rungs, trigger:lock in points. 25:2 = once the trade has been 25 points in profit the stop moves to +2. Latched off peak profit, so it never loosens. — = no trailing.">Trail</th>
                         <th class="num">Lots</th>
                         <th class="num">Trades/day</th>
-                        <th class="num">Parallel</th>
+                        <th class="num" title="total parallel cap / per-side (CE|PE) cap — 2/1 means one CE plus one PE may run together, never two on the same side">Parallel</th>
                         <th class="num">ITM</th>
                         <th class="num">ATM</th>
                         <th class="num">OTM</th>
@@ -670,6 +674,7 @@
         lots:         document.getElementById('tc-lots'),
         tradesDay:    document.getElementById('tc-trades-day'),
         parallel:     document.getElementById('tc-parallel'),
+        parallelSide: document.getElementById('tc-parallel-side'),
         optionDepth:  document.getElementById('tc-option-depth'),
         itm:          document.getElementById('tc-itm'),
         atm:          document.getElementById('tc-atm'),
@@ -803,7 +808,7 @@
     function clearForm() {
         els.id.value = '';
         [els.target, els.sl, els.targetPct, els.slPct, els.maxLoss, els.lots,
-         els.tradesDay, els.parallel, els.optionDepth, els.itm, els.atm,
+         els.tradesDay, els.parallel, els.parallelSide, els.optionDepth, els.itm, els.atm,
          els.otm].forEach(e => e.value = '');
         els.minPrice.value = DEFAULT_MIN_PRICE;
         els.maxPrice.value = DEFAULT_MAX_PRICE;
@@ -840,6 +845,7 @@
         els.lots.value        = view.lotQuantity ?? '';
         els.tradesDay.value   = view.numberOfTradesPerDay ?? '';
         els.parallel.value    = view.numberOfParallelTrades ?? '';
+        els.parallelSide.value = view.maxParallelPerSide ?? '';
         els.optionDepth.value = view.optionDepth ?? '';
         els.itm.value         = view.itmDepth ?? '';
         els.atm.value         = view.atmDepth ?? '';
@@ -916,6 +922,7 @@
             lotQuantity:              num(els.lots),
             numberOfTradesPerDay:     num(els.tradesDay),
             numberOfParallelTrades:   num(els.parallel),
+            maxParallelPerSide:       num(els.parallelSide),
             optionDepth:              num(els.optionDepth),
             itmDepth:                 num(els.itm),
             atmDepth:                 num(els.atm),
@@ -1143,7 +1150,7 @@
                         : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
                 '<td class="num">' + fmtNum(v.lotQuantity) + '</td>' +
                 '<td class="num">' + fmtNum(v.numberOfTradesPerDay) + '</td>' +
-                '<td class="num">' + fmtNum(v.numberOfParallelTrades) + '</td>' +
+                '<td class="num">' + fmtNum(v.numberOfParallelTrades) + '/' + fmtNum(v.maxParallelPerSide) + '</td>' +
                 '<td class="num">' + fmtNum(v.itmDepth) + '</td>' +
                 '<td class="num">' + fmtNum(v.atmDepth) + '</td>' +
                 '<td class="num">' + fmtNum(v.otmDepth) + '</td>' +

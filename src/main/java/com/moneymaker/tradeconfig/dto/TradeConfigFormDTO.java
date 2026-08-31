@@ -22,6 +22,8 @@ public class TradeConfigFormDTO {
     private Integer strategyId;
     private Integer numberOfTradesPerDay;
     private Integer numberOfParallelTrades;
+    /** Same-side (CE/PE) parallel cap; null on submit keeps the default 1. */
+    private Integer maxParallelPerSide;
     private Integer itmDepth;
     private Integer otmDepth;
     private Integer atmDepth;

@@ -92,7 +92,7 @@ class EodDowntrendResolveConfigGroupsTest {
                 .thenReturn(List.of());
         defaultsFor(1, "SELL", "200", 1, true);
 
-        List<EodDowntrendDetectionService.ConfigGroup> groups = service.resolveConfigGroups(rule(1), Set.of());
+        List<EodDowntrendDetectionService.ConfigGroup> groups = service.resolveConfigGroups(rule(1), Set.of(), null);
 
         assertThat(groups).hasSize(1);
         assertThat(groups.get(0).strategyIds()).containsExactly(1);
@@ -105,7 +105,7 @@ class EodDowntrendResolveConfigGroupsTest {
         defaultsFor(1, "SELL", "200", 1, true);
         defaultsFor(2, "SELL", "200", 1, true);
 
-        List<EodDowntrendDetectionService.ConfigGroup> groups = service.resolveConfigGroups(rule(1), Set.of());
+        List<EodDowntrendDetectionService.ConfigGroup> groups = service.resolveConfigGroups(rule(1), Set.of(), null);
 
         assertThat(groups).hasSize(1);
         assertThat(groups.get(0).strategyIds()).containsExactly(1, 2);
@@ -118,7 +118,7 @@ class EodDowntrendResolveConfigGroupsTest {
         defaultsFor(1, "SELL", "200", 1, true);
         defaultsFor(2, "SELL", "500", 2, true);
 
-        List<EodDowntrendDetectionService.ConfigGroup> groups = service.resolveConfigGroups(rule(1), Set.of());
+        List<EodDowntrendDetectionService.ConfigGroup> groups = service.resolveConfigGroups(rule(1), Set.of(), null);
 
         assertThat(groups).hasSize(2);
         assertThat(groups.get(0).strategyIds()).containsExactly(1);
@@ -135,7 +135,7 @@ class EodDowntrendResolveConfigGroupsTest {
         defaultsFor(1, "SELL", "200", 1, true);
         noDefaultsFor(2);
 
-        List<EodDowntrendDetectionService.ConfigGroup> groups = service.resolveConfigGroups(rule(1), Set.of());
+        List<EodDowntrendDetectionService.ConfigGroup> groups = service.resolveConfigGroups(rule(1), Set.of(), null);
 
         assertThat(groups).hasSize(1);
         assertThat(groups.get(0).strategyIds()).containsExactly(1);
@@ -148,7 +148,7 @@ class EodDowntrendResolveConfigGroupsTest {
         defaultsFor(1, "SELL", "200", 1, true);
         defaultsFor(2, "SELL", "200", 1, false);
 
-        List<EodDowntrendDetectionService.ConfigGroup> groups = service.resolveConfigGroups(rule(1), Set.of());
+        List<EodDowntrendDetectionService.ConfigGroup> groups = service.resolveConfigGroups(rule(1), Set.of(), null);
 
         assertThat(groups).hasSize(1);
         assertThat(groups.get(0).strategyIds()).containsExactly(1);
@@ -160,7 +160,7 @@ class EodDowntrendResolveConfigGroupsTest {
         tagged(2);
         noDefaultsFor(2);
 
-        assertThat(service.resolveConfigGroups(rule(1), Set.of())).isEmpty();
+        assertThat(service.resolveConfigGroups(rule(1), Set.of(), null)).isEmpty();
     }
 
     @Test
@@ -175,7 +175,7 @@ class EodDowntrendResolveConfigGroupsTest {
         // (day, strategy), strategy 1's existing config suppressed the whole day
         // and a newly-tagged strategy 2 could never fill in.
         List<EodDowntrendDetectionService.ConfigGroup> groups =
-                service.resolveConfigGroups(rule(1), Set.of(1));
+                service.resolveConfigGroups(rule(1), Set.of(1), null);
 
         assertThat(groups).hasSize(1);
         assertThat(groups.get(0).strategyIds()).containsExactly(2);
@@ -188,7 +188,7 @@ class EodDowntrendResolveConfigGroupsTest {
         defaultsFor(1, "SELL", "200", 1, true);
         defaultsFor(2, "SELL", "200", 1, true);
 
-        assertThat(service.resolveConfigGroups(rule(1), Set.of(1, 2))).isEmpty();
+        assertThat(service.resolveConfigGroups(rule(1), Set.of(1, 2), null)).isEmpty();
     }
 
     @Test
@@ -197,6 +197,59 @@ class EodDowntrendResolveConfigGroupsTest {
         when(ruleStrategyRepository.findByRuleIdAndEnabledTrueOrderByStrategyIdAsc(anyInt()))
                 .thenReturn(List.of());
 
-        assertThat(service.resolveConfigGroups(rule(null), Set.of())).isEmpty();
+        assertThat(service.resolveConfigGroups(rule(null), Set.of(), null)).isEmpty();
+    }
+
+    // ------------------------------------------------------------------
+    // Per-run strategy scope (the generate endpoint's strategyIds param)
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("a run scope keeps only the selected strategies")
+    void scopeNarrowsToSelectedStrategies() {
+        tagged(1, 2);
+        defaultsFor(1, "SELL", "200", 1, true);
+        defaultsFor(2, "SELL", "200", 1, true);
+
+        List<EodDowntrendDetectionService.ConfigGroup> groups =
+                service.resolveConfigGroups(rule(1), Set.of(), Set.of(2));
+
+        assertThat(groups).hasSize(1);
+        assertThat(groups.get(0).strategyIds()).containsExactly(2);
+    }
+
+    @Test
+    @DisplayName("a scope naming no tagged strategy yields nothing — it narrows, never widens")
+    void scopeOutsideTagsYieldsNothing() {
+        tagged(1);
+        defaultsFor(1, "SELL", "200", 1, true);
+
+        assertThat(service.resolveConfigGroups(rule(1), Set.of(), Set.of(3))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("the scope also applies to an untagged rule's fallback strategy_id")
+    void scopeAppliesToFallbackPrimary() {
+        when(ruleStrategyRepository.findByRuleIdAndEnabledTrueOrderByStrategyIdAsc(anyInt()))
+                .thenReturn(List.of());
+        defaultsFor(1, "SELL", "200", 1, true);
+
+        assertThat(service.resolveConfigGroups(rule(1), Set.of(), Set.of(2))).isEmpty();
+        assertThat(service.resolveConfigGroups(rule(1), Set.of(), Set.of(1))).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("scope and the already-generated guard compose")
+    void scopeComposesWithIdempotencyGuard() {
+        tagged(1, 2);
+        defaultsFor(1, "SELL", "200", 1, true);
+        defaultsFor(2, "SELL", "200", 1, true);
+
+        // Scoped to both, but strategy 2 already generated for the target day.
+        List<EodDowntrendDetectionService.ConfigGroup> groups =
+                service.resolveConfigGroups(rule(1), Set.of(2), Set.of(1, 2));
+
+        assertThat(groups).hasSize(1);
+        assertThat(groups.get(0).strategyIds()).containsExactly(1);
     }
 }

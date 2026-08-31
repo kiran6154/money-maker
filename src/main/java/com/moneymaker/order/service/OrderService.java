@@ -247,6 +247,30 @@ public class OrderService {
             }
         }
 
+        // Same-SIDE cap (user decision 2026-08-31): the cap above counts by
+        // BUY/SELL direction and knows nothing of option side, so with a cap
+        // of 2 it stacked two CE SELLs on different strikes (orders 1941/1942,
+        // 2024-02-01). maxParallelPerSide caps OPEN trades per option side
+        // (CE / PE) for this (config, strategy) regardless of strike — with
+        // the seeded 1, one CE and one PE may run in parallel, never two CE.
+        // "Parallel trades" means both sides, not the same side twice.
+        Integer maxPerSide = config.getTradeConfig() != null
+                ? config.getTradeConfig().getMaxParallelPerSide()
+                : null;
+        if (maxPerSide != null && maxPerSide > 0 && key.optionType != null) {
+            long openSameSide = tradeOrderRepository
+                    .countByTradeConfigIdAndStrategyIdAndOptionTypeAndStatus(
+                            signal.getTradeConfigId(),
+                            strategyId,
+                            key.optionType,
+                            STATUS_OPEN);
+            if (openSameSide >= maxPerSide) {
+                log.debug("[order] skip signal — maxParallelPerSide={} reached for tradeConfigId={} strategyId={} side={} (openSameSide={})",
+                        maxPerSide, signal.getTradeConfigId(), strategyId, key.optionType, openSameSide);
+                return;
+            }
+        }
+
         // Exact-duplicate guard: re-runs of the backtest replay identical signals
         // and would otherwise create a fresh row each run. Skip when an existing
         // row has the same (config, strategy, optionToken, direction, entryTime) —

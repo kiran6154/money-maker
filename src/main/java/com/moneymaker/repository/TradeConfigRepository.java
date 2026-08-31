@@ -51,6 +51,15 @@ public interface TradeConfigRepository extends JpaRepository<TradeConfig, Intege
     /** Configs for the given trading dates. Source is pinned by the caller. */
     List<TradeConfig> findBySourceAndTradingDateIn(String source, List<LocalDate> tradingDates);
 
+    /** Every config in a trading-date window — powers the backtest config picker. */
+    List<TradeConfig> findByTradingDateBetween(LocalDate from, LocalDate to);
+
+    /** One source's configs in a trading-date window — the bulk-update selector. */
+    List<TradeConfig> findBySourceAndTradingDateBetween(String source, LocalDate from, LocalDate to);
+
+    /** Every config of one source — bulk update with no date filter. */
+    List<TradeConfig> findBySource(String source);
+
     /** Configs written inside a window — the "undo this generation run" selector. */
     List<TradeConfig> findBySourceAndUpdatedDateBetween(String source,
                                                         LocalDateTime updatedFrom,
@@ -78,9 +87,9 @@ public interface TradeConfigRepository extends JpaRepository<TradeConfig, Intege
      *
      * <p>Index map consumed by the mappers:</p>
      * <ul>
-     *   <li>{@code 0..23}  — trade_config ({@code sl_pct} last)</li>
-     *   <li>{@code 24..28} — instrument</li>
-     *   <li>{@code 29..40} — instrument_details</li>
+     *   <li>{@code 0..24}  — trade_config ({@code max_parallel_per_side} last)</li>
+     *   <li>{@code 25..29} — instrument</li>
+     *   <li>{@code 30..41} — instrument_details</li>
      * </ul>
      *
      * <p>If you add a column here, append it to the <i>end</i> of its own
@@ -110,7 +119,7 @@ public interface TradeConfigRepository extends JpaRepository<TradeConfig, Intege
             "  tc.itm_depth, tc.otm_depth, tc.atm_depth, tc.source, " +
             "  tc.min_option_price, tc.max_option_price, tc.strategy_ids, " +
             "  tc.max_sl_points, tc.trail_ladder, " +
-            "  tc.target_pct, tc.sl_pct, " +
+            "  tc.target_pct, tc.sl_pct, tc.max_parallel_per_side, " +
             "  i.id, i.ins_name, i.ins_id, i.lot_qty, i.strike_points, " +
             "  id.instrument_token, id.exchange_token, id.tradingsymbol, id.name, " +
             "  id.last_price, id.expiry, id.strike, id.tick_size, id.lot_size, " +

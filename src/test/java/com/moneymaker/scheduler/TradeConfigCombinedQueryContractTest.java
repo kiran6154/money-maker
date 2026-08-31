@@ -57,7 +57,7 @@ class TradeConfigCombinedQueryContractTest {
      * rather than shift a later block silently.
      */
     private static final List<String> EXPECTED_COLUMNS = List.of(
-            // trade_config: 0..23
+            // trade_config: 0..24
             "tc.id", "tc.trading_side", "tc.trading_date", "tc.target", "tc.stop_loss",
             "tc.p_instrument", "tc.max_loss", "tc.option_depth", "tc.transaction_type",
             "tc.lot_quantity", "tc.stratergy_id", "tc.no_of_trades", "tc.no_of_parrellel_trades",
@@ -65,15 +65,16 @@ class TradeConfigCombinedQueryContractTest {
             "tc.min_option_price", "tc.max_option_price", "tc.strategy_ids",
             "tc.max_sl_points", "tc.trail_ladder",
             "tc.target_pct", "tc.sl_pct",
-            // instrument: 24..28
+            "tc.max_parallel_per_side",
+            // instrument: 25..29
             "i.id", "i.ins_name", "i.ins_id", "i.lot_qty", "i.strike_points",
-            // instrument_details: 29..40
+            // instrument_details: 30..41
             "id.instrument_token", "id.exchange_token", "id.tradingsymbol", "id.name",
             "id.last_price", "id.expiry", "id.strike", "id.tick_size", "id.lot_size",
             "id.instrument_type", "id.segment", "id.exchange");
 
-    private static final int INSTRUMENT_START = 24;
-    private static final int DETAILS_START = 29;
+    private static final int INSTRUMENT_START = 25;
+    private static final int DETAILS_START = 30;
 
     private static List<String> selectedColumns() throws Exception {
         Method m = TradeConfigRepository.class
@@ -142,13 +143,14 @@ class TradeConfigCombinedQueryContractTest {
         row.add("25:2,50:25");                        // trail_ladder
         row.add(new BigDecimal("0.20"));              // target_pct
         row.add(new BigDecimal("0.30"));              // sl_pct
-        // instrument 24..28
+        row.add(1);                                   // max_parallel_per_side
+        // instrument 25..29
         row.add(11);                                  // i.id
         row.add("NIFTY");                             // ins_name
         row.add("256265");                            // ins_id
         row.add(75);                                  // lot_qty
         row.add(new BigDecimal("50"));                // strike_points
-        // instrument_details 29..40
+        // instrument_details 30..41
         row.add(256265);                              // instrument_token
         row.add(1001);                                // exchange_token
         row.add("NIFTY26MAY24000CE");                 // tradingsymbol

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <!--
+      Second parallel-trades variant (user decision 2026-08-31): the existing
+      no_of_parrellel_trades caps total OPEN trades per (config, strategy) and
+      per direction, but knows nothing of option SIDE - with a cap of 2 it
+      happily stacked two CE SELLs on different strikes (orders 1941/1942,
+      2024-02-01). max_parallel_per_side caps OPEN trades per option side
+      (CE / PE) for the same (config, strategy): seeded 1, so one CE and one
+      PE may run in parallel but never two CE - "parallel" means both sides,
+      not the same side twice.
+    -->
+    <changeSet id="038_add_max_parallel_per_side" author="moneymaker">
+        <addColumn tableName="trade_config">
+            <column name="max_parallel_per_side" type="INT" defaultValueNumeric="1">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

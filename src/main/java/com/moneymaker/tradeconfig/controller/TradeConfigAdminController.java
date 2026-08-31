@@ -2,6 +2,7 @@ package com.moneymaker.tradeconfig.controller;
 
 import com.moneymaker.state.AppState;
 import com.moneymaker.tradeconfig.dto.AutoDeleteRequestDTO;
+import com.moneymaker.tradeconfig.dto.BulkUpdateRequestDTO;
 import com.moneymaker.tradeconfig.dto.InstrumentOptionDTO;
 import com.moneymaker.tradeconfig.dto.PagedResponse;
 import com.moneymaker.tradeconfig.dto.StrategyOptionDTO;
@@ -28,8 +29,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import java.time.LocalDate;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * UI + JSON endpoints for trade-config administration.
@@ -37,13 +40,15 @@ import java.util.Map;
  * <ul>
  *   <li>{@code GET  /trade-configs}                       – Thymeleaf page</li>
  *   <li>{@code GET  /api/trade-configs?date=&page=&size=} – paged list</li>
+ *   <li>{@code GET  /api/trade-configs/range?from=&to=&source=} – window list (backtest config picker)</li>
  *   <li>{@code GET  /api/trade-configs/{id}}              – single config</li>
  *   <li>{@code POST /api/trade-configs}                   – create</li>
  *   <li>{@code PUT  /api/trade-configs/{id}?confirm=}     – update (409 + {@code confirmRequired} while trades are open)</li>
  *   <li>{@code DELETE /api/trade-configs/{id}}            – delete, cascading trades + journal rows (blocked only while OPEN trades exist)</li>
  *   <li>{@code POST /api/trade-configs/{id}/active?value=} – retire / reinstate without deleting</li>
  *   <li>{@code POST /api/trade-configs/clone?fromDate=&toDate=&dryRun=} – bulk clone a day's configs</li>
- *   <li>{@code POST /api/trade-configs/generate?fromDate=&toDate=} – run the EOD downtrend detector over a window</li>
+ *   <li>{@code POST /api/trade-configs/generate?fromDate=&toDate=&strategyIds=} – run the EOD downtrend detector over a window, optionally for selected strategies only</li>
+ *   <li>{@code POST /api/trade-configs/auto/bulk-update} – apply one field-set (SL / target / band / ladder) to every matching config at once</li>
  *   <li>{@code GET  /api/trade-configs/instruments}       – instrument dropdown source</li>
  *   <li>{@code GET  /api/trade-configs/strategies}        – strategy dropdown source</li>
  * </ul>
@@ -78,6 +83,24 @@ public class TradeConfigAdminController {
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "10") int size) {
         return service.list(date, page, size);
+    }
+
+    /**
+     * Every config in a trading-date window, optionally narrowed to one source.
+     * Unpaged — this feeds the backtest page's "limit to selected configs"
+     * picker, which needs the whole window in one shot.
+     */
+    @GetMapping("/api/trade-configs/range")
+    @ResponseBody
+    public ResponseEntity<?> listRange(
+            @RequestParam("from") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam("to") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(value = "source", required = false) AutoDeleteRequestDTO.Source source) {
+        try {
+            return ResponseEntity.ok(service.listRange(from, to, source));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
     @GetMapping("/api/trade-configs/{id}")
@@ -179,14 +202,22 @@ public class TradeConfigAdminController {
      * replaying them are different tasks). Walks each trading session in the
      * window through the EOD downtrend detector; idempotent, no replay, no
      * ledger writes.
+     *
+     * <p>Optional {@code strategyIds} (comma-separated, e.g. {@code strategyIds=2}
+     * or {@code strategyIds=1,2}) generates only for those strategies this run;
+     * omitted means every strategy tagged on the rules. The scope can only
+     * narrow the standing tag/defaults setup, never widen it.</p>
      */
     @PostMapping("/api/trade-configs/generate")
     @ResponseBody
     public ResponseEntity<?> generate(
             @RequestParam("fromDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
-            @RequestParam("toDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+            @RequestParam("toDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            @RequestParam(value = "strategyIds", required = false) List<Integer> strategyIds) {
+        Set<Integer> scope = (strategyIds == null || strategyIds.isEmpty())
+                ? null : new LinkedHashSet<>(strategyIds);
         try {
-            return ResponseEntity.ok(generationService.generateForWindow(fromDate, toDate));
+            return ResponseEntity.ok(generationService.generateForWindow(fromDate, toDate, scope));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
@@ -241,6 +272,23 @@ public class TradeConfigAdminController {
         try {
             return ResponseEntity.ok(service.deleteAuto(request));
         } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Bulk update: apply one field-set (SL / target / band / ladder …) to every
+     * config matching the selector in a single call. {@code dryRun} defaults to
+     * true and {@code source} to AUTO_DOWNTREND — same contract as the bulk
+     * delete, so an incomplete request previews against detector output only.
+     */
+    @PostMapping("/api/trade-configs/auto/bulk-update")
+    @ResponseBody
+    public ResponseEntity<?> bulkUpdate(@RequestBody BulkUpdateRequestDTO request) {
+        try {
+            return ResponseEntity.ok(service.bulkUpdate(request));
+        } catch (IllegalArgumentException e) {
+            log.warn("[trade-config] bulk update rejected: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
