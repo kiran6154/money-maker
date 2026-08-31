@@ -1,4 +1,4 @@
-﻿# Orders & Positions
+# Orders & Positions
 
 How a strategy's `BUY` / `SELL` signal becomes a persisted `TradeOrder` row, gets executed at the broker, monitored for SL / target, and finally closed.
 

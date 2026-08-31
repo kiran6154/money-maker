@@ -1,4 +1,4 @@
-﻿# Strategy analysis â€” TODO & open questions
+# Strategy analysis â€” TODO & open questions
 
 **This is the single backlog for everything strategy-related.** Every gap, open
 question, suspected mis-signal, parameter worth revisiting, or analysis

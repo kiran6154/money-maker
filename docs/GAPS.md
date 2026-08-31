@@ -1,4 +1,4 @@
-﻿# Known gaps & follow-ups
+# Known gaps & follow-ups
 
 Surfaced while building **(a)** the trade-config admin UI and **(b)** the
 market-hours gate + end-of-day summary. Captured here as a single backlog so

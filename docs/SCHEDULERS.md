@@ -1,4 +1,4 @@
-﻿# Schedulers
+# Schedulers
 
 Every `@Scheduled` bean in the app, what it does, when it runs, and what it depends on. The same beans are also the entry points the backtest replays in tick order, so this page doubles as a "live vs backtest call graph" reference.
 

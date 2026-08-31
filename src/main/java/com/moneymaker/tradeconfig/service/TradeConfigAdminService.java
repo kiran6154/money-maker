@@ -1,4 +1,4 @@
-﻿package com.moneymaker.tradeconfig.service;
+package com.moneymaker.tradeconfig.service;
 
 import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.entity.Instrument;
