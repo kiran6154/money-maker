@@ -3,10 +3,14 @@
 Auto-generates next-day `trade_config` rows when the ATM option series ends
 the day in a sustained downtrend.
 
-> **Scope today:** Backtest only. The detector is a Spring bean and its
-> public entry (`EodDowntrendDetectionService.runForDay(LocalDate)`) takes
-> nothing backtest-specific — a 15:25 cron can call it for live mode later
-> without code changes.
+> **Home (since 2026-08-31):** `com.moneymaker.tradeconfig.generation` — config
+> generation is trade-config-domain work, not backtesting (user decision:
+> producing configs and replaying them are different tasks). The entry points
+> are `POST /api/trade-configs/generate?fromDate=&toDate=` and
+> `TradeConfigGenerationService.generateForWindow`; **the backtest replay no
+> longer calls the detector at all.** The detector takes nothing
+> backtest-specific — a 15:25 cron can call it for live mode later without
+> code changes.
 >
 > **Both data sources.** It runs under `backtest.data-source=BROKER` and
 > `HISTORICAL_ICICI` alike: every symbol comes from `OptionInstrumentResolver`,
@@ -265,7 +269,7 @@ its config twice for one detected downtrend.
 |---|---|
 | [`SmaDowntrendRule`](../src/main/java/com/moneymaker/entity/SmaDowntrendRule.java) | JPA entity for the rules table. |
 | [`SmaDowntrendRuleRepository`](../src/main/java/com/moneymaker/repository/SmaDowntrendRuleRepository.java) | Spring Data — exposes `findByEnabledTrue()`. |
-| [`EodDowntrendDetectionService`](../src/main/java/com/moneymaker/backtesting/EodDowntrendDetectionService.java) | Orchestrator. Public entry: `runForDay(LocalDate)`. Constants `SMA_PERIODS`, `TIMEFRAMES_MINUTES`. Resolves which configs to emit in `resolveConfigGroups(rule)`. |
+| [`EodDowntrendDetectionService`](../src/main/java/com/moneymaker/tradeconfig/generation/EodDowntrendDetectionService.java) | Orchestrator. Public entry: `runForDay(LocalDate)`. Constants `SMA_PERIODS`, `TIMEFRAMES_MINUTES`. Resolves which configs to emit in `resolveConfigGroups(rule)`. |
 | [`StrategyDefaults`](../src/main/java/com/moneymaker/entity/StrategyDefaults.java) / [`StrategyDefaultsRepository`](../src/main/java/com/moneymaker/repository/StrategyDefaultsRepository.java) | The per-strategy `trade_config` field block. `configSignature()` is what decides whether two strategies can share one generated config. |
 | [`SmaDowntrendRuleStrategy`](../src/main/java/com/moneymaker/entity/SmaDowntrendRuleStrategy.java) / [`SmaDowntrendRuleStrategyRepository`](../src/main/java/com/moneymaker/repository/SmaDowntrendRuleStrategyRepository.java) | Which strategies a rule generates for. |
 | [`StrategyIds`](../src/main/java/com/moneymaker/util/StrategyIds.java) | The detector writes `trade_config.strategy_ids` through this — without it the config would be scanned by its `stratergy_id` alone. The only place that column is parsed or formatted. |

@@ -7,6 +7,7 @@ import com.moneymaker.tradeconfig.dto.PagedResponse;
 import com.moneymaker.tradeconfig.dto.StrategyOptionDTO;
 import com.moneymaker.tradeconfig.dto.TradeConfigFormDTO;
 import com.moneymaker.tradeconfig.dto.TradeConfigViewDTO;
+import com.moneymaker.tradeconfig.generation.TradeConfigGenerationService;
 import com.moneymaker.tradeconfig.service.ConfirmationRequiredException;
 import com.moneymaker.tradeconfig.service.TradeConfigAdminService;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +43,7 @@ import java.util.Map;
  *   <li>{@code DELETE /api/trade-configs/{id}}            – delete (blocked if executed trades exist)</li>
  *   <li>{@code POST /api/trade-configs/{id}/active?value=} – retire / reinstate without deleting</li>
  *   <li>{@code POST /api/trade-configs/clone?fromDate=&toDate=&dryRun=} – bulk clone a day's configs</li>
+ *   <li>{@code POST /api/trade-configs/generate?fromDate=&toDate=} – run the EOD downtrend detector over a window</li>
  *   <li>{@code GET  /api/trade-configs/instruments}       – instrument dropdown source</li>
  *   <li>{@code GET  /api/trade-configs/strategies}        – strategy dropdown source</li>
  * </ul>
@@ -53,6 +55,7 @@ import java.util.Map;
 public class TradeConfigAdminController {
 
     private final TradeConfigAdminService service;
+    private final TradeConfigGenerationService generationService;
     private final AppState appState;
 
     @Value("${app.mode:live}")
@@ -170,6 +173,25 @@ public class TradeConfigAdminController {
      * {@code toDate} are skipped, both reported separately so the numbers are
      * explained rather than merely small.
      */
+    /**
+     * Config generation lives here — in the trade-config domain — not in the
+     * backtest controller (user decision 2026-08-31: producing configs and
+     * replaying them are different tasks). Walks each trading session in the
+     * window through the EOD downtrend detector; idempotent, no replay, no
+     * ledger writes.
+     */
+    @PostMapping("/api/trade-configs/generate")
+    @ResponseBody
+    public ResponseEntity<?> generate(
+            @RequestParam("fromDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam("toDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+        try {
+            return ResponseEntity.ok(generationService.generateForWindow(fromDate, toDate));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     @PostMapping("/api/trade-configs/clone")
     @ResponseBody
     public ResponseEntity<?> clone(

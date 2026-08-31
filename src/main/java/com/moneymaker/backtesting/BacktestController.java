@@ -22,7 +22,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Manual driver for the backtest run-mode.
@@ -78,23 +81,24 @@ public class BacktestController {
     }
 
     /**
-     * Replay a window. Since 2026-08-31 (user request) a replay no longer
-     * generates {@code AUTO_DOWNTREND} configs as a side effect — run
-     * {@link #generateConfigs} first for a window that has none, or pass
-     * {@code generateConfigs=true} to restore the old combined behaviour.
-     * Separation keeps a measurement run from mutating the config set it is
-     * measuring.
+     * Replay a window. Config generation is a different domain
+     * ({@code POST /api/trade-configs/generate}) — a replay only consumes
+     * whatever configs exist. Optional {@code strategyIds} (comma-separated,
+     * e.g. {@code strategyIds=2} or {@code strategyIds=1,2}) scopes the run to
+     * those strategies; omitted means all strategies tagged on the configs.
      */
     @PostMapping("/analysis")
     public ResponseEntity<?> runAnalysis(
             @RequestParam("fromDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
             @RequestParam("toDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
-            @RequestParam(value = "generateConfigs", defaultValue = "false") boolean generateConfigs) {
+            @RequestParam(value = "strategyIds", required = false) List<Integer> strategyIds) {
+        Set<Integer> scope = (strategyIds == null || strategyIds.isEmpty())
+                ? null : new LinkedHashSet<>(strategyIds);
         try {
             BacktestAnalysisService.BacktestRunResult result =
-                    backtestAnalysisService.run(fromDate, toDate, generateConfigs);
-            log.info("[Backtest] /analysis {} -> {} (generateConfigs={}) completed in {}ms",
-                    fromDate, toDate, generateConfigs, result.durationMs());
+                    backtestAnalysisService.run(fromDate, toDate, scope);
+            log.info("[Backtest] /analysis {} -> {} (strategyIds={}) completed in {}ms",
+                    fromDate, toDate, scope == null ? "all" : scope, result.durationMs());
             return ResponseEntity.ok(result);
         } catch (HistoricalDataMissingException ex) {
             // The run was aborted on purpose — the imported data set does not
@@ -105,18 +109,6 @@ public class BacktestController {
                     "error", "Backtest aborted — historical data missing",
                     "detail", ex.getMessage()));
         }
-    }
-
-    /**
-     * Generation-only: run the EOD downtrend detector over each session in the
-     * window, writing {@code AUTO_DOWNTREND} configs, with no replay and no
-     * ledger writes. Idempotent — the detector skips days whose configs exist.
-     */
-    @PostMapping("/generate-configs")
-    public ResponseEntity<?> generateConfigs(
-            @RequestParam("fromDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
-            @RequestParam("toDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
-        return ResponseEntity.ok(backtestAnalysisService.generateConfigsOnly(fromDate, toDate));
     }
 
 }

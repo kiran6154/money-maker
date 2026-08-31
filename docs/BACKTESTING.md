@@ -9,25 +9,35 @@
 > `PositionScheduler` entry points the live cron uses. The
 > **[Data source](#data-source)** section immediately below is current.
 
-## Running a backtest — two separate operations (since 2026-08-31)
+## Running a backtest — two separate domains (since 2026-08-31)
 
-A replay and `AUTO_DOWNTREND` config generation are **decoupled** (user
-request): a backtest run no longer writes configs as a side effect, so a
-measurement run can never mutate the config set it is measuring.
+Config generation and backtesting are **different tasks in different domains**
+(user decision): generation belongs to the trade-config domain
+(`tradeconfig.generation`, endpoint under `/api/trade-configs/`), and the
+replay only consumes whatever configs exist — it has no code path that writes
+one, so a measurement run structurally cannot mutate the config set it is
+measuring. The old `generateConfigs` flag and `/api/backtest/generate-configs`
+are gone.
 
 ```powershell
-# 1. (fresh window only) generate AUTO_DOWNTREND configs for the window —
+# 1. (fresh window only) generate AUTO_DOWNTREND configs — trade-config domain;
 #    no replay, no ledger writes; idempotent, skips days whose configs exist
-curl.exe -X POST "http://localhost:8080/api/backtest/generate-configs?fromDate=2024-01-01&toDate=2024-01-31"
+curl.exe -X POST "http://localhost:8080/api/trade-configs/generate?fromDate=2024-01-01&toDate=2024-01-31"
 
-# 2. replay the window (uses whatever configs exist; generates nothing)
+# 2. replay the window — all strategies tagged on the configs
 curl.exe -X POST "http://localhost:8080/api/backtest/analysis?fromDate=2024-01-01&toDate=2024-01-31"
 
-# legacy combined behaviour, explicit opt-in only:
-curl.exe -X POST "http://localhost:8080/api/backtest/analysis?fromDate=2024-01-01&toDate=2024-01-31&generateConfigs=true"
+# 2b. replay ONE strategy only (or a comma list) — scopes the per-day
+#     (config, strategy) fan-out, so only the named strategies dispatch
+curl.exe -X POST "http://localhost:8080/api/backtest/analysis?fromDate=2024-01-01&toDate=2024-01-31&strategyIds=2"
 ```
 
-Before re-running the **same** window, clear `trade_order` (the ledger's
+**Strategy-scoped ledgers are comparable to full runs**: caps and dedupe are
+keyed per `(config, strategy)`, so a `strategyIds=1` ledger holds the same rows
+strategy 1 would have produced inside an unscoped run. Two scoped runs of
+different strategies can even share one ledger without colliding.
+
+Before re-running the **same** `(window, strategy)`, clear `trade_order` (the
 dedupe key suppresses identical re-entries) — `analysis/db-scripts/wipe-ledger.bat`
 does it, or the `/api/orders/purge` endpoint.
 

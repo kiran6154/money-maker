@@ -89,7 +89,7 @@ Every other doc in this folder explains one feature in depth. This one is differ
 | | |
 |---|---|
 | Trigger | Called from workflow ⑥ (backtest), once per simulated day, after 15:20 force-close |
-| Code | [`EodDowntrendDetectionService.runForDay(date)`](../src/main/java/com/moneymaker/backtesting/EodDowntrendDetectionService.java) |
+| Code | [`EodDowntrendDetectionService.runForDay(date)`](../src/main/java/com/moneymaker/tradeconfig/generation/EodDowntrendDetectionService.java) |
 | Reads | `sma_downtrend_rule`, `sma_downtrend_rule_strategy`, `strategy_defaults`, option-leg candles via `MarketDataService` (broker fetch, not `market_data` table) |
 | Writes | `trade_config` (`source='AUTO_DOWNTREND'`, with `strategy_ids`) + `sma_timeframe`, for the **next** trading day only |
 | Strategy tagging | Which strategies a rule generates for is DB-driven (`sma_downtrend_rule_strategy`, changeset 034); the `trade_config` field block comes from `strategy_defaults` (033). One scan produces **one** config carrying one tag per strategy — two configs only when two strategies' default blocks differ. |

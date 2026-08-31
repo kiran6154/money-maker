@@ -1,4 +1,4 @@
-package com.moneymaker.backtesting;
+package com.moneymaker.tradeconfig.generation;
 
 import com.moneymaker.entity.Instrument;
 import com.moneymaker.entity.MarketData;

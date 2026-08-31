@@ -43,7 +43,6 @@ public class BacktestAnalysisService {
     private final KiteConnect sharedKiteConnect;
     private final NotificationService notifier;
     private final BacktestMarketDataCache marketDataCache;
-    private final EodDowntrendDetectionService eodDowntrendDetectionService;
     private final TradingCalendar tradingCalendar;
     private final JournalRecorder journal;
     private final com.moneymaker.market.service.MarketHoursService marketHours;
@@ -59,7 +58,6 @@ public class BacktestAnalysisService {
             @Qualifier("sharedKiteConnect") KiteConnect sharedKiteConnect,
             NotificationService notifier,
             BacktestMarketDataCache marketDataCache,
-            EodDowntrendDetectionService eodDowntrendDetectionService,
             TradingCalendar tradingCalendar,
             JournalRecorder journal,
             com.moneymaker.market.service.MarketHoursService marketHours) {
@@ -73,67 +71,29 @@ public class BacktestAnalysisService {
         this.sharedKiteConnect = sharedKiteConnect;
         this.notifier = notifier;
         this.marketDataCache = marketDataCache;
-        this.eodDowntrendDetectionService = eodDowntrendDetectionService;
         this.tradingCalendar = tradingCalendar;
         this.journal = journal;
         this.marketHours = marketHours;
     }
 
-    /** Per-window summary of a generation-only pass ({@code /api/backtest/generate-configs}). */
-    public record GenerateConfigsResult(LocalDate fromDate, LocalDate toDate,
-                                        int sessionsProcessed, int failures,
-                                        List<String> failedDates, long durationMs) {}
-
     /**
-     * Generation-only counterpart of {@link #run}: walks each trading session
-     * in the window and runs the EOD downtrend detector for it — no replay, no
-     * ledger writes, no shared-state mutation beyond what the detector itself
-     * persists. Idempotent by the detector's own contract (it skips days whose
-     * configs already exist). A per-day failure is recorded and the walk
-     * continues, matching how the combined flow treated detector errors.
-     */
-    public GenerateConfigsResult generateConfigsOnly(LocalDate fromDate, LocalDate toDate) {
-        if (fromDate == null || toDate == null) {
-            throw new IllegalArgumentException("fromDate and toDate must not be null");
-        }
-        if (fromDate.isAfter(toDate)) {
-            throw new IllegalArgumentException("fromDate must be on or before toDate");
-        }
-        Instant startedAt = Instant.now();
-        int sessions = 0;
-        List<String> failed = new ArrayList<>();
-        LocalDate d = fromDate;
-        while (!d.isAfter(toDate)) {
-            if (tradingCalendar.isTradingDay(d)) {
-                sessions++;
-                try {
-                    eodDowntrendDetectionService.runForDay(d);
-                } catch (Exception ex) {
-                    failed.add(d.toString());
-                    log.error("[Backtest] generate-configs {} — detector failed", d, ex);
-                }
-            }
-            d = d.plusDays(1);
-        }
-        long ms = java.time.Duration.between(startedAt, Instant.now()).toMillis();
-        log.info("[Backtest] generate-configs {} -> {}: {} session(s), {} failure(s), {}ms",
-                fromDate, toDate, sessions, failed.size(), ms);
-        return new GenerateConfigsResult(fromDate, toDate, sessions, failed.size(), failed, ms);
-    }
-
-    /**
-     * Replay without config generation — the default since 2026-08-31 (user
-     * request): a backtest run and {@code AUTO_DOWNTREND} generation are
-     * separate operations, so a measurement run can never mutate the config
-     * set it is measuring. Use {@link #generateConfigsOnly} to generate, or
-     * the three-arg overload with {@code generateConfigs=true} for the old
-     * combined behaviour.
+     * Replay every strategy tagged on the window's configs. Config generation
+     * lives in a different domain entirely ({@code tradeconfig.generation},
+     * user decision 2026-08-31) — a replay consumes configs and has no code
+     * path that writes one, so a measurement run structurally cannot mutate
+     * the config set it is measuring.
      */
     public BacktestRunResult run(LocalDate fromDate, LocalDate toDate) {
-        return run(fromDate, toDate, false);
+        return run(fromDate, toDate, null);
     }
 
-    public BacktestRunResult run(LocalDate fromDate, LocalDate toDate, boolean generateConfigs) {
+    /**
+     * Replay scoped to the given strategy ids ({@code null} or empty = all).
+     * The filter is applied to the per-day {@code (config, strategy)} fan-out
+     * before it reaches {@code SharedData.combinedDto}, so every downstream
+     * stage — fetch, dispatch, orders, positions — sees only the scoped pairs.
+     */
+    public BacktestRunResult run(LocalDate fromDate, LocalDate toDate, Set<Integer> strategyIds) {
         if (fromDate == null) {
             throw new IllegalArgumentException("fromDate must not be null");
         }
@@ -184,6 +144,21 @@ public class BacktestAnalysisService {
 
             // ===== Day-start: fetch this day's config (live cron equivalent) =====
             List<TradeConfigCombinedDTO> combinedDto = tradeConfigScheduler.getConfigsForDate(currentDate);
+
+            // Strategy scoping: keep only the (config, strategy) pairs whose
+            // strategyId was requested. Valid because every cap and dedupe rule
+            // downstream is keyed on (tradeConfigId, strategyId) — strategies do
+            // not compete for each other's slots — so a scoped run's ledger is
+            // the same rows that strategy would have produced inside a full run.
+            if (strategyIds != null && !strategyIds.isEmpty()) {
+                List<TradeConfigCombinedDTO> scoped = combinedDto.stream()
+                        .filter(dto -> dto != null && dto.getStrategyId() != null
+                                && strategyIds.contains(dto.getStrategyId()))
+                        .toList();
+                log.info("[Backtest] day={} strategy scope {} keeps {} of {} (config, strategy) pairs",
+                        currentDate, strategyIds, scoped.size(), combinedDto.size());
+                combinedDto = scoped;
+            }
             Set<Integer> timePeriodsMinutes = uniqueTimePeriodsFor(combinedDto);
 
             // No config means no trading today — it does NOT mean skip the day.
@@ -276,14 +251,6 @@ public class BacktestAnalysisService {
                 // symbol through OptionInstrumentResolver, and the historical
                 // provider now serves the "day" candles its ATR needs by rolling
                 // up the imported 5-minute rows.
-                if (generateConfigs) {
-                    try {
-                        eodDowntrendDetectionService.runForDay(currentDate);
-                    } catch (Exception ex) {
-                        log.error("[Backtest] {} — EOD downtrend detection failed", currentDate, ex);
-                    }
-                }
-
                 rowsAfter = countTradeOrdersOnDate(currentDate);
             } finally {
                 // Day-end wipe — runs after force-close, regardless of exceptions.
