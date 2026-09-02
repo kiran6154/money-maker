@@ -282,6 +282,23 @@ public class TradeConfigAdminController {
      * true and {@code source} to AUTO_DOWNTREND — same contract as the bulk
      * delete, so an incomplete request previews against detector output only.
      */
+    /**
+     * Current state of the bulk-update selector's matched set, folded per
+     * field — what the panel prefils its inputs with before an edit. Same
+     * selector the apply uses, so what you see is what an apply would touch.
+     */
+    @GetMapping("/api/trade-configs/auto/bulk-update/prefill")
+    @ResponseBody
+    public ResponseEntity<?> bulkUpdatePrefill(
+            @RequestParam(value = "source", required = false) AutoDeleteRequestDTO.Source source,
+            @RequestParam(value = "strategyId", required = false) Integer strategyId) {
+        try {
+            return ResponseEntity.ok(service.bulkUpdatePrefill(source, strategyId));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     @PostMapping("/api/trade-configs/auto/bulk-update")
     @ResponseBody
     public ResponseEntity<?> bulkUpdate(@RequestBody BulkUpdateRequestDTO request) {

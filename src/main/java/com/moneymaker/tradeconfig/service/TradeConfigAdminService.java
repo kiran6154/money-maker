@@ -16,6 +16,7 @@ import com.moneymaker.util.TrailLadder;
 import com.moneymaker.tradeconfig.dto.AutoConfigCalendarDTO;
 import com.moneymaker.tradeconfig.dto.AutoDeleteRequestDTO;
 import com.moneymaker.tradeconfig.dto.AutoDeleteResultDTO;
+import com.moneymaker.tradeconfig.dto.BulkUpdatePrefillDTO;
 import com.moneymaker.tradeconfig.dto.BulkUpdateRequestDTO;
 import com.moneymaker.tradeconfig.dto.BulkUpdateResultDTO;
 import com.moneymaker.tradeconfig.dto.CloneResultDTO;
@@ -849,25 +850,8 @@ public class TradeConfigAdminService {
                 ? AutoDeleteRequestDTO.Source.AUTO_DOWNTREND
                 : request.getSource();
 
-        List<TradeConfig> matches = request.getFromDate() == null
-                ? tradeConfigRepository.findBySource(src.name())
-                : tradeConfigRepository.findBySourceAndTradingDateBetween(
-                        src.name(), request.getFromDate(), request.getToDate());
-
-        // Strategy filter: the strategies a config actually runs under — its
-        // strategy_ids tags, or the primary stratergy_id when untagged. Same
-        // resolution TradeConfigScheduler uses for dispatch.
-        Integer strategyId = request.getStrategyId();
-        if (strategyId != null) {
-            matches = matches.stream()
-                    .filter(tc -> {
-                        List<Integer> tags = StrategyIds.parse(tc.getStrategyIds());
-                        return tags.isEmpty()
-                                ? strategyId.equals(tc.getStratergyId())
-                                : tags.contains(strategyId);
-                    })
-                    .toList();
-        }
+        List<TradeConfig> matches = matchForBulkUpdate(
+                src, request.getStrategyId(), request.getFromDate(), request.getToDate());
 
         // Fail loudly on a row the patch would leave with an inverted premium
         // band — a config that can never trade while looking perfectly healthy.
@@ -922,10 +906,106 @@ public class TradeConfigAdminService {
         byDate.keySet().forEach(this::afterMutation);
 
         log.info("[trade-config] bulk-updated {} config(s) (source={}, strategy={}, window={}..{}): {}",
-                matches.size(), src, strategyId, request.getFromDate(), request.getToDate(), changes);
+                matches.size(), src, request.getStrategyId(),
+                request.getFromDate(), request.getToDate(), changes);
 
         return new BulkUpdateResultDTO(matches.size(), matches.size(), byDate, ids, changes, false,
                 bulkUpdateSummary(matches.size(), changes, false));
+    }
+
+    /**
+     * The bulk-update selector, shared by {@link #bulkUpdate} and
+     * {@link #bulkUpdatePrefill} so the set the panel prefils from is exactly
+     * the set an apply would write. Strategy resolution matches dispatch:
+     * {@code strategy_ids} tags, or the primary {@code stratergy_id} when
+     * untagged.
+     */
+    private List<TradeConfig> matchForBulkUpdate(AutoDeleteRequestDTO.Source source,
+                                                 Integer strategyId,
+                                                 LocalDate fromDate, LocalDate toDate) {
+        List<TradeConfig> matches = fromDate == null
+                ? tradeConfigRepository.findBySource(source.name())
+                : tradeConfigRepository.findBySourceAndTradingDateBetween(source.name(), fromDate, toDate);
+
+        if (strategyId != null) {
+            matches = matches.stream()
+                    .filter(tc -> {
+                        List<Integer> tags = StrategyIds.parse(tc.getStrategyIds());
+                        return tags.isEmpty()
+                                ? strategyId.equals(tc.getStratergyId())
+                                : tags.contains(strategyId);
+                    })
+                    .toList();
+        }
+        return matches;
+    }
+
+    /**
+     * What the bulk-edit panel prefils its fields with: for each editable
+     * field, the value <b>every</b> matched config shares — absent when the
+     * fleet disagrees (reported in {@code mixedFields}) or when every row is
+     * null. Numbers are compared by value, not scale, so {@code 0.30} and
+     * {@code 0.3000} read as one shared value.
+     *
+     * <p>Exists because editing blind was the panel's real flaw: blank-means-
+     * unchanged is the right <i>write</i> semantic, but the operator still
+     * needs to see what the fleet currently holds before deciding what to
+     * change. The UI pairs this with dirty-tracking — a prefilled value that
+     * comes back unedited is not sent, so prefill does not turn every apply
+     * into a nine-field rewrite.</p>
+     */
+    public BulkUpdatePrefillDTO bulkUpdatePrefill(AutoDeleteRequestDTO.Source source,
+                                                  Integer strategyId) {
+        AutoDeleteRequestDTO.Source src = source == null
+                ? AutoDeleteRequestDTO.Source.AUTO_DOWNTREND : source;
+        List<TradeConfig> matches = matchForBulkUpdate(src, strategyId, null, null);
+
+        Map<String, String> values = new LinkedHashMap<>();
+        List<String> mixed = new ArrayList<>();
+        prefillField(matches, "target", tc -> plain(tc.getTarget()), values, mixed);
+        prefillField(matches, "stopLoss", tc -> plain(tc.getStopLoss()), values, mixed);
+        prefillField(matches, "targetPct", tc -> plain(tc.getTargetPct()), values, mixed);
+        prefillField(matches, "slPct", tc -> plain(tc.getSlPct()), values, mixed);
+        prefillField(matches, "maxSlPoints", tc -> plain(tc.getMaxSlPoints()), values, mixed);
+        prefillField(matches, "maxLoss", tc -> plain(tc.getMaxLoss()), values, mixed);
+        prefillField(matches, "minOptionPrice", tc -> plain(tc.getMinOptionPrice()), values, mixed);
+        prefillField(matches, "maxOptionPrice", tc -> plain(tc.getMaxOptionPrice()), values, mixed);
+        prefillField(matches, "trailLadder",
+                tc -> tc.getTrailLadder() == null || tc.getTrailLadder().isBlank()
+                        ? null : tc.getTrailLadder().trim(),
+                values, mixed);
+
+        return new BulkUpdatePrefillDTO(matches.size(), values, mixed);
+    }
+
+    /** Scale-free rendering so 0.30 and 0.3000 count as the same shared value. */
+    private static String plain(BigDecimal v) {
+        return v == null ? null : v.stripTrailingZeros().toPlainString();
+    }
+
+    /**
+     * Folds one field across the matched set: a value every row shares goes in
+     * {@code values}; disagreement lands the field in {@code mixed}; all-null
+     * (or an empty set) contributes nothing — the input stays blank either way.
+     */
+    private static void prefillField(List<TradeConfig> matches, String field,
+                                     java.util.function.Function<TradeConfig, String> extractor,
+                                     Map<String, String> values, List<String> mixed) {
+        boolean first = true;
+        String common = null;
+        for (TradeConfig tc : matches) {
+            String v = extractor.apply(tc);
+            if (first) {
+                common = v;
+                first = false;
+            } else if (!Objects.equals(common, v)) {
+                mixed.add(field);
+                return;
+            }
+        }
+        if (!first && common != null) {
+            values.put(field, common);
+        }
     }
 
     /** The non-null assignments a bulk update carries, rendered for the confirm dialog. */

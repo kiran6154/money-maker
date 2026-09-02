@@ -47,7 +47,7 @@ class EodDowntrendResolveConfigGroupsTest {
                 null, null, null,
                 ruleStrategyRepository,
                 strategyDefaultsRepository,
-                null, null, null, null);
+                null, null, null, List.of());
     }
 
     private static SmaDowntrendRule rule(Integer primaryStrategy) {

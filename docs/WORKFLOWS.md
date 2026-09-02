@@ -88,11 +88,11 @@ Every other doc in this folder explains one feature in depth. This one is differ
 
 | | |
 |---|---|
-| Trigger | Called from workflow ⑥ (backtest), once per simulated day, after 15:20 force-close |
-| Code | [`EodDowntrendDetectionService.runForDay(date)`](../src/main/java/com/moneymaker/tradeconfig/generation/EodDowntrendDetectionService.java) |
+| Trigger | HTTP — `POST /api/trade-configs/generate?fromDate=&toDate=[&strategyIds=]` (trade-config domain since 2026-08-31; the backtest replay no longer calls the detector) |
+| Code | [`TradeConfigGenerationService.generateForWindow`](../src/main/java/com/moneymaker/tradeconfig/generation/TradeConfigGenerationService.java) → [`EodDowntrendDetectionService.runForDay(date, scope)`](../src/main/java/com/moneymaker/tradeconfig/generation/EodDowntrendDetectionService.java) per session |
 | Reads | `sma_downtrend_rule`, `sma_downtrend_rule_strategy`, `strategy_defaults`, option-leg candles via `MarketDataService` (broker fetch, not `market_data` table) |
 | Writes | `trade_config` (`source='AUTO_DOWNTREND'`, with `strategy_ids`) + `sma_timeframe`, for the **next** trading day only |
-| Strategy tagging | Which strategies a rule generates for is DB-driven (`sma_downtrend_rule_strategy`, changeset 034); the `trade_config` field block comes from `strategy_defaults` (033). One scan produces **one** config carrying one tag per strategy — two configs only when two strategies' default blocks differ. |
+| Strategy tagging | Which strategies a rule generates for is DB-driven (`sma_downtrend_rule_strategy`, changeset 034); the `trade_config` field block comes from `strategy_defaults` (033). One scan produces **one** config carrying one tag per strategy — two configs only when two strategies' default blocks differ. The optional `strategyIds` request param narrows one run to selected strategies ([per-run strategy selection](EOD_DOWNTREND.md#per-run-strategy-selection)); it can never widen the DB-driven set. |
 | Downstream | **Delayed cross-workflow effect**: the row it writes today is invisible to everything until workflow ② loads *tomorrow's* date. It cannot bootstrap a config chain from nothing, but since the 2026-08-29 decoupling it **does** run on every trading day, including days with no active config — that is what lets the chain restart after a day that generated nothing. Previously one empty day was terminal: a 31-day range stopped after 5. Reachable/reversible via workflow ③'s bulk-delete API (`/api/trade-configs/auto/*`). |
 | Full detail | [EOD_DOWNTREND.md](EOD_DOWNTREND.md) |
 
@@ -116,7 +116,7 @@ Every other doc in this folder explains one feature in depth. This one is differ
 
 | | |
 |---|---|
-| Trigger | HTTP — `POST /api/backtest/analysis?fromDate=&toDate=` |
+| Trigger | HTTP — `POST /api/backtest/analysis?fromDate=&toDate=[&strategyIds=][&configIds=][&configStrategyId=]` — the optional scopes replay only the named strategies and/or hand-picked `trade_config` ids; `configStrategyId` is the cross-run: the named strategies run against *that* strategy's config set instead of their own ([BACKTESTING.md](BACKTESTING.md#running-a-backtest--two-separate-domains-since-2026-08-31)) |
 | Code | [`BacktestAnalysisService`](../src/main/java/com/moneymaker/backtesting/BacktestAnalysisService.java) / [`BacktestController`](../src/main/java/com/moneymaker/backtesting/BacktestController.java) |
 | Reads/Writes | Drives the **same service methods** as ② and ⑤ per simulated day/tick — not a parallel implementation. Also calls ④ once per day, and `OrderService.forceCloseOpenPositions(date, dateEnd)` at each day's end. |
 | Downstream | Writes the same `trade_order` ledger as ⑤, but through no-op broker adapters (`BacktestingOrderPlacementService` / `BacktestingPositionMonitorService`) so nothing hits a real broker. Telegram is suppressed by default (`telegram.backtest-enabled=false`). |

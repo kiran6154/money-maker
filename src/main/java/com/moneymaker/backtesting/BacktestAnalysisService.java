@@ -108,6 +108,35 @@ public class BacktestAnalysisService {
      */
     public BacktestRunResult run(LocalDate fromDate, LocalDate toDate,
                                  Set<Integer> strategyIds, Set<Integer> configIds) {
+        return run(fromDate, toDate, strategyIds, configIds, null);
+    }
+
+    /**
+     * Cross-run variant (user request 2026-08-31: "strategy 1 can be run
+     * against strategy 2's auto configs"). When {@code configStrategyId} is
+     * set, the day's config set is <b>that strategy's configs</b> — every
+     * config tagged with it (or carrying it as primary) — and each strategy in
+     * {@code strategyIds} runs against <i>all</i> of them, regardless of the
+     * configs' own tags. The normal tag-driven fan-out is replaced, not
+     * filtered: this is how a strategy is measured on a config set that was
+     * generated for a different one.
+     *
+     * <p>{@code strategyIds} must be non-empty in this mode — the whole point
+     * is naming the runner. Ledger note: rows land under the <i>run</i>
+     * strategy's id on the borrowed config's id, so caps and dedupe still key
+     * on {@code (configId, runStrategyId)} and a cross ledger is directly
+     * comparable to that strategy's normal run — but nothing on the row says
+     * the config set was borrowed. Wipe the ledger between compare runs, as
+     * for any same-window rerun.</p>
+     */
+    public BacktestRunResult run(LocalDate fromDate, LocalDate toDate,
+                                 Set<Integer> strategyIds, Set<Integer> configIds,
+                                 Integer configStrategyId) {
+        if (configStrategyId != null && (strategyIds == null || strategyIds.isEmpty())) {
+            throw new IllegalArgumentException(
+                    "configStrategyId=" + configStrategyId + " needs at least one strategy in "
+                            + "strategyIds — pick which strategy should run against that config set");
+        }
         if (fromDate == null) {
             throw new IllegalArgumentException("fromDate must not be null");
         }
@@ -159,12 +188,24 @@ public class BacktestAnalysisService {
             // ===== Day-start: fetch this day's config (live cron equivalent) =====
             List<TradeConfigCombinedDTO> combinedDto = tradeConfigScheduler.getConfigsForDate(currentDate);
 
+            // Cross-run: replace the tag-driven fan-out with configStrategyId's
+            // config set, re-badged onto each run strategy. Mutually exclusive
+            // with the plain scope filter below — in cross mode strategyIds
+            // names the runners, not a filter on the configs' own tags.
+            if (configStrategyId != null) {
+                List<TradeConfigCombinedDTO> crossed =
+                        crossStrategies(combinedDto, configStrategyId, strategyIds);
+                log.info("[Backtest] day={} cross-run: strategies {} against strategy {}'s configs "
+                                + "— {} (config, strategy) pairs from {} fan-out rows",
+                        currentDate, strategyIds, configStrategyId, crossed.size(), combinedDto.size());
+                combinedDto = crossed;
+            }
             // Strategy scoping: keep only the (config, strategy) pairs whose
             // strategyId was requested. Valid because every cap and dedupe rule
             // downstream is keyed on (tradeConfigId, strategyId) — strategies do
             // not compete for each other's slots — so a scoped run's ledger is
             // the same rows that strategy would have produced inside a full run.
-            if (strategyIds != null && !strategyIds.isEmpty()) {
+            else if (strategyIds != null && !strategyIds.isEmpty()) {
                 List<TradeConfigCombinedDTO> scoped = combinedDto.stream()
                         .filter(dto -> dto != null && dto.getStrategyId() != null
                                 && strategyIds.contains(dto.getStrategyId()))
@@ -322,6 +363,55 @@ public class BacktestAnalysisService {
         long durationMs = Duration.between(startedAt, Instant.now()).toMillis();
         long successCount = results.stream().filter(BacktestDayResult::success).count();
         return new BacktestRunResult(fromDate, toDate, results.size(), successCount, durationMs, results);
+    }
+
+    /**
+     * The cross-run fan-out: {@code configStrategyId}'s config set × the run
+     * strategies.
+     *
+     * <p>A config belongs to the set when any of its fan-out rows carries
+     * {@code configStrategyId} — which, via {@code strategyIdsFor}'s fallback,
+     * covers both tagged configs and untagged ones whose primary
+     * {@code stratergy_id} matches. Each config is taken <b>once</b> (a config
+     * tagged {@code "1,2"} contributes one template, not two) and re-badged
+     * onto every run strategy, ascending, so a re-run writes the same pairs in
+     * the same order. The siblings share the template's {@code TradeConfig} /
+     * timeframe instances, same as the normal fan-out — nothing downstream
+     * mutates them.</p>
+     */
+    // Package-private static: this is the whole semantic of the cross-run and
+    // the only part of it unit-testable without standing up the replay loop.
+    static List<TradeConfigCombinedDTO> crossStrategies(List<TradeConfigCombinedDTO> dtos,
+                                                        int configStrategyId,
+                                                        Set<Integer> runStrategyIds) {
+        java.util.Map<Integer, TradeConfigCombinedDTO> templates = new java.util.LinkedHashMap<>();
+        if (dtos != null) {
+            for (TradeConfigCombinedDTO dto : dtos) {
+                if (dto == null || dto.getTradeConfig() == null || dto.getTradeConfig().getId() == null) {
+                    continue;
+                }
+                if (dto.getStrategyId() == null || dto.getStrategyId() != configStrategyId) {
+                    continue;
+                }
+                templates.putIfAbsent(dto.getTradeConfig().getId(), dto);
+            }
+        }
+        List<Integer> runners = runStrategyIds == null
+                ? List.of()
+                : runStrategyIds.stream().filter(java.util.Objects::nonNull).sorted().toList();
+
+        List<TradeConfigCombinedDTO> crossed = new ArrayList<>();
+        for (TradeConfigCombinedDTO template : templates.values()) {
+            for (Integer runId : runners) {
+                crossed.add(new TradeConfigCombinedDTO(
+                        template.getTradeConfig(),
+                        template.getInstrument(),
+                        template.getInstrumentDetails(),
+                        template.getTimeframes(),
+                        runId));
+            }
+        }
+        return crossed;
     }
 
     /**

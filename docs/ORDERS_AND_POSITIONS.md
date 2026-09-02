@@ -440,6 +440,9 @@ Backtest mode is gated at `TelegramNotifier.send()` — `telegram.backtest-enabl
 | DELETE | `/api/trade-configs/{id}` | Delete — `409` if any `trade_order` references the config |
 | POST | `/api/trade-configs/{id}/active?value=` | Retire / reinstate without deleting, see [Retiring a config](#retiring-a-config) |
 | POST | `/api/trade-configs/clone?fromDate=&toDate=&dryRun=` | Bulk-clone a day's configs onto another date, see [Cloning a day](#cloning-a-day) |
+| GET | `/api/trade-configs/range?from=&to=&source=` | Every config in a trading-date window (unpaged). API-only companion to the backtest `configIds` scope for scripted runs — the UI selects by strategy instead |
+| GET/PUT | `/api/downtrend-rules`, `/api/downtrend-rules/{id}/grid` | Detection rules panel: per-rule SMA grid / timeframes / indicator / enabled — see [EOD_DOWNTREND.md](EOD_DOWNTREND.md#skipping-smas--adding-a-different-indicator-rule) |
+| POST | `/api/trade-configs/auto/bulk-update` | One field-set applied to every matching config at once, see [Bulk-editing many configs](#bulk-editing-many-configs) |
 | GET | `/api/trade-configs/instruments` | Instrument dropdown source |
 | GET | `/api/trade-configs/strategies` | Strategy dropdown source |
 
@@ -550,6 +553,70 @@ edits freely.
 > 027 (`target_pct` / `sl_pct` — see [S6](STRATEGY_ANALYSIS_TODO.md)). Append to
 > the **end** of the column's own block, bump the two later mapper offsets, and
 > extend `TradeConfigCombinedQueryContractTest`, which pins the whole ordering.
+
+### Bulk-editing many configs
+
+`POST /api/trade-configs/auto/bulk-update` applies **one field-set to every
+config matching a selector in a single call** — the provision for retuning an
+auto-generated fleet's SL / target without opening rows one by one. The
+**✎ Bulk edit configs** panel on `/trade-configs` (collapsed, below bulk delete)
+drives it.
+
+```bash
+# preview: what would a 25% SL and a 40-point cap touch on strategy 2's AUTO configs?
+curl -X POST http://localhost:8080/api/trade-configs/auto/bulk-update \
+     -H 'Content-Type: application/json' \
+     -d '{"strategyId":2,"fromDate":"2024-01-01","toDate":"2024-01-31","slPct":0.25,"maxSlPoints":40}'
+
+# commit — dryRun defaults to true, so committing is the explicit case
+curl -X POST http://localhost:8080/api/trade-configs/auto/bulk-update \
+     -H 'Content-Type: application/json' \
+     -d '{"strategyId":2,"fromDate":"2024-01-01","toDate":"2024-01-31","slPct":0.25,"maxSlPoints":40,"dryRun":false}'
+```
+
+The contract, point by point:
+
+- **It is a patch, not a replacement.** A field that is `null` (blank in the UI)
+  is left untouched on every row. The one field needing a "clear" spelling is
+  `trailLadder`: an empty string removes the ladder (the fixed stop then
+  applies); the UI has a separate "Remove trail ladder" tick for it.
+- **The panel prefills from the fleet's current state**
+  (`GET /api/trade-configs/auto/bulk-update/prefill?source=&strategyId=`, same
+  selector the apply uses): a field every matched config agrees on shows its
+  value (numbers compared by value, not scale), a field the fleet disagrees on
+  stays blank with a "mixed" placeholder and is named in the summary line. The
+  UI dirty-tracks against that baseline, so **only fields you actually changed
+  are sent** — a prefilled value left as-is is not rewritten, and clearing a
+  prefilled number means "don't touch this field". *↺ Reset* reloads the
+  baseline; a successful apply refreshes it.
+- **Selector**: `source` defaults to `AUTO_DOWNTREND` (MANUAL is the same
+  explicit opt-in the bulk delete requires), plus an optional `strategyId`
+  (matches `strategy_ids` tags, or the primary for untagged rows — the same
+  resolution dispatch uses) and an optional `fromDate`/`toDate` trading-date
+  window (both or neither). **The UI panel deliberately offers no date window**
+  (user decision 2026-08-31): its job is "all entries at once", so it always
+  addresses every trading date of the source; the date filter is API-only, for
+  scripted use.
+- **Fields offered**: `target`, `stopLoss`, `targetPct`, `slPct`,
+  `maxSlPoints`, `maxLoss`, `minOptionPrice`, `maxOptionPrice`, `trailLadder` —
+  and deliberately nothing else. Everything here is either snapshotted onto the
+  order at entry (the bracket) or an entry gate, so applying it with trades
+  open cannot re-price an open position, which is why there is **no
+  `confirmRequired` flow**: the fields that would need one (side, quantities,
+  caps, strategy) are simply not offered — that is what the single-config edit
+  is for.
+- **Same value rules as the form** (`targetPct` in (0, 1), positive `slPct` /
+  `maxSlPoints`, ladder parsed by `TrailLadder`), plus a per-row band check: a
+  patch that would leave any matched config with an inverted premium band
+  rejects the **whole batch**, naming the config — one transaction, never a
+  partial apply.
+- **`dryRun` defaults to true**; the UI previews and confirms against the
+  server's own count.
+- Runs through `afterMutation` per affected date, so the
+  [cache-invalidation contract](#the-cache-invalidation-contract) holds.
+- **Side effect**: every updated row gets a fresh `updated_date`, so the bulk
+  *delete* panel's "generation run" clustering will show the edit as its own
+  run, and pre-edit run selections no longer match these rows.
 
 ### The cache-invalidation contract
 

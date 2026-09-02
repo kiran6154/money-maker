@@ -149,6 +149,12 @@
                         <span style="color: var(--text-muted); font-size: 12px;">loading…</span>
                     </div>
                 </div>
+                <div class="form-row">
+                    <label for="an-config-strategy" title="Cross-run: the ticked strategies run against the chosen strategy's configs (its auto-generated fleet included) instead of their own. 'Their own' = normal run.">Against configs of</label>
+                    <select id="an-config-strategy" class="form-control">
+                        <option value="">Their own configs</option>
+                    </select>
+                </div>
             </div>
             <div class="bt-actions">
                 <button id="an-run" class="btn btn-primary"
@@ -310,7 +316,11 @@
 
     // -------- Strategy scope (run form) --------
     // Ticked strategies become the run's strategyIds param; none ticked = all.
+    // The "Against configs of" dropdown turns the run into a cross-run: the
+    // ticked strategies run against that strategy's config set instead of
+    // their own (configStrategyId param).
     const anStrategies = document.getElementById('an-strategies');
+    const anConfigStrategy = document.getElementById('an-config-strategy');
     (async function loadStrategyOptions() {
         try {
             const r = await fetch('/api/trade-configs/strategies');
@@ -322,6 +332,11 @@
                 lbl.innerHTML = '<input type="checkbox" class="an-strat" value="' + s.id + '"> '
                     + (s.name || ('Strategy ' + s.id));
                 anStrategies.appendChild(lbl);
+
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = (s.name || ('Strategy ' + s.id)) + "'s configs";
+                anConfigStrategy.appendChild(opt);
             });
             if (!list || !list.length) {
                 anStrategies.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">none registered</span>';
@@ -334,15 +349,26 @@
         return Array.from(document.querySelectorAll('.an-strat:checked')).map(cb => cb.value);
     }
 
+    // Per-config selection was tried here and removed (user feedback
+    // 2026-08-31): ticking through hundreds of config checkboxes is the wrong
+    // unit of selection — strategy is. The Strategies scope above is the
+    // picker; the API's configIds param survives for scripted use.
+
     anRun.addEventListener('click', async () => {
         if (!backtestEnabled) return;
         if (!anFrom.value || !anTo.value) { setAn('pick dates', 'badge-warn'); return; }
+        const scope = selectedStrategyIds();
+        if (anConfigStrategy.value && !scope.length) {
+            alert('Cross-run needs a runner: tick the strategy (or strategies) that should run '
+                + 'against ' + anConfigStrategy.options[anConfigStrategy.selectedIndex].text + '.');
+            return;
+        }
         anRun.disabled = true;
         setAn('running…', 'badge-info');
         try {
             let url = '/api/backtest/analysis?fromDate=' + anFrom.value + '&toDate=' + anTo.value;
-            const scope = selectedStrategyIds();
             if (scope.length) url += '&strategyIds=' + scope.join(',');
+            if (anConfigStrategy.value) url += '&configStrategyId=' + anConfigStrategy.value;
             const r = await fetch(url, { method: 'POST' });
             if (r.status === 404) { setAn('disabled', 'badge-warn'); return; }
             const j = await r.json();

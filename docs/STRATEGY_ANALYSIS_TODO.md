@@ -254,6 +254,32 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 
 ---
 
+### S17. The `indicator_type` seam ships with one scanner — which indicators earn a second is unmeasured
+
+| | |
+|---|---|
+| Where | [`EodTrendScanner`](../src/main/java/com/moneymaker/tradeconfig/generation/EodTrendScanner.java) (changeset 039) — the auto-config detector now dispatches its scan by `sma_downtrend_rule.indicator_type`, with [`SmaDowntrendScanner`](../src/main/java/com/moneymaker/tradeconfig/generation/SmaDowntrendScanner.java) as the only implementation. Same changeset made the SMA grid per-rule (`sma_periods` / `timeframes_minutes`). |
+| Why | The seam was built on the user's request ("add different indicator rule — I need provision"), but *which* indicator (RSI? EMA? something else), on which series, with what thresholds, is an open trading decision — every threshold belongs in new rule columns (CLAUDE.md #9), and none has been chosen. Two sub-questions ride along: (a) a non-SMA scanner must still emit `(sma, timeframe)` combos, because those become the generated config's `sma_timeframe` children and the strategies' primary periods — an indicator with no natural SMA mapping needs a convention for that; (b) SMA-20 is now selectable for *detection* while the strategies' SMA-20 rule case stays commented out, so a 20-period combo generates configs that never trade until that case is deliberately re-enabled — the fail-closed default, kept on purpose. |
+| Impact | **Unquantified.** No behaviour changed — the 039 defaults reproduce the old hardcoded grid bit-for-bit. The measurement, when an indicator is proposed: generate configs for the same window with the old and new `indicator_type` (or a narrowed `sma_periods`), replay both, compare ledgers. |
+| Fix sketch | Nothing without the user naming the indicator and its thresholds. The mechanical path is documented in [EOD_DOWNTREND.md](EOD_DOWNTREND.md#skipping-smas--adding-a-different-indicator-rule). |
+| Effort | **M** per indicator (scanner bean + threshold changeset + paired measurement). |
+| Priority | _Blocked on a user decision — filed 2026-08-31 when the seam landed._ |
+
+---
+
+### S18. A coarse decision bar re-arms entries on every fine tick until the next bar settles — stop-out → immediate re-entry churn
+
+| | |
+|---|---|
+| Where | Observed on config 2035's 2025-01-08 cross-run ledger (trades 2125–2128, all `15min/SMA50` CE SELL entries): four sequential entries in 75 minutes, three stopped out. The mechanics: a settled 15-min bar stays the newest decision bar for three 5-min ticks, and the strategy re-emits its signal on each; `OrderService`'s guards then decide what opens. The exact-duplicate guard blocks the *same strike* re-entering on the same bar (same `entryTime`), and `max_parallel_per_side` serialises the side — but the moment a stop-out frees the slot, the *other* in-band strike enters on the very same decision bar (2126 stopped out on candle 14:25; 2127 opened the next tick, still off bar 14:15). Nothing expresses "this bar already produced a stop-out, wait for fresh information". |
+| Why | Whether re-entering on evidence that has already failed once is good or bad is exactly this file's kind of question. On this sample it was bad — three consecutive `STOP_LOSS` exits on one config in one afternoon — but one afternoon is not a measurement. Note the trade-count lever already exists and was simply unset here: the config ran with `no_of_trades = NULL` (uncapped) because the strategy-2 `strategy_defaults` row leaves it null. |
+| Impact | **Unquantified.** Measure on a full replay: count entries whose decision bar equals a same-day earlier stop-out's decision bar (same config), and compare that subset's P&L against the rest. Cheap query — `entry_time` *is* the decision bar. |
+| Fix sketch | Nothing without sign-off. Candidate levers, all config-shaped per CLAUDE.md #9: set `no_of_trades` in `strategy_defaults` (works today, no code); or a per-bar entry budget / post-stop-out cooldown as a new `TradeConfig` column. The display side is worth noting either way: ledger entry/exit stamps are candle times, so serialised trades can *look* concurrent — see the 2126/2127 walkthrough in the session notes. |
+| Effort | **S** for the measurement; **M** for a cooldown column with its paired replay. |
+| Priority | _TBD — filed 2026-08-31 from the config-2035 cross-run ledger review._ |
+
+---
+
 ## Resolved
 
 ### S2. `Strategy1` scanned every config's legs, not its own — **RESOLVED 2026-08-25**

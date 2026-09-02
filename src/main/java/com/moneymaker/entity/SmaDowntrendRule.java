@@ -11,9 +11,10 @@ import java.time.LocalTime;
  * Static rule that drives the end-of-day downtrend detector. One row per
  * {@code (strategy_id, underlying instrument)} the user wants monitored.
  *
- * <p>The detector internally walks the fixed SMA grid
- * {@code {50, 100, 200, 500} × {5min, 15min}} against the ATM strike
- * for both CE and PE. Anything that ends the day still down-trending
+ * <p>The detector walks this rule's own grid —
+ * {@link #smaPeriods} × {@link #timeframesMinutes}, defaulting to
+ * {@code {50, 100, 200, 500} × {5min, 15min}} (changeset 039) — against the
+ * ATM strike for both CE and PE. Anything that ends the day still down-trending
  * (per {@link #maxDeviation} starting at {@link #startTime}) becomes a
  * {@code sma_timeframe} row under a freshly inserted, next-day
  * {@code trade_config} stamped {@code source='AUTO_DOWNTREND'}.</p>
@@ -125,4 +126,45 @@ public class SmaDowntrendRule {
 
     @Column(name = "enabled", nullable = false)
     private Boolean enabled;
+
+    /**
+     * Which SMA periods this rule checks, as a comma-separated list —
+     * {@code "50,100,200,500"} (the default, matching the old hardcoded grid),
+     * {@code "50,100"} to skip the long ones. Parsed only via
+     * {@code com.moneymaker.util.IntCsv}; blank falls back to the default grid
+     * (disable the rule with {@link #enabled}, not by blanking this).
+     *
+     * <p>Only {@code {20, 50, 100, 200, 500}} are computable: those are the
+     * periods {@code MarketData} carries trend flags for and
+     * {@code SmaTrendCalculator} tracks. A period outside that set is dropped
+     * with a WARN, not silently trend-tested — adding a genuinely new period is
+     * still a code change (flag fields + calculator). Note 20 is selectable here
+     * for <i>detection</i>, but the strategies' own SMA-20 rule case is
+     * commented out, so a config generated from a 20-period combo will not
+     * trade until that case is re-enabled.</p>
+     */
+    @Column(name = "sma_periods", nullable = false, length = 64)
+    private String smaPeriods;
+
+    /**
+     * Which candle timeframes this rule checks, as comma-separated minutes —
+     * {@code "5,15"} (the default), {@code "5"} to skip 15-minute. Parsed only
+     * via {@code IntCsv}; blank falls back to the default. The value feeds the
+     * market-data fetch interval as {@code "<n>minute"}, so it must be an
+     * interval the active data source serves.
+     */
+    @Column(name = "timeframes_minutes", nullable = false, length = 32)
+    private String timeframesMinutes;
+
+    /**
+     * Which {@code EodTrendScanner} runs this rule's scan. {@code SMA_DOWNTREND}
+     * (the default, and the only shipped scanner) is the SMA grid walk described
+     * above. Adding a different indicator rule = implement
+     * {@code com.moneymaker.tradeconfig.generation.EodTrendScanner} as a Spring
+     * bean returning a new type name, then point rows here at it — the detector
+     * discovers scanners by injection and needs no change. An unknown value
+     * skips the rule with a WARN naming the registered types.
+     */
+    @Column(name = "indicator_type", nullable = false, length = 32)
+    private String indicatorType;
 }

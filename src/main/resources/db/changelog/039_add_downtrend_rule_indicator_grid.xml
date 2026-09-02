@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <!--
+      Per-rule detection grid + indicator seam (user request 2026-08-31: "skip a
+      few SMAs, or add a different indicator rule").
+
+      Until now the EOD detector walked a grid hardcoded in
+      EodDowntrendDetectionService ({50,100,200,500} x {5,15}min), so skipping
+      one SMA period meant a redeploy. The three columns move that choice onto
+      the rule row:
+
+        - sma_periods:        which SMA periods this rule checks (CSV). Only
+                              {20,50,100,200,500} are computable today - a
+                              period outside that set is dropped with a WARN,
+                              because MarketData carries trend flags for
+                              exactly those five.
+        - timeframes_minutes: which candle timeframes it checks (CSV minutes).
+        - indicator_type:     which EodTrendScanner runs the scan. Only
+                              SMA_DOWNTREND ships; a new indicator is a new
+                              scanner bean plus this value - no detector change.
+
+      Defaults reproduce the previous hardcoded grid exactly, and existing rows
+      are backfilled with them, so behaviour on an existing database is
+      unchanged until someone edits a row.
+    -->
+    <changeSet id="039_add_downtrend_rule_indicator_grid" author="moneymaker">
+        <addColumn tableName="sma_downtrend_rule">
+            <column name="sma_periods" type="VARCHAR(64)" defaultValue="50,100,200,500">
+                <constraints nullable="false"/>
+            </column>
+            <column name="timeframes_minutes" type="VARCHAR(32)" defaultValue="5,15">
+                <constraints nullable="false"/>
+            </column>
+            <column name="indicator_type" type="VARCHAR(32)" defaultValue="SMA_DOWNTREND">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

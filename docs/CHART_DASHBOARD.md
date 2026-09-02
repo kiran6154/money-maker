@@ -793,10 +793,17 @@ If a pane shows no data, check:
 ## Continuous (multi-day) charts
 
 `MarketChartRequest.fromDate` draws one continuous series across
-`[fromDate, date]` instead of a single day. Absent - the default - keeps the
+`[fromDate, date]` instead of a single day. Absent, the API keeps the
 original single-day behaviour. Exposed as `fromDate` on
 `GET /api/charts/market-data` and as the **From (continuous)** control in the
 toolbar.
+
+In the UI, a **fresh browser session opens with From prefilled to 45 days
+before Date** (`DEFAULT_CONTINUOUS_LOOKBACK_DAYS` in `chart-dashboard.js`), so
+the continuous view works without picking a from-date. The default applies only
+when the field was never persisted: clearing From (the × button) stores an
+empty value, so the single-day choice survives reloads, and a trade deep-link
+that carries `date` without `fromDate` still opens single-day.
 
 Two things worth knowing:
 

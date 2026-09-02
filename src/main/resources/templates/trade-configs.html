@@ -337,9 +337,55 @@
                 <label for="gen-to">To</label>
                 <input id="gen-to" type="date" class="form-control" />
             </div>
+            <div class="form-row">
+                <label title="Generate only for the ticked strategies this run. None ticked = every strategy tagged on the rules. A ticked strategy still needs its rule tag and an enabled strategy_defaults row — the selection narrows the standing setup, it cannot widen it.">Strategies</label>
+                <div id="gen-strategies" style="display:flex; gap:14px; align-items:center; min-height:34px; flex-wrap:wrap;">
+                    <span style="color:var(--text-muted); font-size:12px;">loading…</span>
+                </div>
+            </div>
             <button id="gen-run" class="btn btn-primary" type="button">⚙ Generate</button>
         </div>
         <div id="gen-result" style="margin-top:10px; font-size:13px; color:var(--text-muted);"></div>
+    </div>
+
+    <!-- ─────────── Detection rules (collapsed) ───────────
+         Front end for changeset 039's per-rule grid: which SMAs / timeframes a
+         sma_downtrend_rule scans and which EodTrendScanner judges it. Grid +
+         enabled only — the rule's thresholds and bracket stay SQL-only. -->
+    <div id="dr-card" class="glass-card bd-collapsed" style="margin-bottom: 18px;">
+        <div class="bd-header" id="dr-toggle">
+            <span class="bd-caret">▸</span>
+            <h3>🧭 Detection rules</h3>
+            <span class="badge badge-info" id="dr-count">—</span>
+            <div class="spacer"></div>
+            <span class="bd-hint">Per-rule SMA grid, timeframes and indicator — what Generate scans. Blank = default grid.</span>
+        </div>
+        <div class="bd-body">
+            <div style="overflow-x:auto;">
+                <table class="report-table" id="dr-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Instrument</th>
+                            <th title="Strategies the rule generates for (enabled tags, or its primary)">Strategies</th>
+                            <th title="Comma list from 20, 50, 100, 200, 500. Blank resets to 50,100,200,500.">SMA periods</th>
+                            <th title="Comma list of minutes, e.g. 5,15. Blank resets to 5,15.">Timeframes (min)</th>
+                            <th title="Which scanner judges the leg. New indicators appear here when their scanner bean is deployed.">Indicator</th>
+                            <th title="max_deviation / start_time — edit in SQL">Strictness</th>
+                            <th title="target_pct / sl_pct / max SL — copied onto generated configs; edit in SQL or retune generated rows with Bulk edit">Bracket</th>
+                            <th title="Premium band copied onto generated configs">Band</th>
+                            <th>Enabled</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="dr-rows"></tbody>
+                </table>
+            </div>
+            <div id="dr-empty" style="display:none; color:var(--text-muted); padding:10px 0;">
+                No <code>sma_downtrend_rule</code> rows yet — insert one (see docs/EOD_DOWNTREND.md sample) and reopen this panel.
+            </div>
+            <div id="dr-result" style="margin-top:8px; font-size:13px; color:var(--text-muted);"></div>
+        </div>
     </div>
 
     <!-- ─────────── Bulk delete of auto-generated configs (collapsed) ─────────── -->
@@ -415,6 +461,91 @@
                 <button id="bd-clear" class="btn btn-ghost" type="button">Clear</button>
                 <button id="bd-delete" class="btn btn-danger" type="button" disabled>🗑 Delete selected</button>
             </div>
+        </div>
+    </div>
+
+    <!-- ─────────── Bulk edit configs (collapsed) ───────────
+         One field-set applied to every matching config in a single call
+         (POST /api/trade-configs/auto/bulk-update). Blank fields are left
+         unchanged on every row — this is a patch, not a replacement. -->
+    <div id="be-card" class="glass-card bd-collapsed" style="margin-bottom: 18px;">
+        <div class="bd-header" id="be-toggle">
+            <span class="bd-caret">▸</span>
+            <h3>✎ Bulk edit configs</h3>
+            <span class="badge badge-warn" id="be-source-badge">AUTO_DOWNTREND</span>
+            <div class="spacer"></div>
+            <span class="bd-hint">SL / target / band for all matching configs at once — blank fields stay as they are</span>
+        </div>
+
+        <div class="bd-body">
+            <div style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px;">
+                <div class="form-row">
+                    <label for="be-source">Source</label>
+                    <select id="be-source" class="form-control">
+                        <option value="AUTO_DOWNTREND" selected>AUTO_DOWNTREND (generated)</option>
+                        <option value="MANUAL">MANUAL (hand-written)</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label for="be-strategy" title="Configs the strategy actually runs — tagged in strategy_ids, or carrying it as primary">Strategy</label>
+                    <select id="be-strategy" class="form-control">
+                        <option value="">All strategies</option>
+                    </select>
+                </div>
+                <span class="bd-hint">Applies to every trading date of the selected source — the whole fleet in one update</span>
+            </div>
+
+            <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap:12px; margin-bottom:12px;">
+                <div class="form-row">
+                    <label for="be-target-pct" title="Fraction of entry premium, 0.20 = 20%. Overrides the absolute target.">Target % (0.20)</label>
+                    <input id="be-target-pct" type="number" step="0.01" min="0" class="form-control" placeholder="unchanged" />
+                </div>
+                <div class="form-row">
+                    <label for="be-sl-pct" title="Fraction of entry premium, 0.30 = 30%.">SL % (0.30)</label>
+                    <input id="be-sl-pct" type="number" step="0.01" min="0" class="form-control" placeholder="unchanged" />
+                </div>
+                <div class="form-row">
+                    <label for="be-target" title="Absolute fallback bracket, premium points">Target (pts)</label>
+                    <input id="be-target" type="number" step="0.05" class="form-control" placeholder="unchanged" />
+                </div>
+                <div class="form-row">
+                    <label for="be-stop-loss" title="Absolute fallback bracket, premium points">Stop-loss (pts)</label>
+                    <input id="be-stop-loss" type="number" step="0.05" class="form-control" placeholder="unchanged" />
+                </div>
+                <div class="form-row">
+                    <label for="be-max-sl" title="Ceiling in premium points on the resolved stop — the lower of sl% × entry and this wins">Max SL (pts)</label>
+                    <input id="be-max-sl" type="number" step="0.05" min="0" class="form-control" placeholder="unchanged" />
+                </div>
+                <div class="form-row">
+                    <label for="be-max-loss">Max loss</label>
+                    <input id="be-max-loss" type="number" step="1" class="form-control" placeholder="unchanged" />
+                </div>
+                <div class="form-row">
+                    <label for="be-min-price">Min premium</label>
+                    <input id="be-min-price" type="number" step="1" min="0" class="form-control" placeholder="unchanged" />
+                </div>
+                <div class="form-row">
+                    <label for="be-max-price">Max premium</label>
+                    <input id="be-max-price" type="number" step="1" min="0" class="form-control" placeholder="unchanged" />
+                </div>
+                <div class="form-row">
+                    <label for="be-trail" title="Ascending trigger:lock pairs in points. Tick the box below to remove the ladder instead.">Trail ladder</label>
+                    <input id="be-trail" type="text" class="form-control" placeholder="unchanged — e.g. 25:2,50:25" />
+                </div>
+            </div>
+
+            <div class="bd-actions">
+                <label class="bd-radio" title="Sends an empty ladder: matching configs keep their fixed stop for the whole trade.">
+                    <input id="be-clear-trail" type="checkbox" />
+                    <span>Remove trail ladder</span>
+                </label>
+                <div class="spacer"></div>
+                <span id="be-summary" class="bd-hint"></span>
+                <button id="be-clear" class="btn btn-ghost" type="button"
+                        title="Discard edits and reload the fleet's current values">↺ Reset</button>
+                <button id="be-apply" class="btn btn-primary" type="button">✎ Preview &amp; apply…</button>
+            </div>
+            <div id="be-result" style="margin-top:8px; font-size:13px; color:var(--text-muted);"></div>
         </div>
     </div>
 
@@ -1586,17 +1717,46 @@
     const run    = document.getElementById('gen-run');
     const status = document.getElementById('gen-status');
     const result = document.getElementById('gen-result');
+    const strategies = document.getElementById('gen-strategies');
     const today = new Date().toISOString().slice(0, 10);
     from.value = today; to.value = today;
     function setStatus(text, cls) { status.textContent = text; status.className = 'badge ' + cls; }
+
+    // Ticked strategies become the run's strategyIds param; none ticked = all.
+    // Same shape as the backtest page's strategy scope.
+    (async function loadStrategyOptions() {
+        try {
+            const r = await fetch('/api/trade-configs/strategies');
+            const list = await r.json();
+            strategies.innerHTML = '';
+            (list || []).forEach(s => {
+                const lbl = document.createElement('label');
+                lbl.style.cssText = 'display:flex; gap:5px; align-items:center; font-size:13px; cursor:pointer;';
+                lbl.innerHTML = '<input type="checkbox" class="gen-strat" value="' + s.id + '"> '
+                    + (s.name || ('Strategy ' + s.id));
+                strategies.appendChild(lbl);
+            });
+            if (!list || !list.length) {
+                strategies.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">none registered</span>';
+            }
+        } catch (e) {
+            strategies.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">unavailable</span>';
+        }
+    })();
+    function selectedGenStrategyIds() {
+        return Array.from(document.querySelectorAll('.gen-strat:checked')).map(cb => cb.value);
+    }
+
     run.addEventListener('click', async () => {
         if (!from.value || !to.value) { setStatus('pick dates', 'badge-warn'); return; }
         run.disabled = true;
         setStatus('running…', 'badge-info');
         result.textContent = '';
         try {
-            const r = await fetch('/api/trade-configs/generate?fromDate=' + from.value + '&toDate=' + to.value,
-                { method: 'POST' });
+            let url = '/api/trade-configs/generate?fromDate=' + from.value + '&toDate=' + to.value;
+            const scope = selectedGenStrategyIds();
+            if (scope.length) url += '&strategyIds=' + scope.join(',');
+            const r = await fetch(url, { method: 'POST' });
             const j = await r.json();
             if (!r.ok) {
                 setStatus('error', 'badge-danger');
@@ -1605,12 +1765,294 @@
             }
             setStatus('done', 'badge-success');
             result.textContent = j.sessionsProcessed + ' session(s) processed in ' + j.durationMs + ' ms'
+                + (scope.length ? ' for strategies ' + scope.join(', ') : ' for every tagged strategy')
                 + (j.failures ? (' — ' + j.failures + ' failed: ' + (j.failedDates || []).join(', ')) : ' — no failures')
                 + '. Refresh the list to see generated configs.';
         } catch (e) {
             setStatus('error', 'badge-danger');
             result.textContent = String(e);
         } finally { run.disabled = false; }
+    });
+})();
+</script>
+<script>
+// ─────────── Bulk edit configs panel ───────────
+// POST /api/trade-configs/auto/bulk-update. Always previews first (dryRun
+// defaults true server-side), so the count confirmed is the server's own —
+// the same contract as the bulk delete above.
+(function () {
+    const card    = document.getElementById('be-card');
+    const toggle  = document.getElementById('be-toggle');
+    const source  = document.getElementById('be-source');
+    const badge   = document.getElementById('be-source-badge');
+    const strategy = document.getElementById('be-strategy');
+    const clearTrail = document.getElementById('be-clear-trail');
+    const applyBtn = document.getElementById('be-apply');
+    const clearBtn = document.getElementById('be-clear');
+    const result  = document.getElementById('be-result');
+
+    const summaryEl = document.getElementById('be-summary');
+
+    toggle.addEventListener('click', () => {
+        card.classList.toggle('bd-collapsed');
+        card.classList.toggle('bd-card-open');
+        if (!card.classList.contains('bd-collapsed') && !prefillLoaded) prefill();
+    });
+
+    source.addEventListener('change', () => { badge.textContent = source.value; prefill(); });
+    strategy.addEventListener('change', prefill);
+
+    (async function loadStrategies() {
+        try {
+            const r = await fetch('/api/trade-configs/strategies');
+            const list = await r.json();
+            (list || []).forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = s.name || ('Strategy ' + s.id);
+                strategy.appendChild(opt);
+            });
+        } catch (e) { /* dropdown stays "All strategies" */ }
+    })();
+
+    const fieldInputs = {
+        targetPct:      document.getElementById('be-target-pct'),
+        slPct:          document.getElementById('be-sl-pct'),
+        target:         document.getElementById('be-target'),
+        stopLoss:       document.getElementById('be-stop-loss'),
+        maxSlPoints:    document.getElementById('be-max-sl'),
+        maxLoss:        document.getElementById('be-max-loss'),
+        minOptionPrice: document.getElementById('be-min-price'),
+        maxOptionPrice: document.getElementById('be-max-price')
+    };
+    const trailInput = document.getElementById('be-trail');
+
+    // The ladder text box and the remove tick are one field with two spellings,
+    // so they cannot both be set.
+    clearTrail.addEventListener('change', () => { if (clearTrail.checked) trailInput.value = ''; });
+    trailInput.addEventListener('input', () => { if (trailInput.value.trim()) clearTrail.checked = false; });
+
+    // ---- Prefill: show the matched fleet's current values before editing ----
+    // values = fields every matched config agrees on; mixedFields = fields the
+    // fleet disagrees on (input stays blank, placeholder says "mixed"). The
+    // baseline is what dirty-tracking compares against, so a prefilled value
+    // that comes back unedited is never sent — the write stays a patch.
+    let baseline = {};
+    let mixedFields = [];
+    let prefillLoaded = false;
+
+    async function prefill() {
+        try {
+            const p = new URLSearchParams({ source: source.value });
+            if (strategy.value) p.set('strategyId', strategy.value);
+            const r = await fetch('/api/trade-configs/auto/bulk-update/prefill?' + p.toString());
+            const j = await r.json();
+            if (!r.ok) { summaryEl.textContent = j.error || 'prefill failed'; return; }
+            baseline = j.values || {};
+            mixedFields = j.mixedFields || [];
+            Object.entries(fieldInputs).forEach(([name, input]) => {
+                input.value = baseline[name] !== undefined ? baseline[name] : '';
+                input.placeholder = mixedFields.includes(name) ? 'mixed' : 'unchanged';
+            });
+            clearTrail.checked = false;
+            trailInput.value = baseline.trailLadder !== undefined ? baseline.trailLadder : '';
+            trailInput.placeholder = mixedFields.includes('trailLadder')
+                ? 'mixed' : 'unchanged — e.g. 25:2,50:25';
+            summaryEl.textContent = j.matched + ' config(s) match — shared values prefilled'
+                + (mixedFields.length ? '; varies: ' + mixedFields.join(', ') : '');
+            prefillLoaded = true;
+        } catch (e) {
+            summaryEl.textContent = 'prefill failed: ' + e;
+        }
+    }
+
+    // Dirty = non-blank and different from the loaded baseline (numeric
+    // compare, so a prefilled "0.3" left as "0.30" is not a change). A blank
+    // input is never sent — clearing a prefilled number means "don't touch
+    // this field", not "set it to nothing".
+    function isDirty(name, rawValue) {
+        const v = String(rawValue == null ? '' : rawValue).trim();
+        if (v === '') return false;
+        const base = baseline[name];
+        if (base === undefined || base === null) return true; // mixed or unset
+        return Number(v) !== Number(base);
+    }
+
+    function buildRequest(dryRun) {
+        // No date window on purpose (user decision 2026-08-31): the panel's
+        // job is "all entries at once", so it always addresses every trading
+        // date of the source. The API still accepts fromDate/toDate for
+        // scripted use.
+        const body = { source: source.value, dryRun: dryRun };
+        if (strategy.value) body.strategyId = Number(strategy.value);
+        let any = false;
+        Object.entries(fieldInputs).forEach(([name, input]) => {
+            if (isDirty(name, input.value)) { body[name] = input.value.trim(); any = true; }
+        });
+        const hasLadderSomewhere = baseline.trailLadder !== undefined
+            || mixedFields.includes('trailLadder');
+        if (clearTrail.checked && hasLadderSomewhere) {
+            body.trailLadder = '';
+            any = true;
+        } else if (!clearTrail.checked) {
+            const ladder = trailInput.value.trim();
+            if (ladder && ladder !== (baseline.trailLadder || '')) {
+                body.trailLadder = ladder;
+                any = true;
+            }
+        }
+        return any ? body : null;
+    }
+
+    async function post(body) {
+        const r = await fetch('/api/trade-configs/auto/bulk-update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        return { ok: r.ok, data: await r.json() };
+    }
+
+    applyBtn.addEventListener('click', async () => {
+        const preview = buildRequest(true);
+        if (!preview) { alert('Set at least one field — blank fields are left unchanged.'); return; }
+        applyBtn.disabled = true;
+        result.textContent = '';
+        try {
+            const p = await post(preview);
+            if (!p.ok) { alert(p.data.error || 'Preview failed'); return; }
+            if (!p.data.matched) { result.textContent = p.data.message; return; }
+
+            const dates = Object.entries(p.data.byDate || {})
+                .map(([d, n]) => d + ' (' + n + ')').join('   ') || '—';
+            const manualNote = source.value === 'MANUAL'
+                ? '\n\n⚠ This targets MANUAL configs — the ones written by hand.' : '';
+            if (!confirm(p.data.message + '\n\nDates: ' + dates + manualNote + '\n\nApply?')) return;
+
+            const a = await post(buildRequest(false));
+            if (!a.ok) { alert(a.data.error || 'Update failed'); return; }
+            result.textContent = a.data.message;
+            // Refresh the table and the prefill baseline so both show the
+            // values now in force.
+            document.getElementById('tc-refresh')?.click();
+            await prefill();
+        } catch (e) {
+            alert(String(e));
+        } finally { applyBtn.disabled = false; }
+    });
+
+    // "Clear" = discard the edits, back to what the fleet holds — a re-prefill,
+    // not a blank-out (blank fields would just read as "unchanged" anyway).
+    clearBtn.addEventListener('click', async () => {
+        result.textContent = '';
+        await prefill();
+    });
+})();
+</script>
+<script>
+// ─────────── Detection rules panel ───────────
+// Front end for the per-rule grid (changeset 039): GET /api/downtrend-rules,
+// PUT /api/downtrend-rules/{id}/grid. Loaded lazily on first expand.
+(function () {
+    const card   = document.getElementById('dr-card');
+    const toggle = document.getElementById('dr-toggle');
+    const rows   = document.getElementById('dr-rows');
+    const count  = document.getElementById('dr-count');
+    const empty  = document.getElementById('dr-empty');
+    const table  = document.getElementById('dr-table');
+    const result = document.getElementById('dr-result');
+    let loaded = false;
+    let indicatorTypes = [];
+
+    toggle.addEventListener('click', async () => {
+        card.classList.toggle('bd-collapsed');
+        card.classList.toggle('bd-card-open');
+        if (!card.classList.contains('bd-collapsed') && !loaded) {
+            await load();
+        }
+    });
+
+    function esc(v) {
+        return String(v === null || v === undefined ? '' : v)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    }
+
+    async function load() {
+        result.textContent = '';
+        try {
+            const [typesRes, rulesRes] = await Promise.all([
+                fetch('/api/downtrend-rules/indicator-types'),
+                fetch('/api/downtrend-rules')
+            ]);
+            indicatorTypes = await typesRes.json();
+            const rules = await rulesRes.json();
+            render(rules);
+            loaded = true;
+        } catch (e) {
+            result.textContent = 'Failed to load rules: ' + e;
+        }
+    }
+
+    function render(rules) {
+        rows.innerHTML = '';
+        count.textContent = rules.length + ' rule' + (rules.length === 1 ? '' : 's');
+        table.style.display = rules.length ? '' : 'none';
+        empty.style.display = rules.length ? 'none' : '';
+        rules.forEach(r => {
+            const tr = document.createElement('tr');
+            const typeOptions = (indicatorTypes.length ? indicatorTypes : [r.indicatorType])
+                .map(t => '<option value="' + esc(t) + '"' + (t === r.indicatorType ? ' selected' : '') + '>'
+                    + esc(t) + '</option>').join('');
+            const strategies = (r.strategyIds || []).map(id => 'S' + id).join(', ') || '—';
+            const pct = v => v === null || v === undefined ? '—' : (Number(v) * 100).toFixed(0) + '%';
+            tr.innerHTML =
+                '<td>' + r.id + '</td>' +
+                '<td>' + esc(r.instrumentName) + '</td>' +
+                '<td>' + strategies + '</td>' +
+                '<td><input class="form-control dr-periods" style="min-width:130px;" value="' + esc(r.smaPeriods) + '" placeholder="50,100,200,500" /></td>' +
+                '<td><input class="form-control dr-timeframes" style="min-width:80px;" value="' + esc(r.timeframesMinutes) + '" placeholder="5,15" /></td>' +
+                '<td><select class="form-control dr-indicator">' + typeOptions + '</select></td>' +
+                '<td title="max_deviation / start_time">' + esc(r.maxDeviation) + ' dev, from ' + esc(r.startTime) + '</td>' +
+                '<td title="target% / SL% / max SL pts">' + pct(r.targetPct) + ' / ' + pct(r.slPct) + ' / ' + esc(r.maxSlPoints) + 'p</td>' +
+                '<td>' + esc(r.minOptionPrice) + '–' + esc(r.maxOptionPrice) + '</td>' +
+                '<td style="text-align:center;"><input type="checkbox" class="dr-enabled"' + (r.enabled ? ' checked' : '') + ' /></td>' +
+                '<td><button class="btn btn-primary dr-save" data-rule-id="' + r.id + '" style="font-size:12px; padding:4px 12px;">Save</button></td>';
+            rows.appendChild(tr);
+        });
+    }
+
+    rows.addEventListener('click', async (ev) => {
+        const btn = ev.target.closest('.dr-save');
+        if (!btn) return;
+        const tr = btn.closest('tr');
+        const id = btn.getAttribute('data-rule-id');
+        const body = {
+            smaPeriods:        tr.querySelector('.dr-periods').value,
+            timeframesMinutes: tr.querySelector('.dr-timeframes').value,
+            indicatorType:     tr.querySelector('.dr-indicator').value,
+            enabled:           tr.querySelector('.dr-enabled').checked
+        };
+        btn.disabled = true;
+        btn.textContent = 'saving…';
+        try {
+            const r = await fetch('/api/downtrend-rules/' + id + '/grid', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const j = await r.json();
+            if (!r.ok) { alert(j.error || ('HTTP ' + r.status)); return; }
+            // Reflect the server's canonical form (" 15 , 5 " comes back "5,15",
+            // blank comes back as the default grid).
+            tr.querySelector('.dr-periods').value = j.smaPeriods || '';
+            tr.querySelector('.dr-timeframes').value = j.timeframesMinutes || '';
+            result.textContent = 'Rule ' + id + ' saved — takes effect on the next Generate run.';
+        } catch (e) {
+            alert(String(e));
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Save';
+        }
     });
 })();
 </script>

@@ -7,8 +7,6 @@ import com.moneymaker.entity.SmaDowntrendRuleStrategy;
 import com.moneymaker.entity.SmaTimeframe;
 import com.moneymaker.entity.StrategyDefaults;
 import com.moneymaker.entity.TradeConfig;
-import com.moneymaker.indicator.IndicatorConfig;
-import com.moneymaker.indicator.IndicatorService;
 import com.moneymaker.market.exception.HistoricalDataMissingException;
 import com.moneymaker.market.instrument.OptionInstrumentResolver;
 import com.moneymaker.market.service.MarketDataService;
@@ -18,7 +16,6 @@ import com.moneymaker.repository.SmaDowntrendRuleStrategyRepository;
 import com.moneymaker.repository.SmaTimeframeRepository;
 import com.moneymaker.repository.StrategyDefaultsRepository;
 import com.moneymaker.repository.TradeConfigRepository;
-import com.moneymaker.strategy.rules.SmaTrendCalculator;
 import com.moneymaker.util.StrategyIds;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -40,13 +37,15 @@ import java.util.Set;
  * End-of-day downtrend detector.
  *
  * <p>At the close of each backtest trading day, for every enabled
- * {@link SmaDowntrendRule} we walk the fixed grid
- * {@link #SMA_PERIODS} × {@link #TIMEFRAMES_MINUTES} against the ATM
- * strike on both CE and PE. Per (side, timeframe) the strike's series is
- * fetched once, every {@link #SMA_PERIODS} SMA computed on it, and
- * {@link SmaTrendCalculator} runs with {@code rule.maxDeviation} starting
- * at {@code rule.startTime}. Every SMA whose last-candle down-trend flag
- * is still on is recorded as a passing combo for that side.</p>
+ * {@link SmaDowntrendRule}, the rule's {@link EodTrendScanner} (selected by
+ * {@code indicator_type}, default {@code SMA_DOWNTREND}) judges the ATM
+ * strike on both CE and PE. The shipped {@link SmaDowntrendScanner} walks the
+ * rule's own {@code sma_periods} × {@code timeframes_minutes} grid (changeset
+ * 039 — defaults {@code {50,100,200,500} × {5,15}min}, the old hardcoded
+ * values) and records every SMA whose last-candle down-trend flag is still on
+ * as a passing combo for that side. This class owns everything
+ * indicator-agnostic: rule iteration, ATM strike selection, the bracket basis,
+ * idempotency, and the config/timeframe writes.</p>
  *
  * <p>For each side with at least one passing combo we insert exactly one
  * {@link TradeConfig} (next trading day, {@code source='AUTO_DOWNTREND'},
@@ -91,17 +90,6 @@ public class EodDowntrendDetectionService {
     private static final LocalTime MARKET_CLOSE = LocalTime.of(15, 20);
     private static final LocalTime MARKET_OPEN  = LocalTime.of(9, 15);
 
-    /** Tradable minutes in one NSE session (09:15–15:30). Used only to size the
-     *  SMA lookback window — see {@link #lookbackCalendarDays(int)}. */
-    private static final int SESSION_MINUTES = 375;
-
-    /** Fixed SMA grid the detector evaluates. Add a period here AND extend
-     *  {@code SmaTrendCalculator} / {@code MarketData} to track its flag. */
-    static final int[] SMA_PERIODS = {50, 100, 200, 500};
-
-    /** Fixed candle timeframes the detector evaluates (minutes). */
-    static final int[] TIMEFRAMES_MINUTES = {5, 15};
-
     /** Safety rails on the ATR-derived strike band — see {@link #strikeDepthFor}. */
     private static final int MIN_STRIKE_DEPTH = 2;
     private static final int MAX_STRIKE_DEPTH = 6;
@@ -117,8 +105,14 @@ public class EodDowntrendDetectionService {
     private final StrategyDefaultsRepository strategyDefaultsRepository;
     private final OptionInstrumentResolver instrumentResolver;
     private final MarketDataService marketDataService;
-    private final IndicatorService indicatorService;
     private final TradingCalendar tradingCalendar;
+
+    /**
+     * indicator_type → scanner, from Spring {@code List} injection — the same
+     * auto-discovery the order-placement / position-monitor factories use, so a
+     * new indicator rule is one new {@code @Component} and zero detector edits.
+     */
+    private final Map<String, EodTrendScanner> scannersByType;
 
     public EodDowntrendDetectionService(SmaDowntrendRuleRepository ruleRepository,
                                         TradeConfigRepository tradeConfigRepository,
@@ -127,8 +121,8 @@ public class EodDowntrendDetectionService {
                                         StrategyDefaultsRepository strategyDefaultsRepository,
                                         OptionInstrumentResolver instrumentResolver,
                                         MarketDataService marketDataService,
-                                        IndicatorService indicatorService,
-                                        TradingCalendar tradingCalendar) {
+                                        TradingCalendar tradingCalendar,
+                                        List<EodTrendScanner> scanners) {
         this.ruleRepository = ruleRepository;
         this.tradeConfigRepository = tradeConfigRepository;
         this.smaTimeframeRepository = smaTimeframeRepository;
@@ -136,8 +130,14 @@ public class EodDowntrendDetectionService {
         this.strategyDefaultsRepository = strategyDefaultsRepository;
         this.instrumentResolver = instrumentResolver;
         this.marketDataService = marketDataService;
-        this.indicatorService = indicatorService;
         this.tradingCalendar = tradingCalendar;
+        Map<String, EodTrendScanner> byType = new LinkedHashMap<>();
+        if (scanners != null) {
+            for (EodTrendScanner scanner : scanners) {
+                byType.put(scanner.indicatorType(), scanner);
+            }
+        }
+        this.scannersByType = byType;
     }
 
     /**
@@ -241,6 +241,20 @@ public class EodDowntrendDetectionService {
             return 0;
         }
 
+        // Which indicator judges this rule (changeset 039). Blank falls back to
+        // the SMA grid walk, so pre-039 rows behave unchanged; an unknown type
+        // is a configuration mistake and must not quietly generate nothing.
+        String indicatorType = rule.getIndicatorType() == null || rule.getIndicatorType().isBlank()
+                ? SmaDowntrendScanner.TYPE
+                : rule.getIndicatorType().trim();
+        EodTrendScanner scanner = scannersByType.get(indicatorType);
+        if (scanner == null) {
+            log.warn("[EOD-downtrend] rule id={} — no scanner registered for indicator_type='{}', "
+                            + "skipping rule. Registered types: {}",
+                    rule.getId(), indicatorType, scannersByType.keySet());
+            return 0;
+        }
+
         LocalDate expiry = instrumentResolver.resolveExpiry(instrument, tradingDay);
         if (expiry == null) {
             log.warn("[EOD-downtrend] rule id={} — no expiry resolved for {} on {}",
@@ -290,10 +304,10 @@ public class EodDowntrendDetectionService {
             // and letting that escape processRule would drop the whole rule — both
             // sides — on a data gap that only affects this one.
             try {
-                List<int[]> passing = scanSide(optionToken, tradingDay, rule);
+                List<int[]> passing = scanner.scan(optionToken, tradingDay, rule);
                 if (passing.isEmpty()) {
-                    log.debug("[EOD-downtrend] rule id={} {} ATM={} — nothing trending down",
-                            rule.getId(), side, atmStrike);
+                    log.debug("[EOD-downtrend] rule id={} {} ATM={} — {} found nothing qualifying",
+                            rule.getId(), side, atmStrike, indicatorType);
                     continue;
                 }
 
@@ -352,165 +366,6 @@ public class EodDowntrendDetectionService {
             }
         }
         return written;
-    }
-
-    /**
-     * Returns the list of {@code [sma, timeframe-minutes]} pairs whose last-candle
-     * down-trend flag is on for the given strike on {@code tradingDay}.
-     * <p>The strike series is fetched <i>once per timeframe</i> and all SMAs are
-     * computed on it before {@link SmaTrendCalculator} runs.</p>
-     *
-     * <p><b>The fetch spans {@link #lookbackCalendarDays(int)} calendar days, not
-     * just {@code tradingDay}.</b> SMAs must be continuous across sessions to match
-     * what the trader sees on a chart — a 15-minute chart carries ~25 candles per
-     * session, so a single day cannot even produce SMA(50), let alone SMA(500), and
-     * {@code SMAIndicatorImpl} returns null whenever {@code period > series.size()}.
-     * Fetching one day silently reduced the whole grid to its shortest period and
-     * made every longer one permanently unreachable.
-     * {@code AnalysisScheduler} already fetches with a lookback for exactly this
-     * reason; this method now matches it.</p>
-     *
-     * <p>Widening the window does <i>not</i> leak prior sessions into the verdict:
-     * the {@code startTime} trim below is a time-of-day filter, and
-     * {@link SmaTrendCalculator} resets its deviation counters on every new day, so
-     * the flags read off the final candle still describe {@code tradingDay} alone —
-     * only the SMA values themselves now carry the correct history.</p>
-     *
-     * <p><b>A period the broker cannot cover is dropped, not approximated.</b> The
-     * fetch window is only a request; what matters is how much history actually came
-     * back for this leg. Each period is admitted only if a full {@code period}-wide
-     * window has already closed by the first judged candle. A newly listed strike, a
-     * thin leg, or a broker that trims history therefore contributes fewer combos —
-     * or none — instead of a trend read off a partial average.</p>
-     */
-    private List<int[]> scanSide(String optionToken, LocalDate tradingDay, SmaDowntrendRule rule) {
-        List<int[]> passing = new ArrayList<>();
-
-        LocalDateTime to = LocalDateTime.of(tradingDay, MARKET_CLOSE);
-
-        for (int tfMinutes : TIMEFRAMES_MINUTES) {
-            String interval = tfMinutes + "minute";
-
-            LocalDateTime from = LocalDateTime.of(tradingDay, MARKET_OPEN)
-                    .minusDays(lookbackCalendarDays(tfMinutes));
-
-            List<MarketData> series = marketDataService.fetchHistoricalData(optionToken, from, to, interval);
-            if (series == null || series.isEmpty()) {
-                continue;
-            }
-
-            // Populate sma_value{50,100,200,500} on every candle in the series.
-            // sma_value20 is deliberately left null — SMA(20) is not in the grid, so
-            // SmaTrendCalculator leaves its flags false and no 20-period combo can be
-            // produced. The chart's own SMA20 comes from ChartIndicatorService and is
-            // unaffected.
-            for (int period : SMA_PERIODS) {
-                try {
-                    indicatorService.calculate("SMA", series, IndicatorConfig.of(period, "SMA"));
-                } catch (Exception ex) {
-                    log.debug("[EOD-downtrend] SMA({}) skipped on token={} tf={}: {}",
-                            period, optionToken, interval, ex.getMessage());
-                }
-            }
-
-            // First candle that actually gets judged: on tradingDay, at/after start_time.
-            // Its index is also the count of candles preceding it, i.e. the warm-up the
-            // broker actually supplied — which is what decides SMA sufficiency below.
-            int evalStartIdx = -1;
-            for (int i = 0; i < series.size(); i++) {
-                MarketData c = series.get(i);
-                if (c.getTimestamp() == null) continue;
-                if (!c.getTimestamp().toLocalDate().equals(tradingDay)) continue;
-                if (c.getTimestamp().toLocalTime().isBefore(rule.getStartTime())) continue;
-                evalStartIdx = i;
-                break;
-            }
-            if (evalStartIdx < 0) {
-                log.debug("[EOD-downtrend] token={} tf={} — no candles on {} at/after {}",
-                        optionToken, interval, tradingDay, rule.getStartTime());
-                continue;
-            }
-
-            // Trim to candles at/after start_time — deviation counting starts there.
-            List<MarketData> windowed = new ArrayList<>();
-            for (MarketData c : series) {
-                if (c.getTimestamp() == null) continue;
-                if (!c.getTimestamp().toLocalTime().isBefore(rule.getStartTime())) {
-                    windowed.add(c);
-                }
-            }
-            if (windowed.isEmpty()) continue;
-
-            SmaTrendCalculator.compute(windowed, rule.getMaxDeviation());
-            MarketData last = windowed.get(windowed.size() - 1);
-
-            for (int period : SMA_PERIODS) {
-                // Sufficiency gate. ta4j's SMAIndicator averages however many bars it
-                // has rather than returning null, so a period with too little history
-                // still yields a number — a partial average that looks like a real SMA
-                // and would be silently trend-tested. Require a full period-wide window
-                // to already be closed at the first judged candle; if the broker did not
-                // return that much history for this leg, the period contributes no combo.
-                if (evalStartIdx < period - 1) {
-                    log.debug("[EOD-downtrend] token={} tf={} SMA{} — insufficient history: "
-                                    + "{} candles before {} {}, need {}; period dropped",
-                            optionToken, interval, period, evalStartIdx, tradingDay,
-                            rule.getStartTime(), period - 1);
-                    continue;
-                }
-                if (smaDownFlag(last, period)) {
-                    passing.add(new int[]{period, tfMinutes});
-                }
-            }
-        }
-        return passing;
-    }
-
-    /**
-     * How far back to ask the broker so the longest period in {@link #SMA_PERIODS}
-     * has a full window for every judged candle at {@code tfMinutes}.
-     *
-     * <p>Stated in candles first, because that is the real requirement:
-     * {@code maxPeriod} candles of warm-up (SMA(500) at 15-minute needs 500) plus
-     * one session's worth, so the SMA is already full-window at the day's first
-     * candle and stays full-window to its last. That count is converted to calendar
-     * days via {@link #SESSION_MINUTES}, the 7/5 factor for weekends, and {@code +5}
-     * for holidays.</p>
-     *
-     * <p>This only sizes the <i>request</i>. It is deliberately generous and never
-     * decides anything: whether a period is actually usable is settled in
-     * {@code scanSide} by counting the candles the broker really returned. A short
-     * fetch drops that period rather than trend-testing a partial average. This is
-     * a data-sufficiency calculation, not a trading-behaviour knob.</p>
-     */
-    private int lookbackCalendarDays(int tfMinutes) {
-        int maxPeriod = 0;
-        for (int p : SMA_PERIODS) {
-            maxPeriod = Math.max(maxPeriod, p);
-        }
-        int candlesPerSession = Math.max(1, SESSION_MINUTES / tfMinutes);
-        int candlesNeeded = maxPeriod + candlesPerSession;
-
-        double tradingDays = (double) candlesNeeded / candlesPerSession;
-        return (int) Math.ceil(tradingDays * 7.0 / 5.0) + 5;
-    }
-
-    /**
-     * Period → the entity's down-trend flag. Reached only for periods in
-     * {@link #SMA_PERIODS}; {@code case 20} is kept because this is a generic
-     * mapper over {@link MarketData}'s flags, and {@code default: false} makes an
-     * unmapped period fail closed either way.
-     */
-    private boolean smaDownFlag(MarketData c, int period) {
-        if (c == null) return false;
-        switch (period) {
-            case 20:  return c.isSma20DownTrending();
-            case 50:  return c.isSma50DownTrending();
-            case 100: return c.isSma100DownTrending();
-            case 200: return c.isSma200DownTrending();
-            case 500: return c.isSma500DownTrending();
-            default:  return false;
-        }
     }
 
     /**

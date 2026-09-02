@@ -24,18 +24,46 @@ are gone.
 #    no replay, no ledger writes; idempotent, skips days whose configs exist
 curl.exe -X POST "http://localhost:8080/api/trade-configs/generate?fromDate=2024-01-01&toDate=2024-01-31"
 
+# 1b. generate for SELECTED strategies only (comma list) — the scope narrows the
+#     standing rule-tag/strategy_defaults setup for this run; it cannot widen it
+curl.exe -X POST "http://localhost:8080/api/trade-configs/generate?fromDate=2024-01-01&toDate=2024-01-31&strategyIds=2"
+
 # 2. replay the window — all strategies tagged on the configs
 curl.exe -X POST "http://localhost:8080/api/backtest/analysis?fromDate=2024-01-01&toDate=2024-01-31"
 
 # 2b. replay ONE strategy only (or a comma list) — scopes the per-day
 #     (config, strategy) fan-out, so only the named strategies dispatch
 curl.exe -X POST "http://localhost:8080/api/backtest/analysis?fromDate=2024-01-01&toDate=2024-01-31&strategyIds=2"
+
+# 2c. replay against SELECTED configs only (trade_config ids) — composes with
+#     strategyIds; ids outside the window simply match nothing. API-only, for
+#     scripted runs: the UI's unit of selection is the strategy (a per-config
+#     checkbox picker was tried and removed — user feedback 2026-08-31).
+#     GET /api/trade-configs/range?from=&to=[&source=] lists a window's configs.
+curl.exe -X POST "http://localhost:8080/api/backtest/analysis?fromDate=2024-01-01&toDate=2024-01-31&strategyIds=2&configIds=141,142"
+
+# 2d. CROSS-RUN: run strategy 1 against strategy 2's configs (its AUTO fleet
+#     included), regardless of the configs' own tags. configStrategyId picks
+#     the config set; strategyIds — required non-empty here — picks the
+#     runner(s). In the UI: the "Against configs of" dropdown on the backtest
+#     page. Every config is taken once, re-badged onto each runner.
+curl.exe -X POST "http://localhost:8080/api/backtest/analysis?fromDate=2024-01-01&toDate=2024-01-31&strategyIds=1&configStrategyId=2"
 ```
 
 **Strategy-scoped ledgers are comparable to full runs**: caps and dedupe are
 keyed per `(config, strategy)`, so a `strategyIds=1` ledger holds the same rows
 strategy 1 would have produced inside an unscoped run. Two scoped runs of
-different strategies can even share one ledger without colliding.
+different strategies can even share one ledger without colliding. The same
+argument covers `configIds`: configs do not compete for each other's slots, so
+a config-scoped ledger matches what those configs produce inside a full run.
+
+**Cross-run ledgers need one caution**: rows land under the *run* strategy's id
+on the borrowed config's id, so caps still apply per `(config, runStrategy)` and
+the numbers are directly comparable to that strategy's normal run — but nothing
+on a `trade_order` row records that the config set was borrowed. A cross-run and
+a normal run of the same strategy over the same window are indistinguishable in
+the ledger afterwards; wipe between them (`/api/orders/purge`), as for any
+same-window rerun.
 
 Before re-running the **same** `(window, strategy)`, clear `trade_order` (the
 dedupe key suppresses identical re-entries) — `analysis/db-scripts/wipe-ledger.bat`

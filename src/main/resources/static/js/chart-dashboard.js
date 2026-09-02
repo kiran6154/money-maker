@@ -10,6 +10,9 @@
     const OVERLAY_SUPERTREND = 'supertrend';
     const DEFAULT_OVERLAYS = [OVERLAY_SMA_HIGH, OVERLAY_SUPERTREND];
     const NO_DATA_MESSAGE = 'No market data available for selected date.';
+    // First-visit window for the continuous view: From defaults to this many
+    // days before Date, so the chart opens usable without picking a from-date.
+    const DEFAULT_CONTINUOUS_LOOKBACK_DAYS = 45;
     const CHART_HEIGHT_FALLBACK = 360;
     const MARKET_TIMEZONE = 'Asia/Kolkata';
     const LS_PREFIX = 'mm.chartDashboard.';
@@ -222,7 +225,20 @@
             els.date.value = linked.date || storedDate || localDateString(new Date());
         }
         if (els.fromDate) {
-            els.fromDate.value = linked.fromDate || readStoredValue(LS_KEYS.fromDate) || '';
+            if (linked.date || linked.fromDate) {
+                // A deep link picks its own window: no fromDate in the URL means
+                // the single day it linked (the orders-ledger case), not the
+                // default lookback.
+                els.fromDate.value = linked.fromDate || '';
+            } else {
+                // null = never persisted, so open with the default continuous
+                // window. '' = the user cleared back to single-day view on a
+                // previous visit; respect that.
+                const storedFrom = readStoredValue(LS_KEYS.fromDate);
+                els.fromDate.value = storedFrom !== null
+                    ? storedFrom
+                    : defaultContinuousFromDate(els.date ? els.date.value : '');
+            }
         }
         state.fromDate = els.fromDate ? els.fromDate.value : '';
 
@@ -1406,6 +1422,14 @@
         const parts = value.split('-').map(Number);
         if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
         return new Date(parts[0], parts[1] - 1, parts[2]);
+    }
+
+    /** From-date DEFAULT_CONTINUOUS_LOOKBACK_DAYS before the given to-date. */
+    function defaultContinuousFromDate(toDateValue) {
+        const toDate = parseDateInput(toDateValue);
+        if (!toDate) return '';
+        toDate.setDate(toDate.getDate() - DEFAULT_CONTINUOUS_LOOKBACK_DAYS);
+        return localDateString(toDate);
     }
 
     function localDateString(date) {

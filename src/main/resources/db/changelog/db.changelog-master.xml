@@ -47,5 +47,6 @@
     <include file="db/changelog/036_add_trailing_stop_loss.xml"/>
     <include file="db/changelog/037_add_is_active_to_trade_config.xml"/>
     <include file="db/changelog/038_add_max_parallel_per_side.xml"/>
+    <include file="db/changelog/039_add_downtrend_rule_indicator_grid.xml"/>
 
 </databaseChangeLog>

@@ -6,11 +6,12 @@ the day in a sustained downtrend.
 > **Home (since 2026-08-31):** `com.moneymaker.tradeconfig.generation` — config
 > generation is trade-config-domain work, not backtesting (user decision:
 > producing configs and replaying them are different tasks). The entry points
-> are `POST /api/trade-configs/generate?fromDate=&toDate=` and
+> are `POST /api/trade-configs/generate?fromDate=&toDate=[&strategyIds=]` and
 > `TradeConfigGenerationService.generateForWindow`; **the backtest replay no
 > longer calls the detector at all.** The detector takes nothing
 > backtest-specific — a 15:25 cron can call it for live mode later without
-> code changes.
+> code changes. The optional `strategyIds` scopes one run to selected
+> strategies — see [Per-run strategy selection](#per-run-strategy-selection).
 >
 > **Both data sources.** It runs under `backtest.data-source=BROKER` and
 > `HISTORICAL_ICICI` alike: every symbol comes from `OptionInstrumentResolver`,
@@ -26,20 +27,27 @@ the day in a sustained downtrend.
 For each trading day in a backtest run, after force-close at 15:20:
 
 1. Loads every enabled row from `sma_downtrend_rule`.
-2. For each rule, for both CE and PE:
+2. For each rule, for both CE and PE — the scan below is the rule's
+   [`EodTrendScanner`](../src/main/java/com/moneymaker/tradeconfig/generation/EodTrendScanner.java),
+   selected by `indicator_type` (changeset 039; `SMA_DOWNTREND`, the default and
+   only shipped scanner, is
+   [`SmaDowntrendScanner`](../src/main/java/com/moneymaker/tradeconfig/generation/SmaDowntrendScanner.java)):
    - Picks the ATM strike on the underlying (round last 5-min close to the
      nearest `instrument.strike_points`). No moneyness/depth knob — ATM only.
-   - For each timeframe in `{5, 15}` minutes:
+   - For each timeframe in the rule's `timeframes_minutes` (default `5,15`):
      - Pulls the option-leg's intraday series once via
        [`MarketDataService`](../src/main/java/com/moneymaker/market/service/MarketDataService.java).
-     - Computes `SMA(50)`, `SMA(100)`, `SMA(200)`, `SMA(500)` on the series
-       (populates the matching `smaValueXX` fields on every candle;
-       `smaValue20` stays null — SMA(20) is not part of the grid).
+     - Computes each SMA in the rule's `sma_periods` (default `50,100,200,500`)
+       on the series, populating the matching `smaValueXX` fields on every
+       candle. An unselected period's `smaValue` stays null, so its flags stay
+       false and it can produce no combo — skipping a period *is* never
+       computing it.
      - Trims to candles `>= rule.start_time`.
      - Runs
        [`SmaTrendCalculator`](../src/main/java/com/moneymaker/strategy/rules/SmaTrendCalculator.java#L25)
        with `rule.max_deviation`.
-     - Records every SMA period whose last-candle `smaXxDownTrending` flag is `true`.
+     - Records every selected SMA period whose last-candle `smaXxDownTrending`
+       flag is `true`.
 3. For each side with at least one passing `(sma, timeframe)` combo:
    - Inserts **one** `trade_config` row stamped `source='AUTO_DOWNTREND'`
      for the next trading day (skip Sat/Sun), carrying the rule's
@@ -77,16 +85,18 @@ the same way it picks up any human-inserted config.
 
 ## What lives in the rules table vs. what lives in code
 
-The rules table is the **detection** config: which underlying to monitor,
-when to start counting, how strict, and how to derive target/SL.
+The rules table is the **detection** config: which underlying to monitor, which
+indicator with which grid, when to start counting, how strict, and how to
+derive target/SL.
 
-The SMA grid the detector walks and the moneyness it monitors stay **in code**.
-Everything that decides *what gets traded* is in a table.
+Only the strike moneyness stays **in code**. Everything that decides *what gets
+traded* is in a table — including, since changeset 039, the SMA grid itself.
 
 | Concern | Where it lives |
 |---|---|
-| Which SMAs are checked | `EodDowntrendDetectionService.SMA_PERIODS` (`{50, 100, 200, 500}`) |
-| Which timeframes are checked | `EodDowntrendDetectionService.TIMEFRAMES_MINUTES` (`{5, 15}`) |
+| Which SMAs are checked | `sma_downtrend_rule.sma_periods` (CSV, default `50,100,200,500`; changeset 039). Capped to `{20,50,100,200,500}` — the periods `MarketData` has trend flags for; others are dropped with a WARN. |
+| Which timeframes are checked | `sma_downtrend_rule.timeframes_minutes` (CSV minutes, default `5,15`; changeset 039) |
+| Which indicator judges the leg | `sma_downtrend_rule.indicator_type` (default `SMA_DOWNTREND`; changeset 039). Each value maps to an `EodTrendScanner` bean — see [Skipping SMAs / adding an indicator](#skipping-smas--adding-a-different-indicator-rule). |
 | Which strike type | hardcoded ATM in `computeAtmStrike` |
 | `transaction_type`, `max_loss`, `no_of_trades`, `no_of_parrellel_trades` for the generated config | [`strategy_defaults`](#table-strategy_defaults) — one row per strategy (changeset 033) |
 | Whether a strategy may generate at all | `strategy_defaults.auto_config_enabled` |
@@ -108,6 +118,77 @@ default: return null;
 which was both a trading-behaviour constant in a service *and* the reason
 tagging a rule with any other strategy silently generated nothing — the `default`
 branch made `processRule` skip the rule outright.
+
+---
+
+## Skipping SMAs / adding a different indicator rule
+
+Both provisions landed with changeset 039 (user request 2026-08-31).
+
+### Skip periods or timeframes — the Detection rules panel, or an UPDATE
+
+The **🧭 Detection rules** panel on `/trade-configs` (collapsed, below the
+Generate panel) lists every `sma_downtrend_rule` with its grid editable inline:
+SMA periods, timeframes, indicator, and the enabled toggle, saved per row via
+`PUT /api/downtrend-rules/{id}/grid`. Saves are validated harder than the
+scanner's run-time leniency — an unsupported period or unknown indicator is
+**rejected** with the allowed values named, and hand-typed spacing is stored
+canonically. The rest of the row (thresholds, bracket, band) is shown read-only
+for context; editing those stays SQL, and the panel says so in its tooltips.
+
+The equivalent SQL:
+
+```sql
+-- rule 1: drop the long SMAs and the 15-minute timeframe
+UPDATE sma_downtrend_rule SET sma_periods = '50,100', timeframes_minutes = '5' WHERE id = 1;
+```
+
+Parsing (via [`IntCsv`](../src/main/java/com/moneymaker/util/IntCsv.java), the
+columns' one owner) is lenient about spacing and duplicates, ascending, and
+skips malformed fragments. Rules worth knowing:
+
+- **Blank falls back to the default grid**, not to "scan nothing" — to silence a
+  rule use `enabled=false`. Pre-039 rows are backfilled with the defaults, so an
+  existing database behaves identically.
+- **Only `{20, 50, 100, 200, 500}` are computable.** Those are the periods
+  `MarketData` carries `smaXxDownTrending` flags for and `SmaTrendCalculator`
+  tracks; anything else is dropped with a WARN naming it. A *new* period is
+  still a code change (flag fields + calculator + `smaDownFlag`), exactly as
+  before.
+- **SMA-20 is selectable for detection** — but the strategies' own SMA-20 rule
+  case is commented out (see [STRATEGIES.md](STRATEGIES.md#the-shared-engine)),
+  so a config generated from a 20-period combo sits untraded until that case is
+  deliberately re-enabled. Detection and trading are separate decisions.
+- A rule that skips SMA(500) also fetches a proportionally shorter lookback —
+  the window is sized from the longest *selected* period.
+
+### Add a different indicator rule — one class, one UPDATE
+
+The scan is behind the
+[`EodTrendScanner`](../src/main/java/com/moneymaker/tradeconfig/generation/EodTrendScanner.java)
+seam: the detector owns everything indicator-agnostic (rule iteration, ATM
+selection, bracket basis, idempotency, the config/timeframe writes) and asks the
+scanner one question — *does this leg qualify at today's close, and on which
+(sma, timeframe) combos?* Scanners are discovered by Spring `List` injection and
+matched on `indicator_type`, the same pattern as the broker factories.
+
+To add one (say an RSI-threshold rule):
+
+1. Implement `EodTrendScanner` as a `@Component` returning a new
+   `indicatorType()` (e.g. `RSI_OVERBOUGHT`).
+2. Put its thresholds in **new columns on `sma_downtrend_rule`** via their own
+   changeset — detection knobs live in the table (CLAUDE.md #9), and the row
+   already carries the shared ones (`start_time`, band, bracket).
+3. `UPDATE sma_downtrend_rule SET indicator_type = 'RSI_OVERBOUGHT' WHERE id = …`.
+
+No detector change. An `indicator_type` with no registered scanner skips the
+rule with a WARN naming the registered types. Mind the **combo contract** on the
+interface: the pairs a scanner returns become the generated config's
+`sma_timeframe` children, which are the primary SMA periods the *strategies*
+scan the next day — a non-SMA scanner still decides which combos its detection
+vouches for. Which indicators to actually add, and with what thresholds, is an
+open trading decision — see
+[S17 in STRATEGY_ANALYSIS_TODO.md](STRATEGY_ANALYSIS_TODO.md#s17-the-indicator_type-seam-ships-with-one-scanner--which-indicators-earn-a-second-is-unmeasured).
 
 ---
 
@@ -137,6 +218,33 @@ the blocks differ, `resolveConfigGroups` emits one config per distinct block, ea
 tagged with the strategies that share it. The `[EOD-downtrend] inserted ...
 strategies=[...]` log line names them.
 
+### Per-run strategy selection
+
+The tags above are the *standing* setup. On top of it, one generation run can be
+scoped to selected strategies:
+
+```powershell
+# generate only strategy 2's configs for this window
+curl.exe -X POST "http://localhost:8080/api/trade-configs/generate?fromDate=2024-01-01&toDate=2024-01-31&strategyIds=2"
+```
+
+The **Generate AUTO configs** panel on `/trade-configs` exposes the same thing as
+strategy checkboxes (none ticked = every tagged strategy). Three properties worth
+knowing:
+
+- **The scope narrows, never widens.** A scoped strategy still needs its rule tag
+  (or the rule's fallback `strategy_id`) and an enabled `strategy_defaults` row;
+  naming a strategy the rules aren't tagged with generates nothing for it.
+- **Idempotency is untouched.** The `(target day, strategy)` guard applies inside
+  the scope, so a scoped run skips days that strategy already covered and leaves
+  every other strategy's existing configs alone. Running `strategyIds=1` and then
+  `strategyIds=2` over the same window fills each strategy in independently —
+  note the two passes yield one config *per strategy* (`"1"`, `"2"`) even where a
+  single unscoped pass would have written one shared config (`"1,2"`), exactly
+  like tagging strategies at different times. Both dispatch identically.
+- **The scan still runs once per rule** — the scope filters who the config is
+  written for, not what gets measured.
+
 ---
 
 ## Table: `sma_downtrend_rule`
@@ -158,6 +266,9 @@ strategies=[...]` log line names them.
 | `min_option_price`        | Copied verbatim onto `trade_config.min_option_price`. `NOT NULL`, default `80`. |
 | `max_option_price`        | Copied verbatim onto `trade_config.max_option_price`. `NOT NULL`, default `250`. |
 | `enabled`                 | Toggle the rule on/off without deleting. |
+| `sma_periods`             | Which SMA periods this rule checks, CSV. `NOT NULL`, default `50,100,200,500` (changeset 039). Only `{20,50,100,200,500}` are computable; others dropped with a WARN. Blank = default grid. Parsed only by `IntCsv`. |
+| `timeframes_minutes`      | Which candle timeframes it checks, CSV minutes. `NOT NULL`, default `5,15` (changeset 039). Feeds the fetch interval as `<n>minute`. |
+| `indicator_type`          | Which `EodTrendScanner` runs the scan. `NOT NULL`, default `SMA_DOWNTREND` (changeset 039) — see [Skipping SMAs / adding an indicator](#skipping-smas--adding-a-different-indicator-rule). |
 
 The band columns are `NOT NULL` on purpose. `AbstractSmaCrossStrategy.outsidePriceBand` skips a
 null bound entirely, so a config with no band is an **unbounded** config — free
@@ -202,6 +313,7 @@ table's current shape.**
 
 | [`033_create_strategy_defaults.xml`](../src/main/resources/db/changelog/033_create_strategy_defaults.xml) | Creates `strategy_defaults` and seeds strategy 1 from the hardcoded switch it replaces. See below. |
 | [`034_create_sma_downtrend_rule_strategy.xml`](../src/main/resources/db/changelog/034_create_sma_downtrend_rule_strategy.xml) | Creates `sma_downtrend_rule_strategy`, backfilled one tag per rule from `sma_downtrend_rule.strategy_id`. |
+| [`039_add_downtrend_rule_indicator_grid.xml`](../src/main/resources/db/changelog/039_add_downtrend_rule_indicator_grid.xml) | Adds `sma_periods` / `timeframes_minutes` / `indicator_type` — the detection grid becomes per-rule data and the scan goes behind the `EodTrendScanner` seam. Defaults reproduce the old hardcoded grid; existing rows are backfilled with them. |
 
 Every existing `trade_config` row stays `MANUAL`. Auto-generated rows are
 stamped `AUTO_DOWNTREND` so the detector can dedupe its own output across
@@ -269,7 +381,10 @@ its config twice for one detected downtrend.
 |---|---|
 | [`SmaDowntrendRule`](../src/main/java/com/moneymaker/entity/SmaDowntrendRule.java) | JPA entity for the rules table. |
 | [`SmaDowntrendRuleRepository`](../src/main/java/com/moneymaker/repository/SmaDowntrendRuleRepository.java) | Spring Data — exposes `findByEnabledTrue()`. |
-| [`EodDowntrendDetectionService`](../src/main/java/com/moneymaker/tradeconfig/generation/EodDowntrendDetectionService.java) | Orchestrator. Public entry: `runForDay(LocalDate)`. Constants `SMA_PERIODS`, `TIMEFRAMES_MINUTES`. Resolves which configs to emit in `resolveConfigGroups(rule)`. |
+| [`EodDowntrendDetectionService`](../src/main/java/com/moneymaker/tradeconfig/generation/EodDowntrendDetectionService.java) | Orchestrator. Public entry: `runForDay(LocalDate[, strategyScope])`. Owns everything indicator-agnostic; resolves which configs to emit in `resolveConfigGroups(rule, …)` and dispatches the scan by `indicator_type`. |
+| [`EodTrendScanner`](../src/main/java/com/moneymaker/tradeconfig/generation/EodTrendScanner.java) / [`SmaDowntrendScanner`](../src/main/java/com/moneymaker/tradeconfig/generation/SmaDowntrendScanner.java) | The indicator seam (changeset 039) and its one shipped implementation — the per-rule SMA grid walk, formerly `scanSide` inside the detector. |
+| [`IntCsv`](../src/main/java/com/moneymaker/util/IntCsv.java) | The only place `sma_periods` / `timeframes_minutes` are parsed or formatted. |
+| [`DowntrendRuleAdminController`](../src/main/java/com/moneymaker/tradeconfig/controller/DowntrendRuleAdminController.java) / [`DowntrendRuleAdminService`](../src/main/java/com/moneymaker/tradeconfig/service/DowntrendRuleAdminService.java) | The Detection rules panel's backend — `GET /api/downtrend-rules`, `GET /api/downtrend-rules/indicator-types`, `PUT /api/downtrend-rules/{id}/grid`. Grid + enabled only; save-time validation rejects what the scanner would WARN-drop. |
 | [`StrategyDefaults`](../src/main/java/com/moneymaker/entity/StrategyDefaults.java) / [`StrategyDefaultsRepository`](../src/main/java/com/moneymaker/repository/StrategyDefaultsRepository.java) | The per-strategy `trade_config` field block. `configSignature()` is what decides whether two strategies can share one generated config. |
 | [`SmaDowntrendRuleStrategy`](../src/main/java/com/moneymaker/entity/SmaDowntrendRuleStrategy.java) / [`SmaDowntrendRuleStrategyRepository`](../src/main/java/com/moneymaker/repository/SmaDowntrendRuleStrategyRepository.java) | Which strategies a rule generates for. |
 | [`StrategyIds`](../src/main/java/com/moneymaker/util/StrategyIds.java) | The detector writes `trade_config.strategy_ids` through this — without it the config would be scanned by its `stratergy_id` alone. The only place that column is parsed or formatted. |
@@ -286,8 +401,10 @@ its config twice for one detected downtrend.
 | New strategy with different fixed fields (e.g. `transaction_type=BUY`) | Two INSERTs, no code: a `strategy_defaults` row for the strategy, and a `sma_downtrend_rule_strategy` row tagging it onto the rule. |
 | An existing rule should also generate for another strategy | One INSERT into `sma_downtrend_rule_strategy`. If the two strategies' `strategy_defaults` blocks match they share one generated config; if not, each gets its own. |
 | Stop generating for a strategy without losing the setup | `UPDATE strategy_defaults SET auto_config_enabled=FALSE` (all rules), or `UPDATE sma_downtrend_rule_strategy SET enabled=FALSE` (one rule). |
-| New SMA period beyond 20/50/100/200/500 | Add the period to `SMA_PERIODS`, extend [`MarketData`](../src/main/java/com/moneymaker/entity/MarketData.java) with the new `smaValueXX` field, update [`SmaTrendCalculator`](../src/main/java/com/moneymaker/strategy/rules/SmaTrendCalculator.java#L25) and the `smaDownFlag(...)` switch in `EodDowntrendDetectionService`. |
-| Additional timeframe (e.g. `30min`) | Add to `TIMEFRAMES_MINUTES`. That's it. |
+| Skip an SMA period or timeframe for one rule | `UPDATE sma_downtrend_rule SET sma_periods='50,100'` / `timeframes_minutes='5'` — see [Skipping SMAs / adding an indicator](#skipping-smas--adding-a-different-indicator-rule). No code. |
+| Additional timeframe (e.g. `30min`) | Add it to the rule's `timeframes_minutes`. No code — but the value must be an interval the active data source serves. |
+| New SMA period beyond 20/50/100/200/500 | Still code: extend [`MarketData`](../src/main/java/com/moneymaker/entity/MarketData.java) with the new `smaValueXX` field + flags, update [`SmaTrendCalculator`](../src/main/java/com/moneymaker/strategy/rules/SmaTrendCalculator.java#L25), and add the period to `SmaDowntrendScanner.SUPPORTED_PERIODS` + its `smaDownFlag(...)` switch. Then select it in `sma_periods`. |
+| A different indicator entirely (RSI, EMA, …) | Implement [`EodTrendScanner`](../src/main/java/com/moneymaker/tradeconfig/generation/EodTrendScanner.java) as a bean; thresholds go in new `sma_downtrend_rule` columns; point rows at it via `indicator_type`. See [the section above](#skipping-smas--adding-a-different-indicator-rule). |
 | Different strike type (ITM/OTM at depth N) | Replace `computeAtmStrike` with a `computeStrike(rule, side)` and add the depth columns back to the rule. |
 | Target/SL formula other than the two shipped shapes (percentage of entry premium, or `mean intraday range × mult`) | Branch inside `insertAutoTradeConfig` on a new column like `target_mode`. A shape that is not a fixed points distance also needs `OrderService.bracketAtEntry` to know how to resolve it. |
 | Up-trend variant (for BUY strategies) | Add a `direction` column (`DOWN`/`UP`), branch in `scanSide` to read `smaXxUpTrending` instead. |
@@ -295,6 +412,8 @@ its config twice for one detected downtrend.
 | Holiday-aware "next trading day" | Swap `nextTradingDay(...)` to consult a holiday table. Method is private; only caller is `runForDay`. |
 | Telegram alert when a rule fires | Inject `NotificationService` into the service; call `notifier.sendIfChanged(...)` from `insertAutoTradeConfig`. |
 | Reset / regenerate AUTO rows for a date | Use the **Bulk delete** panel on `/trade-configs`, or the API below. Hand-written SQL is no longer needed and misses the `sma_timeframe` children. |
+| Retune SL / target on configs already generated | The **Bulk edit** panel on `/trade-configs` (`POST /api/trade-configs/auto/bulk-update`) — one field-set across all matching configs, optionally per strategy / date window. Editing the *rule* only changes future generation. See [ORDERS_AND_POSITIONS.md](ORDERS_AND_POSITIONS.md#bulk-editing-many-configs). |
+| Generate for one strategy only this run | `strategyIds` on the generate endpoint / the panel's strategy checkboxes — see [Per-run strategy selection](#per-run-strategy-selection). |
 
 ---
 

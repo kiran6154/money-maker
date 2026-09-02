@@ -87,28 +87,41 @@ public class BacktestController {
      * e.g. {@code strategyIds=2} or {@code strategyIds=1,2}) scopes the run to
      * those strategies; omitted means all strategies tagged on the configs.
      * Optional {@code configIds} (comma-separated {@code trade_config} ids)
-     * additionally limits the run to those configs — the provision for
-     * backtesting a strategy against a hand-picked subset of the generated
-     * configs rather than everything on the window's dates. Both filters
-     * compose; either omitted means "all" on that axis.
+     * additionally limits the run to those configs — API-only, for scripted
+     * runs. Both filters compose; either omitted means "all" on that axis.
+     *
+     * <p>Optional {@code configStrategyId} switches to a <b>cross-run</b>: the
+     * config set becomes that strategy's configs (its auto-generated fleet
+     * included), and each strategy in {@code strategyIds} — required non-empty
+     * in this mode — runs against all of them, regardless of the configs' own
+     * tags. "Run strategy 1 against strategy 2's auto configs" is
+     * {@code strategyIds=1&configStrategyId=2}.</p>
      */
     @PostMapping("/analysis")
     public ResponseEntity<?> runAnalysis(
             @RequestParam("fromDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
             @RequestParam("toDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
             @RequestParam(value = "strategyIds", required = false) List<Integer> strategyIds,
-            @RequestParam(value = "configIds", required = false) List<Integer> configIds) {
+            @RequestParam(value = "configIds", required = false) List<Integer> configIds,
+            @RequestParam(value = "configStrategyId", required = false) Integer configStrategyId) {
         Set<Integer> scope = (strategyIds == null || strategyIds.isEmpty())
                 ? null : new LinkedHashSet<>(strategyIds);
         Set<Integer> configScope = (configIds == null || configIds.isEmpty())
                 ? null : new LinkedHashSet<>(configIds);
         try {
             BacktestAnalysisService.BacktestRunResult result =
-                    backtestAnalysisService.run(fromDate, toDate, scope, configScope);
-            log.info("[Backtest] /analysis {} -> {} (strategyIds={}, configIds={}) completed in {}ms",
+                    backtestAnalysisService.run(fromDate, toDate, scope, configScope, configStrategyId);
+            log.info("[Backtest] /analysis {} -> {} (strategyIds={}, configIds={}, configStrategyId={}) "
+                            + "completed in {}ms",
                     fromDate, toDate, scope == null ? "all" : scope,
-                    configScope == null ? "all" : configScope, result.durationMs());
+                    configScope == null ? "all" : configScope,
+                    configStrategyId == null ? "own" : configStrategyId, result.durationMs());
             return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException ex) {
+            // Bad scope combination (e.g. configStrategyId with no runner named)
+            // — a client-fixable request problem, not a server failure.
+            log.warn("[Backtest] /analysis rejected: {}", ex.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
         } catch (HistoricalDataMissingException ex) {
             // The run was aborted on purpose — the imported data set does not
             // cover this window. Report it as a client-fixable problem with the
