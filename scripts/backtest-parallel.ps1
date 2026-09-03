@@ -140,7 +140,7 @@ function Start-Worker {
     $err = Join-Path $logDir "worker_$i.err.log"
     Write-Host "[driver] worker $i -> schema=$schema port=$port range=$ChunkFrom..$ChunkTo resident=$Resident"
     return Start-Process -FilePath 'java' -ArgumentList $javaArgs `
-        -RedirectStandardOutput $out -RedirectStandardError $err -PassThru -NoNewWindow:$false -WindowStyle Hidden
+        -RedirectStandardOutput $out -RedirectStandardError $err -PassThru -WindowStyle Hidden
 }
 
 function Test-WorkerUp {
