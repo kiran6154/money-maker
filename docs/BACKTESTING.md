@@ -296,6 +296,12 @@ Nothing else is registered. Strategy / order placement / P&L stages are intentio
 
 ## Triggering a run
 
+> **Parallel runs:** `scripts/backtest-parallel.ps1` replays a window across K
+> isolated worker schemas and merges the ledgers back — see
+> [`BACKTEST_PERFORMANCE.md`](BACKTEST_PERFORMANCE.md) Phases 10/12 for the
+> design, the `backtest.autorun.*` keys, warm-worker mode, and the live
+> considerations. Single runs work exactly as below, unchanged.
+
 ### REST
 ```powershell
 curl -X POST http://localhost:8080/api/backtest/run | ConvertFrom-Json

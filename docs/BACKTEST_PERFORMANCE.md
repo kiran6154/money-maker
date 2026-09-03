@@ -5,8 +5,12 @@
 > Phases 4 and 5 still planned. As each lands, mark it ✅ and add a "verified
 > parity" note.
 >
-> **2026-09-04:** full-year replay measured at ~18 minutes; Phases 7–11 below
-> plan the path to under 60 seconds. None implemented yet.
+> **2026-09-04:** full-year replay measured at ~18 minutes; Phases 7–12 below
+> plan the path toward the 60-second target. **Phases 7, 8, 9a, 10, 11 and 12
+> are implemented on branch `perf/backtest-sub-minute`** (plus the buffer-pool
+> raise, already applied to the server via `SET PERSIST`) — **pending the
+> verification runs below before merge to main**. 9b/9c remain deferred.
+> See "Live considerations" at the end of the sub-minute section.
 >
 > Phase 0 below was not in the original list and turned out to matter more than
 > any of the numbered phases once the data set grew.
@@ -566,7 +570,7 @@ Ranked by suspicion, from reading the code path — **not yet measured**:
 5. **Allocation churn.** `slice` copies the list per call and
    `dropIncompleteBars` may copy again — per config × timeframe × strike × tick.
 
-### Phase 7 — instrument before touching anything
+### Phase 7 — instrument before touching anything ✅ implemented (branch)
 
 Half a day. Two parts:
 
@@ -582,7 +586,7 @@ Everything after this phase is re-ranked by what it shows. The doc's own
 history (Phase 0) is the argument: the biggest win to date was not on the
 original list.
 
-### Phase 8 — settled-bucket aggregation cache
+### Phase 8 — settled-bucket aggregation cache ✅ implemented (branch)
 
 The optimisation the Phase 2 fix explicitly left on the table (“if it ever
 matters, cache the aggregated series too and rebuild only the trailing
@@ -605,7 +609,7 @@ one change.
   inactive outside backtest.
 - **Expected:** −25–35% serial.
 
-### Phase 9 — per-tick DB round-trip removal
+### Phase 9 — per-tick DB round-trip removal (9a ✅ implemented on branch; 9b/9c deferred)
 
 Reordered after the 2026-09-04 premortem: 9a is free and safe; 9b and 9c are
 **deferred behind Phases 10–11** because each carries the plan's only real
@@ -638,7 +642,7 @@ says so.
   interaction anyway). Acceptance bar: byte-identical ledger. Expected
   −10–20%, but it is the last phase to reach for, not an early one.
 
-### Phase 10 — day-parallel replay across isolated worker schemas
+### Phase 10 — day-parallel replay across isolated worker schemas ✅ implemented (branch)
 
 The structural lever. Two former cross-day couplings are gone, which makes
 day-level parallelism *conceptually* sound:
@@ -708,7 +712,7 @@ must balance **config-days**, not calendar days: only sessions with active
 configs cost anything (166 of ~250 in 2024), so a naive calendar split leaves
 some workers nearly idle.
 
-### Phase 11 — cross-day warm base cache (inside each worker)
+### Phase 11 — cross-day warm base cache (inside each worker) ✅ implemented (branch)
 
 Promoted above 9b/9c because it is behaviour-safe by construction: the cached
 rows are immutable imported candles. Day N+1's ~35-day window overlaps day N's
@@ -757,7 +761,7 @@ The 18× needed for sub-60-seconds does not exist here: ~2.5–3× parallel
 × ~2–2.5× serial ≈ 5–7×, and the parity bar rules out buying the rest with
 approximations. Sub-minute *every* run takes one of the two phases below.
 
-### Phase 12 — persistent worker pool with a cross-run warm cache
+### Phase 12 — persistent worker pool with a cross-run warm cache ✅ implemented (branch)
 
 The workflow this document serves is *iteration*: replay, adjust, replay. The
 imported data is immutable, so everything derived purely from it — base
@@ -785,6 +789,90 @@ code changes* land a **cold** full-year run at **~30–40 s**. That is the only
 path to sub-minute cold runs; on the current box the target is reachable only
 for warm iteration runs via Phase 12. Decide which of the two the 60-second
 target actually means before building past Phase 10.
+
+### What the branch implements (2026-09-04, `perf/backtest-sub-minute`)
+
+| Phase | Where |
+|---|---|
+| 7 — phase timers | `BacktestAnalysisService`: per-day `indicator/strategy/orders/positions` ms on the `day=… done` INFO line |
+| 8 — settled-bucket cache | `BacktestMarketDataCache` (aggregated-series store, identity-validated), `HistoricalIciciMarketDataProvider.aggregateSliceReusing`, `MarketDataService.fromBaseCache`, `SMAIndicatorImpl` boundary |
+| 9a — session hoist | `BacktestAnalysisService.run` reads the broker session once per run instead of per tick |
+| 10 — parallel workers | `BacktestAutorunRunner` (double-gated), `scripts/backtest-parallel.ps1` (schema provisioning, chunking, merge), `backtest.autorun.*` keys documented in `application.properties` |
+| 11 — cross-day cache | `BacktestMarketDataCache` retains series across days, `appendRight` delta fetches, 5-day idle eviction |
+| 12 — warm workers | `backtest.autorun.exit=false` + the driver's `-Warm` mode (resident JVMs driven over `POST /api/backtest/analysis`) |
+| Buffer pool | `SET PERSIST innodb_buffer_pool_size = 1.5G` — **already applied to the server**, survives restart |
+
+The full unit-test suite (246 tests) passes on the branch. The parity runs
+below have **not** been executed yet — they are the merge gate.
+
+### Live considerations (read before merging, and before the next live session)
+
+1. **`SMAIndicatorImpl` is the only shared-code change.** The stamp-reuse
+   boundary moved from `index ≥ period − 1` to `index ≥ period`; the boundary
+   index is now always recomputed. Values are identical by construction
+   (recomputing is always safe — only *reuse* can be stale); cost in live is
+   one extra O(period) sum per call, noise against the fetch it follows. If a
+   live number ever looks off, this is *not* where to look first — but it is
+   the one change that runs in live at all, so it is named here.
+2. **The buffer-pool raise is a server-wide setting.** Live queries benefit
+   from it too, but MySQL now holds ~1.5 GB of the box's 8 GB. Do not run a
+   K = 3 parallel backtest (3 × 512 MB JVMs + MySQL) while a live session is
+   trading on this machine — memory pressure, not correctness, is the risk.
+   `SET PERSIST innodb_buffer_pool_size = 134217728` restores the old default.
+3. **`backtest.autorun.*` must never be enabled in `application.properties`.**
+   The runner bean only exists when the driver passes
+   `--backtest.autorun.enabled=true` on a worker's command line, and it
+   refuses to run unless `app.mode=backtest` — but the first gate is the one
+   that keeps the live deployment from ever constructing it. The keys in the
+   properties file are documentation, commented out; keep them that way.
+4. **Worker-only overrides stay worker-only.** `--spring.liquibase.enabled=false`
+   and `--spring.jpa.hibernate.ddl-auto=none` are passed by the driver because
+   worker schemas are provisioned by script. Never apply either to the main
+   app — Liquibase owns the real schema.
+5. **The driver touches the source schema in exactly two ways:** it *reads*
+   input tables when provisioning workers, and it *inserts* merged
+   `trade_order` (and `journal_observation`) rows back. All deletes happen in
+   `moneymath_w*` schemas, which it creates and drops itself. It never deletes
+   from `moneymath`. Ledger resets between comparison runs remain the manual,
+   user-run step they always were.
+6. **Missing-session behaviour changed shape (9a).** A backtest run with no
+   broker session row now aborts up front with one alert instead of emitting a
+   warning per tick. Live is untouched (the hoist is in backtest-only code).
+7. **Config changes need worker reprovisioning.** Workers clone
+   `trade_config` at provision time. After regenerating configs, run the
+   driver without `-Warm` (or with `-Reprovision`) so worker schemas pick up
+   the new set — a warm pool reused across a config change replays the old
+   configs.
+8. **One recorded theoretical difference (Phase 8):** `aggregate()` carries
+   open-interest forward across buckets that contain no OI rows, so a shared
+   full-series bucket could in principle inherit OI from a candle before the
+   request window where a per-slice build would not. Every imported option row
+   carries OI and nothing outside the journal reads bucket OI, so this cannot
+   affect trades; noted so a journal-level diff isn't misread as a bug.
+
+### Verification plan (the merge gate)
+
+Run on this branch, in order; any non-identity stops the merge:
+
+1. **Serial parity vs main.** Reset the ledger, replay 2024-01-01→01-31 on
+   `main`; dump with the checklist query. Reset, replay the same window on
+   this branch (single app, no driver); dump. **Byte-identical required** —
+   this validates Phases 7/8/9a/11 in one shot, warm-cache effects included
+   (the multi-week window crosses expiries and exercises eviction + append).
+2. **Warm-run parity (Phase 11/12).** Without restarting the JVM, reset the
+   ledger and replay the same window again. The second run rides the retained
+   caches end-to-end. **Byte-identical to run 1's dump required.**
+3. **Sharded parity (Phase 10).** Reset, replay the window once serially on
+   the branch; dump. Then `scripts\backtest-parallel.ps1 -From 2024-01-01 -To
+   2024-01-31 -Workers 3 …`; dump the merged ledger. **Byte-identical
+   required** (order by the checklist's explicit `ORDER BY`; autoincrement
+   `id` is excluded as always).
+4. **Timing.** Record: full-year cold serial (branch), full-year
+   `-Workers 3` cold, full-year `-Warm` second run — into the arithmetic
+   table above, replacing estimates with measurements.
+5. **Phase split sanity.** Confirm the new `phases ms:` numbers on the
+   day-done lines roughly sum to the day wall time; if `indicator` is not the
+   dominant share after Phase 8, revisit 9b/9c priorities with real data.
 
 ---
 

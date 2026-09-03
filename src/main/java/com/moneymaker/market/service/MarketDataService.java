@@ -213,18 +213,58 @@ public class MarketDataService {
 
         List<MarketData> base = cache.slice(symbol, baseInterval, from, lastCompleted);
         if (base == null || base.isEmpty()) {
-            List<MarketData> wide = historicalProvider.fetchBaseCandles(symbol, wideFrom, wideTo, interval);
-            cache.put(symbol, baseInterval, wide, wideFrom, wideTo);
+            // Phase 11: the cache retains series across days, so on day N+1 the
+            // stored window usually covers everything but the new day. Extend on
+            // the right with a delta fetch instead of refetching ~35 days — this
+            // also keeps the stored candle objects (and their SMA stamps) alive.
+            // Any other shape of miss (no series, or a caller reaching further
+            // back than the stored window) takes the full fetch as before.
+            BacktestMarketDataCache.Coverage cov = cache.coverage(symbol, baseInterval);
+            if (cov != null && cov.from() != null && cov.to() != null
+                    && !cov.from().isAfter(wideFrom) && cov.to().isBefore(wideTo)) {
+                List<MarketData> delta = historicalProvider.fetchBaseCandles(symbol, cov.to(), wideTo, interval);
+                cache.appendRight(symbol, baseInterval, delta, wideTo);
+            } else {
+                List<MarketData> wide = historicalProvider.fetchBaseCandles(symbol, wideFrom, wideTo, interval);
+                cache.put(symbol, baseInterval, wide, wideFrom, wideTo);
+            }
 
             base = cache.slice(symbol, baseInterval, from, lastCompleted);
             if (base == null) {
-                base = wide;
+                base = new ArrayList<>();
             }
         }
+
+        // Base-interval request: the slice already is the answer (shared candle
+        // objects, so Phase 3's SMA stamps persist across ticks), settled bars only.
+        if (baseInterval.equals(interval)) {
+            return dropIncompleteBars(base, to, interval);
+        }
+
+        // Phase 8: coarse intervals reuse one cached roll-up of the full stored
+        // base series instead of rebuilding fresh bucket objects every tick.
+        // The cached entry is validated against the stored base list by identity,
+        // so a refetch or delta append invalidates it automatically. The `day`
+        // interval deliberately skips the cache: aggregateSliceReusing falls back
+        // to plain aggregation for it (its forming session bar is wanted), and
+        // caching a roll-up EOD asks for once a day would buy nothing.
+        List<MarketData> composed;
+        List<MarketData> storedBase = cache.storedData(symbol, baseInterval);
+        if (storedBase == null || !interval.trim().toLowerCase(Locale.ROOT).endsWith("minute")) {
+            composed = historicalProvider.aggregateTo(base, symbol, interval);
+        } else {
+            List<MarketData> shared = cache.aggregated(symbol, interval, storedBase);
+            if (shared == null) {
+                shared = historicalProvider.aggregateTo(storedBase, symbol, interval);
+                cache.putAggregated(symbol, interval, shared, storedBase);
+            }
+            composed = historicalProvider.aggregateSliceReusing(shared, base, to, interval, symbol);
+        }
+
         // The roll-up can still produce a trailing partial bucket (at 09:40 the
         // 15-minute bucket 09:30 holds only 09:30 and 09:35). dropIncompleteBars
         // removes it, so both paths return settled bars only.
-        return dropIncompleteBars(historicalProvider.aggregateTo(base, symbol, interval), to, interval);
+        return dropIncompleteBars(composed, to, interval);
     }
 
     public List<Double> extractClosePrices(List<MarketData> marketDataList) {

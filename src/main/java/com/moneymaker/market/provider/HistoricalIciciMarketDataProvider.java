@@ -337,6 +337,125 @@ public class HistoricalIciciMarketDataProvider implements MarketDataProvider {
         return aggregated;
     }
 
+    /**
+     * Phase 8: rolls {@code slicedBase} up to {@code interval}, <b>reusing the
+     * shared bucket objects</b> of {@code sharedAggregated} (the roll-up of the
+     * full cached base series) for every bucket whose content is provably
+     * identical to what aggregating the slice would produce. Sharing the
+     * objects across ticks is what lets the SMA stamps on them survive — the
+     * per-tick full rebuild was measured at ~+30% of replay wall time when it
+     * went in (see {@code BACKTEST_PERFORMANCE.md}, Phase 2 fix).
+     *
+     * <p>Bucket-by-bucket equivalence argument, keyed on the same
+     * <em>(trading date, elapsed-since-open ÷ interval)</em> ordinal
+     * {@link #aggregate} uses:
+     * <ul>
+     *   <li><b>The leftmost bucket is rebuilt fresh every call.</b> The
+     *       caller's {@code from} advances with the tick and can cut into the
+     *       middle of a bucket, so its content (and first-candle timestamp)
+     *       legitimately differs from the shared full bucket. It is built by
+     *       {@link #aggregate} itself over exactly the sliced candles, so the
+     *       semantics — including OI carry-over starting null — match a plain
+     *       {@code aggregate(slice)} byte for byte.</li>
+     *   <li><b>Interior buckets are shared.</b> A bucket with ordinal &gt; the
+     *       left bucket's whose slot ends at or before {@code asOf} draws all
+     *       its base candles from inside {@code [from, asOf)}, so the full-series
+     *       roll-up and the slice roll-up see the same rows.</li>
+     *   <li><b>Buckets whose slot ends after {@code asOf} are excluded.</b>
+     *       In a plain {@code aggregate(slice)} they would come out partial and
+     *       {@code dropIncompleteBars} would drop them; the shared versions are
+     *       <em>complete</em> — built from the full day, i.e. the future — so
+     *       serving them would be the exact look-ahead the Phase 2 fix removed.
+     *       Excluding them here is equivalent and safe.</li>
+     * </ul>
+     *
+     * <p>{@code day} requests bypass reuse entirely and take the plain
+     * aggregation path: their session bar is exempt from the settled-bar rule
+     * ({@code EodDowntrendDetectionService} wants the forming session), and the
+     * exclusion rule above would wrongly withhold it.
+     *
+     * <p>The one member of the composed list that is a fresh object each call is
+     * the leftmost (warm-up-region) bucket. {@code SMAIndicatorImpl}'s reuse
+     * boundary was moved to {@code index >= period} in the same change so a
+     * stamped value whose window could include that mutable first element is
+     * never trusted.
+     */
+    public List<MarketData> aggregateSliceReusing(List<MarketData> sharedAggregated,
+                                                  List<MarketData> slicedBase,
+                                                  LocalDateTime asOf,
+                                                  String interval,
+                                                  String symbol) {
+        int intervalMinutes = intervalMinutesOf2(interval, symbol);
+        if (intervalMinutes == BASE_INTERVAL_MINUTES) {
+            return slicedBase;
+        }
+        if (slicedBase == null || slicedBase.isEmpty()) {
+            return new ArrayList<>();
+        }
+        if (intervalMinutes >= MINUTES_PER_DAY || sharedAggregated == null || sharedAggregated.isEmpty()
+                || asOf == null) {
+            return aggregate(slicedBase, intervalMinutes);
+        }
+
+        int openMinute = marketHours.open().getHour() * 60 + marketHours.open().getMinute();
+        long leftOrdinal = bucketOrdinal(slicedBase.get(0).getTimestamp(), openMinute, intervalMinutes);
+
+        // Rebuild the leftmost bucket from the sliced candles that belong to it.
+        int leftEnd = 0;
+        while (leftEnd < slicedBase.size()) {
+            LocalDateTime ts = slicedBase.get(leftEnd).getTimestamp();
+            if (ts == null || bucketOrdinal(ts, openMinute, intervalMinutes) != leftOrdinal) break;
+            leftEnd++;
+        }
+        List<MarketData> out = new ArrayList<>(aggregate(slicedBase.subList(0, leftEnd), intervalMinutes));
+
+        // Append the shared interior buckets: ordinal strictly after the left
+        // bucket's, slot fully completed by asOf. Both bounds are monotonic
+        // along the (ascending) shared list, so start near the request window
+        // and stop at the first future slot.
+        int start = firstIndexAtOrAfter(sharedAggregated, slicedBase.get(0).getTimestamp().minusMinutes(intervalMinutes));
+        for (int i = start; i < sharedAggregated.size(); i++) {
+            MarketData bucket = sharedAggregated.get(i);
+            LocalDateTime ts = bucket == null ? null : bucket.getTimestamp();
+            if (ts == null) continue;
+            if (bucketOrdinal(ts, openMinute, intervalMinutes) <= leftOrdinal) continue;
+            if (slotEndOf(ts, openMinute, intervalMinutes).isAfter(asOf)) break;
+            out.add(bucket);
+        }
+        return out;
+    }
+
+    /**
+     * The (date, bucket-index) pair {@link #aggregate} keys on, folded into one
+     * comparable long. The index term is bounded by minutes-per-day ÷ 5, so the
+     * 4096 stride cannot collide across dates.
+     */
+    private static long bucketOrdinal(LocalDateTime ts, int openMinute, int intervalMinutes) {
+        int minuteOfDay = ts.getHour() * 60 + ts.getMinute();
+        long index = Math.floorDiv(minuteOfDay - openMinute, intervalMinutes);
+        return ts.toLocalDate().toEpochDay() * 4096 + (index + 1024);
+    }
+
+    /** The wall-clock end of the bucket slot containing {@code ts}. */
+    private static LocalDateTime slotEndOf(LocalDateTime ts, int openMinute, int intervalMinutes) {
+        int minuteOfDay = ts.getHour() * 60 + ts.getMinute();
+        long index = Math.floorDiv(minuteOfDay - openMinute, intervalMinutes);
+        return ts.toLocalDate().atStartOfDay().plusMinutes(openMinute + (index + 1) * intervalMinutes);
+    }
+
+    /** Index of the first bucket with timestamp ≥ {@code from}; binary search — shared series can span months. */
+    private static int firstIndexAtOrAfter(List<MarketData> data, LocalDateTime from) {
+        int lo = 0, hi = data.size();
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            MarketData md = data.get(mid);
+            LocalDateTime ts = md == null ? null : md.getTimestamp();
+            if (ts == null || ts.isBefore(from)) lo = mid + 1;
+            else hi = mid;
+        }
+        return lo;
+    }
+
     /** {@link #toMarketData} plus the bucket's accumulated volume / last OI. */
     private MarketData bucketBar(String symbol, LocalDateTime timestamp,
                                  BigDecimal open, BigDecimal high, BigDecimal low, BigDecimal close,

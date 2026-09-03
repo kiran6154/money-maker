@@ -47,6 +47,15 @@ public class BacktestAnalysisService {
     private final JournalRecorder journal;
     private final com.moneymaker.market.service.MarketHoursService marketHours;
 
+    // Phase 7 instrumentation: per-day wall time by pipeline phase, reset at
+    // each day's start and printed on the day-done line. The replay is
+    // single-threaded, so plain fields are safe.
+    private long dayIndicatorNs;
+    private long dayStrategyNs;
+    private long dayOrdersNs;
+    private long dayPositionsNs;
+    private int dayTicks;
+
     public BacktestAnalysisService(
             TradeConfigScheduler tradeConfigScheduler,
             AnalysisScheduler analysisScheduler,
@@ -150,6 +159,34 @@ public class BacktestAnalysisService {
         Instant startedAt = Instant.now();
         List<BacktestDayResult> results = new ArrayList<>();
 
+        // Phase 9a: the broker session is read ONCE per run, not once per tick.
+        // It cannot change mid-replay (nothing in backtest mode writes it), and
+        // reading it inside runForDate cost one DB round trip per tick — ~18k
+        // queries on a year run — plus a per-tick token re-set on the shared
+        // KiteConnect. A missing/invalid session aborts the run up front with
+        // one alert instead of one warning per tick.
+        var sessionEntity = brokerSessionStore.currentEntity();
+        if (sessionEntity.isEmpty()) {
+            log.error("[Backtest] No active broker session — aborting run {}..{}", fromDate, toDate);
+            notifier.alertNoActiveSession("backtest run " + fromDate + ".." + toDate);
+            long durationMs = Duration.between(startedAt, Instant.now()).toMillis();
+            return new BacktestRunResult(fromDate, toDate, 0, 0, durationMs, List.of());
+        }
+        var session = sessionEntity.get();
+        String accessToken = session.getAccessToken();
+        if (accessToken == null || accessToken.isEmpty()) {
+            log.error("[Backtest] Broker session has no access token — aborting run {}..{}", fromDate, toDate);
+            long durationMs = Duration.between(startedAt, Instant.now()).toMillis();
+            return new BacktestRunResult(fromDate, toDate, 0, 0, durationMs, List.of());
+        }
+        sharedKiteConnect.setAccessToken(accessToken);
+        if (session.getPublicToken() != null && !session.getPublicToken().isEmpty()) {
+            sharedKiteConnect.setPublicToken(session.getPublicToken());
+        }
+        SharedData.sharedKiteconnect = sharedKiteConnect;
+        log.debug("[Backtest] KiteConnect initialized once for user {} (run {}..{})",
+                session.getUserId(), fromDate, toDate);
+
         // Names every observation this run produces, so two runs over the same
         // dates stay separable in journal_observation instead of merging into one
         // indistinguishable pile.
@@ -249,6 +286,8 @@ public class BacktestAnalysisService {
             // summary can show the *delta* this run produced, not the cumulative total.
             long rowsBefore = countTradeOrdersOnDate(currentDate);
             Instant dayStart = Instant.now();
+            dayIndicatorNs = dayStrategyNs = dayOrdersNs = dayPositionsNs = 0;
+            dayTicks = 0;
 
             // ===== Phase 1: enable per-day candle cache =====
             // MarketDataService now slices the cached series for every tick's
@@ -345,8 +384,11 @@ public class BacktestAnalysisService {
                         currentDate);
             }
             long dayMs = Duration.between(dayStart, Instant.now()).toMillis();
-            log.info("[Backtest] day={} done in {} ms — trade_order rows: before={} after={} delta={} forceClosed={}",
-                    currentDate, dayMs, rowsBefore, rowsAfter, rowsAfter - rowsBefore, forceClosed);
+            log.info("[Backtest] day={} done in {} ms — trade_order rows: before={} after={} delta={} forceClosed={} "
+                            + "| phases ms: indicator={} strategy={} orders={} positions={} (ticks={})",
+                    currentDate, dayMs, rowsBefore, rowsAfter, rowsAfter - rowsBefore, forceClosed,
+                    dayIndicatorNs / 1_000_000, dayStrategyNs / 1_000_000,
+                    dayOrdersNs / 1_000_000, dayPositionsNs / 1_000_000, dayTicks);
 
             currentDate = currentDate.plusDays(1);
         }
@@ -452,39 +494,8 @@ public class BacktestAnalysisService {
         Instant startedAt = Instant.now();
 
         try {
-            // Fetch broker session details from the database
-            var sessionEntity = brokerSessionStore.currentEntity();
-            if (sessionEntity.isEmpty()) {
-                log.warn("[Backtest] No active broker session found for date {}", date);
-                notifier.alertNoActiveSession("backtest tick at " + date);
-                long durationMs = Duration.between(startedAt, Instant.now()).toMillis();
-                return new BacktestDayResult(date, false, 0, durationMs, "No active broker session found.");
-            }
-
-            var session = sessionEntity.get();
-            String userId = session.getUserId();
-
-            // Initialize KiteConnect with fetched details
-            String accessToken = session.getAccessToken();
-            String publicToken = session.getPublicToken();
-
-            if (accessToken == null || accessToken.isEmpty()) {
-                log.warn("[Backtest] Access token is missing for date {}", date);
-                long durationMs = Duration.between(startedAt, Instant.now()).toMillis();
-                return new BacktestDayResult(date, false, 0, durationMs, "Access token is missing.");
-            }
-
-            // Set access token on the shared KiteConnect bean
-            sharedKiteConnect.setAccessToken(accessToken);
-            if (publicToken != null && !publicToken.isEmpty()) {
-                sharedKiteConnect.setPublicToken(publicToken);
-            }
-
-            // Also set in SharedData for backward compatibility
-            SharedData.sharedKiteconnect = sharedKiteConnect;
-
-            log.debug("[Backtest] KiteConnect initialized for user: {} on date: {}", userId, date);
-
+            // Broker session + KiteConnect token setup happens once per run
+            // (Phase 9a) — see run(). This method carries only per-tick work.
             SharedData.combinedDto = combinedDto;
 
             if (combinedDto == null || combinedDto.isEmpty()) {
@@ -507,6 +518,10 @@ public class BacktestAnalysisService {
 
             log.debug("=== Analysis {} START ===", date);
 
+            // Phase 7: per-phase wall time, accumulated across the day's ticks
+            // and reported on the day-done INFO line. Nanotime bookkeeping only;
+            // the phases themselves are untouched.
+            long t0 = System.nanoTime();
             try {
                 analysisScheduler.calculateIndicator(date);
             }
@@ -518,12 +533,21 @@ public class BacktestAnalysisService {
             catch(Exception e){
                 log.error("[Backtest] calculateIndicator failed at {}", date, e);
             }
+            long t1 = System.nanoTime();
             analysisScheduler.runStrategies(date);
+            long t2 = System.nanoTime();
             // Capture signals between strategy emit and order drain — processOrders
             // empties the queue, so reading it after would always show 0.
             int signalsEmitted = SharedData.tradeSignals != null ? SharedData.tradeSignals.size() : 0;
             orderScheduler.processOrders();
+            long t3 = System.nanoTime();
             positionScheduler.processPositions();
+            long t4 = System.nanoTime();
+            dayIndicatorNs += t1 - t0;
+            dayStrategyNs  += t2 - t1;
+            dayOrdersNs    += t3 - t2;
+            dayPositionsNs += t4 - t3;
+            dayTicks++;
 
             long durationMs = Duration.between(startedAt, Instant.now()).toMillis();
             if (narrate) {

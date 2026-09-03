@@ -112,11 +112,20 @@ public class SMAIndicatorImpl implements Indicator {
 
         // Full-window region: reusable across ticks, so skip what is already
         // stamped. Fresh ascending sum otherwise, matching ta4j term for term.
+        //
+        // The stamp is trusted only at index >= period — one stricter than the
+        // full-window boundary itself. At exactly index == period - 1 the window
+        // reaches list index 0, and since the Phase 8 aggregation cache the
+        // first element of a coarse-timeframe list is a per-tick REBUILT partial
+        // bucket whose content changes as the lookback's left edge advances; a
+        // value stamped there on an earlier tick can be stale. Recomputing that
+        // one index is always safe (it produces the true value for the current
+        // list) and costs a single O(period) sum per call, in live mode too.
         BigDecimal divisor = BigDecimal.valueOf(period);
         for (int i = warmUp; i < size; i++) {
             MarketData candle = marketData.get(i);
 
-            Double cached = reader == null ? null : reader.apply(candle);
+            Double cached = (reader == null || i == period - 1) ? null : reader.apply(candle);
             if (cached != null) {
                 last = cached;
                 continue;
