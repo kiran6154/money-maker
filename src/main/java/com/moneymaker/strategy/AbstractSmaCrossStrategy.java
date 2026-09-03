@@ -77,6 +77,19 @@ public abstract class AbstractSmaCrossStrategy implements Strategy {
                 ? config.getTradeConfig().getId()
                 : null;
 
+        // Mis-configuration guard for strategies whose OPEN direction is not
+        // the classic SELL: on a config whose transaction_type contradicts it,
+        // their entries would be discarded by OrderService (direction mismatch)
+        // while their close-time exit signal would be mistaken for a fresh
+        // entry. SELL-entry strategies are deliberately NOT guarded — that
+        // hazard predates the hook and tightening it here would change legacy
+        // behaviour for strategies 1/2.
+        TradeAction emittedEntry = mapAction(entryAction());
+        if (emittedEntry != TradeAction.SELL
+                && refusedForTransactionType(config, emittedEntry, asOf, tradeConfigId)) {
+            return;
+        }
+
         Map<String, List<MarketData>> strikeMarketData = SharedData.strikeMarketDataByInstrumentAndInterval;
         if (strikeMarketData == null || strikeMarketData.isEmpty()) {
             return;
@@ -185,32 +198,43 @@ public abstract class AbstractSmaCrossStrategy implements Strategy {
                 double open   = lastCandle.getOpen()  != null ? lastCandle.getOpen().doubleValue()  : 0d;
                 double close  = lastCandle.getClose() != null ? lastCandle.getClose().doubleValue() : 0d;
                 boolean sellGate = smaVal > 0 && open > smaVal && close < smaVal;
-                boolean buyGate  = false; // raw buy-cross intentionally disabled
+                // For sell-entry strategies the raw buy-cross is intentionally
+                // disabled and this stays false, keeping their [tick] lines
+                // unchanged. A buy-entry strategy gates on the mirror cross.
+                boolean buyGate  = entryAction() == TradeAction.BUY
+                        && smaVal > 0 && open < smaVal && close > smaVal;
 
                 RuleContext ctx = new RuleContext(lastCandle, dataList.size() - 1,
                         dataList, primarySma, config, asOf,
                         marketHours != null ? marketHours.closeSignalTime() : null);
-                RuleEngine.Decision decision = RuleEngine.decide(ctx, sellRules, buyRules);
+                RuleEngine.Decision decision = entryAction() == TradeAction.BUY
+                        ? RuleEngine.decideBuyEntry(ctx, sellRules, buyRules)
+                        : RuleEngine.decide(ctx, sellRules, buyRules);
+
+                // What actually gets emitted. Identity for most strategies;
+                // Strategy4 inverts the detected direction here, so the reason
+                // string still names the rules that fired the detection.
+                TradeAction action = mapAction(decision.action());
 
                 String strikeLabel = parseStrikeLabel(key);
                 log.debug("[tick] tf={} {} ts={} open={} close={} sma{}={} sellGate={} buyGate={} → {} ({})",
                         interval, strikeLabel, lastCandle.getTimestamp(),
                         open, close, primarySma, smaVal,
-                        sellGate, buyGate, decision.action(), decision.reason());
+                        sellGate, buyGate, action, decision.reason());
 
-                if (decision.action() != TradeAction.NONE) {
-                    if (outsidePriceBand(config, decision.action(), lastCandle.getClose())) {
+                if (action != TradeAction.NONE) {
+                    if (outsidePriceBand(config, action, lastCandle.getClose())) {
                         log.debug("[signal] SUPPRESSED {} {} tf={} premium={} outside band [{}, {}] time={}",
-                                decision.action(), strikeLabel, interval, lastCandle.getClose(),
+                                action, strikeLabel, interval, lastCandle.getClose(),
                                 priceBoundOf(config, true), priceBoundOf(config, false),
                                 lastCandle.getTimestamp());
                         continue;
                     }
                     log.info("[signal] {} {} tf={} sma{}={} open={} close={} time={}",
-                            decision.action(), strikeLabel, interval,
+                            action, strikeLabel, interval,
                             primarySma, smaVal, open, close, lastCandle.getTimestamp());
                     SharedData.tradeSignals.add(new TradeSignal(
-                            key, decision.action(), tradeConfigId, getId(),
+                            key, action, tradeConfigId, getId(),
                             lastCandle.getTimestamp(), primarySma, interval,
                             lastCandle.getClose()));
                 }
@@ -409,6 +433,68 @@ public abstract class AbstractSmaCrossStrategy implements Strategy {
                 ? config.getTradeConfig().getItmDepth()
                 : config.getTradeConfig().getOtmDepth());
     }
+
+    /**
+     * The <b>detection</b> direction — which decide path the engine runs. SELL
+     * (the default) is {@link RuleEngine#decide}: cross-down gate on the sell
+     * rules, ungated buy rules as the other leg. {@code Strategy3} overrides to
+     * BUY, flipping to {@link RuleEngine#decideBuyEntry} (cross-up gate on the
+     * buy rules, ungated sell rules).
+     *
+     * <p>This is not necessarily what gets emitted — see {@link #mapAction}.
+     * The direction that must agree with the config's {@code transaction_type}
+     * is the composition {@code mapAction(entryAction())}, and the guard at the
+     * top of {@link #execute} enforces exactly that for non-SELL openers.</p>
+     */
+    protected TradeAction entryAction() {
+        return TradeAction.SELL;
+    }
+
+    /**
+     * Maps the engine's <b>detected</b> action to the action actually emitted.
+     * Identity by default. {@code Strategy4} overrides it to invert both
+     * directions — the baseline's sell detection fires unchanged, but the
+     * signal placed is a BUY (and the close-time BUY exit becomes the SELL that
+     * closes the long). NONE must always map to NONE.
+     *
+     * <p>Applied in one place, just before the price band and emission, so the
+     * {@code [tick]} log shows the emitted action alongside the detection's
+     * reason string — the inversion is visible on every line.</p>
+     */
+    protected TradeAction mapAction(TradeAction detected) {
+        return detected;
+    }
+
+    /**
+     * True when the config's {@code transaction_type} does not match this
+     * strategy's emitted entry direction — the caller then skips the config.
+     * WARNed once per (strategy, config, day); repeats go to DEBUG, same shape
+     * as the stale-key log, so a year-long replay is not flooded.
+     */
+    private boolean refusedForTransactionType(TradeConfigCombinedDTO config, TradeAction emittedEntry,
+                                              LocalDateTime asOf, Integer tradeConfigId) {
+        String txn = (config != null && config.getTradeConfig() != null)
+                ? config.getTradeConfig().getTransactionType()
+                : null;
+        if (txn != null && txn.trim().equalsIgnoreCase(emittedEntry.name())) {
+            return false;
+        }
+        String onceKey = getId() + "|" + (asOf != null ? asOf.toLocalDate() : "?") + "|" + tradeConfigId;
+        if (txnRefusalLoggedToday.size() > 1024) txnRefusalLoggedToday.clear();
+        if (txnRefusalLoggedToday.add(onceKey)) {
+            log.warn("[strategy{}] tradeConfigId={} has transaction_type={} — this strategy "
+                    + "opens with {}, so the config is skipped (set transaction_type={} to run it)",
+                    getId(), tradeConfigId, txn, emittedEntry, emittedEntry);
+        } else {
+            log.debug("[strategy{}] tradeConfigId={} skipped again — transaction_type={}",
+                    getId(), tradeConfigId, txn);
+        }
+        return true;
+    }
+
+    /** (strategyId|date|configId) already WARN-logged; bounded by the size-cap clear above. */
+    private static final java.util.Set<String> txnRefusalLoggedToday =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     // ------------------------------------------------------------------
     // Baseline rules. Wrap lambdas with TradeRule.named(...) so the

@@ -338,10 +338,10 @@
                 <input id="gen-to" type="date" class="form-control" />
             </div>
             <div class="form-row">
-                <label title="Generate only for the ticked strategies this run. None ticked = every strategy tagged on the rules. A ticked strategy still needs its rule tag and an enabled strategy_defaults row — the selection narrows the standing setup, it cannot widen it.">Strategies</label>
-                <div id="gen-strategies" style="display:flex; gap:14px; align-items:center; min-height:34px; flex-wrap:wrap;">
-                    <span style="color:var(--text-muted); font-size:12px;">loading…</span>
-                </div>
+                <label for="gen-strategies" title="Generate only for the selected strategies this run (Ctrl/Cmd-click to pick several, or to clear). No selection = every strategy tagged on the rules. A selected strategy still needs its rule tag and an enabled strategy_defaults row — the selection narrows the standing setup, it cannot widen it.">Strategies</label>
+                <select id="gen-strategies" class="form-control" multiple size="4" style="min-width:150px;">
+                    <option disabled>loading…</option>
+                </select>
             </div>
             <button id="gen-run" class="btn btn-primary" type="button">⚙ Generate</button>
         </div>
@@ -1722,29 +1722,32 @@
     from.value = today; to.value = today;
     function setStatus(text, cls) { status.textContent = text; status.className = 'badge ' + cls; }
 
-    // Ticked strategies become the run's strategyIds param; none ticked = all.
-    // Same shape as the backtest page's strategy scope.
+    // Selected strategies become the run's strategyIds param; no selection =
+    // all. A multi-select dropdown, not checkboxes — the strategy roster grows
+    // (4 and counting) and a dropdown keeps the form compact as it does. Same
+    // shape as the backtest page's strategy scope.
     (async function loadStrategyOptions() {
         try {
             const r = await fetch('/api/trade-configs/strategies');
             const list = await r.json();
             strategies.innerHTML = '';
             (list || []).forEach(s => {
-                const lbl = document.createElement('label');
-                lbl.style.cssText = 'display:flex; gap:5px; align-items:center; font-size:13px; cursor:pointer;';
-                lbl.innerHTML = '<input type="checkbox" class="gen-strat" value="' + s.id + '"> '
-                    + (s.name || ('Strategy ' + s.id));
-                strategies.appendChild(lbl);
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = s.name || ('Strategy ' + s.id);
+                strategies.appendChild(opt);
             });
+            // Show the whole roster without scrolling while it stays small.
+            strategies.size = Math.min(Math.max((list || []).length, 2), 6);
             if (!list || !list.length) {
-                strategies.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">none registered</span>';
+                strategies.innerHTML = '<option disabled>none registered</option>';
             }
         } catch (e) {
-            strategies.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">unavailable</span>';
+            strategies.innerHTML = '<option disabled>unavailable</option>';
         }
     })();
     function selectedGenStrategyIds() {
-        return Array.from(document.querySelectorAll('.gen-strat:checked')).map(cb => cb.value);
+        return Array.from(strategies.selectedOptions).filter(o => !o.disabled).map(o => o.value);
     }
 
     run.addEventListener('click', async () => {

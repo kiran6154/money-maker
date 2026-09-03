@@ -144,13 +144,13 @@
                     <input id="an-to" type="date" class="form-control" />
                 </div>
                 <div class="form-row">
-                    <label title="Scopes the run to the ticked strategies. None ticked = every strategy tagged on the window's configs.">Strategies</label>
-                    <div id="an-strategies" style="display:flex; gap:14px; align-items:center; min-height:34px; flex-wrap:wrap;">
-                        <span style="color: var(--text-muted); font-size: 12px;">loading…</span>
-                    </div>
+                    <label for="an-strategies" title="Scopes the run to the selected strategies (Ctrl/Cmd-click to pick several, or to clear). No selection = every strategy tagged on the window's configs.">Strategies</label>
+                    <select id="an-strategies" class="form-control" multiple size="4" style="min-width:150px;">
+                        <option disabled>loading…</option>
+                    </select>
                 </div>
                 <div class="form-row">
-                    <label for="an-config-strategy" title="Cross-run: the ticked strategies run against the chosen strategy's configs (its auto-generated fleet included) instead of their own. 'Their own' = normal run.">Against configs of</label>
+                    <label for="an-config-strategy" title="Cross-run: the selected strategies run against the chosen strategy's configs (its auto-generated fleet included) instead of their own. 'Their own' = normal run.">Against configs of</label>
                     <select id="an-config-strategy" class="form-control">
                         <option value="">Their own configs</option>
                     </select>
@@ -315,9 +315,11 @@
     anTo.addEventListener('change',   persistDates);
 
     // -------- Strategy scope (run form) --------
-    // Ticked strategies become the run's strategyIds param; none ticked = all.
+    // Selected strategies become the run's strategyIds param; no selection =
+    // all. A multi-select dropdown, not checkboxes — the strategy roster grows
+    // (4 and counting) and a dropdown keeps the form compact as it does.
     // The "Against configs of" dropdown turns the run into a cross-run: the
-    // ticked strategies run against that strategy's config set instead of
+    // selected strategies run against that strategy's config set instead of
     // their own (configStrategyId param).
     const anStrategies = document.getElementById('an-strategies');
     const anConfigStrategy = document.getElementById('an-config-strategy');
@@ -327,26 +329,27 @@
             const list = await r.json();
             anStrategies.innerHTML = '';
             (list || []).forEach(s => {
-                const lbl = document.createElement('label');
-                lbl.style.cssText = 'display:flex; gap:5px; align-items:center; font-size:13px; cursor:pointer;';
-                lbl.innerHTML = '<input type="checkbox" class="an-strat" value="' + s.id + '"> '
-                    + (s.name || ('Strategy ' + s.id));
-                anStrategies.appendChild(lbl);
+                const scopeOpt = document.createElement('option');
+                scopeOpt.value = s.id;
+                scopeOpt.textContent = s.name || ('Strategy ' + s.id);
+                anStrategies.appendChild(scopeOpt);
 
                 const opt = document.createElement('option');
                 opt.value = s.id;
                 opt.textContent = (s.name || ('Strategy ' + s.id)) + "'s configs";
                 anConfigStrategy.appendChild(opt);
             });
+            // Show the whole roster without scrolling while it stays small.
+            anStrategies.size = Math.min(Math.max((list || []).length, 2), 6);
             if (!list || !list.length) {
-                anStrategies.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">none registered</span>';
+                anStrategies.innerHTML = '<option disabled>none registered</option>';
             }
         } catch (e) {
-            anStrategies.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">unavailable</span>';
+            anStrategies.innerHTML = '<option disabled>unavailable</option>';
         }
     })();
     function selectedStrategyIds() {
-        return Array.from(document.querySelectorAll('.an-strat:checked')).map(cb => cb.value);
+        return Array.from(anStrategies.selectedOptions).filter(o => !o.disabled).map(o => o.value);
     }
 
     // Per-config selection was tried here and removed (user feedback
@@ -359,7 +362,7 @@
         if (!anFrom.value || !anTo.value) { setAn('pick dates', 'badge-warn'); return; }
         const scope = selectedStrategyIds();
         if (anConfigStrategy.value && !scope.length) {
-            alert('Cross-run needs a runner: tick the strategy (or strategies) that should run '
+            alert('Cross-run needs a runner: select the strategy (or strategies) that should run '
                 + 'against ' + anConfigStrategy.options[anConfigStrategy.selectedIndex].text + '.');
             return;
         }

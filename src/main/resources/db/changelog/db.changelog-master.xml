@@ -48,5 +48,6 @@
     <include file="db/changelog/037_add_is_active_to_trade_config.xml"/>
     <include file="db/changelog/038_add_max_parallel_per_side.xml"/>
     <include file="db/changelog/039_add_downtrend_rule_indicator_grid.xml"/>
+    <include file="db/changelog/040_add_opposite_side_to_strategy_defaults.xml"/>
 
 </databaseChangeLog>

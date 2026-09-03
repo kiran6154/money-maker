@@ -72,6 +72,51 @@ public final class RuleEngine {
     }
 
     /**
+     * The mirror of {@link #decide} for strategies whose <b>entry</b> is a BUY
+     * (e.g. {@code Strategy3}):
+     * <pre>
+     *   open &lt; primarySMA &amp;&amp; close &gt; primarySMA  → BUY candidate, buy rules must pass
+     *   otherwise                                → sell rules run ungated (the exit leg)
+     * </pre>
+     *
+     * <p>Deliberately a separate method rather than a flag on {@link #decide}:
+     * strategies 1 and 2 must keep their exact decision path (and log text), and
+     * the asymmetry — entry gated by a cross, exit ungated — is the same shape in
+     * both, just with the directions swapped. Here the raw <i>sell</i> cross is
+     * the one that never gates anything: SELL is this path's exit-only direction,
+     * exactly as BUY is exit-only in {@link #decide}.</p>
+     */
+    public static Decision decideBuyEntry(RuleContext ctx, TradeRules sellRules, TradeRules buyRules) {
+        if (ctx.primarySmaPeriod == null) {
+            return new Decision(TradeAction.NONE, "primarySma=null");
+        }
+        double primarySma = CommonRules.smaValue(ctx.candle, ctx.primarySmaPeriod);
+        if (primarySma <= 0) {
+            return new Decision(TradeAction.NONE,
+                    "sma" + ctx.primarySmaPeriod + "=N/A (need more historical candles)");
+        }
+
+        double open  = CommonRules.openValue(ctx.candle);
+        double close = CommonRules.closeValue(ctx.candle);
+
+        boolean buyGate = open < primarySma && close > primarySma;
+
+        if (buyGate) {
+            EvalResult r = evaluateWithReason(ctx, buyRules);
+            if (r.pass) return new Decision(TradeAction.BUY,
+                    "buyGate=true, buy rules OK [" + r.reason + "]");
+            return new Decision(TradeAction.NONE,
+                    "buyGate=true, buy rules FAIL [" + r.reason + "]");
+        }
+
+        EvalResult r = evaluateWithReason(ctx, sellRules);
+        if (r.pass) return new Decision(TradeAction.SELL,
+                "buyGate=false, sell rules OK [" + r.reason + "]");
+        return new Decision(TradeAction.NONE,
+                "buyGate=false, sell rules FAIL [" + r.reason + "]");
+    }
+
+    /**
      * Pure rule composition retained for callers that only want a boolean.
      * Uses the same logic as {@link #evaluateWithReason} but discards the reason.
      */

@@ -99,6 +99,7 @@ traded* is in a table — including, since changeset 039, the SMA grid itself.
 | Which indicator judges the leg | `sma_downtrend_rule.indicator_type` (default `SMA_DOWNTREND`; changeset 039). Each value maps to an `EodTrendScanner` bean — see [Skipping SMAs / adding an indicator](#skipping-smas--adding-a-different-indicator-rule). |
 | Which strike type | hardcoded ATM in `computeAtmStrike` |
 | `transaction_type`, `max_loss`, `no_of_trades`, `no_of_parrellel_trades` for the generated config | [`strategy_defaults`](#table-strategy_defaults) — one row per strategy (changeset 033) |
+| Which leg the generated config trades — detected side or its mirror | `strategy_defaults.opposite_side` (changeset 040) |
 | Whether a strategy may generate at all | `strategy_defaults.auto_config_enabled` |
 | `lot_quantity` | `instrument.lot_qty` — the contract's lot size, not a strategy constant (`strategy_defaults.lot_quantity` is only a fallback) |
 | Detection threshold (`max_deviation`, `start_time`) | `sma_downtrend_rule` |
@@ -229,8 +230,9 @@ curl.exe -X POST "http://localhost:8080/api/trade-configs/generate?fromDate=2024
 ```
 
 The **Generate AUTO configs** panel on `/trade-configs` exposes the same thing as
-strategy checkboxes (none ticked = every tagged strategy). Three properties worth
-knowing:
+a multi-select strategy dropdown (no selection = every tagged strategy; it was a
+checkbox row until 2026-09-04, converted as the strategy roster grew). Three
+properties worth knowing:
 
 - **The scope narrows, never widens.** A scoped strategy still needs its rule tag
   (or the rule's fallback `strategy_id`) and an enabled `strategy_defaults` row;
@@ -314,6 +316,7 @@ table's current shape.**
 | [`033_create_strategy_defaults.xml`](../src/main/resources/db/changelog/033_create_strategy_defaults.xml) | Creates `strategy_defaults` and seeds strategy 1 from the hardcoded switch it replaces. See below. |
 | [`034_create_sma_downtrend_rule_strategy.xml`](../src/main/resources/db/changelog/034_create_sma_downtrend_rule_strategy.xml) | Creates `sma_downtrend_rule_strategy`, backfilled one tag per rule from `sma_downtrend_rule.strategy_id`. |
 | [`039_add_downtrend_rule_indicator_grid.xml`](../src/main/resources/db/changelog/039_add_downtrend_rule_indicator_grid.xml) | Adds `sma_periods` / `timeframes_minutes` / `indicator_type` — the detection grid becomes per-rule data and the scan goes behind the `EodTrendScanner` seam. Defaults reproduce the old hardcoded grid; existing rows are backfilled with them. |
+| [`040_add_opposite_side_to_strategy_defaults.xml`](../src/main/resources/db/changelog/040_add_opposite_side_to_strategy_defaults.xml) | Adds `strategy_defaults.opposite_side` (default `FALSE`) — a strategy whose configs trade the mirror leg of the detected trend (`Strategy3`). Existing rows keep detected-side behaviour. |
 
 Every existing `trade_config` row stays `MANUAL`. Auto-generated rows are
 stamped `AUTO_DOWNTREND` so the detector can dedupe its own output across
@@ -333,6 +336,7 @@ on every config it generates for that strategy.
 | `no_of_trades` | → `trade_config.no_of_trades`. |
 | `no_of_parallel_trades` | → `trade_config.no_of_parrellel_trades` (the typo is in that schema, not here). |
 | `auto_config_enabled` | Parks a strategy without deleting its block. |
+| `opposite_side` | Changeset 040. `TRUE` writes this strategy's config for the **other** leg than the one the downtrend was detected on — [`Strategy3`](STRATEGIES.md#strategy-3--the-inverted-baseline-buy-side)'s mirror shape (PE downtrending → a CE BUY config), with the bracket basis measured on the traded leg. Default `FALSE` keeps detected-side behaviour; `Strategy4` wants `FALSE` (it fades the detected leg itself). Part of the sharing signature — a flipped and an unflipped strategy never share a config row. |
 
 **Only strategy 1 is seeded**, with the exact values from the switch that was
 deleted, so behaviour on an existing database is unchanged. Strategy 2 gets no
@@ -413,7 +417,7 @@ its config twice for one detected downtrend.
 | Telegram alert when a rule fires | Inject `NotificationService` into the service; call `notifier.sendIfChanged(...)` from `insertAutoTradeConfig`. |
 | Reset / regenerate AUTO rows for a date | Use the **Bulk delete** panel on `/trade-configs`, or the API below. Hand-written SQL is no longer needed and misses the `sma_timeframe` children. |
 | Retune SL / target on configs already generated | The **Bulk edit** panel on `/trade-configs` (`POST /api/trade-configs/auto/bulk-update`) — one field-set across all matching configs, optionally per strategy / date window. Editing the *rule* only changes future generation. See [ORDERS_AND_POSITIONS.md](ORDERS_AND_POSITIONS.md#bulk-editing-many-configs). |
-| Generate for one strategy only this run | `strategyIds` on the generate endpoint / the panel's strategy checkboxes — see [Per-run strategy selection](#per-run-strategy-selection). |
+| Generate for one strategy only this run | `strategyIds` on the generate endpoint / the panel's strategy dropdown — see [Per-run strategy selection](#per-run-strategy-selection). |
 
 ---
 

@@ -5,6 +5,9 @@
 > Phases 4 and 5 still planned. As each lands, mark it ✅ and add a "verified
 > parity" note.
 >
+> **2026-09-04:** full-year replay measured at ~18 minutes; Phases 7–11 below
+> plan the path to under 60 seconds. None implemented yet.
+>
 > Phase 0 below was not in the original list and turned out to matter more than
 > any of the numbered phases once the data set grew.
 
@@ -523,6 +526,221 @@ walks the in-memory set, hydrating each via `findById` only when needed.
 
 ---
 
+## The sub-minute full-year target (Phases 7–11, planned 2026-09-04)
+
+Measured 2026-09-04: full-year 2024 replay (`strategyIds=[1]`, `configIds=all`,
+`configStrategyId=1`, `HISTORICAL_ICICI`) completed in **1,094,825 ms** —
+≈ 4.4 s per trading day, ≈ 60 ms per 5-minute tick across ~250 days × 73 ticks.
+That is consistent with the 3-day steady state measured above, so the year run
+is simply the per-day cost times 250; nothing new degrades at scale.
+
+Target: **under 60 s**, an ~18× cut. The properties file already ships
+`logging.level.com.moneymaker=INFO` and `journal.enabled=false`, so the two
+config-only levers are spent. No serial phase remaining in this document gets
+anywhere near 18×, and the parity bar rules out the shortcuts that would
+(double-precision SMA, skipping the pipeline, evaluating on unsettled bars).
+The plan is therefore multiplicative: serial cuts worth ~2–3× (Phases 7–9)
+times day-parallel sharding worth ~8–12× (Phase 10).
+
+### Where the ~60 ms/tick is believed to go (to be confirmed by Phase 7)
+
+Ranked by suspicion, from reading the code path — **not yet measured**:
+
+1. **Coarse-timeframe roll-up + SMA recompute, per config, per tick.** The
+   stale-bar fix (Phase 2 section) rebuilds 10/15-minute bars as *fresh*
+   `MarketData` objects on every `fetchHistoricalData` call, so Phase 3's SMA
+   stamps cannot carry across ticks on coarse series and every period is
+   recomputed in `BigDecimal(MathContext 32)` over the full series. Measured
+   cost when introduced: 8.7–10 s → 11.7–13.1 s on the 3-day run (~+30%), and
+   it scales with configs × strikes × ticks.
+2. **SMA warm-up recomputation on the base series.** The reuse boundary
+   (Phase 3) recomputes the warm-up region — up to `period − 1` candles, so up
+   to 499 for SMA500 — on *every* call even when stamps are reused above it.
+3. **Per-tick DB round trips.** `BacktestAnalysisService.runForDate` reads the
+   broker session row every tick (~18k queries/year); `findByStatus("OPEN")`
+   runs twice per tick (`AnalysisScheduler` + `PositionService`); every open
+   position is `save()`d every tick.
+4. **Per-day MySQL candle fetches.** One query per symbol per day
+   (1 spot + strikes), ~2,500–6,000 queries/year, each hydrating a ~35-day
+   window into fresh objects.
+5. **Allocation churn.** `slice` copies the list per call and
+   `dropIncompleteBars` may copy again — per config × timeframe × strike × tick.
+
+### Phase 7 — instrument before touching anything
+
+Half a day. Two parts:
+
+- Per-day phase timers in `BacktestAnalysisService` (backtest-only code, no
+  parity surface): accumulate ms per day for `calculateIndicator`,
+  `runStrategies`, `processOrders`, `processPositions`, plus fetch/slice call
+  counts and the day's config/strike fan-out, printed on the existing
+  `day=… done in … ms` INFO line.
+- One JFR capture (`-XX:StartFlightRecording`) over a ~5-day run for CPU
+  attribution — Windows-friendly, no agent install.
+
+Everything after this phase is re-ranked by what it shows. The doc's own
+history (Phase 0) is the argument: the biggest win to date was not on the
+original list.
+
+### Phase 8 — settled-bucket aggregation cache
+
+The optimisation the Phase 2 fix explicitly left on the table (“if it ever
+matters, cache the aggregated series too and rebuild only the trailing
+bucket”). It matters now.
+
+Cache the rolled-up 10/15-minute series per `(symbol, interval)` alongside the
+base series, keeping only **fully settled buckets**; per tick, append buckets
+that have newly settled and hand back the same objects. Because the objects are
+then shared across ticks, Phase 3's SMA stamps start working on coarse series
+again — this removes suspicion (1) *and* most of (2)'s coarse-series share in
+one change.
+
+- **Parity:** a settled bucket's contents are immutable — the roll-up of the
+  same 5-minute rows every later tick would produce. `dropIncompleteBars`
+  already guarantees callers never see a forming bucket, so the visible series
+  at any tick is byte-identical to today's. Verified by ledger diff against the
+  S6 Arm B baseline plus a per-tick last-bar comparison (the Phase 2
+  measurement harness exists for exactly this).
+- **Live impact:** none — the cache sits behind `BacktestMarketDataCache`,
+  inactive outside backtest.
+- **Expected:** −25–35% serial.
+
+### Phase 9 — per-tick DB round-trip removal
+
+Reordered after the 2026-09-04 premortem: 9a is free and safe; 9b and 9c are
+**deferred behind Phases 10–11** because each carries the plan's only real
+behaviour risk and neither is needed for the target unless the Phase 7 profile
+says so.
+
+- **9a. Hoist the broker-session read.** `BacktestAnalysisService.runForDate`
+  fetches `brokerSessionStore.currentEntity()` and re-sets tokens on the shared
+  KiteConnect **every tick** (~18k DB reads/year); once per run is equivalent.
+  Backtest-only file, zero parity surface. Expected −1–2%.
+- **9b (deferred). Phase 6b in-memory OPEN set.** Removes the two per-tick
+  `findByStatus("OPEN")` reads — but that is ~2 queries × ~1 ms ≈ 3% of a
+  60 ms tick, and it is the **only serial phase that touches live
+  order/position code**; its live failure mode is an unmonitored open
+  position. Premortem adds a scenario to the Phase 6b list: the documented
+  ledger reset (`DELETE FROM trade_order WHERE fill_status='BACKTEST'`)
+  between runs, with the JVM still up, desyncs the set — so hydration must
+  happen at every **backtest run start**, not only at JVM startup. Do this
+  only if Phase 7 shows the reads matter.
+- **9c (deferred, needs sign-off). Skip coarse-timeframe re-evaluation until a
+  new bucket settles** — Phase 2 revisited. The memoisation argument now
+  holds for the *series* (settled bars cannot change between ticks), but it is
+  only sound if **no rule reads the tick time (`asOf`)** beyond the
+  stale-bar guard: any time-gated entry/exit rule in `CommonRules` /
+  `RuleEngine` would make tick N and tick N+1 legitimately differ on identical
+  candles. Verify that before writing a line of it. Two further integration
+  hazards: the S8 staleness stamp (`SharedData.strikeMarketDataTick`) must be
+  refreshed on skipped ticks or strategies will refuse the series, and journal
+  CANDIDATE rows thin out on skipped ticks (journal currently off — record the
+  interaction anyway). Acceptance bar: byte-identical ledger. Expected
+  −10–20%, but it is the last phase to reach for, not an early one.
+
+### Phase 10 — day-parallel replay across isolated worker schemas
+
+The structural lever. Two former cross-day couplings are gone, which makes
+day-level parallelism *conceptually* sound:
+
+- **Config generation left the replay.** `tradeconfig.generation` is its own
+  domain (user decision 2026-08-31); `BacktestAnalysisService.run` consumes
+  configs and structurally cannot write one, so day N no longer feeds day N+1.
+- **Positions are intraday.** Every day force-closes at its own `dateEnd`.
+
+**Not in one JVM** — `SharedData` is mutable static and the scheduler beans
+are stateful singletons; the `RunSession` roadmap that would fix that has not
+started. K worker processes of the same fat jar, each replaying a contiguous
+chunk of trading days.
+
+**Not against a shared `trade_order` table either.** The premortem killed the
+obvious design. Concurrent workers sharing one ledger interfere through five
+verified channels, every one of them a *global OPEN-status read with no date
+scope*:
+
+| Channel | Code | What breaks |
+|---|---|---|
+| Parallel-trades cap | `countBy…EntryDirectionAndStatus(OPEN)` (`OrderService`) | Worker A's momentarily-OPEN rows consume worker B's cap on the same (config, strategy) → entries suppressed non-deterministically |
+| Per-side cap (038) | `countBy…OptionTypeAndStatus(OPEN)` | Same as above, per CE/PE side |
+| Strike pinning | `AnalysisScheduler.withOpenPositionStrikes` ← `findByStatus("OPEN")` | Worker B pins worker A's strikes into its own fetch **and evaluation** set → trades a serial run would never take |
+| Signal-to-open matching | `findFirstBy…OptionTokenAndStatus(OPEN)` | With chunks sharing an expiry week, worker B's exit signal closes worker A's position on the same token |
+| S9 force-close sweep | `findByStatusAndEntryTimeLessThanEqual(OPEN, endOfDay)` | **Deliberately** sweeps carryovers: a worker replaying June force-closes another worker's in-flight January position |
+
+The per-day caps (`numberOfTradesPerDay`, `maxLoss`) are entry-time-scoped and
+safe — but five broken channels is a design verdict, not a patch list. Scoping
+those queries by a run tag would put backtest-shaped conditions into live
+order code; rejected.
+
+**Design: one MySQL schema per worker.** Complexity lives in a driver script,
+zero lines change in shared services:
+
+1. Driver creates `moneymath_w1..wK` fresh each run (dropping stale ones —
+   which also replaces the manual ledger-reset step for sharded runs), lets
+   Liquibase bootstrap each, then:
+   - replaces the two historical candle tables with **cross-schema views**
+     onto `moneymath`'s (read-only data; ~3.8M rows copied zero times);
+   - copies the small input tables: `trade_config`, `sma_timeframe`,
+     `instrument`, `instrument_details`, `broker_session`,
+     `sma_downtrend_rule`, strategy-defaults.
+2. Launches K `java -jar` workers with `--spring.datasource.url` pointed at
+   their schema, `--spring.jpa.hibernate.ddl-auto=none` (so Hibernate doesn't
+   fight the views), a distinct port, and an `ApplicationRunner` gated on new
+   `backtest.autorun.from/to/…` keys that replays the range and exits with a
+   status code.
+3. On success, merges `trade_order` (and `journal_observation` when enabled)
+   back into `moneymath` with `INSERT … SELECT` — chunks are entry-time
+   disjoint, so the merge is trivial and the parity checklist's dump/diff
+   works unchanged on the merged ledger.
+
+Preconditions: the window's AUTO_DOWNTREND configs are fully generated
+**before** cloning (generation is a separate pass now); chunk boundaries fall
+on trading days; `innodb_buffer_pool_size` holds the historical tables.
+
+**Parity is proven, not assumed:** replay the same window serial and
+K-sharded, byte-diff the merged ledger against the serial one with the
+checklist below. Any difference is a hidden coupling the premortem missed —
+finding it would itself justify the phase.
+
+**Sizing:** effective speedup ≈ K × ~0.9 (chunk imbalance, shared MySQL),
+bounded by cores. Measure at K = 4 / 8 / 12 / 16.
+
+### Phase 11 — cross-day warm base cache (inside each worker)
+
+Promoted above 9b/9c because it is behaviour-safe by construction: the cached
+rows are immutable imported candles. Day N+1's ~35-day window overlaps day N's
+by ~97%, yet `endDay()` discards everything and refetches. Keep the **base
+5-minute series** across days within a worker, refetching only the missing
+tail; evict a series once its expiry passes (an unevicted year of option
+series is a few hundred MB). The day-end wipe's stale-strike rationale doesn't
+apply: series are keyed by symbol, which encodes the expiry — `optionTokenMap`
+(the actual staleness hazard) stays per-day. SMA stamps carry across days on
+the shared objects; the Phase 3 trust boundary already handles the moving left
+edge. Also here if the profile wants it: batch the day-start strike fetches
+into one `IN`-query (the historical analog of Phase 4).
+
+### Expected arithmetic
+
+Baseline 1,095 s ≈ 4.4 s/trading-day. Per-phase serial estimates (Phase 7
+firms them up; Phase 8's range is wide because the measured +30% was on a
+small config fan-out and the win scales with configs sharing a symbol):
+
+| After | s/day (est.) | Serial year | K=12 wall (replay + ~15 s overhead) |
+|---|---|---|---|
+| today | 4.4 | 18.2 min | — |
+| + Phase 8 | 2.8–3.3 | 12–14 min | 73–85 s |
+| + Phase 9a | 2.75–3.25 | 11.5–13.5 min | 72–83 s |
+| + Phase 11 | 2.1–2.8 | 9–11.5 min | **59–73 s** |
+| + 9b/9c (if profile clears them) | 1.7–2.4 | 7–10 min | **50–65 s** |
+| fallback: K=16 | — | — | **42–58 s** |
+
+So the behaviour-safe phases alone (8, 9a, 10, 11) land at roughly the minute
+mark; the guaranteed sub-60 margin comes from **one** of: the Phase 7 profile
+revealing a bigger serial share than estimated (history says likely), 9b/9c
+clearing their gates, or K=16. Sub-minute **serial** is not achievable without
+breaking the parity bar — the ~18× must come from the product.
+
+---
+
 ## Recommended sequencing
 
 1. ~~**Phase 1**~~ ✅ done — biggest single win at the time, fully isolated behind
@@ -539,7 +757,12 @@ walks the in-memory set, hydrating each via `findById` only when needed.
    is measuring log I/O as much as compute.**
 6. **Phase 4** — meaningful for long runs (50+ days); skip for short debugging runs.
 7. **Phase 6b** — only if the OPEN-set query still shows up in a profile after
-   Phase 6a. The complexity isn't worth a marginal win otherwise.
+   Phase 6a. The complexity isn't worth a marginal win otherwise. (Superseded:
+   the sub-minute plan pulls it forward as Phase 9b.)
+8. **Phases 7–11** — the sub-minute full-year plan above, in premortem-revised
+   order: instrument (7), settled-bucket cache (8), session-read hoist (9a),
+   schema-isolated day-parallel replay (10), warm cross-day cache (11); 9b/9c
+   only if the profile demands them, 9c with explicit sign-off.
 
 ### Still open
 

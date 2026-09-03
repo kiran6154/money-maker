@@ -162,6 +162,24 @@ public final class CommonRules {
         return v == null ? 0 : v;
     }
 
+    /**
+     * Reads the whole-day up-trend flag for the given period off a
+     * {@link MarketData} candle — the mirror of the {@code isSmaNNDownTrending}
+     * getters the baseline sell rules read directly. Stamped by
+     * {@link SmaTrendCalculator}; false for an unsupported period.
+     */
+    public static boolean isSmaUpTrending(MarketData c, Integer period) {
+        if (c == null || period == null) return false;
+        switch (period) {
+            case 20:  return c.isSma20UpTrending();
+            case 50:  return c.isSma50UpTrending();
+            case 100: return c.isSma100UpTrending();
+            case 200: return c.isSma200UpTrending();
+            case 500: return c.isSma500UpTrending();
+            default:  return false;
+        }
+    }
+
     /** Returns the candle's open price as a double (0 if null). */
     public static double openValue(MarketData c) {
         return c == null || c.getOpen() == null ? 0 : c.getOpen().doubleValue();

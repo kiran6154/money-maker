@@ -280,6 +280,32 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 
 ---
 
+### S19. `Strategy3`'s mirror equivalence to Strategy 1 is structural, not tick-exact — and unmeasured
+
+| | |
+|---|---|
+| Where | [`Strategy3`](../src/main/java/com/moneymaker/strategy/Strategy3.java) + [`RuleEngine.decideBuyEntry`](../src/main/java/com/moneymaker/strategy/rules/RuleEngine.java), added 2026-09-04 on the user's request: *"strategy 3 … does buy instead of sell … rule sets are same as that of strategy 1 just inverse the signal … if there is a PE sell signal we will make it CE buy"*. Documented in [STRATEGIES.md](STRATEGIES.md#strategy-3--the-inverted-baseline-buy-side). |
+| Why | The request pairs a signal on one leg (PE cross-down SELL) with a trade on the *other* leg (CE BUY). The architecture scans and trades only the config's own `trading_side`, so the build realises the pairing by mirroring the detection onto the traded leg's own series: CE cross-**up** + `isSmaNNUpTrending` → BUY. That fires on the same market move as the PE sell, but not necessarily on the same bar — the two legs have different premiums, different SMA levels, and independently-stamped trend flags (with `maxDeviations = 0`, one flat CE bar kills `UpTrending` for the CE's whole session while the PE's `DownTrending` survives). The alternative — exact-tick coupling, where the CE config literally consumes the PE config's signal — was **not** built: it would cross config cache boundaries, contradict the `(trading_side ↔ option type)` ledger invariant restored by [S2](#s2-strategy1-scanned-every-configs-legs-not-its-own--resolved-2026-08-25), and need a strike-mapping convention (same strike? mirrored moneyness?) that has no `TradeConfig` field yet. |
+| Impact | **Unquantified.** Two measurements wanted: (a) replay a window with a PE config on strategy 1 and its CE sibling on strategy 3, and join the two signal streams by session — how often does the CE buy have a matching PE sell within 0 / 1 / 3 bars, and how often does either fire alone; (b) the strategy's own ledger P&L over the same window, since long-option economics (theta against the position, SL/target geometry inverted) differ from the short side even when timing matches perfectly. |
+| Fix sketch | Nothing until measured. If (a) shows the mirror diverging materially, the exact-tick design above is the fallback to propose — as its own entry, with the strike-mapping question put to the user per CLAUDE.md #9. |
+| Effort | **S** for measurement (a) — signal-stream join over one replayed month; **M** for (b) with a written verdict. |
+| Priority | _Open — filed 2026-09-04 at build time; the strategy ships with this question attached._ |
+
+---
+
+### S20. `Strategy4` buys the falling option — the fade is specified but unmeasured
+
+| | |
+|---|---|
+| Where | [`Strategy4`](../src/main/java/com/moneymaker/strategy/Strategy4.java) + the `mapAction` seam in [`AbstractSmaCrossStrategy`](../src/main/java/com/moneymaker/strategy/AbstractSmaCrossStrategy.java), added 2026-09-04 on the user's request: *"execute strategy 1, whenever we get sell signal instead of sell we will do buy … do not change the rule set of sell … rest remains same — profit, sl, stop loss move etc"*. Built exactly as specified: detection is byte-identical to Strategy 1 (a `1,4`-tagged config detects on the same ticks under both), only the emitted action inverts. Documented in [STRATEGIES.md](STRATEGIES.md#strategy-4--strategy-1s-detection-inverted-at-execution). |
+| Why | The trade this opens is a long in an option whose premium just crossed **down** through its SMA with the whole-day down-trend flag set — long against the detected momentum, with theta also against the position (a long needs the premium to *rise* to profit, and the same absolute `target` is now above entry instead of below). It may be a deliberate mean-reversion fade and it may work; nothing about it is measured. Note the bracket numbers were tuned on the short side: the S4b measurement showed the ladder/ceiling geometry interacting with *falling*-premium trades, and none of that transfers by symmetry. Also worth knowing when reading a `1,4` ledger: the two strategies open opposite directions off one bar, so their rows pair up with identical `entry_time` and mirrored `entry_direction` — expected, not a duplication bug. |
+| Impact | **Unquantified.** The cheap first measurement: tag one window's configs `1,4` (with a `transaction_type = BUY` clone for the 4 side — one config row cannot carry both directions, so it is a cloned config pair, same legs and numbers), replay, and compare the two strategies' ledgers row by row — same entries by construction, opposite P&L before brackets, diverging after brackets since SL/target/trailing trigger at different times per side. A three-way window against strategy 3 (mirror-detection long) on the same dates would also answer which inversion the user actually wants to keep. |
+| Fix sketch | Nothing to fix — the build matches the specification. This entry exists so the fade ships measured rather than assumed; per working rule 3, any behaviour change that measurement suggests goes back to the user first. |
+| Effort | **S** for the paired replay; the config cloning is the only fiddly part. |
+| Priority | _Open — filed 2026-09-04 at build time, alongside [S19](#s19-strategy3s-mirror-equivalence-to-strategy-1-is-structural-not-tick-exact--and-unmeasured)._ |
+
+---
+
 ## Resolved
 
 ### S2. `Strategy1` scanned every config's legs, not its own — **RESOLVED 2026-08-25**

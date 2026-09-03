@@ -69,17 +69,40 @@ public class StrategyDefaults {
     private Boolean autoConfigEnabled;
 
     /**
+     * Whether this strategy's generated config trades the <b>opposite</b> leg of
+     * the one the trend was detected on (changeset 040).
+     *
+     * <p>{@code false} (the default) keeps the detected-side behaviour every
+     * sell-side strategy wants: PE downtrending → a PE config. {@code true} is
+     * the mirror-trade shape {@code Strategy3} needs — the day the PE ends in a
+     * downtrend (index rising) is the day it wants a <i>CE BUY</i> config, so
+     * that at the market moment strategy 1 sells the PE, strategy 3 buys the
+     * CE. The generated config's bracket basis is then measured on the leg it
+     * will actually trade, not the detected one.</p>
+     */
+    @Column(name = "opposite_side", nullable = false)
+    private Boolean oppositeSide;
+
+    /** Null-safe read — a pre-040 in-memory instance behaves as "detected side". */
+    public boolean tradesOppositeSide() {
+        return Boolean.TRUE.equals(oppositeSide);
+    }
+
+    /**
      * The fields that must match for two strategies to be able to share one
      * generated {@code trade_config}.
      *
      * <p>Deliberately excludes {@link #strategyId} and {@link #autoConfigEnabled}:
      * the first is what differs between strategies sharing a block, and the second
-     * gates generation rather than describing the config. See
+     * gates generation rather than describing the config. {@link #oppositeSide}
+     * is included — a flipped and an unflipped strategy write configs for
+     * different legs and must never share a row. See
      * {@code EodDowntrendDetectionService.resolveConfigGroups}.</p>
      */
     public String configSignature() {
         return transactionType + "|" + lotQuantity + "|"
                 + (maxLoss == null ? "-" : maxLoss.stripTrailingZeros().toPlainString()) + "|"
-                + noOfTrades + "|" + noOfParallelTrades;
+                + noOfTrades + "|" + noOfParallelTrades + "|"
+                + tradesOppositeSide();
     }
 }

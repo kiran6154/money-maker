@@ -69,6 +69,11 @@ class EodDowntrendResolveConfigGroupsTest {
     }
 
     private void defaultsFor(int strategyId, String txn, String maxLoss, int trades, boolean enabled) {
+        defaultsFor(strategyId, txn, maxLoss, trades, enabled, false);
+    }
+
+    private void defaultsFor(int strategyId, String txn, String maxLoss, int trades,
+                             boolean enabled, boolean oppositeSide) {
         StrategyDefaults d = new StrategyDefaults();
         d.setStrategyId(strategyId);
         d.setTransactionType(txn);
@@ -77,6 +82,7 @@ class EodDowntrendResolveConfigGroupsTest {
         d.setNoOfTrades(trades);
         d.setNoOfParallelTrades(1);
         d.setAutoConfigEnabled(enabled);
+        d.setOppositeSide(oppositeSide);
         when(strategyDefaultsRepository.findById(strategyId)).thenReturn(Optional.of(d));
     }
 
@@ -126,6 +132,34 @@ class EodDowntrendResolveConfigGroupsTest {
         // Order is pinned so a replayed backtest day writes the same configs in the
         // same sequence, which is what makes generated ids stable across re-runs.
         assertThat(groups.get(0).defaults().getMaxLoss()).isEqualByComparingTo("200");
+    }
+
+    @Test
+    @DisplayName("an opposite_side strategy never shares a config with a detected-side one")
+    void oppositeSideSplitsGroups() {
+        // Strategy 3 (mirror: trades the other leg) and strategy 4 (fade: trades
+        // the detected leg) share every other convention — one config row would
+        // put one of them on the wrong side, so opposite_side is part of the
+        // signature. See changeset 040.
+        tagged(3, 4);
+        defaultsFor(3, "BUY", "200", 5, true, true);
+        defaultsFor(4, "BUY", "200", 5, true, false);
+
+        List<EodDowntrendDetectionService.ConfigGroup> groups = service.resolveConfigGroups(rule(1), Set.of(), null);
+
+        assertThat(groups).hasSize(2);
+        assertThat(groups.get(0).strategyIds()).containsExactly(3);
+        assertThat(groups.get(0).defaults().tradesOppositeSide()).isTrue();
+        assertThat(groups.get(1).strategyIds()).containsExactly(4);
+        assertThat(groups.get(1).defaults().tradesOppositeSide()).isFalse();
+    }
+
+    @Test
+    @DisplayName("a pre-040 in-memory defaults row (null opposite_side) reads as detected-side")
+    void nullOppositeSideReadsAsFalse() {
+        StrategyDefaults d = new StrategyDefaults();
+        assertThat(d.tradesOppositeSide()).isFalse();
+        assertThat(d.configSignature()).endsWith("|false");
     }
 
     @Test

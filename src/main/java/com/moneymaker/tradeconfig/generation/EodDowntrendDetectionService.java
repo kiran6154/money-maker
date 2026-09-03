@@ -50,7 +50,10 @@ import java.util.Set;
  * <p>For each side with at least one passing combo we insert exactly one
  * {@link TradeConfig} (next trading day, {@code source='AUTO_DOWNTREND'},
  * fields from the strategy's {@link com.moneymaker.entity.StrategyDefaults} row) plus one
- * {@link SmaTimeframe} child per passing combo.</p>
+ * {@link SmaTimeframe} child per passing combo. A strategy whose defaults set
+ * {@code opposite_side} (changeset 040 — {@code Strategy3}'s mirror shape) gets
+ * its config written for the <b>other</b> leg, with the bracket basis measured
+ * on that leg; the detection itself is unchanged.</p>
  *
  * <p><b>Exit bracket.</b> The generated config carries both shapes. The
  * enforced one is premium-relative — {@code target_pct} / {@code sl_pct}
@@ -311,53 +314,41 @@ public class EodDowntrendDetectionService {
                     continue;
                 }
 
-                // Bracket basis. Measured on the option leg, not the underlying, and
-                // therefore per-side: target/stop_loss end up on trade_order and are
-                // compared by PositionService against per-share option-premium P&L, so
-                // an index-denominated number would be in the wrong unit entirely.
-                //
-                // Measured on the leg the config will TRADE (tradeExpiry), not the one
-                // the trend was detected on, and as intraday range rather than true
-                // range — see averageIntradayRange for why the difference matters.
-                String bracketToken = instrumentResolver.optionSymbol(
-                        instrument, tradeExpiry, atmStrike, side);
-
-                BigDecimal basis = null;
-                if (bracketToken != null && !bracketToken.equals(optionToken)) {
-                    try {
-                        basis = averageIntradayRange(
-                                bracketToken, tradingDay, tradeExpiry, rule.getAtrPeriods());
-                    } catch (HistoricalDataMissingException ex) {
-                        basis = null;
-                    }
-                }
-
-                // On an expiry day the contract the config will trade often has no
-                // history yet — it may not even be listed. Falling back to the leg
-                // we detected on keeps a config being written; the basis is then a
-                // dying series, but still gap-free and still excluding the expiry
-                // session itself, which is where the old ATR did its real damage.
-                if (basis == null || basis.signum() <= 0) {
-                    if (bracketToken != null && !bracketToken.equals(optionToken)) {
-                        log.debug("[EOD-downtrend] rule id={} {} — no history for traded contract {} "
-                                        + "as of {}, sizing the bracket off {} instead",
-                                rule.getId(), side, bracketToken, tradingDay, optionToken);
-                    }
-                    basis = averageIntradayRange(optionToken, tradingDay, expiry, rule.getAtrPeriods());
-                }
-
-                if (basis == null || basis.signum() <= 0) {
-                    log.warn("[EOD-downtrend] rule id={} {} — no range basis for token={} on {}, skipping side",
-                            rule.getId(), side, optionToken, tradingDay);
-                    continue;
-                }
-
                 // The scan above runs once per side no matter how many strategies are
                 // tagged — it depends on the downtrend, not on who trades it. Only
-                // the write below repeats, and only when two tagged strategies want
+                // the writes below repeat, and only when two tagged strategies want
                 // different trade_config conventions.
+                //
+                // Which leg each config TRADES is per group: an opposite_side
+                // strategy (Strategy3's mirror shape) trades the other leg of the
+                // one the trend was detected on. The bracket basis follows the
+                // traded leg — target/stop_loss are compared against that leg's
+                // premium P&L, so a basis measured on the detected leg would be in
+                // the wrong series for a flipped group. Computed once per traded
+                // side; null is cached too, so a leg with no data is not re-fetched
+                // per group.
+                Map<String, BigDecimal> basisByTradedSide = new LinkedHashMap<>();
                 for (ConfigGroup group : groups) {
-                    insertAutoTradeConfig(rule, group, nextDay, side, basis, passing, instrument, strikeDepth);
+                    String tradedSide = group.defaults().tradesOppositeSide() ? oppositeOf(side) : side;
+
+                    BigDecimal basis;
+                    if (basisByTradedSide.containsKey(tradedSide)) {
+                        basis = basisByTradedSide.get(tradedSide);
+                    } else {
+                        basis = bracketBasis(instrument, tradingDay, expiry, tradeExpiry,
+                                atmStrike, tradedSide, rule);
+                        basisByTradedSide.put(tradedSide, basis);
+                    }
+
+                    if (basis == null || basis.signum() <= 0) {
+                        log.warn("[EOD-downtrend] rule id={} detected {} — no range basis for traded side {} "
+                                        + "on {}, skipping strategies {}",
+                                rule.getId(), side, tradedSide, tradingDay, group.strategyIds());
+                        continue;
+                    }
+
+                    insertAutoTradeConfig(rule, group, nextDay, side, tradedSide, basis,
+                            passing, instrument, strikeDepth);
                     written++;
                 }
             } catch (HistoricalDataMissingException ex) {
@@ -366,6 +357,54 @@ public class EodDowntrendDetectionService {
             }
         }
         return written;
+    }
+
+    /** The other option leg. Only ever handed "CE" or "PE" by {@code processRule}. */
+    private static String oppositeOf(String side) {
+        return "CE".equals(side) ? "PE" : "CE";
+    }
+
+    /**
+     * Bracket basis for the leg a config will <b>trade</b> — mean intraday range
+     * via {@link #averageIntradayRange}, measured on the option leg (not the
+     * underlying) because target/stop_loss are compared by
+     * {@code PositionService} against per-share option-premium P&amp;L.
+     *
+     * <p>Prefers the {@code tradeExpiry} contract's own history. On an expiry
+     * day that contract often has none yet — it may not even be listed — so
+     * this falls back to the {@code detectExpiry} leg of the same side: a dying
+     * series, but still gap-free and still excluding the expiry session itself,
+     * which is where the old ATR did its real damage. Returns null when neither
+     * leg yields a usable range; the caller skips that group's write.</p>
+     */
+    private BigDecimal bracketBasis(Instrument instrument, LocalDate tradingDay,
+                                    LocalDate detectExpiry, LocalDate tradeExpiry,
+                                    Integer atmStrike, String side, SmaDowntrendRule rule) {
+        String tradeToken  = instrumentResolver.optionSymbol(instrument, tradeExpiry, atmStrike, side);
+        String detectToken = instrumentResolver.optionSymbol(instrument, detectExpiry, atmStrike, side);
+
+        BigDecimal basis = null;
+        if (tradeToken != null && !tradeToken.equals(detectToken)) {
+            try {
+                basis = averageIntradayRange(tradeToken, tradingDay, tradeExpiry, rule.getAtrPeriods());
+            } catch (HistoricalDataMissingException ex) {
+                basis = null;
+            }
+        }
+        if (basis == null || basis.signum() <= 0) {
+            if (tradeToken != null && !tradeToken.equals(detectToken)) {
+                log.debug("[EOD-downtrend] rule id={} {} — no history for traded contract {} "
+                                + "as of {}, sizing the bracket off {} instead",
+                        rule.getId(), side, tradeToken, tradingDay, detectToken);
+            }
+            if (detectToken == null) return null;
+            try {
+                basis = averageIntradayRange(detectToken, tradingDay, detectExpiry, rule.getAtrPeriods());
+            } catch (HistoricalDataMissingException ex) {
+                return null;
+            }
+        }
+        return basis;
     }
 
     /**
@@ -690,7 +729,8 @@ public class EodDowntrendDetectionService {
     private void insertAutoTradeConfig(SmaDowntrendRule rule,
                                        ConfigGroup group,
                                        LocalDate nextDay,
-                                       String side,
+                                       String detectedSide,
+                                       String tradedSide,
                                        BigDecimal basis,
                                        List<int[]> passing,
                                        Instrument instrument,
@@ -698,7 +738,9 @@ public class EodDowntrendDetectionService {
         StrategyDefaults defaults = group.defaults();
         TradeConfig tc = new TradeConfig();
         tc.setTradingDate(nextDay);
-        tc.setTradingSide(side);
+        // The leg this config trades — for an opposite_side strategy that is the
+        // mirror of the leg the downtrend was detected on.
+        tc.setTradingSide(tradedSide);
         tc.setInstrument(rule.getInstrument());
         // Primary strategy = the lowest-numbered one sharing this config, matching
         // what TradeConfigAdminService keeps in the column for hand-made configs.
@@ -776,9 +818,11 @@ public class EodDowntrendDetectionService {
             smaTimeframeRepository.save(tf);
         }
 
-        log.info("[EOD-downtrend] inserted AUTO_DOWNTREND trade_config id={} for {} side={} strategies={} "
+        log.info("[EOD-downtrend] inserted AUTO_DOWNTREND trade_config id={} for {} side={}{} strategies={} "
                         + "target={}%/{}pts sl={}%/{}pts maxSl={}pts trail={} basis={} band={}-{} combos={}",
-                saved.getId(), nextDay, side, group.strategyIds(),
+                saved.getId(), nextDay, tradedSide,
+                tradedSide.equals(detectedSide) ? "" : " (detected on " + detectedSide + ")",
+                group.strategyIds(),
                 tc.getTargetPct(), tc.getTarget(), tc.getSlPct(), tc.getStopLoss(),
                 tc.getMaxSlPoints(), tc.getTrailLadder(), basis,
                 tc.getMinOptionPrice(), tc.getMaxOptionPrice(), summarise(passing));

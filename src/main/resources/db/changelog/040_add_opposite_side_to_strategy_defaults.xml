@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      strategy_defaults.opposite_side: whether the EOD detector writes this
+      strategy's generated config for the OPPOSITE leg of the one the trend was
+      detected on.
+
+      Why it exists
+      =============
+      The detector scans the ATM CE and PE for a downtrend and, until now, always
+      generated the config for the leg it detected on - the right shape for the
+      sell-side strategies (PE downtrending -> sell the PE tomorrow). Strategy 3
+      is the mirror trade: the day the PE ends downtrending (index rising) is the
+      day it wants a CE BUY config, so that at the market moment strategy 1 sells
+      the PE, strategy 3 buys the CE (see STRATEGIES.md, "Strategy 3").
+      Strategy 4 by contrast buys the very leg the downtrend was detected on, so
+      it keeps opposite_side = FALSE.
+
+      Which side a strategy's generated config trades decides what trades get
+      taken, so per CLAUDE.md #9 it is a strategy_defaults column, not code.
+
+      Defaulted FALSE so every existing row - and any inserted without naming the
+      column - keeps the detected-side behaviour unchanged.
+
+      The column joins configSignature(): a flipped and an unflipped strategy
+      must never share one generated config row, whatever the rest of their
+      blocks say.
+    -->
+    <changeSet id="040_add_opposite_side_to_strategy_defaults" author="moneymaker">
+        <addColumn tableName="strategy_defaults">
+            <column name="opposite_side" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <!--
+      Strategy 3 IS the mirror strategy - opposite_side = TRUE is its identity,
+      not a tunable, so it is stamped declaratively rather than left to whoever
+      types the INSERT. A no-op when the row does not exist yet (fresh database,
+      or the strategy_defaults row for 3 not inserted): anyone adding that row
+      after this changeset has run must set opposite_side = TRUE themselves -
+      see the strategy_defaults section of docs/EOD_DOWNTREND.md.
+    -->
+    <changeSet id="040_mark_strategy3_opposite_side" author="moneymaker">
+        <update tableName="strategy_defaults">
+            <column name="opposite_side" valueBoolean="true"/>
+            <where>strategy_id = 3</where>
+        </update>
+    </changeSet>
+
+</databaseChangeLog>
