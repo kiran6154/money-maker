@@ -702,7 +702,11 @@ checklist below. Any difference is a hidden coupling the premortem missed —
 finding it would itself justify the phase.
 
 **Sizing:** effective speedup ≈ K × ~0.9 (chunk imbalance, shared MySQL),
-bounded by cores. Measure at K = 4 / 8 / 12 / 16.
+bounded by **physical cores** — see the measured constraints below: on the
+current 2C/4T box that means K = 2–3, on an 8C/16T machine K = 8–12. Chunks
+must balance **config-days**, not calendar days: only sessions with active
+configs cost anything (166 of ~250 in 2024), so a naive calendar split leaves
+some workers nearly idle.
 
 ### Phase 11 — cross-day warm base cache (inside each worker)
 
@@ -718,26 +722,69 @@ the shared objects; the Phase 3 trust boundary already handles the moving left
 edge. Also here if the profile wants it: batch the day-start strike fetches
 into one `IN`-query (the historical analog of Phase 4).
 
-### Expected arithmetic
+### Measured constraints (2026-09-04) — read before trusting any sizing
 
-Baseline 1,095 s ≈ 4.4 s/trading-day. Per-phase serial estimates (Phase 7
-firms them up; Phase 8's range is wide because the measured +30% was on a
-small config fan-out and the win scales with configs sharing a symbol):
+Facts measured on the machine that runs the backtest, not estimates:
 
-| After | s/day (est.) | Serial year | K=12 wall (replay + ~15 s overhead) |
+- **CPU: i5-7300U, 2 cores / 4 threads; RAM: 7.9 GB.** With MySQL sharing the
+  box, the realistic worker count is **K = 3**, effective parallel factor
+  ~2.5–3× — not the 8–12× a desktop would give.
+- **`innodb_buffer_pool_size` = 128 MB (the default)** against 653 MB of
+  `historical_option_candles` + 109 MB `market_data` + 47 MB
+  `instrument_details`. The entire hot data set is ~800 MB and the box has
+  8 GB. **Raise the pool to 1–1.5 GB before measuring anything** — config
+  change, zero code, likely a real win on cold-cache day fetches.
+- **2024 fan-out is small: 166 config-days, 1–2 active configs/day
+  (avg 1.4), depths mostly ITM 2 / OTM 2.** Config-less sessions skip the
+  tick loop and are near-free, so the honest baseline is
+  1,095 s / ~232 config-day units ≈ **4.7 s per config-day** — and per-config
+  costs, not fan-out, dominate. (Phase 8's cross-config sharing is
+  correspondingly *smaller* than first estimated on this data set.)
+- `journal_observation` holds 203 MB of allocated space with 0 rows —
+  `TRUNCATE` it to give the disk back.
+
+### Expected arithmetic on this machine
+
+| After | s per config-day (est.) | Serial year | K=3 wall |
 |---|---|---|---|
-| today | 4.4 | 18.2 min | — |
-| + Phase 8 | 2.8–3.3 | 12–14 min | 73–85 s |
-| + Phase 9a | 2.75–3.25 | 11.5–13.5 min | 72–83 s |
-| + Phase 11 | 2.1–2.8 | 9–11.5 min | **59–73 s** |
-| + 9b/9c (if profile clears them) | 1.7–2.4 | 7–10 min | **50–65 s** |
-| fallback: K=16 | — | — | **42–58 s** |
+| today | 4.7 | 18.2 min | — |
+| buffer pool + Phase 8 + 9a | 2.7–3.4 | 10.5–13 min | 4–5 min |
+| + Phase 11 | 2.1–2.8 | 8–11 min | ~3–4 min |
+| + 9b/9c (if the profile clears them) | 1.7–2.4 | 6.5–9.5 min | **2.5–3.5 min** |
 
-So the behaviour-safe phases alone (8, 9a, 10, 11) land at roughly the minute
-mark; the guaranteed sub-60 margin comes from **one** of: the Phase 7 profile
-revealing a bigger serial share than estimated (history says likely), 9b/9c
-clearing their gates, or K=16. Sub-minute **serial** is not achievable without
-breaking the parity bar — the ~18× must come from the product.
+**A cold full-year run on this hardware bottoms out around 2.5–3.5 minutes.**
+The 18× needed for sub-60-seconds does not exist here: ~2.5–3× parallel
+× ~2–2.5× serial ≈ 5–7×, and the parity bar rules out buying the rest with
+approximations. Sub-minute *every* run takes one of the two phases below.
+
+### Phase 12 — persistent worker pool with a cross-run warm cache
+
+The workflow this document serves is *iteration*: replay, adjust, replay. The
+imported data is immutable, so everything derived purely from it — base
+5-minute series, settled aggregated buckets, SMA stamps — is valid not just
+across days (Phase 11) but **across runs**. Keep the K workers resident
+(driver POSTs ranges instead of launching JVMs) and let Phase 11's cache
+survive between runs, evicted only by expiry. A second and every later run
+then pays only strategy + order + position work over in-memory candles.
+
+- **Expected: iteration runs under ~60 s on this box** (to be confirmed by
+  Phase 7's split — it holds if immutable-data work is the documented
+  majority of tick cost). The first run after worker start stays at the
+  cold-run number above.
+- **Parity:** cold vs. warm run over the same window must produce
+  byte-identical ledgers; that diff is the acceptance gate. Ledger wipes
+  between runs don't touch the candle cache (different tables entirely).
+- Worker schemas are reset between runs by the driver as in Phase 10;
+  only the in-JVM immutable-data cache persists.
+
+### The hardware statement
+
+On a modern 8-core/16-thread desktop (~1.7–2× the single-thread speed of this
+2017 laptop CPU, and K = 12 real workers), the *same phases with no further
+code changes* land a **cold** full-year run at **~30–40 s**. That is the only
+path to sub-minute cold runs; on the current box the target is reachable only
+for warm iteration runs via Phase 12. Decide which of the two the 60-second
+target actually means before building past Phase 10.
 
 ---
 
