@@ -176,7 +176,7 @@ function Merge-Worker {
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
 # 1. Chunk by config-days.
-$dates = @(Invoke-Sql "SELECT DISTINCT trading_date FROM trade_config WHERE is_active=1 AND trading_date BETWEEN '$From' AND '$To' ORDER BY trading_date")
+$dates = @(Invoke-Sql "SELECT DISTINCT trading_date FROM $SourceSchema.trade_config WHERE is_active=1 AND trading_date BETWEEN '$From' AND '$To' ORDER BY trading_date")
 if ($dates.Count -eq 0) { throw "no active trade_config rows in [$From..$To] - generate configs first" }
 if ($Workers -gt $dates.Count) { $Workers = $dates.Count }
 $per = [Math]::Ceiling($dates.Count / $Workers)
