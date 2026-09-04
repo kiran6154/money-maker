@@ -53,6 +53,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Password via env, not -p: the CLI's "insecure" warning goes to stderr, and
+# under ErrorActionPreference=Stop PowerShell 5.1 turns any native stderr line
+# into a terminating error. MYSQL_PWD emits nothing.
+$env:MYSQL_PWD = $DbPassword
 $mysql = Join-Path $MySqlBin 'mysql.exe'
 $mysqldump = Join-Path $MySqlBin 'mysqldump.exe'
 if (-not (Test-Path $mysql)) { throw "mysql.exe not found at $mysql (set -MySqlBin)" }
@@ -69,7 +73,7 @@ $emptyTables = @('trade_order', 'journal_observation', 'market_data')
 
 function Invoke-Sql {
     param([string]$Sql, [string]$Schema = '')
-    $args = @("-h$DbHost", "-P$DbPort", "-u$DbUser", "-p$DbPassword", '-N', '-B', '-e', $Sql)
+    $args = @("-h$DbHost", "-P$DbPort", "-u$DbUser", '-N', '-B', '-e', $Sql)
     if ($Schema) { $args += $Schema }
     $out = & $mysql @args
     if ($LASTEXITCODE -ne 0) { throw "mysql failed (exit $LASTEXITCODE): $Sql" }
@@ -91,9 +95,9 @@ function New-WorkerSchema {
     # Structure clone (no data). cmd.exe redirection keeps the byte stream
     # intact - PowerShell 5.1 pipes re-encode text.
     $dump = Join-Path $logDir "structure_$i.sql"
-    cmd /c "`"$mysqldump`" -h$DbHost -P$DbPort -u$DbUser -p$DbPassword --no-data --skip-triggers $SourceSchema > `"$dump`"" | Out-Null
+    cmd /c "`"$mysqldump`" -h$DbHost -P$DbPort -u$DbUser --no-data --skip-triggers $SourceSchema > `"$dump`"" | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "mysqldump failed for $schema" }
-    cmd /c "`"$mysql`" -h$DbHost -P$DbPort -u$DbUser -p$DbPassword $schema < `"$dump`"" | Out-Null
+    cmd /c "`"$mysql`" -h$DbHost -P$DbPort -u$DbUser $schema < `"$dump`"" | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "structure import failed for $schema" }
 
     # Historical candles: view onto the source schema, never a copy.
