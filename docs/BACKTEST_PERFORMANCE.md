@@ -6,11 +6,13 @@
 > parity" note.
 >
 > **2026-09-04:** full-year replay measured at ~18 minutes; Phases 7–12 below
-> plan the path toward the 60-second target. **Phases 7, 8, 9a, 10, 11 and 12
-> are implemented on branch `perf/backtest-sub-minute`** (plus the buffer-pool
-> raise, already applied to the server via `SET PERSIST`) — **pending the
-> verification runs below before merge to main**. 9b/9c remain deferred.
-> See "Live considerations" at the end of the sub-minute section.
+> were built toward the 60-second target. **Phases 7, 8, 9a, 10, 11 and 12 are
+> implemented and verified** (buffer-pool raise applied via `SET PERSIST`; all
+> seven parity ledger diffs byte-identical — see "Measured results"). Outcome
+> on the current 2C/4T machine: full-year cold 18.2 → 10.0 min, January
+> 152 → 33 s cold / 15 s warm. **9b is struck off by measurement; 9c ("lazy
+> SMA" / warm-up skip) is the one remaining serial lever and still needs
+> sign-off.** See "Live considerations" at the end of the sub-minute section.
 >
 > Phase 0 below was not in the original list and turned out to matter more than
 > any of the numbered phases once the data set grew.
@@ -747,19 +749,58 @@ Facts measured on the machine that runs the backtest, not estimates:
 - `journal_observation` holds 203 MB of allocated space with 0 rows —
   `TRUNCATE` it to give the disk back.
 
-### Expected arithmetic on this machine
+### Measured results (2026-09-04, verification runs on `perf/backtest-sub-minute`)
 
-| After | s per config-day (est.) | Serial year | K=3 wall |
-|---|---|---|---|
-| today | 4.7 | 18.2 min | — |
-| buffer pool + Phase 8 + 9a | 2.7–3.4 | 10.5–13 min | 4–5 min |
-| + Phase 11 | 2.1–2.8 | 8–11 min | ~3–4 min |
-| + 9b/9c (if the profile clears them) | 1.7–2.4 | 6.5–9.5 min | **2.5–3.5 min** |
+All runs `strategyIds=1&configStrategyId=1`, INFO logging, journal off, in
+scratch clones of `moneymath` (historical tables via cross-schema views —
+the same shape Phase 10 workers use). **Every comparison below was
+byte-identical on the parity checklist dump** — seven diffs in total: main vs
+branch (January), cold vs warm (January, twice), serial vs 3-way sharded
+(January and full year), and branch full-year vs the original production
+full-year ledger.
 
-**A cold full-year run on this hardware bottoms out around 2.5–3.5 minutes.**
-The 18× needed for sub-60-seconds does not exist here: ~2.5–3× parallel
-× ~2–2.5× serial ≈ 5–7×, and the parity bar rules out buying the rest with
-approximations. Sub-minute *every* run takes one of the two phases below.
+| Run | Baseline | Measured |
+|---|---|---|
+| Full-year 2024, cold serial | 1,094.8 s (18.2 min) | **600.8 s (10.0 min) — 1.8×** |
+| Full-year, 3-worker sharded | — | **570.1 s (9.5 min)** |
+| Full-year, warm rerun (same JVM) | — | 718 s — *no* year-scale warm benefit (see below) |
+| January 2024, cold | 152.5 s (main, measured) | **32.7 s — 4.7×** |
+| January 2024, warm rerun | — | **15.1 s — 10×** |
+
+What the measurements taught (each found *by* the verification, none by the
+original estimates — this doc's Phase-0 lesson repeating itself):
+
+- **`MIN()` dies through views.** `findNearestExpiryOnOrAfter`'s
+  `MIN(expiryDate)` cannot use the MIN/MAX index dive through a cross-schema
+  view: 11.1 s per call (1.82M index rows scanned) vs ~2 ms as a derived
+  `findFirst`/`ORDER BY`/`LIMIT 1`, which dives in both shapes. Fixed on the
+  branch; it was silently eating roughly what Phases 8/11 saved.
+- **The day-boundary append must extend the roll-up, not invalidate it.**
+  `aggregateAppend` reuses every settled bucket object (and its SMA stamps);
+  the wholesale daily rebuild it replaced re-stamped every slice index every
+  day.
+- **SMA reuse works.** Diagnostic counters (left in, effectively free) show
+  ~294k–449k full-window values *reused* per day vs ~3–8k computed; the
+  irreducible per-tick cost is the warm-up region (~178–210k recomputed
+  indices/day of `BigDecimal.divide` + `doubleValue`) — the "lazy SMA tail"
+  candidate, still needing sign-off.
+- **Phase-timer verdict on 9b:** `orders` + `positions` ≈ 0.3–1 s/day
+  against `indicator` ≈ 90–98% of day time. The OPEN-set cache is dead;
+  struck off.
+- **Warm caches pay at iteration scale, not year scale.** The 5-day idle
+  eviction means each weekly option cycle refetches on a year-long rerun
+  (spot stays resident); a month-scale rerun — the actual iterate loop — is
+  where warm mode shines (15.1 s). Raising the eviction horizon (~100 MB to
+  hold a year of series) is the obvious knob if year-scale warm ever matters.
+- **K=3 sharding on 2 physical cores is measured at ~1.05×** over serial —
+  the workers timeshare two cores with MySQL. The sharded run's real value on
+  this box was proving day-independence (byte-identical union ledger); the
+  speed multiplier needs real cores.
+
+**Bottom line on this machine:** full-year cold ≈ 10 minutes (1.8×, parity
+intact); month-scale iteration 15–33 s. Sub-60-second *full-year* runs remain
+hardware-bound exactly as the statement below says — the phases transfer
+unchanged to a machine with real cores.
 
 ### Phase 12 — persistent worker pool with a cross-run warm cache ✅ implemented (branch)
 
@@ -850,9 +891,14 @@ below have **not** been executed yet — they are the merge gate.
    carries OI and nothing outside the journal reads bucket OI, so this cannot
    affect trades; noted so a journal-level diff isn't misread as a bug.
 
-### Verification plan (the merge gate)
+### Verification plan (the merge gate) ✅ executed 2026-09-04, all gates passed
 
-Run on this branch, in order; any non-identity stops the merge:
+Every step below was run on 2026-09-04 in scratch schema clones (the user's
+`moneymath` ledger untouched); all seven ledger diffs were byte-identical and
+the timings are recorded in the measured-results table above. Two additional
+defects were found *by* these runs and fixed on the branch before the final
+pass (the view-hostile `MIN()` and the aggregated-cache invalidation). The
+plan is kept for the next phase that needs the same gate:
 
 1. **Serial parity vs main.** Reset the ledger, replay 2024-01-01→01-31 on
    `main`; dump with the checklist query. Reset, replay the same window on
