@@ -54,17 +54,26 @@ public interface HistoricalOptionCandleRepository extends JpaRepository<Historic
      * {@code AnalysisScheduler} asks for it once per (config × timeframe) on
      * <em>every</em> tick, roughly 400 times per backtest day.
      */
-    @Query("""
-        SELECT MIN(c.expiryDate)
-        FROM HistoricalOptionCandle c
-        WHERE c.stockCode = :stockCode
-          AND c.exchangeCode = :exchangeCode
-          AND c.expiryDate >= :selectedDate
-    """)
-    Optional<LocalDate> findNearestExpiryOnOrAfter(
-            @Param("stockCode") String stockCode,
-            @Param("exchangeCode") String exchangeCode,
-            @Param("selectedDate") LocalDate selectedDate);
+    /**
+     * One-row backing query for {@link #findNearestExpiryOnOrAfter}. Derived
+     * (→ {@code ORDER BY expiry_date LIMIT 1}) rather than {@code MIN(...)} on
+     * purpose: on the bare table both plans are an index dive, but through a
+     * cross-schema <b>view</b> — how Phase 10 worker schemas expose the
+     * historical tables — MySQL cannot apply the MIN/MAX optimization and
+     * range-scans ~1.8M index rows. Measured 2026-09-04: 11.1 s via view for
+     * {@code MIN()}, ~2 ms for this shape, identical result either way.
+     */
+    Optional<HistoricalOptionCandle>
+    findFirstByStockCodeAndExchangeCodeAndExpiryDateGreaterThanEqualOrderByExpiryDateAsc(
+            String stockCode, String exchangeCode, LocalDate selectedDate);
+
+    /** Earliest expiry on or after {@code selectedDate} for the series, or empty. */
+    default Optional<LocalDate> findNearestExpiryOnOrAfter(
+            String stockCode, String exchangeCode, LocalDate selectedDate) {
+        return findFirstByStockCodeAndExchangeCodeAndExpiryDateGreaterThanEqualOrderByExpiryDateAsc(
+                stockCode, exchangeCode, selectedDate)
+                .map(HistoricalOptionCandle::getExpiryDate);
+    }
 
     @Query("""
         SELECT c

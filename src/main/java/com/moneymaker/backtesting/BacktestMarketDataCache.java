@@ -223,6 +223,21 @@ public class BacktestMarketDataCache {
         return a.data();
     }
 
+    /** A stale-or-fresh aggregated entry with the base list it was built from. */
+    public record AggregatedEntry(List<MarketData> data, List<MarketData> builtFrom) {}
+
+    /**
+     * The stored roll-up for {@code (symbol, interval)} regardless of whether
+     * its base is still current. The caller checks whether the current base is
+     * an identity-extension of {@code builtFrom} and, if so, upgrades the entry
+     * by rebuilding only the tail instead of the whole series — a full rebuild
+     * per day was measured at seconds/day of BigDecimal restamping.
+     */
+    public AggregatedEntry aggregatedEntry(String symbol, String interval) {
+        Aggregated a = aggregatedByKey.get(key(symbol, interval));
+        return a == null ? null : new AggregatedEntry(a.data(), a.builtFrom());
+    }
+
     /** Store a roll-up together with the base list identity it was built from. */
     public void putAggregated(String symbol, String interval, List<MarketData> data, List<MarketData> builtFrom) {
         if (symbol == null || interval == null || data == null || builtFrom == null) return;

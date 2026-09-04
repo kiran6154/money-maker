@@ -64,6 +64,13 @@ import java.util.function.Function;
 public class SMAIndicatorImpl implements Indicator {
     private static final String NAME = "SMA";
 
+    // DIAGNOSTIC (perf branch): where SMA time goes, readable per backtest day.
+    // Zero-cost adders; read-and-reset by BacktestAnalysisService's day line.
+    public static final java.util.concurrent.atomic.LongAdder CALLS = new java.util.concurrent.atomic.LongAdder();
+    public static final java.util.concurrent.atomic.LongAdder WARMUP_COMPUTED = new java.util.concurrent.atomic.LongAdder();
+    public static final java.util.concurrent.atomic.LongAdder FULL_COMPUTED = new java.util.concurrent.atomic.LongAdder();
+    public static final java.util.concurrent.atomic.LongAdder FULL_REUSED = new java.util.concurrent.atomic.LongAdder();
+
     /**
      * ta4j's {@code DecimalNum} default precision and rounding. Both the
      * summation and the division below use it, because {@code DecimalNum.plus}
@@ -95,6 +102,7 @@ public class SMAIndicatorImpl implements Indicator {
         int size = marketData.size();
         Function<MarketData, Double> reader = readerFor(period);
         BiConsumer<MarketData, Double> writer = writerFor(period);
+        CALLS.increment();
 
         double last = 0d;
 
@@ -102,6 +110,7 @@ public class SMAIndicatorImpl implements Indicator {
         // every value in it. Always recomputed — see the class Javadoc.
         BigDecimal running = BigDecimal.ZERO;
         int warmUp = Math.min(period - 1, size);
+        WARMUP_COMPUTED.add(warmUp);
         for (int i = 0; i < warmUp; i++) {
             running = running.add(low(marketData.get(i)), MATH_CONTEXT);
             last = running.divide(BigDecimal.valueOf(i + 1L), MATH_CONTEXT).doubleValue();
@@ -128,8 +137,10 @@ public class SMAIndicatorImpl implements Indicator {
             Double cached = (reader == null || i == period - 1) ? null : reader.apply(candle);
             if (cached != null) {
                 last = cached;
+                FULL_REUSED.increment();
                 continue;
             }
+            FULL_COMPUTED.increment();
 
             BigDecimal sum = BigDecimal.ZERO;
             for (int j = i - period + 1; j <= i; j++) {

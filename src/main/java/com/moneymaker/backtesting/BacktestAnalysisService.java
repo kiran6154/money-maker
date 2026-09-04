@@ -384,11 +384,18 @@ public class BacktestAnalysisService {
                         currentDate);
             }
             long dayMs = Duration.between(dayStart, Instant.now()).toMillis();
+            // DIAGNOSTIC (perf branch): SMA work split for the day.
+            long smaCalls = com.moneymaker.indicator.SMAIndicatorImpl.CALLS.sumThenReset();
+            long smaWarm = com.moneymaker.indicator.SMAIndicatorImpl.WARMUP_COMPUTED.sumThenReset();
+            long smaFull = com.moneymaker.indicator.SMAIndicatorImpl.FULL_COMPUTED.sumThenReset();
+            long smaReused = com.moneymaker.indicator.SMAIndicatorImpl.FULL_REUSED.sumThenReset();
             log.info("[Backtest] day={} done in {} ms — trade_order rows: before={} after={} delta={} forceClosed={} "
-                            + "| phases ms: indicator={} strategy={} orders={} positions={} (ticks={})",
+                            + "| phases ms: indicator={} strategy={} orders={} positions={} (ticks={}) "
+                            + "| sma: calls={} warmup={} fullComputed={} fullReused={}",
                     currentDate, dayMs, rowsBefore, rowsAfter, rowsAfter - rowsBefore, forceClosed,
                     dayIndicatorNs / 1_000_000, dayStrategyNs / 1_000_000,
-                    dayOrdersNs / 1_000_000, dayPositionsNs / 1_000_000, dayTicks);
+                    dayOrdersNs / 1_000_000, dayPositionsNs / 1_000_000, dayTicks,
+                    smaCalls, smaWarm, smaFull, smaReused);
 
             currentDate = currentDate.plusDays(1);
         }

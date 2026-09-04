@@ -426,6 +426,54 @@ public class HistoricalIciciMarketDataProvider implements MarketDataProvider {
     }
 
     /**
+     * Extends an existing roll-up after its base series grew on the right,
+     * <b>reusing every settled bucket object</b> — and the SMA values stamped
+     * on them — instead of rebuilding the whole series. Only the old series'
+     * last bucket is rebuilt (the appended candles may have completed it) plus
+     * fresh buckets for the new tail.
+     *
+     * <p>This is what keeps Phase 11's day-boundary append from degrading
+     * Phase 8: a full daily rebuild produced all-fresh bucket objects, and the
+     * first tick of every day then re-stamped every index of every slice —
+     * O(retained-series-length × period) of {@code BigDecimal} work per
+     * (series, interval, period) per day, measured at seconds per replayed day.
+     *
+     * <p>Parity: a bucket is a function of its own base candles only, so every
+     * reused bucket is byte-identical to what a full rebuild would produce.
+     * (The one exception class — open-interest carry-over across a bucket with
+     * no OI rows — is the same bounded, journal-only nuance already recorded
+     * for {@link #aggregateSliceReusing}.)
+     */
+    public List<MarketData> aggregateAppend(List<MarketData> oldAggregated,
+                                            List<MarketData> newBase,
+                                            String interval,
+                                            String symbol) {
+        int intervalMinutes = intervalMinutesOf2(interval, symbol);
+        if (oldAggregated == null || oldAggregated.isEmpty()
+                || oldAggregated.get(oldAggregated.size() - 1).getTimestamp() == null) {
+            return aggregateTo(newBase, symbol, interval);
+        }
+        int openMinute = marketHours.open().getHour() * 60 + marketHours.open().getMinute();
+        LocalDateTime lastBucketTs = oldAggregated.get(oldAggregated.size() - 1).getTimestamp();
+        LocalDateTime lastSlotStart = slotStartOf(lastBucketTs, openMinute, intervalMinutes);
+
+        int idx = firstIndexAtOrAfter(newBase, lastSlotStart);
+        List<MarketData> rebuiltTail = aggregate(newBase.subList(idx, newBase.size()), intervalMinutes);
+
+        List<MarketData> merged = new ArrayList<>(oldAggregated.size() - 1 + rebuiltTail.size());
+        merged.addAll(oldAggregated.subList(0, oldAggregated.size() - 1));
+        merged.addAll(rebuiltTail);
+        return merged;
+    }
+
+    /** The wall-clock start of the bucket slot containing {@code ts}. */
+    private static LocalDateTime slotStartOf(LocalDateTime ts, int openMinute, int intervalMinutes) {
+        int minuteOfDay = ts.getHour() * 60 + ts.getMinute();
+        long index = Math.floorDiv(minuteOfDay - openMinute, intervalMinutes);
+        return ts.toLocalDate().atStartOfDay().plusMinutes(openMinute + index * intervalMinutes);
+    }
+
+    /**
      * The (date, bucket-index) pair {@link #aggregate} keys on, folded into one
      * comparable long. The index term is bounded by minutes-per-day ÷ 5, so the
      * 4096 stride cannot collide across dates.

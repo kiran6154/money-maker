@@ -255,7 +255,18 @@ public class MarketDataService {
         } else {
             List<MarketData> shared = cache.aggregated(symbol, interval, storedBase);
             if (shared == null) {
-                shared = historicalProvider.aggregateTo(storedBase, symbol, interval);
+                // Day-boundary upgrade: when the current base is an identity
+                // extension of the one the stale roll-up was built from (the
+                // appendRight construction guarantees element reuse), rebuild
+                // only the tail — the reused buckets keep their SMA stamps. A
+                // full rebuild here cost seconds of BigDecimal restamping per
+                // replayed day. Any other invalidation (full refetch) rebuilds.
+                BacktestMarketDataCache.AggregatedEntry prev = cache.aggregatedEntry(symbol, interval);
+                if (prev != null && isIdentityExtension(prev.builtFrom(), storedBase)) {
+                    shared = historicalProvider.aggregateAppend(prev.data(), storedBase, interval, symbol);
+                } else {
+                    shared = historicalProvider.aggregateTo(storedBase, symbol, interval);
+                }
                 cache.putAggregated(symbol, interval, shared, storedBase);
             }
             composed = historicalProvider.aggregateSliceReusing(shared, base, to, interval, symbol);
@@ -282,6 +293,20 @@ public class MarketDataService {
 
     public String getActiveProvider() {
         return historicalProvider != null ? historicalProvider.getName() : fetcher.getActiveProvider();
+    }
+
+    /**
+     * True when {@code extended} is {@code prefix} plus appended elements —
+     * checked by identity of the endpoints, which suffices because
+     * {@code BacktestMarketDataCache.appendRight} builds the extended list as
+     * exactly the old elements followed by the delta. A full refetch stores
+     * fresh objects and fails this check, forcing the full rebuild.
+     */
+    private static boolean isIdentityExtension(List<MarketData> prefix, List<MarketData> extended) {
+        if (prefix == null || extended == null || prefix.isEmpty()) return false;
+        int n = prefix.size();
+        if (extended.size() < n) return false;
+        return extended.get(0) == prefix.get(0) && extended.get(n - 1) == prefix.get(n - 1);
     }
 
     /** Earlier of the two bounds; tolerates a null cache bound (inactive day). */
