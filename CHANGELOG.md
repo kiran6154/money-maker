@@ -62,6 +62,7 @@ Use these headings in each release block. Omit empty ones.
 ## [Unreleased]
 
 ### Added
+- [`Strategy7`](src/main/java/com/moneymaker/strategy/Strategy7.java) (`stratergy_id = 7`): Strategy 6 plus the first-hour regime gate — after 10:15, no entry on a leg whose side the underlying's first hour moved against by more than 0.2 × ATR-14 (`CommonRules.firstHourMoveInFavourAtr`, `sessionAtr`; unknown allows). Numbers and the regime signals that did *not* transfer in [S22](docs/STRATEGY_ANALYSIS_TODO.md). `Strategy7RulesTest`.
 - [`Strategy6`](src/main/java/com/moneymaker/strategy/Strategy6.java) (`stratergy_id = 6`): Strategy 2 plus three replay-selected entry gates — the leg's 15-minute SMA-50 whole-day down-trend (unknown allows), no entry bar after `closeSignalTime − 30 min` (14:45), and a `STOP_LOSS` exit that locks the `(config, strategy)` book for the day. Rationale, numbers and caveats in [`STRATEGY_ANALYSIS_TODO.md` S21](docs/STRATEGY_ANALYSIS_TODO.md). **To auto-generate configs for it, insert its `strategy_defaults` row and `sma_downtrend_rule_strategy` tag** (SQL in [`STRATEGIES.md`](docs/STRATEGIES.md)).
 - `Strategy.confirmationTimeframes()` / `Strategy.stopLossLocksBookForDay()` default methods; [`AnalysisScheduler.confirmationTimeframesByConfig`](src/main/java/com/moneymaker/scheduler/AnalysisScheduler.java) unions declared confirmation intervals into each config's fetch set across every tag; `RuleContext.strikeKey` lets a rule find the same leg on another interval; [`CommonRules.higherTimeframeSmaDownTrending`](src/main/java/com/moneymaker/strategy/rules/CommonRules.java) / `isAtOrBeforeEntryCutoff` / `isSmaDownTrending`.
 - [`OrderService`](src/main/java/com/moneymaker/order/service/OrderService.java) gate 6, the stop-loss lock, driven by an optional `StrategyFactory` (`required = false`, so hand-built services keep the old behaviour); `TradeOrderRepository.existsByTradeConfigIdAndStrategyIdAndExitReasonAndEntryTimeBetween`.
@@ -76,6 +77,7 @@ Use these headings in each release block. Omit empty ones.
 - `StrategyFactory.availableStrategyIds()` so the strategy dropdown is auto-discovered.
 
 ### Schema
+- [`047_seed_strategy7_defaults.xml`](src/main/resources/db/changelog/047_seed_strategy7_defaults.xml) — same shape as 046 for strategy 7: seeds `strategy_defaults` as a copy of strategy 1's block, tags no rule.
 - [`046_seed_strategy6_defaults.xml`](src/main/resources/db/changelog/046_seed_strategy6_defaults.xml) — seeds `strategy_defaults` for strategy 6 as a copy of strategy 1's block (idempotent, `opposite_side = FALSE`); tags no rule. **To switch strategy 6 on, insert its `sma_downtrend_rule_strategy` rows** (SQL in the changeset).
 
 ### Changed

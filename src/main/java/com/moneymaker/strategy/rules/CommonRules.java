@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -168,6 +169,107 @@ public final class CommonRules {
 
         SmaTrendCalculator.compute(series, 0);
         return isSmaDownTrending(last, period);
+    }
+
+    /**
+     * The underlying's first-hour move on the signal's session, signed in the
+     * leg's favour and expressed in ATR-14 units — the 10:15 checkpoint of the
+     * regime study, reshaped for a one-sided premium short ({@code Strategy7}).
+     *
+     * <p>{@code move = close(last underlying bar before checkpoint) − open(first
+     * bar of the session)}; for a CE config the favourable direction is down so
+     * the sign is flipped; for a PE config up is favourable. ATR-14 is the mean
+     * true range of the 14 completed sessions before the signal's day, rolled
+     * up from the same intraday series (the detector sizes strike depth from
+     * the same quantity, computed from daily bars — the two agree to within the
+     * 15:30 print).</p>
+     *
+     * <p>Tri-state like {@link #higherTimeframeSmaDownTrending}: {@code null}
+     * means "cannot be judged at this tick" and a filter must allow. Unknown
+     * when: the signal bar starts before the checkpoint (the first hour has not
+     * finished — every opening-bar entry is judged on its own evidence); the
+     * context carries no cache key, config or trading side; no underlying
+     * series is cached for the leg's interval; the session's first bar is
+     * missing or the first bar of the day starts after 09:30 (a data gap, not
+     * an open); fewer than {@value #ATR_MIN_SESSIONS} completed prior sessions
+     * are available; or the true range is zero.</p>
+     *
+     * <p>The underlying series is found by taking the first two segments of the
+     * leg's cache key ({@code token|interval}), which is exactly the key
+     * {@code AnalysisScheduler} writes the underlying under — same interval as
+     * the signal, so a 15-minute signal reads 15-minute buckets (the 10:00
+     * bucket closes at 10:15, the same print as the 10:10 five-minute bar).</p>
+     */
+    public static Double firstHourMoveInFavourAtr(RuleContext ctx, LocalTime checkpoint) {
+        if (ctx == null || ctx.strikeKey == null || ctx.candle == null || ctx.candle.getTimestamp() == null) return null;
+        if (ctx.candle.getTimestamp().toLocalTime().isBefore(checkpoint)) return null;
+        if (ctx.config == null || ctx.config.getTradeConfig() == null) return null;
+        String side = ctx.config.getTradeConfig().getTradingSide();
+        int sign;
+        if ("CE".equalsIgnoreCase(side)) sign = -1;
+        else if ("PE".equalsIgnoreCase(side)) sign = 1;
+        else return null;
+
+        String[] parts = ctx.strikeKey.split("\\|");
+        if (parts.length < 2) return null;
+        Map<String, List<MarketData>> cache = SharedData.marketDataByInstrumentAndInterval;
+        if (cache == null) return null;
+        List<MarketData> series = cache.get(parts[0] + "|" + parts[1]);
+        if (series == null || series.isEmpty()) return null;
+
+        LocalDate day = ctx.asOf != null ? ctx.asOf.toLocalDate() : ctx.candle.getTimestamp().toLocalDate();
+        MarketData first = null, lastBeforeCheckpoint = null;
+        for (MarketData c : series) {
+            if (c == null || c.getTimestamp() == null || !c.getTimestamp().toLocalDate().equals(day)) continue;
+            if (first == null) first = c;
+            if (c.getTimestamp().toLocalTime().isBefore(checkpoint)) lastBeforeCheckpoint = c;
+        }
+        if (first == null || lastBeforeCheckpoint == null) return null;
+        if (first.getTimestamp().toLocalTime().isAfter(LocalTime.of(9, 30))) return null;   // gap, not an open
+        double open = openValue(first), close = closeValue(lastBeforeCheckpoint);
+        if (open <= 0 || close <= 0) return null;
+
+        Double atr = sessionAtr(series, day, ATR_PERIOD);
+        if (atr == null || atr <= 0) return null;
+        return sign * (close - open) / atr;
+    }
+
+    /** ATR period and the minimum number of completed prior sessions the ATR needs. */
+    public static final int ATR_PERIOD = 14;
+    public static final int ATR_MIN_SESSIONS = 5;
+
+    /**
+     * Mean true range of the last {@code n} completed sessions strictly before
+     * {@code day}, rolled up from an intraday series: session high/low from the
+     * bars, true range against the previous session's close (the first session
+     * has no previous close and is used only as that reference). Null when fewer
+     * than {@value #ATR_MIN_SESSIONS} sessions precede {@code day}.
+     */
+    static Double sessionAtr(List<MarketData> series, LocalDate day, int n) {
+        java.util.TreeMap<LocalDate, double[]> sessions = new java.util.TreeMap<>();   // date -> {high, low, close}
+        for (MarketData c : series) {
+            if (c == null || c.getTimestamp() == null) continue;
+            LocalDate dte = c.getTimestamp().toLocalDate();
+            if (!dte.isBefore(day)) continue;
+            double h = c.getHigh() == null ? 0 : c.getHigh().doubleValue();
+            double l = c.getLow() == null ? 0 : c.getLow().doubleValue();
+            double cl = closeValue(c);
+            if (h <= 0 || l <= 0 || cl <= 0) continue;
+            double[] s = sessions.get(dte);
+            if (s == null) sessions.put(dte, new double[]{h, l, cl});
+            else { s[0] = Math.max(s[0], h); s[1] = Math.min(s[1], l); s[2] = cl; }
+        }
+        if (sessions.size() < ATR_MIN_SESSIONS) return null;
+        List<double[]> ordered = new ArrayList<>(sessions.values());
+        List<Double> trs = new ArrayList<>();
+        for (int i = 1; i < ordered.size(); i++) {
+            double[] s = ordered.get(i); double prevClose = ordered.get(i - 1)[2];
+            trs.add(Math.max(s[0] - s[1], Math.max(Math.abs(s[0] - prevClose), Math.abs(s[1] - prevClose))));
+        }
+        if (trs.isEmpty()) return null;
+        List<Double> tail = trs.subList(Math.max(0, trs.size() - n), trs.size());
+        double sum = 0; for (double t : tail) sum += t;
+        return sum / tail.size();
     }
 
     /**

@@ -65,6 +65,7 @@ so a new strategy bean appears in the UI with no further wiring.
 | 4 | [`Strategy4`](../src/main/java/com/moneymaker/strategy/Strategy4.java) | Baseline detection **unchanged, execution inverted**: the sell signal is placed as a BUY, the close-time exit as SELL. Requires `transaction_type = BUY`. |
 | 5 | [`Strategy5`](../src/main/java/com/moneymaker/strategy/Strategy5.java) | **Pressure** — not an SMA strategy at all. Scores NIFTY 5-min **spot** on RSI / VWAP / Supertrend / opening range / ADX and trades the continuation on an exact-offset option leg. See [PRESSURE_STRATEGY.md](PRESSURE_STRATEGY.md). |
 | 6 | [`Strategy6`](../src/main/java/com/moneymaker/strategy/Strategy6.java) | Strategy 2 **plus three entry gates**: the leg's 15-minute SMA-50 must be in a whole-day down-trend (unknown allows), no entry bar after 14:45, and a `STOP_LOSS` exit locks the book for the day. |
+| 7 | [`Strategy7`](../src/main/java/com/moneymaker/strategy/Strategy7.java) | Strategy 6 **plus the first-hour regime gate**: after 10:15, no entry on a leg whose side the underlying's first hour moved against by more than 0.2 × ATR-14 (unknown allows; opening-bar entries untouched). |
 
 **Strategies 1–4, 6 and 7** extend
 [`AbstractSmaCrossStrategy`](../src/main/java/com/moneymaker/strategy/AbstractSmaCrossStrategy.java),
@@ -368,6 +369,50 @@ The three numbers on the bean (`15` minutes, SMA `50`, `30` minutes before the
 close signal) are strategy identity — what makes a config tagged 6 differ from
 one tagged 2 — and deliberately not `TradeConfig` columns yet; that question is
 recorded in S21 rather than guessed at (CLAUDE.md #9).
+
+## Strategy 7 — Strategy 6 with the first-hour regime gate
+
+`Strategy7` extends `Strategy6` and appends one required sell rule,
+`firstHourNotAgainstOrUnknown`
+([`CommonRules.firstHourMoveInFavourAtr`](../src/main/java/com/moneymaker/strategy/rules/CommonRules.java)):
+for a signal bar starting at or after **10:15**, the underlying's first-hour
+move (session open → last bar before the checkpoint), signed in the leg's
+favour (down for a CE config, up for a PE config) and divided by ATR-14 of the
+preceding sessions, must be **≥ −0.20**. A CE is not sold into a morning that
+rose more than a fifth of a day's range; a PE is not sold into one that fell
+that much. Entries before 10:15 — the opening-bar trades — are not judged.
+
+The rule comes from the intraday regime study's 10:15 checkpoint, reshaped for a
+one-sided short. Tagging every replay trade by how its day ended shows why it
+is the right shape: sideways days pay (Strategy 6: 367 trades, +1,866 pts, PF
+1.45), favourable trends pay more (110, +2,036, PF 3.93) and **all** the losses
+are trend-against days (84, −1,881, PF 0.23). Nothing known at the open flags
+those days — the gap rule (|open − prev close| ≤ 0.5 ATR) and the expected-move
+level were both tried and rejected — but the first hour's direction is the best
+partial tell for the afternoon: the after-10:15 entries this gate removes were
+trend-against days 35% of the time against a 14% base rate. Replay: **525
+trades, +2,125 pts, PF 1.31**, positive in all four half-years (Strategy 6:
+561, +2,021, 1.28); flat across thresholds −0.1…−0.3 and with the 09:15 ATM
+straddle as the normaliser instead of ATR (S22).
+
+**Data it reads.** The underlying series `AnalysisScheduler` already caches
+under `token|interval` (the first two segments of the leg's own cache key), at
+the signal's interval — a 15-minute signal reads 15-minute buckets, whose 10:00
+bucket closes on the same print as the 10:10 five-minute bar. ATR-14 is rolled
+up from that series' completed prior sessions (the detector sizes strike depth
+from the same quantity off daily bars; they agree to within the 15:30 print).
+**Unknown allows**, as for the 15-minute confirmation: before the checkpoint, no
+side on the config, no underlying series, the session's first bar missing (day
+starts after 09:30), fewer than 5 prior sessions, zero range.
+
+**Config prerequisites.** Same as Strategy 6: `transaction_type = SELL`;
+changeset 047 seeds its `strategy_defaults` row as a copy of strategy 1's;
+tagging it on a rule is the operator's decision (the same one-row-per-rule
+`INSERT` as Strategy 6 with `7`). Tag `"1,6,7"` to run all three on one
+generated config — each keeps its own caps, budget, lock and position — and
+diff the 6 and 7 ledgers to see exactly which trades the gate removed.
+The checkpoint (10:15) and threshold (0.20 ATR) are strategy identity, not
+`TradeConfig` columns (S21 open question (a) applies).
 
 ## Adding a strategy
 
