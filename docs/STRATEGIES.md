@@ -343,15 +343,26 @@ unverified charge rates, lot 75 throughout) are in
 **Config prerequisites.** `transaction_type = SELL`, like strategies 1 and 2.
 Tag an existing config `"1,2,6"` (or `"2,6"`) to run it alongside the others —
 each strategy keeps its own caps, budget and position. For `AUTO_DOWNTREND`
-generation the strategy needs the standard two rows:
+generation, changeset 046 seeds its `strategy_defaults` row as a copy of
+strategy 1's block (so the two share one generated config, `"1,…,6"`); what
+remains is the operator's decision to tag it on the rule, one row per rule:
 
 ```sql
-INSERT INTO strategy_defaults
-  (strategy_id, transaction_type, lot_quantity, max_loss, no_of_trades, no_of_parallel_trades, auto_config_enabled)
-VALUES (6, 'SELL', 75, 200, 5, 1, TRUE);        -- same block as strategy 1, so they share one generated config
-
-INSERT INTO sma_downtrend_rule_strategy (rule_id, strategy_id, enabled) VALUES (1, 6, TRUE);
+INSERT INTO sma_downtrend_rule_strategy (rule_id, strategy_id, enabled)
+SELECT rs.rule_id, 6, TRUE
+  FROM sma_downtrend_rule_strategy rs
+ WHERE rs.strategy_id = 1 AND rs.enabled = TRUE;
 ```
+
+**Leave the knobs where strategy 1 has them.** Every config-level change that
+helps strategy 1 on its own (`no_of_trades = 2`, 5-minute rules only, SMA-200
+dropped, `min_option_price = 100`) makes strategy 6 *worse* — 2,021 → 1,882 /
+1,071 / 1,889 / 1,567 points in the replay — because the three gates already
+remove the trades those knobs remove, and the knobs then cut good ones. The
+same holds for the bracket (`target_pct` 0.25 / `sl_pct` 0.25: 1,856;
+`max_sl_points` 45: 1,584) and the close signal (15:00: 2,069, a wash).
+The detector's `max_deviation` barely matters (0 / 2 / 5 → PF 1.29 / 1.30 /
+1.28). Numbers in S21.
 
 The three numbers on the bean (`15` minutes, SMA `50`, `30` minutes before the
 close signal) are strategy identity — what makes a config tagged 6 differ from

@@ -75,6 +75,9 @@ Use these headings in each release block. Omit empty ones.
 - `SmaTimeframeRepository.deleteByTradeConfigId(...)` for replace-on-update of SMA rows.
 - `StrategyFactory.availableStrategyIds()` so the strategy dropdown is auto-discovered.
 
+### Schema
+- [`046_seed_strategy6_defaults.xml`](src/main/resources/db/changelog/046_seed_strategy6_defaults.xml) — seeds `strategy_defaults` for strategy 6 as a copy of strategy 1's block (idempotent, `opposite_side = FALSE`); tags no rule. **To switch strategy 6 on, insert its `sma_downtrend_rule_strategy` rows** (SQL in the changeset).
+
 ### Changed
 - `AnalysisScheduler`, `OrderScheduler`, `PositionScheduler` now early-return outside market hours (`MarketHoursService.isOpenNow()`) in live mode. Backtest path unaffected.
 - New `app.market.{open,close,timezone,summary-cron}` properties added to [`application.properties`](src/main/resources/application.properties).
