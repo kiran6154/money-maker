@@ -131,6 +131,15 @@ public interface TradeOrderRepository extends JpaRepository<TradeOrder, Long> {
      * spend the daily loss budget of another strategy tagged on the same
      * config.</p>
      */
+    /**
+     * Whether this (config, strategy) already booked an exit for {@code exitReason}
+     * on a trade entered inside the window — the probe behind
+     * {@code Strategy.stopLossLocksBookForDay()} in {@code OrderService}.
+     */
+    boolean existsByTradeConfigIdAndStrategyIdAndExitReasonAndEntryTimeBetween(
+            Integer tradeConfigId, Integer strategyId, String exitReason,
+            LocalDateTime fromInclusive, LocalDateTime toInclusive);
+
     @Query("SELECT COALESCE(SUM(t.profit), 0) FROM TradeOrder t " +
             "WHERE t.tradeConfigId = :tradeConfigId " +
             "AND t.strategyId = :strategyId " +

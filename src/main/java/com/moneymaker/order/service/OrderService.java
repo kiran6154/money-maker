@@ -17,6 +17,7 @@ import com.moneymaker.order.dto.OrderPurgeResultDTO;
 import com.moneymaker.repository.StrategyDefaultsRepository;
 import com.moneymaker.repository.TradeOrderRepository;
 import com.moneymaker.shared.data.SharedData;
+import com.moneymaker.strategy.StrategyFactory;
 import com.moneymaker.telegram.NotificationService;
 import com.moneymaker.util.BracketMode;
 import com.moneymaker.util.TrailLadder;
@@ -81,6 +82,16 @@ public class OrderService {
      * value cannot live on the config without copying it first.
      */
     private final StrategyDefaultsRepository strategyDefaultsRepository;
+
+    /**
+     * Source of per-strategy entry policy ({@code Strategy.stopLossLocksBookForDay()}).
+     * Optional ({@code required = false}) so a manually constructed service —
+     * the unit tests — leaves it null and every policy gate degrades to
+     * "no policy", exactly the pre-Strategy6 behaviour. Package-private for
+     * those tests, same shape as {@code AbstractSmaCrossStrategy.marketHours}.
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    StrategyFactory strategyFactory;
 
     public OrderService(OrderPlacementFactory placementFactory,
                         TradeOrderRepository tradeOrderRepository,
@@ -334,6 +345,26 @@ public class OrderService {
             }
         }
 
+        // Stop-loss lock (Strategy6 identity, 2026-09-05): a strategy that
+        // declares stopLossLocksBookForDay() opens nothing further on this
+        // config once one of its trades has exited STOP_LOSS today. Keyed on
+        // (config, strategy) like every other gate here, and read from the
+        // ledger rather than remembered in-process so a restart mid-session
+        // cannot forget the lock. TRAIL_SL exits do not lock — that is the
+        // opposite outcome, a trailed exit that closes green.
+        if (strategyLocksBookAfterStopLoss(strategyId)) {
+            LocalDateTime sodLock = signal.getSignalTime().toLocalDate().atStartOfDay();
+            LocalDateTime eodLock = sodLock.plusDays(1).minusNanos(1);
+            boolean stoppedToday = tradeOrderRepository
+                    .existsByTradeConfigIdAndStrategyIdAndExitReasonAndEntryTimeBetween(
+                            signal.getTradeConfigId(), strategyId, "STOP_LOSS", sodLock, eodLock);
+            if (stoppedToday) {
+                log.debug("[order] skip signal — stop-loss lock: tradeConfigId={} strategyId={} already exited STOP_LOSS today",
+                        signal.getTradeConfigId(), strategyId);
+                return;
+            }
+        }
+
         // Exact-duplicate guard: re-runs of the backtest replay identical signals
         // and would otherwise create a fresh row each run. Skip when an existing
         // row has the same (config, strategy, optionToken, direction, entryTime) —
@@ -355,6 +386,21 @@ public class OrderService {
         }
 
         openOrder(signal, key, config, placement);
+    }
+
+    /**
+     * The strategy's own answer to "does a stop close my book for the day", or
+     * false when no factory is wired (unit tests) or the id is unknown to it —
+     * an unknown strategy could not have emitted a dispatched signal, so the
+     * gate has nothing to protect.
+     */
+    private boolean strategyLocksBookAfterStopLoss(Integer strategyId) {
+        if (strategyFactory == null || strategyId == null) return false;
+        try {
+            return strategyFactory.get(strategyId).stopLossLocksBookForDay();
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
     }
 
     private void openOrder(TradeSignal signal, ParsedKey key, TradeConfigCombinedDTO config,

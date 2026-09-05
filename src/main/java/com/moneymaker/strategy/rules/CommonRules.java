@@ -3,9 +3,14 @@ package com.moneymaker.strategy.rules;
 import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.entity.MarketData;
 import com.moneymaker.entity.TradeConfig;
+import com.moneymaker.shared.data.SharedData;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Reusable rule predicates and SMA helpers shared across strategies. Strategies
@@ -105,6 +110,85 @@ public final class CommonRules {
     }
 
     /**
+     * Whether the <b>same leg's</b> series on a coarser interval carries the
+     * whole-day down-trend flag for {@code period} — the higher-timeframe
+     * confirmation {@code Strategy6} requires before a sell entry.
+     *
+     * <p>Tri-state on purpose. {@code TRUE} / {@code FALSE} is the flag
+     * {@link SmaTrendCalculator} (with {@code maxDeviations = 0}) stamps on the
+     * newest <i>settled</i> bar of that interval: the SMA has fallen on every
+     * bar of the session so far. {@code null} means the question cannot be
+     * answered at this tick, and a filter must let the entry through rather
+     * than block on ignorance — the same "unknown ⇒ allow" convention
+     * {@link #isSma20SlopeUp} follows. The unknown cases:</p>
+     * <ul>
+     *   <li>the context carries no cache key (hand-built list, older caller);</li>
+     *   <li>no series for that leg at that interval is in
+     *       {@code SharedData.strikeMarketDataByInstrumentAndInterval} — the
+     *       strategy did not declare it in {@code confirmationTimeframes()}, or
+     *       the fetch came back empty;</li>
+     *   <li>the series was not written by this tick (the S8 stale-key rule:
+     *       the strike left the coarser interval's ATM window);</li>
+     *   <li>the newest settled bar belongs to an earlier session — for a
+     *       15-minute series that is every tick before 09:30, so the first
+     *       three ticks of the day (which carry the opening-bar entries) are
+     *       judged on the 5-minute evidence alone;</li>
+     *   <li>the SMA for {@code period} is not stamped on that bar (series
+     *       shorter than the period).</li>
+     * </ul>
+     *
+     * <p>The series is looked up by rewriting the interval segment of the
+     * context's own key, so it is the same contract, the same config depths
+     * and the same tick that the traded series came from. The trend flags are
+     * (re)stamped here with {@code maxDeviations = 0}; the calculation is
+     * idempotent, so a series the engine already flagged is unchanged.</p>
+     */
+    public static Boolean higherTimeframeSmaDownTrending(RuleContext ctx, int intervalMinutes, int period) {
+        if (ctx == null || ctx.strikeKey == null) return null;
+        String[] parts = ctx.strikeKey.split("\\|");
+        if (parts.length < 7) return null;
+        parts[1] = intervalMinutes + "minute";
+        String key = String.join("|", parts);
+
+        Map<String, List<MarketData>> cache = SharedData.strikeMarketDataByInstrumentAndInterval;
+        if (cache == null) return null;
+        List<MarketData> series = cache.get(key);
+        if (series == null || series.isEmpty()) return null;
+
+        if (ctx.asOf != null) {
+            Map<String, LocalDateTime> ticks = SharedData.strikeMarketDataTick;
+            LocalDateTime stamp = ticks != null ? ticks.get(key) : null;
+            if (stamp != null && !ctx.asOf.equals(stamp)) return null;
+        }
+
+        MarketData last = series.get(series.size() - 1);
+        if (last == null || last.getTimestamp() == null) return null;
+        if (ctx.asOf != null && !last.getTimestamp().toLocalDate().equals(ctx.asOf.toLocalDate())) return null;
+        if (smaValue(last, period) <= 0) return null;
+
+        SmaTrendCalculator.compute(series, 0);
+        return isSmaDownTrending(last, period);
+    }
+
+    /**
+     * True while the candle starts at or before the entry cut-off — the
+     * close-signal time minus {@code minutesBeforeCloseSignal}. With the
+     * standard 15:30 close and the 15-minute close-signal offset, 30 minutes
+     * puts the last admissible entry bar at 14:45. Derived from
+     * {@code ctx.closeSignalTime} (falling back to the legacy 15:15) so it
+     * moves with {@code app.market.*} rather than being a second clock.
+     *
+     * <p>A candle without a timestamp fails: the cut-off is a required rule and
+     * a bar whose time is unknown cannot be shown to be early enough.</p>
+     */
+    public static boolean isAtOrBeforeEntryCutoff(RuleContext ctx, int minutesBeforeCloseSignal) {
+        if (ctx == null || ctx.candle == null || ctx.candle.getTimestamp() == null) return false;
+        LocalTime closeSignal = ctx.closeSignalTime != null ? ctx.closeSignalTime : LocalTime.of(15, 15);
+        LocalTime cutoff = closeSignal.minusMinutes(minutesBeforeCloseSignal);
+        return !ctx.candle.getTimestamp().toLocalTime().isAfter(cutoff);
+    }
+
+    /**
      * True when the absolute distance between the primary SMA and the
      * next-higher SMA period (50→100, 100→200, 200→500) exceeds the
      * configured profit target. Returns false if either SMA is unavailable
@@ -176,6 +260,24 @@ public final class CommonRules {
             case 100: return c.isSma100UpTrending();
             case 200: return c.isSma200UpTrending();
             case 500: return c.isSma500UpTrending();
+            default:  return false;
+        }
+    }
+
+    /**
+     * Reads the whole-day down-trend flag for the given period — the flag the
+     * baseline sell rules read via the typed {@code isSmaNNDownTrending}
+     * getters, resolved by period. Stamped by {@link SmaTrendCalculator};
+     * false for an unsupported period.
+     */
+    public static boolean isSmaDownTrending(MarketData c, Integer period) {
+        if (c == null || period == null) return false;
+        switch (period) {
+            case 20:  return c.isSma20DownTrending();
+            case 50:  return c.isSma50DownTrending();
+            case 100: return c.isSma100DownTrending();
+            case 200: return c.isSma200DownTrending();
+            case 500: return c.isSma500DownTrending();
             default:  return false;
         }
     }
