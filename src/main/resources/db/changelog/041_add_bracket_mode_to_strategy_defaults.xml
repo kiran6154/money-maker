@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      strategy_defaults.target_mode / sl_mode: which of the two bracket columns
+      a strategy actually exits on.
+
+      The problem
+      ===========
+      Since 027 a config carries BOTH shapes of every bracket side - the absolute
+      trade_config.target / stop_loss points and the premium-relative target_pct /
+      sl_pct - and OrderService.bracketAtEntry picked between them by a rule that
+      was never written down as a setting:
+
+          pct != null && pct > 0  ->  entryPrice * pct
+          otherwise               ->  the absolute column
+
+      i.e. "a percentage, if one happens to be set, silently wins". The points
+      column stays populated and visible in the admin UI while being dead, so
+      editing it changes nothing and nothing says why. Every one of the 235
+      standing configs is in exactly that state: target = 20.00 alongside
+      target_pct = 0.2000, and only the 0.2000 has ever decided an exit.
+
+      Turning the implicit rule into a column is the whole point of this
+      changeset. "Which bracket this strategy exits on" decides when a trade
+      closes, so per CLAUDE.md #9 it is config, not an if-statement.
+
+      Why strategy_defaults and not trade_config
+      ==========================================
+      The unit of the decision is the strategy. A trade_config can name several
+      strategies (035's strategy_ids) and TradeConfigScheduler fans it out into
+      one TradeConfigCombinedDTO per id, so "config 2652 under strategy 1 exits
+      on points, under strategy 3 on percentage" is expressible only if the mode
+      is keyed by strategy. It is also the table 033/040 already established for
+      exactly this class of per-strategy trading decision.
+
+      Two columns, not one
+      ====================
+      OrderService resolves target and stop-loss independently and 036's bracket
+      is deliberately asymmetric - cap the stop, let the target run - so a single
+      mode could not express the mixed bracket (points target, percentage stop)
+      that this split makes reachable.
+
+      Why these do NOT join configSignature()
+      ======================================
+      Deliberate divergence from 040, which added opposite_side to the signature.
+      A generated trade_config carries BOTH the points and the percentage columns
+      already, and the mode is resolved at order time from the DTO's strategyId -
+      it is never stamped onto the config row. So two strategies that differ only
+      in bracket mode can share one generated config and still exit differently,
+      and splitting the group would emit a duplicate row that changes nothing.
+      opposite_side had to join the signature because it changes what the
+      generated row *contains* (which leg it trades); these do not.
+
+      Default PERCENT is behaviour-neutral
+      ====================================
+      PERCENT reproduces the legacy rule exactly: prefer the pct, fall back to the
+      absolute column when it is unset. So every existing row - and any strategy
+      with no strategy_defaults row at all, which BracketMode.parse(null) also
+      reads as PERCENT - keeps the bracket it has today, and the S6 sign-off
+      ("the percentage bracket is live and staying live") stands untouched.
+      Switching a strategy to POINTS is a Rule 0 behaviour change and needs its
+      own measured before/after pair on the same window.
+    -->
+    <changeSet id="041_add_bracket_mode_to_strategy_defaults" author="moneymaker">
+        <!--
+          Guarded for the reason 035 spelled out: this project runs
+          spring.jpa.hibernate.ddl-auto=update. Liquibase normally wins the race
+          (Spring Boot runs it before the EntityManagerFactory is built), but a
+          branch booted with the entity present and this file not yet in the
+          master leaves Hibernate to create the columns, and a bare addColumn
+          then dies on next start with "Duplicate column name". MARK_RAN keeps
+          that database startable; the seed changeset below still fills the
+          values either way.
+        -->
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="strategy_defaults" columnName="target_mode"/>
+            </not>
+        </preConditions>
+        <addColumn tableName="strategy_defaults">
+            <column name="target_mode" type="VARCHAR(8)" defaultValue="PERCENT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sl_mode" type="VARCHAR(8)" defaultValue="PERCENT">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <!--
+      addColumn's default covers rows inserted from here on and MySQL backfills
+      existing rows with it, but 036 established the pattern of making that
+      guarantee explicit rather than engine-dependent. Scoped to NULL so a re-run
+      cannot overwrite a mode someone has since switched.
+    -->
+    <changeSet id="041_seed_bracket_mode_defaults" author="moneymaker">
+        <update tableName="strategy_defaults">
+            <column name="target_mode" value="PERCENT"/>
+            <where>target_mode IS NULL</where>
+        </update>
+        <update tableName="strategy_defaults">
+            <column name="sl_mode" value="PERCENT"/>
+            <where>sl_mode IS NULL</where>
+        </update>
+    </changeSet>
+
+</databaseChangeLog>

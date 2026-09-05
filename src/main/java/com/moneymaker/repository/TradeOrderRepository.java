@@ -189,6 +189,56 @@ public interface TradeOrderRepository extends JpaRepository<TradeOrder, Long> {
             Integer tradeConfigId, Integer strategyId, String optionType, String status);
 
     /**
+     * OPEN trades held by one strategy across <b>every config in a book</b>
+     * (changeset 042).
+     *
+     * <p>Backs the Pressure strategy's "ONE position at a time" rule. A book is
+     * two {@code trade_config} rows — one CE, one PE — because
+     * {@code trading_side} is single-valued, and every other cap in
+     * {@code OrderService} keys on {@code (trade_config_id, strategy_id)}. Those
+     * two legs therefore hold two independent budgets, and without this count a
+     * one-position engine could sit in a CE short and a PE short at the same
+     * moment.</p>
+     *
+     * <p>Native, and joining back through {@code trade_config}, because the book
+     * label lives on the config rather than on the order. Stamping it onto
+     * {@code trade_order} would denormalise a measurement-run bucket into the
+     * permanent ledger; the join is one indexed lookup per candidate entry (see
+     * {@code idx_trade_config_book}) and costs less than the column would.</p>
+     */
+    @Query(value = """
+        SELECT COUNT(*)
+        FROM trade_order o
+        JOIN trade_config c ON c.id = o.trade_config_id
+        WHERE c.book_id = :bookId
+          AND o.strategy_id = :strategyId
+          AND o.status = :status
+    """, nativeQuery = true)
+    long countOpenInBook(@Param("bookId") String bookId,
+                         @Param("strategyId") Integer strategyId,
+                         @Param("status") String status);
+
+    /**
+     * Every trade one strategy took in a window, oldest first. Backs the
+     * Pressure per-trade CSV export.
+     */
+    List<TradeOrder> findByStrategyIdAndEntryTimeBetweenOrderByEntryTimeAsc(
+            Integer strategyId, LocalDateTime from, LocalDateTime to);
+
+    /**
+     * {@code [trade_config_id, book_id]} pairs for the given configs.
+     *
+     * <p>The export labels each ledger row with its book, and the label lives on
+     * {@code trade_config} rather than on the order — see
+     * {@code TradeConfig.bookId} for why a measurement-run bucket is not
+     * denormalised into the permanent ledger. One query for the whole report
+     * rather than a lookup per row.</p>
+     */
+    @Query(value = "SELECT c.id, c.book_id FROM trade_config c WHERE c.id IN (:ids)",
+            nativeQuery = true)
+    List<Object[]> findBookIdsForConfigs(@Param("ids") List<Integer> ids);
+
+    /**
      * Deletes every trade row belonging to the given configs and returns how
      * many went. Only reachable from the bulk auto-config delete with
      * {@code force=true} — the audit trail is otherwise immutable from the app.

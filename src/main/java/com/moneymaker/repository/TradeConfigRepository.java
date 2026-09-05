@@ -120,6 +120,11 @@ public interface TradeConfigRepository extends JpaRepository<TradeConfig, Intege
             "  tc.min_option_price, tc.max_option_price, tc.strategy_ids, " +
             "  tc.max_sl_points, tc.trail_ladder, " +
             "  tc.target_pct, tc.sl_pct, tc.max_parallel_per_side, " +
+            // Changeset 042 — the Pressure intraday clock, the exact-offset
+            // strike, and the book id. Appended to the END of the trade_config
+            // block, never inserted, so no later index shifts.
+            "  tc.entry_from, tc.entry_to, tc.max_hold_minutes, tc.flatten_at, " +
+            "  tc.strike_offset_points, tc.strike_step_points, tc.book_id, tc.underlying_leg, " +
             "  i.id, i.ins_name, i.ins_id, i.lot_qty, i.strike_points, " +
             "  id.instrument_token, id.exchange_token, id.tradingsymbol, id.name, " +
             "  id.last_price, id.expiry, id.strike, id.tick_size, id.lot_size, " +

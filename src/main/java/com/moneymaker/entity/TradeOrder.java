@@ -6,6 +6,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 @Entity
 @Table(name = "trade_order")
@@ -173,4 +174,37 @@ public class TradeOrder {
      */
     @Column(name = "trail_sl_at", precision = 12, scale = 4)
     private BigDecimal trailSlAt;
+
+    /**
+     * Minutes from {@link #entryTime} after which this trade is closed with
+     * {@code exit_reason = TIME_STOP}. {@code null} = no time stop, which is
+     * every row written before changeset 043 and every config that does not set
+     * {@code trade_config.max_hold_minutes}.
+     *
+     * <p>Snapshotted at entry for the same two reasons the bracket above is:
+     * {@code PositionService} must not depend on the config caches still being
+     * populated after a mid-session restart, and shortening the config's hold
+     * limit at 13:00 must not instantly breach — and liquidate — every position
+     * opened before 12:00.</p>
+     */
+    @Column(name = "max_hold_minutes_at_entry")
+    private Integer maxHoldMinutesAtEntry;
+
+    /**
+     * Time-of-day at which this trade is closed regardless of P&amp;L, with
+     * {@code exit_reason = FLATTEN}. {@code null} = no intraday flatten.
+     *
+     * <p>A time-of-day and not a timestamp: the trade carries its own
+     * {@link #entryTime}, these are intraday strategies, and the end-of-day
+     * sweep squares off the same session — so the date is never ambiguous and a
+     * full timestamp would only admit rows whose flatten moment sits on a
+     * different day from their entry.</p>
+     *
+     * <p>Distinct from {@code FORCE_CLOSE}, which is the replay's own 15:20
+     * end-of-day sweep and means "the run ended with this still open". A
+     * strategy that flattens on its own clock and one that had to be cleaned up
+     * after are not the same result.</p>
+     */
+    @Column(name = "flatten_at_entry")
+    private LocalTime flattenAtEntry;
 }

@@ -14,7 +14,7 @@
     <section class="chart-workbench-header">
         <div>
             <h1 class="page-title">Chart Dashboard</h1>
-            <p class="page-subtitle">Underlying, ATM PE, and ATM CE in one fast review surface.</p>
+            <p class="page-subtitle">Underlying, ATM PE / CE, and averaged ATM&#177;1 / ATM&#177;2 ladders in one fast review surface.</p>
         </div>
         <div class="chart-workbench-actions">
             <button id="fullscreenChartsBtn" class="btn btn-ghost chart-icon-btn" type="button" title="Toggle fullscreen chart view">Fullscreen</button>
@@ -30,15 +30,6 @@
                     <input id="chartDate" class="form-control" type="date" />
                     <button id="nextDateBtn" class="btn btn-ghost chart-step-btn" type="button" title="Next day">&gt;</button>
                     <button id="todayDateBtn" class="btn btn-ghost chart-today-btn" type="button">Today</button>
-                </div>
-            </div>
-
-            <div class="form-row chart-field chart-field-date">
-                <label for="chartFromDate">From <span style="font-weight:400;opacity:.7">(continuous)</span></label>
-                <div class="chart-date-control">
-                    <input id="chartFromDate" class="form-control" type="date"
-                           title="Leave blank to chart the single selected day. Set it to draw one continuous series from this date through the Date above, running across session boundaries." />
-                    <button id="clearFromDateBtn" class="btn btn-ghost chart-step-btn" type="button" title="Back to single-day view">&times;</button>
                 </div>
             </div>
 
@@ -126,6 +117,14 @@
 
             <div class="chart-canvas-wrap" id="underlyingChartWrap">
                 <div class="chart-canvas" id="underlyingChart"></div>
+                <!-- Overlaid on the wrap, not the canvas: renderChart clears the
+                     canvas element's innerHTML before creating the chart. -->
+                <div class="chart-zoom" role="group" aria-label="Zoom">
+                    <button type="button" class="chart-zoom-btn" data-zoom="in"
+                            data-zoom-chart="UNDERLYING" title="Zoom in" aria-label="Zoom in">+</button>
+                    <button type="button" class="chart-zoom-btn" data-zoom="out"
+                            data-zoom-chart="UNDERLYING" title="Zoom out" aria-label="Zoom out">&minus;</button>
+                </div>
             </div>
         </article>
 
@@ -156,6 +155,14 @@
 
             <div class="chart-canvas-wrap" id="peChartWrap">
                 <div class="chart-canvas" id="peChart"></div>
+                <!-- Overlaid on the wrap, not the canvas: renderChart clears the
+                     canvas element's innerHTML before creating the chart. -->
+                <div class="chart-zoom" role="group" aria-label="Zoom">
+                    <button type="button" class="chart-zoom-btn" data-zoom="in"
+                            data-zoom-chart="PE" title="Zoom in" aria-label="Zoom in">+</button>
+                    <button type="button" class="chart-zoom-btn" data-zoom="out"
+                            data-zoom-chart="PE" title="Zoom out" aria-label="Zoom out">&minus;</button>
+                </div>
             </div>
         </article>
 
@@ -186,8 +193,336 @@
 
             <div class="chart-canvas-wrap" id="ceChartWrap">
                 <div class="chart-canvas" id="ceChart"></div>
+                <!-- Overlaid on the wrap, not the canvas: renderChart clears the
+                     canvas element's innerHTML before creating the chart. -->
+                <div class="chart-zoom" role="group" aria-label="Zoom">
+                    <button type="button" class="chart-zoom-btn" data-zoom="in"
+                            data-zoom-chart="CE" title="Zoom in" aria-label="Zoom in">+</button>
+                    <button type="button" class="chart-zoom-btn" data-zoom="out"
+                            data-zoom-chart="CE" title="Zoom out" aria-label="Zoom out">&minus;</button>
+                </div>
             </div>
         </article>
+        <!-- ─── Pinned 15-minute row ───
+             Same two legs as the row above, fixed to 15m regardless of the
+             toolbar chip, so the three horizons can be read against each other
+             without touching a control. -->
+        <article class="glass-card chart-pane" id="pe15mPane">
+            <div class="card-header">
+                <h3 id="pe15mPaneTitle">ATM PE · 15m</h3>
+                <span class="badge badge-info pane-timeframe-badge" id="pe15mActiveTimeframe">15m</span>
+            </div>
+
+            <div class="chart-pane-meta" id="pe15mMeta">
+                <span><strong>Date</strong> <span id="pe15mSelectedDate">-</span></span>
+                <span><strong>Index</strong> <span id="pe15mSelectedIndex">NIFTY</span></span>
+                <span><strong>Expiry</strong> <span id="pe15mExpiryDate">-</span></span>
+                <span><strong>Strike</strong> <span id="pe15mAtmStrike">-</span></span>
+            </div>
+
+            <div class="chart-sma-legend" id="pe15mSmaLegend"></div>
+
+            <div class="chart-state chart-loading-state" id="pe15mLoadingState" style="display:none;">
+                Loading ATM PE · 15m chart data...
+            </div>
+            <div class="chart-state chart-error-state" id="pe15mErrorState" style="display:none;">
+                Unable to load ATM PE · 15m chart data.
+            </div>
+            <div class="chart-state chart-empty-state" id="pe15mNoDataState">
+                No ATM PE · 15m chart data available for the selected filters.
+            </div>
+
+            <div class="chart-canvas-wrap" id="pe15mChartWrap">
+                <div class="chart-canvas" id="pe15mChart"></div>
+                <!-- Overlaid on the wrap, not the canvas: renderChart clears the
+                     canvas element's innerHTML before creating the chart. -->
+                <div class="chart-zoom" role="group" aria-label="Zoom">
+                    <button type="button" class="chart-zoom-btn" data-zoom="in"
+                            data-zoom-chart="PE_15M" title="Zoom in" aria-label="Zoom in">+</button>
+                    <button type="button" class="chart-zoom-btn" data-zoom="out"
+                            data-zoom-chart="PE_15M" title="Zoom out" aria-label="Zoom out">&minus;</button>
+                </div>
+            </div>
+        </article>
+
+        <article class="glass-card chart-pane" id="ce15mPane">
+            <div class="card-header">
+                <h3 id="ce15mPaneTitle">ATM CE · 15m</h3>
+                <span class="badge badge-info pane-timeframe-badge" id="ce15mActiveTimeframe">15m</span>
+            </div>
+
+            <div class="chart-pane-meta" id="ce15mMeta">
+                <span><strong>Date</strong> <span id="ce15mSelectedDate">-</span></span>
+                <span><strong>Index</strong> <span id="ce15mSelectedIndex">NIFTY</span></span>
+                <span><strong>Expiry</strong> <span id="ce15mExpiryDate">-</span></span>
+                <span><strong>Strike</strong> <span id="ce15mAtmStrike">-</span></span>
+            </div>
+
+            <div class="chart-sma-legend" id="ce15mSmaLegend"></div>
+
+            <div class="chart-state chart-loading-state" id="ce15mLoadingState" style="display:none;">
+                Loading ATM CE · 15m chart data...
+            </div>
+            <div class="chart-state chart-error-state" id="ce15mErrorState" style="display:none;">
+                Unable to load ATM CE · 15m chart data.
+            </div>
+            <div class="chart-state chart-empty-state" id="ce15mNoDataState">
+                No ATM CE · 15m chart data available for the selected filters.
+            </div>
+
+            <div class="chart-canvas-wrap" id="ce15mChartWrap">
+                <div class="chart-canvas" id="ce15mChart"></div>
+                <!-- Overlaid on the wrap, not the canvas: renderChart clears the
+                     canvas element's innerHTML before creating the chart. -->
+                <div class="chart-zoom" role="group" aria-label="Zoom">
+                    <button type="button" class="chart-zoom-btn" data-zoom="in"
+                            data-zoom-chart="CE_15M" title="Zoom in" aria-label="Zoom in">+</button>
+                    <button type="button" class="chart-zoom-btn" data-zoom="out"
+                            data-zoom-chart="CE_15M" title="Zoom out" aria-label="Zoom out">&minus;</button>
+                </div>
+            </div>
+        </article>
+
+        <!-- ─── Pinned 10-minute row ─── -->
+        <article class="glass-card chart-pane" id="pe10mPane">
+            <div class="card-header">
+                <h3 id="pe10mPaneTitle">ATM PE · 10m</h3>
+                <span class="badge badge-info pane-timeframe-badge" id="pe10mActiveTimeframe">10m</span>
+            </div>
+
+            <div class="chart-pane-meta" id="pe10mMeta">
+                <span><strong>Date</strong> <span id="pe10mSelectedDate">-</span></span>
+                <span><strong>Index</strong> <span id="pe10mSelectedIndex">NIFTY</span></span>
+                <span><strong>Expiry</strong> <span id="pe10mExpiryDate">-</span></span>
+                <span><strong>Strike</strong> <span id="pe10mAtmStrike">-</span></span>
+            </div>
+
+            <div class="chart-sma-legend" id="pe10mSmaLegend"></div>
+
+            <div class="chart-state chart-loading-state" id="pe10mLoadingState" style="display:none;">
+                Loading ATM PE · 10m chart data...
+            </div>
+            <div class="chart-state chart-error-state" id="pe10mErrorState" style="display:none;">
+                Unable to load ATM PE · 10m chart data.
+            </div>
+            <div class="chart-state chart-empty-state" id="pe10mNoDataState">
+                No ATM PE · 10m chart data available for the selected filters.
+            </div>
+
+            <div class="chart-canvas-wrap" id="pe10mChartWrap">
+                <div class="chart-canvas" id="pe10mChart"></div>
+                <!-- Overlaid on the wrap, not the canvas: renderChart clears the
+                     canvas element's innerHTML before creating the chart. -->
+                <div class="chart-zoom" role="group" aria-label="Zoom">
+                    <button type="button" class="chart-zoom-btn" data-zoom="in"
+                            data-zoom-chart="PE_10M" title="Zoom in" aria-label="Zoom in">+</button>
+                    <button type="button" class="chart-zoom-btn" data-zoom="out"
+                            data-zoom-chart="PE_10M" title="Zoom out" aria-label="Zoom out">&minus;</button>
+                </div>
+            </div>
+        </article>
+
+        <article class="glass-card chart-pane" id="ce10mPane">
+            <div class="card-header">
+                <h3 id="ce10mPaneTitle">ATM CE · 10m</h3>
+                <span class="badge badge-info pane-timeframe-badge" id="ce10mActiveTimeframe">10m</span>
+            </div>
+
+            <div class="chart-pane-meta" id="ce10mMeta">
+                <span><strong>Date</strong> <span id="ce10mSelectedDate">-</span></span>
+                <span><strong>Index</strong> <span id="ce10mSelectedIndex">NIFTY</span></span>
+                <span><strong>Expiry</strong> <span id="ce10mExpiryDate">-</span></span>
+                <span><strong>Strike</strong> <span id="ce10mAtmStrike">-</span></span>
+            </div>
+
+            <div class="chart-sma-legend" id="ce10mSmaLegend"></div>
+
+            <div class="chart-state chart-loading-state" id="ce10mLoadingState" style="display:none;">
+                Loading ATM CE · 10m chart data...
+            </div>
+            <div class="chart-state chart-error-state" id="ce10mErrorState" style="display:none;">
+                Unable to load ATM CE · 10m chart data.
+            </div>
+            <div class="chart-state chart-empty-state" id="ce10mNoDataState">
+                No ATM CE · 10m chart data available for the selected filters.
+            </div>
+
+            <div class="chart-canvas-wrap" id="ce10mChartWrap">
+                <div class="chart-canvas" id="ce10mChart"></div>
+                <!-- Overlaid on the wrap, not the canvas: renderChart clears the
+                     canvas element's innerHTML before creating the chart. -->
+                <div class="chart-zoom" role="group" aria-label="Zoom">
+                    <button type="button" class="chart-zoom-btn" data-zoom="in"
+                            data-zoom-chart="CE_10M" title="Zoom in" aria-label="Zoom in">+</button>
+                    <button type="button" class="chart-zoom-btn" data-zoom="out"
+                            data-zoom-chart="CE_10M" title="Zoom out" aria-label="Zoom out">&minus;</button>
+                </div>
+            </div>
+        </article>
+
+        <!-- ─── Averaged ladder rows ───
+             Not another contract: each of these draws ONE synthetic candle per
+             bar, whose OHLC is the mean of a strike ladder straddling the money.
+             A single strike's premium steps as the underlying walks across the
+             strike grid; the mean of the ladder moves with the underlying
+             instead, so the SMAs over it are a far quieter read. Both rows
+             follow the toolbar timeframe — the comparison is against the
+             single-strike row above at the same horizon.
+
+             Row 5: ATM-1, ATM, ATM+1. -->
+        <article class="glass-card chart-pane" id="peAvg3Pane">
+            <div class="card-header">
+                <h3 id="peAvg3PaneTitle">ATM PE ±1 avg</h3>
+                <span class="badge badge-info pane-timeframe-badge" id="peAvg3ActiveTimeframe">5m</span>
+            </div>
+
+            <div class="chart-pane-meta" id="peAvg3Meta">
+                <span><strong>Date</strong> <span id="peAvg3SelectedDate">-</span></span>
+                <span><strong>Index</strong> <span id="peAvg3SelectedIndex">NIFTY</span></span>
+                <span><strong>Expiry</strong> <span id="peAvg3ExpiryDate">-</span></span>
+                <span><strong>Strike</strong> <span id="peAvg3AtmStrike">-</span></span>
+            </div>
+
+            <div class="chart-sma-legend" id="peAvg3SmaLegend"></div>
+
+            <div class="chart-state chart-loading-state" id="peAvg3LoadingState" style="display:none;">
+                Loading ATM PE ±1 avg chart data...
+            </div>
+            <div class="chart-state chart-error-state" id="peAvg3ErrorState" style="display:none;">
+                Unable to load ATM PE ±1 avg chart data.
+            </div>
+            <div class="chart-state chart-empty-state" id="peAvg3NoDataState">
+                No ATM PE ±1 avg chart data available for the selected filters.
+            </div>
+
+            <div class="chart-canvas-wrap" id="peAvg3ChartWrap">
+                <div class="chart-canvas" id="peAvg3Chart"></div>
+                <!-- Overlaid on the wrap, not the canvas: renderChart clears the
+                     canvas element's innerHTML before creating the chart. -->
+                <div class="chart-zoom" role="group" aria-label="Zoom">
+                    <button type="button" class="chart-zoom-btn" data-zoom="in"
+                            data-zoom-chart="PE_AVG3" title="Zoom in" aria-label="Zoom in">+</button>
+                    <button type="button" class="chart-zoom-btn" data-zoom="out"
+                            data-zoom-chart="PE_AVG3" title="Zoom out" aria-label="Zoom out">&minus;</button>
+                </div>
+            </div>
+        </article>
+
+        <article class="glass-card chart-pane" id="ceAvg3Pane">
+            <div class="card-header">
+                <h3 id="ceAvg3PaneTitle">ATM CE ±1 avg</h3>
+                <span class="badge badge-info pane-timeframe-badge" id="ceAvg3ActiveTimeframe">5m</span>
+            </div>
+
+            <div class="chart-pane-meta" id="ceAvg3Meta">
+                <span><strong>Date</strong> <span id="ceAvg3SelectedDate">-</span></span>
+                <span><strong>Index</strong> <span id="ceAvg3SelectedIndex">NIFTY</span></span>
+                <span><strong>Expiry</strong> <span id="ceAvg3ExpiryDate">-</span></span>
+                <span><strong>Strike</strong> <span id="ceAvg3AtmStrike">-</span></span>
+            </div>
+
+            <div class="chart-sma-legend" id="ceAvg3SmaLegend"></div>
+
+            <div class="chart-state chart-loading-state" id="ceAvg3LoadingState" style="display:none;">
+                Loading ATM CE ±1 avg chart data...
+            </div>
+            <div class="chart-state chart-error-state" id="ceAvg3ErrorState" style="display:none;">
+                Unable to load ATM CE ±1 avg chart data.
+            </div>
+            <div class="chart-state chart-empty-state" id="ceAvg3NoDataState">
+                No ATM CE ±1 avg chart data available for the selected filters.
+            </div>
+
+            <div class="chart-canvas-wrap" id="ceAvg3ChartWrap">
+                <div class="chart-canvas" id="ceAvg3Chart"></div>
+                <!-- Overlaid on the wrap, not the canvas: renderChart clears the
+                     canvas element's innerHTML before creating the chart. -->
+                <div class="chart-zoom" role="group" aria-label="Zoom">
+                    <button type="button" class="chart-zoom-btn" data-zoom="in"
+                            data-zoom-chart="CE_AVG3" title="Zoom in" aria-label="Zoom in">+</button>
+                    <button type="button" class="chart-zoom-btn" data-zoom="out"
+                            data-zoom-chart="CE_AVG3" title="Zoom out" aria-label="Zoom out">&minus;</button>
+                </div>
+            </div>
+        </article>
+
+        <!-- Row 6: ATM-2, ATM-1, ATM, ATM+1, ATM+2. -->
+        <article class="glass-card chart-pane" id="peAvg5Pane">
+            <div class="card-header">
+                <h3 id="peAvg5PaneTitle">ATM PE ±2 avg</h3>
+                <span class="badge badge-info pane-timeframe-badge" id="peAvg5ActiveTimeframe">5m</span>
+            </div>
+
+            <div class="chart-pane-meta" id="peAvg5Meta">
+                <span><strong>Date</strong> <span id="peAvg5SelectedDate">-</span></span>
+                <span><strong>Index</strong> <span id="peAvg5SelectedIndex">NIFTY</span></span>
+                <span><strong>Expiry</strong> <span id="peAvg5ExpiryDate">-</span></span>
+                <span><strong>Strike</strong> <span id="peAvg5AtmStrike">-</span></span>
+            </div>
+
+            <div class="chart-sma-legend" id="peAvg5SmaLegend"></div>
+
+            <div class="chart-state chart-loading-state" id="peAvg5LoadingState" style="display:none;">
+                Loading ATM PE ±2 avg chart data...
+            </div>
+            <div class="chart-state chart-error-state" id="peAvg5ErrorState" style="display:none;">
+                Unable to load ATM PE ±2 avg chart data.
+            </div>
+            <div class="chart-state chart-empty-state" id="peAvg5NoDataState">
+                No ATM PE ±2 avg chart data available for the selected filters.
+            </div>
+
+            <div class="chart-canvas-wrap" id="peAvg5ChartWrap">
+                <div class="chart-canvas" id="peAvg5Chart"></div>
+                <!-- Overlaid on the wrap, not the canvas: renderChart clears the
+                     canvas element's innerHTML before creating the chart. -->
+                <div class="chart-zoom" role="group" aria-label="Zoom">
+                    <button type="button" class="chart-zoom-btn" data-zoom="in"
+                            data-zoom-chart="PE_AVG5" title="Zoom in" aria-label="Zoom in">+</button>
+                    <button type="button" class="chart-zoom-btn" data-zoom="out"
+                            data-zoom-chart="PE_AVG5" title="Zoom out" aria-label="Zoom out">&minus;</button>
+                </div>
+            </div>
+        </article>
+
+        <article class="glass-card chart-pane" id="ceAvg5Pane">
+            <div class="card-header">
+                <h3 id="ceAvg5PaneTitle">ATM CE ±2 avg</h3>
+                <span class="badge badge-info pane-timeframe-badge" id="ceAvg5ActiveTimeframe">5m</span>
+            </div>
+
+            <div class="chart-pane-meta" id="ceAvg5Meta">
+                <span><strong>Date</strong> <span id="ceAvg5SelectedDate">-</span></span>
+                <span><strong>Index</strong> <span id="ceAvg5SelectedIndex">NIFTY</span></span>
+                <span><strong>Expiry</strong> <span id="ceAvg5ExpiryDate">-</span></span>
+                <span><strong>Strike</strong> <span id="ceAvg5AtmStrike">-</span></span>
+            </div>
+
+            <div class="chart-sma-legend" id="ceAvg5SmaLegend"></div>
+
+            <div class="chart-state chart-loading-state" id="ceAvg5LoadingState" style="display:none;">
+                Loading ATM CE ±2 avg chart data...
+            </div>
+            <div class="chart-state chart-error-state" id="ceAvg5ErrorState" style="display:none;">
+                Unable to load ATM CE ±2 avg chart data.
+            </div>
+            <div class="chart-state chart-empty-state" id="ceAvg5NoDataState">
+                No ATM CE ±2 avg chart data available for the selected filters.
+            </div>
+
+            <div class="chart-canvas-wrap" id="ceAvg5ChartWrap">
+                <div class="chart-canvas" id="ceAvg5Chart"></div>
+                <!-- Overlaid on the wrap, not the canvas: renderChart clears the
+                     canvas element's innerHTML before creating the chart. -->
+                <div class="chart-zoom" role="group" aria-label="Zoom">
+                    <button type="button" class="chart-zoom-btn" data-zoom="in"
+                            data-zoom-chart="CE_AVG5" title="Zoom in" aria-label="Zoom in">+</button>
+                    <button type="button" class="chart-zoom-btn" data-zoom="out"
+                            data-zoom-chart="CE_AVG5" title="Zoom out" aria-label="Zoom out">&minus;</button>
+                </div>
+            </div>
+        </article>
+
     </section>
 </main>
 

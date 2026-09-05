@@ -425,7 +425,7 @@
         if (o.instrumentName) p.set('indexSymbol', o.instrumentName);
         if (o.optionStrike !== null && o.optionStrike !== undefined) p.set('strike', o.optionStrike);
         return '<a class="btn btn-ghost" style="padding:2px 8px;font-size:11px;" target="_blank" rel="noopener"'
-             + ' title="Open ' + day + ' in the chart dashboard"'
+             + ' title="Chart the 45 days ending ' + day + ' — this trade&#39;s session is the right-hand edge"'
              + ' href="/charts/dashboard?' + p.toString() + '">Chart</a>';
     }
 

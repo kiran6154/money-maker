@@ -274,6 +274,47 @@
 
         .badge-auto { background: rgba(255,149,0,0.18); color: #b15e00; }
         .badge-manual { background: rgba(120,120,128,0.14); color: var(--text-muted); }
+
+        /* ── Tabs inside a collapsible card ──
+           Two cards now carry several tools each (Auto configs, Bulk edit).
+           Panes are display:none rather than removed so every panel's JS can
+           still find its elements at load time — the pre-tab code queried them
+           once at IIFE start and would break on a lazily-built DOM. */
+        .tc-tabs {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+            border-bottom: 1px solid var(--border, rgba(255,255,255,.12));
+            margin: 0 0 14px;
+        }
+        .tc-tab {
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            font: inherit;
+            font-size: 13px;
+            padding: 7px 14px;
+            margin-bottom: -1px;
+            border-radius: 6px 6px 0 0;
+        }
+        .tc-tab:hover { color: var(--text, #fff); background: rgba(255,255,255,.04); }
+        .tc-tab.is-active {
+            color: var(--text, #fff);
+            border-bottom-color: var(--accent, #4f8cff);
+            font-weight: 600;
+        }
+        /* Delete reads as destructive before it is clicked, not after. */
+        .tc-tab-danger.is-active { border-bottom-color: var(--danger, #ff5c5c); }
+        .tc-pane { display: none; }
+        .tc-pane.is-active { display: block; }
+        .tc-pane-hint {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin: 0 0 10px;
+            line-height: 1.5;
+        }
     </style>
 </head>
 <body>
@@ -320,234 +361,277 @@
         </div>
     </div>
 
-    <!-- ─────────── Generate AUTO configs (trade-config domain, not backtest) ─────────── -->
-    <div class="glass-card" style="margin-bottom: 18px;">
-        <div class="card-header">
-            <h3>⚙ Generate AUTO configs</h3>
+    <!-- ─────────── Auto configs — generate / tune / delete ───────────
+         One card for the whole auto-generation lifecycle, which used to be three
+         stacked cards: what the detector scans (Detection rules), running it
+         (Generate), and removing a run (Delete). Tabbed rather than merged — the
+         three do different things to the same fleet, and Delete in particular
+         earns a deliberate click rather than sitting open beside Generate. -->
+    <div id="auto-card" class="glass-card bd-collapsed" style="margin-bottom: 18px;">
+        <div class="bd-header" id="auto-toggle">
+            <span class="bd-caret">▸</span>
+            <h3>⚙ Auto configs</h3>
             <span class="badge badge-info" id="gen-status">idle</span>
             <div class="spacer"></div>
-            <span class="bd-hint">Runs the EOD downtrend detector per session — idempotent, skips covered days</span>
-        </div>
-        <div style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; padding-top:6px;">
-            <div class="form-row">
-                <label for="gen-from">From</label>
-                <input id="gen-from" type="date" class="form-control" />
-            </div>
-            <div class="form-row">
-                <label for="gen-to">To</label>
-                <input id="gen-to" type="date" class="form-control" />
-            </div>
-            <div class="form-row">
-                <label for="gen-strategies" title="Generate only for the selected strategies this run (Ctrl/Cmd-click to pick several, or to clear). No selection = every strategy tagged on the rules. A selected strategy still needs its rule tag and an enabled strategy_defaults row — the selection narrows the standing setup, it cannot widen it.">Strategies</label>
-                <select id="gen-strategies" class="form-control" multiple size="4" style="min-width:150px;">
-                    <option disabled>loading…</option>
-                </select>
-            </div>
-            <button id="gen-run" class="btn btn-primary" type="button">⚙ Generate</button>
-        </div>
-        <div id="gen-result" style="margin-top:10px; font-size:13px; color:var(--text-muted);"></div>
-    </div>
-
-    <!-- ─────────── Detection rules (collapsed) ───────────
-         Front end for changeset 039's per-rule grid: which SMAs / timeframes a
-         sma_downtrend_rule scans and which EodTrendScanner judges it. Grid +
-         enabled only — the rule's thresholds and bracket stay SQL-only. -->
-    <div id="dr-card" class="glass-card bd-collapsed" style="margin-bottom: 18px;">
-        <div class="bd-header" id="dr-toggle">
-            <span class="bd-caret">▸</span>
-            <h3>🧭 Detection rules</h3>
-            <span class="badge badge-info" id="dr-count">—</span>
-            <div class="spacer"></div>
-            <span class="bd-hint">Per-rule SMA grid, timeframes and indicator — what Generate scans. Blank = default grid.</span>
-        </div>
-        <div class="bd-body">
-            <div style="overflow-x:auto;">
-                <table class="report-table" id="dr-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Instrument</th>
-                            <th title="Strategies the rule generates for (enabled tags, or its primary)">Strategies</th>
-                            <th title="Comma list from 20, 50, 100, 200, 500. Blank resets to 50,100,200,500.">SMA periods</th>
-                            <th title="Comma list of minutes, e.g. 5,15. Blank resets to 5,15.">Timeframes (min)</th>
-                            <th title="Which scanner judges the leg. New indicators appear here when their scanner bean is deployed.">Indicator</th>
-                            <th title="max_deviation / start_time — edit in SQL">Strictness</th>
-                            <th title="target_pct / sl_pct / max SL — copied onto generated configs; edit in SQL or retune generated rows with Bulk edit">Bracket</th>
-                            <th title="Premium band copied onto generated configs">Band</th>
-                            <th>Enabled</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody id="dr-rows"></tbody>
-                </table>
-            </div>
-            <div id="dr-empty" style="display:none; color:var(--text-muted); padding:10px 0;">
-                No <code>sma_downtrend_rule</code> rows yet — insert one (see docs/EOD_DOWNTREND.md sample) and reopen this panel.
-            </div>
-            <div id="dr-result" style="margin-top:8px; font-size:13px; color:var(--text-muted);"></div>
-        </div>
-    </div>
-
-    <!-- ─────────── Bulk delete of auto-generated configs (collapsed) ─────────── -->
-    <div id="bd-card" class="glass-card bd-collapsed" style="margin-bottom: 18px;">
-        <div class="bd-header" id="bd-toggle">
-            <span class="bd-caret">▸</span>
-            <h3>🗑 Bulk delete configs</h3>
-            <span class="badge badge-warn" id="bd-source-badge">AUTO_DOWNTREND</span>
-            <div class="spacer"></div>
-            <span id="bd-hint" class="bd-hint">Manual configs are never affected</span>
+            <span class="bd-hint">Generate the fleet, tune what the detector scans, or delete a run</span>
         </div>
 
         <div class="bd-body">
-            <div class="bd-modes">
-                <label class="bd-radio">
-                    <input type="radio" name="bd-mode" value="TRADING_DATE" checked />
-                    <span>Trading date</span>
-                </label>
-                <label class="bd-radio">
-                    <input type="radio" name="bd-mode" value="UPDATED_RANGE" />
-                    <span>Generation run</span>
-                </label>
-
-                <div class="bd-source" id="bd-source-wrap">
-                    <label for="bd-source">Source</label>
-                    <select id="bd-source" class="form-control">
-                        <option value="AUTO_DOWNTREND" selected>AUTO_DOWNTREND (generated)</option>
-                        <option value="MANUAL">MANUAL (hand-written)</option>
-                    </select>
-                </div>
+            <div class="tc-tabs" role="tablist" aria-label="Auto config tools">
+                <button class="tc-tab is-active" type="button" role="tab" aria-selected="true" data-pane="auto-generate">⚙ Generate</button>
+                <button class="tc-tab" type="button" role="tab" aria-selected="false" data-pane="auto-rules">🧭 Detection rules</button>
+                <button class="tc-tab tc-tab-danger" type="button" role="tab" aria-selected="false" data-pane="auto-delete">🗑 Delete</button>
             </div>
 
-            <div class="bd-manual-warn">
-                ⚠ Aimed at <b>MANUAL</b> configs — the ones you wrote by hand, including
-                anything live trading uses. Nothing here is regenerable.
+            <div class="tc-pane is-active" id="auto-generate" role="tabpanel">
+                <div class="tc-pane-hint"><span class="bd-hint">Runs the EOD downtrend detector per session — idempotent, skips covered days</span></div>
+                <div style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; padding-top:6px;">
+                    <div class="form-row">
+                        <label for="gen-from">From</label>
+                        <input id="gen-from" type="date" class="form-control" />
+                    </div>
+                    <div class="form-row">
+                        <label for="gen-to">To</label>
+                        <input id="gen-to" type="date" class="form-control" />
+                    </div>
+                    <div class="form-row">
+                        <label for="gen-strategies" title="Generate only for the selected strategies this run (Ctrl/Cmd-click to pick several, or to clear). No selection = every strategy tagged on the rules. A selected strategy still needs its rule tag and an enabled strategy_defaults row — the selection narrows the standing setup, it cannot widen it.">Strategies</label>
+                        <select id="gen-strategies" class="form-control" multiple size="4" style="min-width:150px;">
+                            <option disabled>loading…</option>
+                        </select>
+                    </div>
+                    <button id="gen-run" class="btn btn-primary" type="button">⚙ Generate</button>
+                </div>
+                <div id="gen-result" style="margin-top:10px; font-size:13px; color:var(--text-muted);"></div>
             </div>
 
-            <!-- Calendar picker -->
-            <div id="bd-calendar-pane">
-                <div class="bd-cal-nav">
-                    <button id="bd-prev-month" class="btn btn-ghost" type="button">‹</button>
-                    <span id="bd-month-label" class="bd-month-label">—</span>
-                    <button id="bd-next-month" class="btn btn-ghost" type="button">›</button>
-                    <div class="spacer"></div>
-                    <button id="bd-select-month" class="btn btn-ghost" type="button">Select all in month</button>
+            <div class="tc-pane" id="auto-rules" role="tabpanel">
+                <div class="tc-pane-hint">
+                    <span class="badge badge-info" id="dr-count">—</span>
+                    Per-rule SMA grid, timeframes and indicator — what Generate scans. Blank = default grid.
                 </div>
-
-                <div class="bd-cal-dow">
-                    <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span>
-                    <span>Fri</span><span>Sat</span><span>Sun</span>
+                <div style="overflow-x:auto;">
+                    <table class="report-table" id="dr-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Instrument</th>
+                                <th title="Strategies the rule generates for (enabled tags, or its primary)">Strategies</th>
+                                <th title="Comma list from 20, 50, 100, 200, 500. Blank resets to 50,100,200,500.">SMA periods</th>
+                                <th title="Comma list of minutes, e.g. 5,15. Blank resets to 5,15.">Timeframes (min)</th>
+                                <th title="Which scanner judges the leg. New indicators appear here when their scanner bean is deployed.">Indicator</th>
+                                <th title="max_deviation / start_time — edit in SQL">Strictness</th>
+                                <th title="target_pct / sl_pct / max SL — copied onto generated configs; edit in SQL or retune generated rows with Bulk edit">Bracket</th>
+                                <th title="Premium band copied onto generated configs">Band</th>
+                                <th>Enabled</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="dr-rows"></tbody>
+                    </table>
                 </div>
-                <div id="bd-cal-grid" class="bd-cal-grid"></div>
-
-                <div class="bd-legend">
-                    <span class="bd-chip bd-chip-sel"></span> selected
-                    <span class="bd-chip bd-chip-has"></span> has configs
-                    <span class="bd-chip bd-chip-none"></span> none
+                <div id="dr-empty" style="display:none; color:var(--text-muted); padding:10px 0;">
+                    No <code>sma_downtrend_rule</code> rows yet — insert one (see docs/EOD_DOWNTREND.md sample) and reopen this panel.
                 </div>
+                <div id="dr-result" style="margin-top:8px; font-size:13px; color:var(--text-muted);"></div>
             </div>
 
-            <!-- Run picker -->
-            <div id="bd-runs-pane" style="display:none;">
-                <div id="bd-runs-list" class="bd-runs-list"></div>
-            </div>
+            <div class="tc-pane" id="auto-delete" role="tabpanel">
+                <div class="tc-pane-hint">
+                    <span class="badge badge-warn" id="bd-source-badge">AUTO_DOWNTREND</span>
+                    <span id="bd-hint">Manual configs are never affected</span>
+                </div>
+                <div class="bd-modes">
+                    <label class="bd-radio">
+                        <input type="radio" name="bd-mode" value="TRADING_DATE" checked />
+                        <span>Trading date</span>
+                    </label>
+                    <label class="bd-radio">
+                        <input type="radio" name="bd-mode" value="UPDATED_RANGE" />
+                        <span>Generation run</span>
+                    </label>
 
-            <div id="bd-summary" class="bd-summary">Nothing selected.</div>
+                    <div class="bd-source" id="bd-source-wrap">
+                        <label for="bd-source">Source</label>
+                        <select id="bd-source" class="form-control">
+                            <option value="AUTO_DOWNTREND" selected>AUTO_DOWNTREND (generated)</option>
+                            <option value="MANUAL">MANUAL (hand-written)</option>
+                        </select>
+                    </div>
+                </div>
 
-            <div class="bd-actions">
-                <span class="bd-hint" title="Deleting a config removes its trade_order rows, timeframe children and journal rows with it. Only configs with OPEN trades are skipped — force-close those positions first.">
-                    Deletes each config's trades and references with it; configs with OPEN trades are skipped.
-                </span>
-                <input id="bd-force" type="checkbox" style="display:none;" checked />
-                <button id="bd-clear" class="btn btn-ghost" type="button">Clear</button>
-                <button id="bd-delete" class="btn btn-danger" type="button" disabled>🗑 Delete selected</button>
+                <div class="bd-manual-warn">
+                    ⚠ Aimed at <b>MANUAL</b> configs — the ones you wrote by hand, including
+                    anything live trading uses. Nothing here is regenerable.
+                </div>
+
+                <!-- Calendar picker -->
+                <div id="bd-calendar-pane">
+                    <div class="bd-cal-nav">
+                        <button id="bd-prev-month" class="btn btn-ghost" type="button">‹</button>
+                        <span id="bd-month-label" class="bd-month-label">—</span>
+                        <button id="bd-next-month" class="btn btn-ghost" type="button">›</button>
+                        <div class="spacer"></div>
+                        <button id="bd-select-month" class="btn btn-ghost" type="button">Select all in month</button>
+                    </div>
+
+                    <div class="bd-cal-dow">
+                        <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span>
+                        <span>Fri</span><span>Sat</span><span>Sun</span>
+                    </div>
+                    <div id="bd-cal-grid" class="bd-cal-grid"></div>
+
+                    <div class="bd-legend">
+                        <span class="bd-chip bd-chip-sel"></span> selected
+                        <span class="bd-chip bd-chip-has"></span> has configs
+                        <span class="bd-chip bd-chip-none"></span> none
+                    </div>
+                </div>
+
+                <!-- Run picker -->
+                <div id="bd-runs-pane" style="display:none;">
+                    <div id="bd-runs-list" class="bd-runs-list"></div>
+                </div>
+
+                <div id="bd-summary" class="bd-summary">Nothing selected.</div>
+
+                <div class="bd-actions">
+                    <span class="bd-hint" title="Deleting a config removes its trade_order rows, timeframe children and journal rows with it. Only configs with OPEN trades are skipped — force-close those positions first.">
+                        Deletes each config's trades and references with it; configs with OPEN trades are skipped.
+                    </span>
+                    <input id="bd-force" type="checkbox" style="display:none;" checked />
+                    <button id="bd-clear" class="btn btn-ghost" type="button">Clear</button>
+                    <button id="bd-delete" class="btn btn-danger" type="button" disabled>🗑 Delete selected</button>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- ─────────── Bulk edit configs (collapsed) ───────────
-         One field-set applied to every matching config in a single call
-         (POST /api/trade-configs/auto/bulk-update). Blank fields are left
-         unchanged on every row — this is a patch, not a replacement. -->
+    <!-- ─────────── Bulk edit — config fields / strategy bracket ───────────
+         Both tabs answer "change how the existing fleet trades", so they share a
+         card. They write different tables and are scoped differently, which the
+         Strategy bracket tab says on its face: bulk edit patches trade_config
+         rows matching Source × Strategy, while a bracket mode is one
+         strategy_defaults row keyed by strategy alone. -->
     <div id="be-card" class="glass-card bd-collapsed" style="margin-bottom: 18px;">
         <div class="bd-header" id="be-toggle">
             <span class="bd-caret">▸</span>
             <h3>✎ Bulk edit configs</h3>
             <span class="badge badge-warn" id="be-source-badge">AUTO_DOWNTREND</span>
             <div class="spacer"></div>
-            <span class="bd-hint">SL / target / band for all matching configs at once — blank fields stay as they are</span>
+            <span class="bd-hint">Retune the fleet in one call — blank fields stay as they are</span>
         </div>
 
         <div class="bd-body">
-            <div style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px;">
-                <div class="form-row">
-                    <label for="be-source">Source</label>
-                    <select id="be-source" class="form-control">
-                        <option value="AUTO_DOWNTREND" selected>AUTO_DOWNTREND (generated)</option>
-                        <option value="MANUAL">MANUAL (hand-written)</option>
-                    </select>
-                </div>
-                <div class="form-row">
-                    <label for="be-strategy" title="Configs the strategy actually runs — tagged in strategy_ids, or carrying it as primary">Strategy</label>
-                    <select id="be-strategy" class="form-control">
-                        <option value="">All strategies</option>
-                    </select>
-                </div>
-                <span class="bd-hint">Applies to every trading date of the selected source — the whole fleet in one update</span>
+            <div class="tc-tabs" role="tablist" aria-label="Bulk edit tools">
+                <button class="tc-tab is-active" type="button" role="tab" aria-selected="true" data-pane="be-fields">✎ Config fields</button>
+                <button class="tc-tab" type="button" role="tab" aria-selected="false" data-pane="be-bracket">⚖️ Strategy bracket</button>
             </div>
 
-            <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap:12px; margin-bottom:12px;">
-                <div class="form-row">
-                    <label for="be-target-pct" title="Fraction of entry premium, 0.20 = 20%. Overrides the absolute target.">Target % (0.20)</label>
-                    <input id="be-target-pct" type="number" step="0.01" min="0" class="form-control" placeholder="unchanged" />
+            <div class="tc-pane is-active" id="be-fields" role="tabpanel">
+                <div style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px;">
+                    <div class="form-row">
+                        <label for="be-source">Source</label>
+                        <select id="be-source" class="form-control">
+                            <option value="AUTO_DOWNTREND" selected>AUTO_DOWNTREND (generated)</option>
+                            <option value="MANUAL">MANUAL (hand-written)</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label for="be-strategy" title="Configs the strategy actually runs — tagged in strategy_ids, or carrying it as primary">Strategy</label>
+                        <select id="be-strategy" class="form-control">
+                            <option value="">All strategies</option>
+                        </select>
+                    </div>
+                    <span class="bd-hint">Applies to every trading date of the selected source — the whole fleet in one update</span>
                 </div>
-                <div class="form-row">
-                    <label for="be-sl-pct" title="Fraction of entry premium, 0.30 = 30%.">SL % (0.30)</label>
-                    <input id="be-sl-pct" type="number" step="0.01" min="0" class="form-control" placeholder="unchanged" />
+
+                <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap:12px; margin-bottom:12px;">
+                    <div class="form-row">
+                        <label for="be-target-pct" title="Fraction of entry premium, 0.20 = 20%. Overrides the absolute target.">Target % (0.20)</label>
+                        <input id="be-target-pct" type="number" step="0.01" min="0" class="form-control" placeholder="unchanged" />
+                    </div>
+                    <div class="form-row">
+                        <label for="be-sl-pct" title="Fraction of entry premium, 0.30 = 30%.">SL % (0.30)</label>
+                        <input id="be-sl-pct" type="number" step="0.01" min="0" class="form-control" placeholder="unchanged" />
+                    </div>
+                    <div class="form-row">
+                        <label for="be-target" title="Absolute fallback bracket, premium points">Target (pts)</label>
+                        <input id="be-target" type="number" step="0.05" class="form-control" placeholder="unchanged" />
+                    </div>
+                    <div class="form-row">
+                        <label for="be-stop-loss" title="Absolute fallback bracket, premium points">Stop-loss (pts)</label>
+                        <input id="be-stop-loss" type="number" step="0.05" class="form-control" placeholder="unchanged" />
+                    </div>
+                    <div class="form-row">
+                        <label for="be-max-sl" title="Ceiling in premium points on the resolved stop — the lower of sl% × entry and this wins">Max SL (pts)</label>
+                        <input id="be-max-sl" type="number" step="0.05" min="0" class="form-control" placeholder="unchanged" />
+                    </div>
+                    <div class="form-row">
+                        <label for="be-max-loss">Max loss</label>
+                        <input id="be-max-loss" type="number" step="1" class="form-control" placeholder="unchanged" />
+                    </div>
+                    <div class="form-row">
+                        <label for="be-min-price">Min premium</label>
+                        <input id="be-min-price" type="number" step="1" min="0" class="form-control" placeholder="unchanged" />
+                    </div>
+                    <div class="form-row">
+                        <label for="be-max-price">Max premium</label>
+                        <input id="be-max-price" type="number" step="1" min="0" class="form-control" placeholder="unchanged" />
+                    </div>
+                    <div class="form-row">
+                        <label for="be-trail" title="Ascending trigger:lock pairs in points. Tick the box below to remove the ladder instead.">Trail ladder</label>
+                        <input id="be-trail" type="text" class="form-control" placeholder="unchanged — e.g. 25:2,50:25" />
+                    </div>
                 </div>
-                <div class="form-row">
-                    <label for="be-target" title="Absolute fallback bracket, premium points">Target (pts)</label>
-                    <input id="be-target" type="number" step="0.05" class="form-control" placeholder="unchanged" />
+
+                <div class="bd-actions">
+                    <label class="bd-radio" title="Sends an empty ladder: matching configs keep their fixed stop for the whole trade.">
+                        <input id="be-clear-trail" type="checkbox" />
+                        <span>Remove trail ladder</span>
+                    </label>
+                    <div class="spacer"></div>
+                    <span id="be-summary" class="bd-hint"></span>
+                    <button id="be-clear" class="btn btn-ghost" type="button"
+                            title="Discard edits and reload the fleet's current values">↺ Reset</button>
+                    <button id="be-apply" class="btn btn-primary" type="button">✎ Preview &amp; apply…</button>
                 </div>
-                <div class="form-row">
-                    <label for="be-stop-loss" title="Absolute fallback bracket, premium points">Stop-loss (pts)</label>
-                    <input id="be-stop-loss" type="number" step="0.05" class="form-control" placeholder="unchanged" />
-                </div>
-                <div class="form-row">
-                    <label for="be-max-sl" title="Ceiling in premium points on the resolved stop — the lower of sl% × entry and this wins">Max SL (pts)</label>
-                    <input id="be-max-sl" type="number" step="0.05" min="0" class="form-control" placeholder="unchanged" />
-                </div>
-                <div class="form-row">
-                    <label for="be-max-loss">Max loss</label>
-                    <input id="be-max-loss" type="number" step="1" class="form-control" placeholder="unchanged" />
-                </div>
-                <div class="form-row">
-                    <label for="be-min-price">Min premium</label>
-                    <input id="be-min-price" type="number" step="1" min="0" class="form-control" placeholder="unchanged" />
-                </div>
-                <div class="form-row">
-                    <label for="be-max-price">Max premium</label>
-                    <input id="be-max-price" type="number" step="1" min="0" class="form-control" placeholder="unchanged" />
-                </div>
-                <div class="form-row">
-                    <label for="be-trail" title="Ascending trigger:lock pairs in points. Tick the box below to remove the ladder instead.">Trail ladder</label>
-                    <input id="be-trail" type="text" class="form-control" placeholder="unchanged — e.g. 25:2,50:25" />
-                </div>
+                <div id="be-result" style="margin-top:8px; font-size:13px; color:var(--text-muted);"></div>
             </div>
 
-            <div class="bd-actions">
-                <label class="bd-radio" title="Sends an empty ladder: matching configs keep their fixed stop for the whole trade.">
-                    <input id="be-clear-trail" type="checkbox" />
-                    <span>Remove trail ladder</span>
-                </label>
-                <div class="spacer"></div>
-                <span id="be-summary" class="bd-hint"></span>
-                <button id="be-clear" class="btn btn-ghost" type="button"
-                        title="Discard edits and reload the fleet's current values">↺ Reset</button>
-                <button id="be-apply" class="btn btn-primary" type="button">✎ Preview &amp; apply…</button>
+            <div class="tc-pane" id="be-bracket" role="tabpanel">
+                <div class="tc-pane-hint">
+                    <span class="badge badge-info" id="sd-count">—</span>
+                    Points or percent, per strategy — which column decides the exit.
+                    <b>Strategy-level:</b> this is one <code>strategy_defaults</code> row per strategy,
+                    so the Source and Strategy filters on the Config fields tab do not apply here.
+                    Applies from the next trade opened.
+                </div>
+                <div style="overflow-x:auto;">
+                    <table class="report-table" id="sd-table">
+                        <thead>
+                            <tr>
+                                <th>Strategy</th>
+                                <th title="Direction this strategy's generated configs trade">Side</th>
+                                <th title="POINTS reads trade_config.target; PERCENT reads target_pct × the premium the trade opened at">Target from</th>
+                                <th title="POINTS reads trade_config.stop_loss; PERCENT reads sl_pct × the premium the trade opened at. The max_sl_points ceiling still caps whichever wins.">Stop-loss from</th>
+                                <th title="max_loss / no_of_trades / no_of_parallel_trades — edit in SQL">Caps</th>
+                                <th title="TRUE = generated configs trade the mirror of the detected leg (changeset 040) — edit in SQL">Mirror</th>
+                                <th title="FALSE = the EOD detector skips this strategy — edit in SQL">Auto</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="sd-rows"></tbody>
+                    </table>
+                </div>
+                <div id="sd-empty" style="display:none; color:var(--text-muted); padding:10px 0;">
+                    No <code>strategy_defaults</code> rows yet — insert one (see docs/EOD_DOWNTREND.md) and reopen this panel.
+                </div>
+                <div id="sd-result" style="margin-top:8px; font-size:13px; color:var(--text-muted);"></div>
             </div>
-            <div id="be-result" style="margin-top:8px; font-size:13px; color:var(--text-muted);"></div>
         </div>
     </div>
+
 
     <!-- Confirm dialog: populated from the server's own dry-run count -->
     <div id="bd-confirm" class="bd-modal" style="display:none;">
@@ -1382,8 +1466,11 @@
    the DOM — the only coupling is that a successful delete refreshes the table.
    ══════════════════════════════════════════════════════════════════════════ */
 (function bulkDelete() {
-    const card     = document.getElementById('bd-card');
-    const toggle   = document.getElementById('bd-toggle');
+    // The pane, not a card: .bd-card-manual gates the .bd-manual-warn banner
+    // inside it, and the banner moved into the Delete pane with the rest of the
+    // panel. Scoping it here also stops the MANUAL styling bleeding onto the
+    // Generate and Detection-rules tabs that now share the card.
+    const card     = document.getElementById('auto-delete');
     const grid     = document.getElementById('bd-cal-grid');
     const label    = document.getElementById('bd-month-label');
     const summary  = document.getElementById('bd-summary');
@@ -1615,12 +1702,9 @@
         renderSummary();
     });
 
-    toggle.addEventListener('click', () => {
-        const opening = card.classList.contains('bd-collapsed');
-        card.classList.toggle('bd-collapsed');
-        card.classList.toggle('bd-card-open');
-        if (opening && !state.days.size) loadCalendar();
-    });
+    // Collapse + tab switching belong to TcPanes now; this only says what to
+    // load the first time the Delete pane is actually on screen.
+    TcPanes.onFirstShow('auto-delete', () => { if (!state.days.size) loadCalendar(); });
 
     // ---------- delete ----------
     function buildRequest(dryRun) {
@@ -1707,6 +1791,68 @@
 })();
 </script>
 <script>
+// ─────────── Tabbed-card controller ───────────
+// Owns every `.bd-header` collapse and every `.tc-tab` switch on this page, so
+// the four panels below no longer each carry their own copy. Panels register
+// their lazy load with TcPanes.onFirstShow(paneId, fn) instead of hanging it off
+// their own toggle click.
+//
+// "Shown" deliberately means BOTH the card is expanded AND the pane's tab is
+// active. Firing on either alone would load Detection rules the moment someone
+// opened the card to run Generate — three panes, one wanted, two wasted calls.
+const TcPanes = (function () {
+    const once = {};
+    const fired = {};
+
+    function activePaneId(card) {
+        const pane = card.querySelector('.tc-pane.is-active');
+        return pane ? pane.id : null;
+    }
+
+    function fire(paneId) {
+        if (!paneId || fired[paneId]) return;
+        const pane = document.getElementById(paneId);
+        if (!pane || !pane.classList.contains('is-active')) return;
+        const card = pane.closest('.glass-card');
+        if (card && card.classList.contains('bd-collapsed')) return;
+        const fn = once[paneId];
+        if (!fn) return;
+        fired[paneId] = true;
+        fn();
+    }
+
+    document.addEventListener('click', function (ev) {
+        const tab = ev.target.closest('.tc-tab');
+        if (tab) {
+            const strip = tab.closest('.tc-tabs');
+            const card = tab.closest('.glass-card');
+            const target = tab.getAttribute('data-pane');
+            strip.querySelectorAll('.tc-tab').forEach(function (b) {
+                const on = b === tab;
+                b.classList.toggle('is-active', on);
+                b.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+            card.querySelectorAll('.tc-pane').forEach(function (pane) {
+                pane.classList.toggle('is-active', pane.id === target);
+            });
+            fire(target);
+            return;
+        }
+        const header = ev.target.closest('.bd-header');
+        if (header && header.parentElement.classList.contains('glass-card')) {
+            const card = header.parentElement;
+            card.classList.toggle('bd-collapsed');
+            card.classList.toggle('bd-card-open');
+            fire(activePaneId(card));
+        }
+    });
+
+    return {
+        /** Run `fn` the first time `paneId` is actually visible. */
+        onFirstShow: function (paneId, fn) { once[paneId] = fn; }
+    };
+})();
+
 // ─────────── Generate AUTO configs panel ───────────
 // Config generation is trade-config-domain work (POST /api/trade-configs/generate),
 // deliberately NOT on the backtest page: producing configs and replaying them
@@ -1784,8 +1930,6 @@
 // defaults true server-side), so the count confirmed is the server's own —
 // the same contract as the bulk delete above.
 (function () {
-    const card    = document.getElementById('be-card');
-    const toggle  = document.getElementById('be-toggle');
     const source  = document.getElementById('be-source');
     const badge   = document.getElementById('be-source-badge');
     const strategy = document.getElementById('be-strategy');
@@ -1796,11 +1940,7 @@
 
     const summaryEl = document.getElementById('be-summary');
 
-    toggle.addEventListener('click', () => {
-        card.classList.toggle('bd-collapsed');
-        card.classList.toggle('bd-card-open');
-        if (!card.classList.contains('bd-collapsed') && !prefillLoaded) prefill();
-    });
+    TcPanes.onFirstShow('be-fields', () => { if (!prefillLoaded) prefill(); });
 
     source.addEventListener('change', () => { badge.textContent = source.value; prefill(); });
     strategy.addEventListener('change', prefill);
@@ -1953,12 +2093,110 @@
 })();
 </script>
 <script>
+// ─────────── Strategy bracket panel ───────────
+// Front end for the per-strategy bracket mode (changeset 041):
+// GET /api/strategy-defaults, PUT /api/strategy-defaults/{id}/bracket-mode.
+// Loaded lazily on first expand, same as the Detection rules panel below.
+(function () {
+    const rows   = document.getElementById('sd-rows');
+    const count  = document.getElementById('sd-count');
+    const empty  = document.getElementById('sd-empty');
+    const table  = document.getElementById('sd-table');
+    const result = document.getElementById('sd-result');
+    let loaded = false;
+    let modes = ['POINTS', 'PERCENT'];
+
+    TcPanes.onFirstShow('be-bracket', () => { if (!loaded) load(); });
+
+    function esc(v) {
+        return String(v === null || v === undefined ? '' : v)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    }
+
+    async function load() {
+        result.textContent = '';
+        try {
+            const [modesRes, rowsRes] = await Promise.all([
+                fetch('/api/strategy-defaults/bracket-modes'),
+                fetch('/api/strategy-defaults')
+            ]);
+            modes = await modesRes.json();
+            render(await rowsRes.json());
+            loaded = true;
+        } catch (e) {
+            result.textContent = 'Failed to load strategy blocks: ' + e;
+        }
+    }
+
+    function modeSelect(cls, selected) {
+        const opts = modes.map(m =>
+            '<option value="' + esc(m) + '"' + (m === selected ? ' selected' : '') + '>'
+            + (m === 'POINTS' ? 'Points' : 'Percent') + '</option>').join('');
+        return '<select class="form-control ' + cls + '" style="min-width:96px;">' + opts + '</select>';
+    }
+
+    function render(list) {
+        rows.innerHTML = '';
+        count.textContent = list.length + ' strateg' + (list.length === 1 ? 'y' : 'ies');
+        table.style.display = list.length ? '' : 'none';
+        empty.style.display = list.length ? 'none' : '';
+        list.forEach(d => {
+            const tr = document.createElement('tr');
+            const caps = esc(d.maxLoss) + ' loss, ' + esc(d.noOfTrades) + '/day, '
+                       + esc(d.noOfParallelTrades) + ' parallel';
+            tr.innerHTML =
+                '<td><strong>S' + d.strategyId + '</strong></td>' +
+                '<td>' + esc(d.transactionType) + '</td>' +
+                '<td>' + modeSelect('sd-target-mode', d.targetMode) + '</td>' +
+                '<td>' + modeSelect('sd-sl-mode', d.slMode) + '</td>' +
+                '<td title="max_loss / no_of_trades / no_of_parallel_trades">' + caps + '</td>' +
+                '<td style="text-align:center;">' + (d.oppositeSide ? 'yes' : '—') + '</td>' +
+                '<td style="text-align:center;">' + (d.autoConfigEnabled ? 'on' : 'off') + '</td>' +
+                '<td><button class="btn btn-primary sd-save" data-strategy-id="' + d.strategyId + '" style="font-size:12px; padding:4px 12px;">Save</button></td>';
+            rows.appendChild(tr);
+        });
+    }
+
+    rows.addEventListener('click', async (ev) => {
+        const btn = ev.target.closest('.sd-save');
+        if (!btn) return;
+        const tr = btn.closest('tr');
+        const id = btn.getAttribute('data-strategy-id');
+        const body = {
+            targetMode: tr.querySelector('.sd-target-mode').value,
+            slMode:     tr.querySelector('.sd-sl-mode').value
+        };
+        btn.disabled = true;
+        btn.textContent = 'saving…';
+        try {
+            const r = await fetch('/api/strategy-defaults/' + id + '/bracket-mode', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const j = await r.json();
+            if (!r.ok) { alert(j.error || ('HTTP ' + r.status)); return; }
+            tr.querySelector('.sd-target-mode').value = j.targetMode;
+            tr.querySelector('.sd-sl-mode').value = j.slMode;
+            // "next trade", not "next run": OrderService reads strategy_defaults
+            // per order open, and open positions keep the bracket they were
+            // snapshotted with at entry.
+            result.textContent = 'Strategy ' + id + ' saved — target ' + j.targetMode
+                + ', SL ' + j.slMode + '. Applies to the next trade opened; '
+                + 'open positions keep the bracket they entered with.';
+        } catch (e) {
+            alert(String(e));
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Save';
+        }
+    });
+})();
+
 // ─────────── Detection rules panel ───────────
 // Front end for the per-rule grid (changeset 039): GET /api/downtrend-rules,
 // PUT /api/downtrend-rules/{id}/grid. Loaded lazily on first expand.
 (function () {
-    const card   = document.getElementById('dr-card');
-    const toggle = document.getElementById('dr-toggle');
     const rows   = document.getElementById('dr-rows');
     const count  = document.getElementById('dr-count');
     const empty  = document.getElementById('dr-empty');
@@ -1967,13 +2205,7 @@
     let loaded = false;
     let indicatorTypes = [];
 
-    toggle.addEventListener('click', async () => {
-        card.classList.toggle('bd-collapsed');
-        card.classList.toggle('bd-card-open');
-        if (!card.classList.contains('bd-collapsed') && !loaded) {
-            await load();
-        }
-    });
+    TcPanes.onFirstShow('auto-rules', () => { if (!loaded) load(); });
 
     function esc(v) {
         return String(v === null || v === undefined ? '' : v)

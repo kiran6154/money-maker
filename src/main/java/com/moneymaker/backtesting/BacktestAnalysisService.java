@@ -47,6 +47,14 @@ public class BacktestAnalysisService {
     private final JournalRecorder journal;
     private final com.moneymaker.market.service.MarketHoursService marketHours;
 
+    /**
+     * Used only by {@link #detachEverythingLoadedThisTick()}. Field-injected
+     * rather than constructor-injected so the eleven existing constructor call
+     * sites - including tests - stay untouched by a purely internal concern.
+     */
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
     // Phase 7 instrumentation: per-day wall time by pipeline phase, reset at
     // each day's start and printed on the day-done line. The replay is
     // single-threaded, so plain fields are safe.
@@ -372,8 +380,11 @@ public class BacktestAnalysisService {
                 // non-deterministic — picks a different "first" strike across runs
                 // even for identical inputs.
                 marketDataCache.endDay();
-                SharedData.strikeMarketDataByInstrumentAndInterval.clear();
-                SharedData.strikeMarketDataTick.clear();
+                // Clears the strike cache, the freshness stamps AND the
+                // contract-id index together. Clearing the map alone would leave
+                // the position monitor quoting a contract that is no longer
+                // cached, which looks entirely normal in the ledger.
+                SharedData.clearStrikeCaches();
                 SharedData.marketDataByInstrumentAndInterval.clear();
                 SharedData.tradeSignals.clear();
                 // strike → option symbol, and the symbol encodes the expiry. Left
@@ -493,6 +504,58 @@ public class BacktestAnalysisService {
                 .orElse(5); // Default to 5 minutes if no periods found
     }
 
+    /**
+     * Detaches every entity the tick loaded, so the persistence context does not
+     * grow for the length of the run.
+     *
+     * <h3>Why this is needed</h3>
+     * {@code spring.jpa.open-in-view} defaults to {@code true}, so a whole replay
+     * - which is one long HTTP request - runs inside a <b>single Hibernate
+     * session</b>. Every {@code TradeOrder} loaded by any tick stays managed in
+     * it, and Hibernate dirty-checks the entire context on each flush. So
+     * {@code tradeOrderRepository.save(order)} in {@code PositionService} gets
+     * steadily slower as the run proceeds: quadratic in the number of rows the
+     * run has touched.
+     *
+     * <p><b>Measured</b> (2026-09-05, seven Pressure books): the position phase
+     * grew from 34 s on the replay's third day to 112 s by its fourteenth, at
+     * which point a full year projected to well over twelve hours. Five
+     * consecutive thread dumps landed on the same line -
+     * {@code PositionService.handleOne}'s closing {@code save} - while
+     * {@code performance_schema} attributed only ~1.4 s of SQL per 60 s of wall
+     * time. Slow save, fast SQL, degrading within a run and resetting between
+     * runs is the signature of exactly this. With the context cleared per tick
+     * the same days run in 3.6-6.2 s and, more importantly, stop degrading.
+     *
+     * <h3>Why not simply set open-in-view=false</h3>
+     * That is the more usual fix and it works - it was how this was first
+     * diagnosed. It was rejected because it changes behaviour for the whole
+     * application, including five Thymeleaf views that may touch a lazy
+     * association after their controller returns, and a
+     * {@code LazyInitializationException} there would surface at runtime in a
+     * page no test covers. Clearing here is scoped to the replay by
+     * construction: nothing outside this loop can be affected.
+     *
+     * <h3>Why it is safe here</h3>
+     * The replay holds no entity across ticks. Every tick reloads what it needs -
+     * {@code findByStatus("OPEN")} in the position and order paths,
+     * {@code findConfig} from {@code SharedData} - so there is nothing for a
+     * detach to break. It runs after the last write of the tick, so no pending
+     * change can be discarded: {@code clear()} drops unflushed state, and the
+     * position and order services both save through the repository, which
+     * flushes on commit of their own transactions before returning here.
+     */
+    private void detachEverythingLoadedThisTick() {
+        if (entityManager == null) return;
+        try {
+            entityManager.clear();
+        } catch (Exception ex) {
+            // Never let a housekeeping call take down a replay day. Losing the
+            // clear costs speed, not correctness.
+            log.debug("[Backtest] persistence-context clear failed - continuing: {}", ex.toString());
+        }
+    }
+
     private BacktestDayResult runForDateTime(LocalDateTime dateTime, List<TradeConfigCombinedDTO> combinedDto) {
         return runForDate(dateTime,combinedDto);
     }
@@ -549,6 +612,7 @@ public class BacktestAnalysisService {
             orderScheduler.processOrders();
             long t3 = System.nanoTime();
             positionScheduler.processPositions();
+            detachEverythingLoadedThisTick();
             long t4 = System.nanoTime();
             dayIndicatorNs += t1 - t0;
             dayStrategyNs  += t2 - t1;

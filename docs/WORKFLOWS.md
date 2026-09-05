@@ -143,7 +143,7 @@ Every other doc in this folder explains one feature in depth. This one is differ
 |---|---|
 | Trigger | HTTP — `GET /charts/dashboard` (UI), `GET /api/charts/market-data` (data) |
 | Code | [`ChartDashboardApiController`](../src/main/java/com/moneymaker/chart/controller/ChartDashboardApiController.java) → `ChartDashboardService` (`TOKEN_BASED`) or `HistoricalIciciChartDashboardService` (`HISTORICAL_ICICI`) |
-| Reads | `market_data` **or** `historical_spot_candles`/`historical_option_candles` (user picks the source), plus `instrument`/`instrument_details`/`expiry_dates` |
+| Reads | `market_data` **or** `historical_spot_candles`/`historical_option_candles` (user picks the source), plus `instrument`/`instrument_details`/`expiry_dates`. The averaged ATM±N panes read a *ladder* of strikes per request rather than one — still the same tables, but several contracts' candles per pane |
 | Writes | Nothing — read-only |
 | Downstream | Purely a consumer of workflows ⑨ and ⑩. **Read-only, has no effect on any other workflow.** |
 | Full detail | [CHART_DASHBOARD.md](CHART_DASHBOARD.md) |

@@ -8,6 +8,7 @@ import com.moneymaker.entity.TradeConfig;
 import com.moneymaker.entity.TradeOrder;
 import com.moneymaker.journal.JournalRecorder;
 import com.moneymaker.journal.ObservationContextFactory;
+import com.moneymaker.repository.StrategyDefaultsRepository;
 import com.moneymaker.repository.TradeOrderRepository;
 import com.moneymaker.shared.data.SharedData;
 import com.moneymaker.telegram.NotificationService;
@@ -59,7 +60,8 @@ class OrderServiceSameSideCapTest {
 
         orderService = new OrderService(placementFactory, repo,
                 mock(NotificationService.class), mock(JournalRecorder.class),
-                mock(ObservationContextFactory.class));
+                mock(ObservationContextFactory.class),
+                mock(StrategyDefaultsRepository.class));
 
         SharedData.tradeSignals = new ConcurrentLinkedQueue<>();
     }

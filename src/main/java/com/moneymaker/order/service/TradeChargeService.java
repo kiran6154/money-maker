@@ -1,6 +1,7 @@
 package com.moneymaker.order.service;
 
 import com.moneymaker.entity.ChargeRate;
+import com.moneymaker.market.instrument.SyntheticUnderlyingContract;
 import com.moneymaker.entity.TradeOrder;
 import com.moneymaker.order.dto.TradeCharges;
 import com.moneymaker.repository.ChargeRateRepository;
@@ -59,13 +60,33 @@ public class TradeChargeService {
 
     /**
      * Costs one trade. Returns {@code null} when the row cannot be costed — no
-     * quantity, or no entry/exit price yet (an OPEN position has no exit leg).
+     * quantity, no entry/exit price yet (an OPEN position has no exit leg), or a
+     * synthetic underlying row, which has no contract note at all.
      */
     public TradeCharges compute(TradeOrder order, RateResolver rates) {
         if (order == null || order.getQuantity() == null || order.getQuantity() <= 0) {
             return null;
         }
         if (order.getEntryPrice() == null || order.getExitPrice() == null || order.getEntryTime() == null) {
+            return null;
+        }
+        // A spot-proxy row is not a tradeable contract and has no contract note.
+        // Costing it as an option is not a small error: this method treats
+        // entry_price as a PREMIUM, so a NIFTY level of ~21,600 x 75 becomes
+        // ~1.6 crore of "turnover" per leg, and STT / exchange / GST are levied
+        // on that. Observed in the wild as ~3,150 rupees of invented charges on
+        // a 78-trade January slice, which made net P&L unusable while gross was
+        // fine.
+        //
+        // Null rather than zero, deliberately: null already means "this row
+        // cannot be costed" everywhere downstream (TradeOrderView documents it,
+        // and the UI renders "not costed"), whereas zero would assert that the
+        // trade genuinely cost nothing to place. For the spot BASELINE book that
+        // distinction is the whole point - it is a hypothetical, not a free
+        // trade. PressureExportService reports it as 0 in its own rupee columns
+        // because a summary table needs a number, and that is a presentation
+        // choice made where the context is known.
+        if (SyntheticUnderlyingContract.isSyntheticUnderlying(order.getOptionToken())) {
             return null;
         }
 

@@ -100,6 +100,7 @@ traded* is in a table — including, since changeset 039, the SMA grid itself.
 | Which strike type | hardcoded ATM in `computeAtmStrike` |
 | `transaction_type`, `max_loss`, `no_of_trades`, `no_of_parrellel_trades` for the generated config | [`strategy_defaults`](#table-strategy_defaults) — one row per strategy (changeset 033) |
 | Which leg the generated config trades — detected side or its mirror | `strategy_defaults.opposite_side` (changeset 040) |
+| Which bracket column each side of the exit resolves from | `strategy_defaults.target_mode` / `sl_mode` (changeset 041) — `PERCENT` or `POINTS`, per side. Read at order time by `OrderService`, **not** stamped onto the generated config |
 | Whether a strategy may generate at all | `strategy_defaults.auto_config_enabled` |
 | `lot_quantity` | `instrument.lot_qty` — the contract's lot size, not a strategy constant (`strategy_defaults.lot_quantity` is only a fallback) |
 | Detection threshold (`max_deviation`, `start_time`) | `sma_downtrend_rule` |
@@ -317,6 +318,7 @@ table's current shape.**
 | [`034_create_sma_downtrend_rule_strategy.xml`](../src/main/resources/db/changelog/034_create_sma_downtrend_rule_strategy.xml) | Creates `sma_downtrend_rule_strategy`, backfilled one tag per rule from `sma_downtrend_rule.strategy_id`. |
 | [`039_add_downtrend_rule_indicator_grid.xml`](../src/main/resources/db/changelog/039_add_downtrend_rule_indicator_grid.xml) | Adds `sma_periods` / `timeframes_minutes` / `indicator_type` — the detection grid becomes per-rule data and the scan goes behind the `EodTrendScanner` seam. Defaults reproduce the old hardcoded grid; existing rows are backfilled with them. |
 | [`040_add_opposite_side_to_strategy_defaults.xml`](../src/main/resources/db/changelog/040_add_opposite_side_to_strategy_defaults.xml) | Adds `strategy_defaults.opposite_side` (default `FALSE`) — a strategy whose configs trade the mirror leg of the detected trend (`Strategy3`). Existing rows keep detected-side behaviour. |
+| [`041_add_bracket_mode_to_strategy_defaults.xml`](../src/main/resources/db/changelog/041_add_bracket_mode_to_strategy_defaults.xml) | Adds `strategy_defaults.target_mode` / `sl_mode` (default `PERCENT`) — which of `trade_config`'s two bracket shapes each side of the exit resolves from. Default reproduces the pre-041 rule, so no ledger moves until a mode is flipped. |
 
 Every existing `trade_config` row stays `MANUAL`. Auto-generated rows are
 stamped `AUTO_DOWNTREND` so the detector can dedupe its own output across
@@ -336,6 +338,7 @@ on every config it generates for that strategy.
 | `no_of_trades` | → `trade_config.no_of_trades`. |
 | `no_of_parallel_trades` | → `trade_config.no_of_parrellel_trades` (the typo is in that schema, not here). |
 | `auto_config_enabled` | Parks a strategy without deleting its block. |
+| `target_mode` / `sl_mode` | Changeset 041. `PERCENT` (default) resolves that side of the bracket from `trade_config.target_pct` / `sl_pct` × entry premium; `POINTS` resolves it from the absolute `trade_config.target` / `stop_loss`. **The one column here with a UI** — the [Strategy bracket panel](#strategy-bracket-panel) on `/trade-configs`; everything else in this table is SQL-only. Read at **order** time by `OrderService.bracketAtEntry` from the DTO's strategy — unlike every other column here, it is not stamped onto the generated config, so it also governs `MANUAL` configs that name the strategy. Each mode falls back to the other column when its own is unset. **Not** part of the sharing signature: the generated row carries both shapes regardless, so two strategies differing only in mode can share one config and still exit differently. An unparseable value is logged and degrades to `PERCENT` rather than blocking the trade. |
 | `opposite_side` | Changeset 040. `TRUE` writes this strategy's config for the **other** leg than the one the downtrend was detected on — [`Strategy3`](STRATEGIES.md#strategy-3--the-inverted-baseline-buy-side)'s mirror shape (PE downtrending → a CE BUY config), with the bracket basis measured on the traded leg. Default `FALSE` keeps detected-side behaviour; `Strategy4` wants `FALSE` (it fades the detected leg itself). Part of the sharing signature — a flipped and an unflipped strategy never share a config row. |
 
 **Only strategy 1 is seeded**, with the exact values from the switch that was
@@ -355,6 +358,44 @@ INSERT INTO strategy_defaults
    no_of_trades, no_of_parallel_trades, auto_config_enabled)
 VALUES (2, 'SELL', 1, <max_loss>, <trades>, <parallel>, TRUE);
 ```
+
+### Strategy bracket panel
+
+`target_mode` / `sl_mode` are the one part of a strategy block editable without
+SQL. On `/trade-configs`, open **✎ Bulk edit configs → ⚖️ Strategy bracket**: the
+tab lists every `strategy_defaults` row with two dropdowns — Points or Percent,
+per side — and a Save per row.
+
+It shares a card with bulk edit because both answer "change how the existing
+fleet trades", but the two are scoped differently and the tab says so on its
+face: **bulk edit patches `trade_config` rows matching Source × Strategy, while a
+bracket mode is one `strategy_defaults` row keyed by strategy alone.** The Source
+and Strategy selectors on the Config fields tab therefore do not narrow what a
+bracket save touches.
+
+| | |
+|---|---|
+| Read | `GET /api/strategy-defaults`, `GET /api/strategy-defaults/bracket-modes` |
+| Write | `PUT /api/strategy-defaults/{strategyId}/bracket-mode` — body `{targetMode, slMode}`, either may be `null` for "unchanged" |
+| Owner | `StrategyDefaultsAdminService` — controllers never write `strategy_defaults` directly |
+
+Three behaviours worth knowing:
+
+- **It rejects what `OrderService` tolerates.** The runtime degrades an
+  unreadable mode to `PERCENT` so a typo cannot stop trading; an interactive save
+  has a human attached, so the service refuses it and writes nothing. Values are
+  stored canonicalised, so the column never carries the casing someone typed.
+- **A missing row is an error, never an insert.** Creating one means choosing a
+  `transaction_type`, a `max_loss` and the trade counts — the trading decisions
+  CLAUDE.md #9 forbids guessing. Insert it with the SQL above first.
+- **No cache to invalidate.** `OrderService` reads `strategy_defaults` fresh on
+  every order open, so a save applies to the **next trade opened**, not at the
+  next config-cache refresh. Positions already open keep the bracket they were
+  snapshotted with at entry (changeset 011) — which is the point of snapshotting.
+
+Switching a strategy from `PERCENT` to `POINTS` changes what price closes its
+trades, so it is a Rule 0 behaviour change: pair it with a before/after backtest
+on the same window and record both numbers.
 
 ### Table: `sma_downtrend_rule_strategy`
 
@@ -410,7 +451,8 @@ its config twice for one detected downtrend.
 | New SMA period beyond 20/50/100/200/500 | Still code: extend [`MarketData`](../src/main/java/com/moneymaker/entity/MarketData.java) with the new `smaValueXX` field + flags, update [`SmaTrendCalculator`](../src/main/java/com/moneymaker/strategy/rules/SmaTrendCalculator.java#L25), and add the period to `SmaDowntrendScanner.SUPPORTED_PERIODS` + its `smaDownFlag(...)` switch. Then select it in `sma_periods`. |
 | A different indicator entirely (RSI, EMA, …) | Implement [`EodTrendScanner`](../src/main/java/com/moneymaker/tradeconfig/generation/EodTrendScanner.java) as a bean; thresholds go in new `sma_downtrend_rule` columns; point rows at it via `indicator_type`. See [the section above](#skipping-smas--adding-a-different-indicator-rule). |
 | Different strike type (ITM/OTM at depth N) | Replace `computeAtmStrike` with a `computeStrike(rule, side)` and add the depth columns back to the rule. |
-| Target/SL formula other than the two shipped shapes (percentage of entry premium, or `mean intraday range × mult`) | Branch inside `insertAutoTradeConfig` on a new column like `target_mode`. A shape that is not a fixed points distance also needs `OrderService.bracketAtEntry` to know how to resolve it. |
+| Choosing between the two shipped bracket shapes (percentage of entry premium vs absolute points) | **Done** — `strategy_defaults.target_mode` / `sl_mode`, changeset 041. One `UPDATE`, no code. |
+| A *third* target/SL shape (something neither a fraction of entry nor a fixed points distance) | Add a value to [`BracketMode`](../src/main/java/com/moneymaker/util/BracketMode.java) and a branch in `OrderService.bracketAtEntry` to resolve it, plus whatever column it reads. The mode plumbing and the per-strategy keying already exist. |
 | Up-trend variant (for BUY strategies) | Add a `direction` column (`DOWN`/`UP`), branch in `scanSide` to read `smaXxUpTrending` instead. |
 | Promote to live mode | Add a new `@Scheduled(cron="0 25 15 * * MON-FRI")` method on a new scheduler that calls `eodDowntrendDetectionService.runForDay(LocalDate.now())`. No service changes required. |
 | Holiday-aware "next trading day" | Swap `nextTradingDay(...)` to consult a holiday table. Method is private; only caller is `runForDay`. |

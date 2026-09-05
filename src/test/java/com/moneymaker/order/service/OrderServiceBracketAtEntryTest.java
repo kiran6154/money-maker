@@ -4,10 +4,12 @@ import com.moneymaker.dto.TradeAction;
 import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.dto.TradeSignal;
 import com.moneymaker.entity.Instrument;
+import com.moneymaker.entity.StrategyDefaults;
 import com.moneymaker.entity.TradeConfig;
 import com.moneymaker.entity.TradeOrder;
 import com.moneymaker.journal.JournalRecorder;
 import com.moneymaker.journal.ObservationContextFactory;
+import com.moneymaker.repository.StrategyDefaultsRepository;
 import com.moneymaker.repository.TradeOrderRepository;
 import com.moneymaker.shared.data.SharedData;
 import com.moneymaker.telegram.NotificationService;
@@ -46,6 +48,7 @@ class OrderServiceBracketAtEntryTest {
     private TradeOrderRepository repo;
     private OrderPlacementFactory placementFactory;
     private OrderPlacementService placement;
+    private StrategyDefaultsRepository strategyDefaults;
     private OrderService orderService;
 
     @BeforeEach
@@ -63,8 +66,15 @@ class OrderServiceBracketAtEntryTest {
         when(repo.findFirstByTradeConfigIdAndStrategyIdAndOptionTokenAndStatus(
                 any(), any(), anyString(), anyString())).thenReturn(Optional.empty());
 
+        strategyDefaults = mock(StrategyDefaultsRepository.class);
+        // No strategy_defaults row is the default state for most strategies —
+        // changeset 033 seeded only strategy 1 — and must read as the legacy
+        // PERCENT bracket.
+        when(strategyDefaults.findById(any())).thenReturn(Optional.empty());
+
         orderService = new OrderService(placementFactory, repo,
-                mock(NotificationService.class), journal, mock(ObservationContextFactory.class));
+                mock(NotificationService.class), journal, mock(ObservationContextFactory.class),
+                strategyDefaults);
 
         SharedData.tradeSignals = new ConcurrentLinkedQueue<>();
     }
@@ -158,5 +168,115 @@ class OrderServiceBracketAtEntryTest {
 
         assertThat(order.getTrailLadderAtEntry()).isNull();
         assertThat(order.getStopLossAtEntry()).isEqualByComparingTo("60");
+    }
+
+    // ------------------------------------------------------------------
+    // Bracket mode (changeset 041) — which column the strategy exits on
+    // ------------------------------------------------------------------
+
+    /** Gives strategy 1 a strategy_defaults row carrying the two modes. */
+    private void modes(String targetMode, String slMode) {
+        StrategyDefaults defaults = new StrategyDefaults();
+        defaults.setStrategyId(1);
+        defaults.setTargetMode(targetMode);
+        defaults.setSlMode(slMode);
+        when(strategyDefaults.findById(1)).thenReturn(Optional.of(defaults));
+    }
+
+    /** The 80-250 band config, plus the absolute points columns POINTS mode reads. */
+    private TradeConfig configWithBothShapes() {
+        TradeConfig tc = config(new BigDecimal("60"), null);
+        tc.setTarget(new BigDecimal("20"));
+        tc.setStopLoss(new BigDecimal("20"));
+        return tc;
+    }
+
+    @Test
+    @DisplayName("no strategy_defaults row keeps the pre-041 percentage bracket")
+    void missingDefaultsRowIsLegacyPercent() {
+        // The behaviour-neutrality guarantee 041 ships on: adding the switch must
+        // not move a ledger until someone flips it.
+        TradeOrder order = openAt(new BigDecimal("200"), configWithBothShapes());
+
+        assertThat(order.getTargetAtEntry()).isEqualByComparingTo("40.00");
+        assertThat(order.getStopLossAtEntry()).isEqualByComparingTo("60");
+    }
+
+    @Test
+    @DisplayName("PERCENT resolves both sides off the entry premium")
+    void percentModeUsesThePercentages() {
+        modes("PERCENT", "PERCENT");
+
+        TradeOrder order = openAt(new BigDecimal("200"), configWithBothShapes());
+
+        assertThat(order.getTargetAtEntry()).isEqualByComparingTo("40.00");
+        assertThat(order.getStopLossAtEntry()).isEqualByComparingTo("60");
+    }
+
+    @Test
+    @DisplayName("POINTS resolves both sides off the absolute columns")
+    void pointsModeUsesTheAbsoluteColumns() {
+        modes("POINTS", "POINTS");
+
+        TradeOrder order = openAt(new BigDecimal("200"), configWithBothShapes());
+
+        assertThat(order.getTargetAtEntry()).isEqualByComparingTo("20");
+        assertThat(order.getStopLossAtEntry()).isEqualByComparingTo("20");
+    }
+
+    @Test
+    @DisplayName("the two sides are independent — a points target with a percentage stop")
+    void modesAreResolvedPerSide() {
+        // The mixed bracket the split exists for, and the one the pre-041 rule
+        // could not express: setting target points did nothing while sl_pct won.
+        modes("POINTS", "PERCENT");
+
+        TradeOrder order = openAt(new BigDecimal("200"), configWithBothShapes());
+
+        assertThat(order.getTargetAtEntry()).isEqualByComparingTo("20");
+        assertThat(order.getStopLossAtEntry()).isEqualByComparingTo("60");
+    }
+
+    @Test
+    @DisplayName("the ceiling still caps a POINTS stop")
+    void ceilingAppliesInPointsModeToo() {
+        // capStopLoss sits outside the mode decision, so a hand-typed 90-point
+        // stop is still ceilinged at 60. The cap is a ceiling on loss, not a
+        // second stop rule competing with the first.
+        modes("POINTS", "POINTS");
+        TradeConfig tc = configWithBothShapes();
+        tc.setStopLoss(new BigDecimal("90"));
+
+        TradeOrder order = openAt(new BigDecimal("200"), tc);
+
+        assertThat(order.getStopLossAtEntry()).isEqualByComparingTo("60");
+    }
+
+    @Test
+    @DisplayName("POINTS falls back to the percentage when the points column is unset")
+    void pointsModeFallsBackRatherThanResolvingToNoBracket() {
+        // PositionService reads a null target as "never breaches", so resolving
+        // to null here would silently delete the target exit for the whole trade.
+        modes("POINTS", "POINTS");
+        TradeConfig tc = configWithBothShapes();
+        tc.setTarget(null);
+        tc.setStopLoss(null);
+
+        TradeOrder order = openAt(new BigDecimal("200"), tc);
+
+        assertThat(order.getTargetAtEntry()).isEqualByComparingTo("40.00");
+        assertThat(order.getStopLossAtEntry()).isEqualByComparingTo("60");
+    }
+
+    @Test
+    @DisplayName("a mode corrupted in SQL degrades to PERCENT rather than blocking the trade")
+    void malformedModeDegradesToPercent() {
+        // Same call as the malformed ladder above: a config typo must not answer
+        // itself with a silent trading outage.
+        modes("POINT", "PERCENT");
+
+        TradeOrder order = openAt(new BigDecimal("200"), configWithBothShapes());
+
+        assertThat(order.getTargetAtEntry()).isEqualByComparingTo("40.00");
     }
 }

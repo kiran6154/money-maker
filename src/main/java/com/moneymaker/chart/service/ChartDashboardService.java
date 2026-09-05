@@ -24,8 +24,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -36,6 +39,14 @@ import java.util.Set;
 public class ChartDashboardService {
 
     private static final Set<Integer> SUPPORTED_SMA_PERIODS = Set.of(20, 50, 100, 200, 500);
+
+    /**
+     * Widest strike ladder a single request may average. The dashboard asks for
+     * 1 and 2; the ceiling is here so a hand-written URL cannot turn one pane
+     * into a hundred-leg fetch. Raising it is a cost decision, not a correctness
+     * one — every extra step is two more contracts to read and align.
+     */
+    private static final int MAX_STRIKE_SPAN = 5;
     private static final LocalTime MARKET_OPEN = LocalTime.of(9, 15);
     private static final LocalTime MARKET_CLOSE = LocalTime.of(23, 59, 59);
     private static final ZoneId INDIA_ZONE = ZoneId.of("Asia/Kolkata");
@@ -48,6 +59,7 @@ public class ChartDashboardService {
     private final ChartExpiryResolver chartExpiryResolver;
     private final ChartTimeframeAggregator chartTimeframeAggregator;
     private final ChartIndicatorService chartIndicatorService;
+    private final ChartStrikeAverager chartStrikeAverager;
     private final HistoricalIciciChartDashboardService historicalIciciChartDashboardService;
 
     public MarketChartResponse getMarketChartData(MarketChartRequest request) {
@@ -104,24 +116,62 @@ public class ChartDashboardService {
             return emptyResponse(request, null, strike);
         }
 
-        String optionType = request.getChartType().name();
-        Optional<InstrumentDetails> optionInstrument = instrumentDetailsRepository.findFirstByCriteria(
-                request.getIndexSymbol().name(),
-                expiryDate.get().toString(),
-                strike,
-                optionType
-        );
+        // A one-strike ladder is the ordinary chart, so the averaged panes share
+        // this path rather than getting one of their own.
+        List<BigDecimal> ladder =
+                ChartStrikeLadder.around(request.getIndexSymbol(), strike, request.getStrikeSpan());
+        Map<BigDecimal, List<ChartCandleResponse>> legs =
+                fetchOptionLegs(request, expiryDate.get(), ladder);
 
-        if (optionInstrument.isEmpty() || optionInstrument.get().getInstrumentToken() == null) {
+        if (legs.isEmpty()) {
             return emptyResponse(request, expiryDate.get(), strike);
         }
 
         List<ChartCandleResponse> data = finish(
-                fetchIntradayCandles(optionInstrument.get().getInstrumentToken().toString(), request.getDate()),
+                chartStrikeAverager.average(legs.values()),
                 request.getTimeframe(),
                 request.getDate()
         );
-        return buildResponse(request, expiryDate.get(), strike, data);
+        List<BigDecimal> averagedStrikes =
+                request.getStrikeSpan() > 0 ? List.copyOf(legs.keySet()) : List.of();
+        return buildResponse(request, expiryDate.get(), strike, averagedStrikes, data);
+    }
+
+    /**
+     * One ascending OHLC leg per strike on the ladder, keyed by strike.
+     *
+     * <p>Unlike the historical source, this one is inherently per-strike: each
+     * leg needs its own {@code instrument_details} token before {@code market_data}
+     * can be queried at all, so there is no single range query to fold them into.
+     *
+     * <p>A strike whose token or candles are missing is simply absent, so the
+     * caller can report the legs actually averaged. The average itself then holds
+     * to the same all-legs rule as the historical path.
+     */
+    private Map<BigDecimal, List<ChartCandleResponse>> fetchOptionLegs(MarketChartRequest request,
+                                                                       LocalDate expiryDate,
+                                                                       List<BigDecimal> ladder) {
+        String optionType = request.getChartType().name();
+        Map<BigDecimal, List<ChartCandleResponse>> legs = new LinkedHashMap<>();
+
+        for (BigDecimal strike : ladder) {
+            Optional<InstrumentDetails> optionInstrument = instrumentDetailsRepository.findFirstByCriteria(
+                    request.getIndexSymbol().name(),
+                    expiryDate.toString(),
+                    strike,
+                    optionType
+            );
+            if (optionInstrument.isEmpty() || optionInstrument.get().getInstrumentToken() == null) {
+                continue;
+            }
+
+            List<ChartCandleResponse> candles = fetchIntradayCandles(
+                    optionInstrument.get().getInstrumentToken().toString(), request.getDate());
+            if (!candles.isEmpty()) {
+                legs.put(strike, new ArrayList<>(candles));
+            }
+        }
+        return legs;
     }
 
     /**
@@ -203,6 +253,10 @@ public class ChartDashboardService {
         if (request.getDataSource() == null) {
             throw new IllegalArgumentException("dataSource is required");
         }
+        if (request.getStrikeSpan() < 0 || request.getStrikeSpan() > MAX_STRIKE_SPAN) {
+            throw new IllegalArgumentException(
+                    "strikeSpan must be between 0 and " + MAX_STRIKE_SPAN);
+        }
         boolean invalidSma = request.getSmaPeriods().stream()
                 .filter(Objects::nonNull)
                 .anyMatch(period -> !SUPPORTED_SMA_PERIODS.contains(period));
@@ -271,14 +325,7 @@ public class ChartDashboardService {
     }
 
     private BigDecimal calculateAtmStrike(IndexSymbol indexSymbol, BigDecimal referencePrice) {
-        int step = switch (indexSymbol) {
-            case NIFTY -> 50;
-            case BANKNIFTY -> 100;
-        };
-
-        return BigDecimal.valueOf(
-                Math.round(referencePrice.doubleValue() / step) * step
-        );
+        return ChartStrikeLadder.atmStrike(indexSymbol, referencePrice);
     }
 
     private MarketChartResponse emptyResponse(MarketChartRequest request,
@@ -291,6 +338,14 @@ public class ChartDashboardService {
                                               LocalDate expiryDate,
                                               BigDecimal atmStrike,
                                               List<ChartCandleResponse> data) {
+        return buildResponse(request, expiryDate, atmStrike, List.of(), data);
+    }
+
+    private MarketChartResponse buildResponse(MarketChartRequest request,
+                                              LocalDate expiryDate,
+                                              BigDecimal atmStrike,
+                                              List<BigDecimal> averagedStrikes,
+                                              List<ChartCandleResponse> data) {
         return new MarketChartResponse(
                 request.getIndexSymbol(),
                 request.getChartType(),
@@ -298,6 +353,7 @@ public class ChartDashboardService {
                 request.getDate(),
                 expiryDate,
                 atmStrike,
+                averagedStrikes,
                 data
         );
     }

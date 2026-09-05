@@ -1,5 +1,6 @@
 package com.moneymaker.entity;
 
+import com.moneymaker.util.BracketMode;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -83,9 +84,44 @@ public class StrategyDefaults {
     @Column(name = "opposite_side", nullable = false)
     private Boolean oppositeSide;
 
+    /**
+     * Which bracket column this strategy's trades take their profit target from:
+     * {@code POINTS} = {@code trade_config.target}, {@code PERCENT} =
+     * {@code target_pct} x entry premium. See changeset 041.
+     *
+     * <p>Read it through {@link #targetMode()} rather than directly — that is
+     * what turns the stored string into a {@link BracketMode} and what treats a
+     * missing value as the legacy {@code PERCENT} rule.</p>
+     */
+    @Column(name = "target_mode", nullable = false, length = 8)
+    private String targetMode;
+
+    /** Stop-loss side of {@link #targetMode}: {@code stop_loss} vs {@code sl_pct}. */
+    @Column(name = "sl_mode", nullable = false, length = 8)
+    private String slMode;
+
     /** Null-safe read — a pre-040 in-memory instance behaves as "detected side". */
     public boolean tradesOppositeSide() {
         return Boolean.TRUE.equals(oppositeSide);
+    }
+
+    /**
+     * The profit-target bracket this strategy exits on, defaulting to the legacy
+     * {@code PERCENT} rule when the column is unset.
+     *
+     * @throws IllegalArgumentException if the column holds an unrecognised value
+     */
+    public BracketMode targetMode() {
+        return BracketMode.parse(targetMode);
+    }
+
+    /**
+     * The stop-loss bracket this strategy exits on. See {@link #targetMode()}.
+     *
+     * @throws IllegalArgumentException if the column holds an unrecognised value
+     */
+    public BracketMode slMode() {
+        return BracketMode.parse(slMode);
     }
 
     /**
@@ -98,6 +134,13 @@ public class StrategyDefaults {
      * is included — a flipped and an unflipped strategy write configs for
      * different legs and must never share a row. See
      * {@code EodDowntrendDetectionService.resolveConfigGroups}.</p>
+     * <p>{@code target_mode} / {@code sl_mode} (041) are deliberately excluded,
+     * which is the opposite call to {@link #oppositeSide} above. They change how
+     * an already-generated config is *read* at order time, not what the generated
+     * row contains — every row carries both the points and the percentage columns
+     * regardless — so two strategies differing only in bracket mode can share one
+     * config and still exit differently. Splitting them would emit a duplicate row
+     * that differs in nothing.</p>
      */
     public String configSignature() {
         return transactionType + "|" + lotQuantity + "|"

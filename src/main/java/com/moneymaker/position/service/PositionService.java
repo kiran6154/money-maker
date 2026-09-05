@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Objects;
 
@@ -123,7 +124,7 @@ public class PositionService {
         // earned it. Bar internals are unordered, and this is the conservative
         // reading — it can understate the ladder, never flatter it.
         BigDecimal adversePnl = extremePnl(order, quote, pnl, true);
-        String hit = thresholdBreach(order, pnl, adversePnl);
+        String hit = thresholdBreach(order, pnl, adversePnl, asOf);
 
         // Peak tracking uses the bar's favorable extreme for the same reason —
         // "price makes new values" intra-bar is what arms a rung in live.
@@ -139,9 +140,12 @@ public class PositionService {
         order.setLastMonitoredAt(asOf);
 
         // Arm rungs AFTER the breach check (adverse-first convention above).
-        // A rung locks strictly below its own trigger (TrailLadder.parse
-        // enforces it), so the newly armed floor is below the peak that armed
-        // it and waits for a later bar.
+        // This ordering is what makes a lock == trigger rung a give-back trail
+        // rather than a take-profit: the bar whose excursion earns the rung
+        // cannot also exit on it, so the earliest such a floor can fire is the
+        // next bar. TrailLadder.parse allows lock <= trigger and refuses only
+        // lock > trigger, which would put the floor above the peak that armed
+        // it — see that class for the full argument.
         applyTrail(order);
 
         log.debug("[position] orderId={} {} {}{} entry={}@{} cur={}@{} pl={} maxPL={} maxLoss={} target={} stopLoss={} trailSl={} → {}",
@@ -250,13 +254,38 @@ public class PositionService {
      * the label is the only thing that tells a trailed exit apart from a stopped
      * one afterwards.</p>
      */
-    private String thresholdBreach(TradeOrder order, BigDecimal pnl, BigDecimal adversePnl) {
+    private String thresholdBreach(TradeOrder order, BigDecimal pnl, BigDecimal adversePnl, LocalDateTime asOf) {
         BigDecimal target   = order.getTargetAtEntry();
         BigDecimal stopLoss = order.getStopLossAtEntry();
         BigDecimal trailSl  = order.getTrailSlAt();
 
         if (target != null && pnl.compareTo(target) >= 0) {
             return "TARGET";
+        }
+
+        // ---- changeset 043: the two time-based exits ------------------------
+        // Checked AFTER target but BEFORE the floors, and that ordering is the
+        // conservative reading of a bar that spans several exits at once:
+        //
+        //   * target first, unchanged, so a bar that reached the target still
+        //     books it rather than being downgraded to a time stop that happens
+        //     to fall on the same bar;
+        //   * time exits before the floors, because a stop-loss on the flatten
+        //     bar is not a stop the strategy would have taken - the position was
+        //     already due to be closed at that moment regardless of price, and
+        //     labelling it STOP_LOSS would overstate how often the stop is hit.
+        //
+        // Both are inert when null, which is every row written before 043 and
+        // every config that leaves the 042 columns unset. Strategies 1-4 never
+        // reach either branch.
+        Integer maxHold = order.getMaxHoldMinutesAtEntry();
+        if (maxHold != null && maxHold > 0 && order.getEntryTime() != null && asOf != null
+                && !asOf.isBefore(order.getEntryTime().plusMinutes(maxHold))) {
+            return "TIME_STOP";
+        }
+        LocalTime flattenAt = order.getFlattenAtEntry();
+        if (flattenAt != null && asOf != null && !asOf.toLocalTime().isBefore(flattenAt)) {
+            return "FLATTEN";
         }
 
         BigDecimal fixedFloor = stopLoss != null ? stopLoss.negate() : null;

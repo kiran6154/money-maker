@@ -61,11 +61,13 @@ How a strategy's `BUY` / `SELL` signal becomes a persisted `TradeOrder` row, get
 | `exit_broker_order_id` | close (live) | Same for the exit leg. |
 | `fill_status` | open / close | `PENDING` / `COMPLETE` / `REJECTED` / `CANCELLED` / `BACKTEST`. The most-recent leg's broker fill state (refreshed by the sync endpoint). |
 | `exit_time` / `exit_price` / `profit` | close | Exit leg fields. `profit` is per-share. |
-| `exit_reason` | close | `SIGNAL` / `TARGET` / `STOP_LOSS` / `TRAIL_SL` / `FORCE_CLOSE`. `TRAIL_SL` is the trailing floor (036) and is deliberately not folded into `STOP_LOSS` — it is the opposite outcome, since a trailed exit closes green. |
+| `exit_reason` | close | `SIGNAL` / `TARGET` / `STOP_LOSS` / `TRAIL_SL` / `TIME_STOP` / `FLATTEN` / `FORCE_CLOSE`. `TRAIL_SL` is the trailing floor (036) and is deliberately not folded into `STOP_LOSS` — it is the opposite outcome, since a trailed exit closes green. `TIME_STOP` and `FLATTEN` are the two clock exits (043) and are likewise kept apart from `FORCE_CLOSE`: those two mean the strategy closed on its own schedule, `FORCE_CLOSE` means the run ended with the position still open. |
+| `max_hold_minutes_at_entry` | open | Minutes from `entry_time` after which `PositionService` closes the trade as `TIME_STOP`. NULL = no time stop, which is every row before 043 and every config that leaves `trade_config.max_hold_minutes` unset. Snapshotted for the same reason the bracket is: shortening the limit at 13:00 must not instantly breach every position opened before 12:00. |
+| `flatten_at_entry` | open | Time-of-day at which the trade is closed as `FLATTEN` regardless of P&L. NULL = no intraday flatten. A TIME, not a timestamp — the row carries its own `entry_time` and these are intraday strategies, so the date is never ambiguous. |
 | `peak_profit` / `peak_loss` | each PositionScheduler tick while OPEN | High-water-mark / low-water-mark of unrealised per-share P&L. |
 | `last_monitored_price` / `last_monitored_at` | each PositionScheduler tick while OPEN | Most recent quote and tick time. |
 | `quantity` | open | Order quantity in units (75 = one NIFTY lot), **snapshotted at entry** from `tradeConfig.lotQuantity` — the same value the placement services send. Snapshotted for the same reason the bracket is: it is what the broker order actually carried, and editing the config's lot size later must not restate history. Before changeset 029 it was not persisted at all, so rupee P&L could not be derived from the ledger. Null on pre-029 rows, which `TradeChargeService` reports as uncosted rather than assuming a lot size. |
-| `target_at_entry` / `stop_loss_at_entry` | open | Per-share thresholds **snapshotted at entry** by `OrderService.bracketAtEntry`: `entryPrice × tradeConfig.targetPct` when the config carries a percentage, else the absolute `tradeConfig.target` / `tradeConfig.stopLoss`. PositionService reads from the row, never from the live config — so a config edit mid-trade can't retroactively close existing positions, and SL/target works even when `SharedData.combinedDto` is stale or empty. |
+| `target_at_entry` / `stop_loss_at_entry` | open | Per-share thresholds **snapshotted at entry** by `OrderService.bracketAtEntry`, from whichever column the strategy's `strategy_defaults.target_mode` / `sl_mode` names (changeset 041): `entryPrice × tradeConfig.targetPct` under `PERCENT`, the absolute `tradeConfig.target` / `tradeConfig.stopLoss` under `POINTS`. Each mode falls back to the other column when its own is unset, because a null threshold reads as "never breaches" downstream. PositionService reads from the row, never from the live config — so a config edit mid-trade can't retroactively close existing positions, and SL/target works even when `SharedData.combinedDto` is stale or empty. |
 | `trail_ladder_at_entry` | open | Trailing rungs **snapshotted at entry** from `tradeConfig.trailLadder`, canonicalised by `TrailLadder.canonical`. Null = this trade does not trail. Snapshotted for the same reason the bracket is: editing a ladder at 13:00 must not re-floor a trade opened at 09:20. A ladder that fails to parse at entry is logged and degrades to null — the trade opens on its fixed stop rather than not opening at all. |
 | `trail_sl_at` | each PositionScheduler tick while OPEN | The latched trailing floor in **signed** premium points — `+2` is a stop two points into profit. Null until the first rung is reached. Only ever moves up (`PositionService.applyTrail`), so on a closed row it records the best floor the trade earned and explains a `TRAIL_SL` exit. |
 
@@ -73,10 +75,12 @@ Liquibase changesets that built this:
 - 008 — initial table.
 - 009 — broker order ids + fill_status.
 - 010 — monitor columns (peak / last-monitored / exit_reason).
+- 043 — `max_hold_minutes_at_entry` / `flatten_at_entry`, the two clock exits (Pressure; see [PRESSURE_STRATEGY.md](PRESSURE_STRATEGY.md#exits)).
 - 011 — target / stop-loss snapshot columns.
 - 036 — trailing stop-loss (`trail_ladder_at_entry`, `trail_sl_at`) + the `max_sl_points` ceiling on `trade_config`.
 - 029 — `trade_order.quantity`, plus the `charge_rate` table (date-effective brokerage / statutory rates). See [Charges and net P&L](#charges-and-net-pl).
 - 027 — `trade_config.target_pct` / `sl_pct`, the premium-relative bracket the snapshot resolves. Nullable: null keeps the absolute columns. See [EOD_DOWNTREND.md](EOD_DOWNTREND.md).
+- 041 — `strategy_defaults.target_mode` / `sl_mode`, the per-strategy switch that decides which of 027's two shapes each bracket side resolves from. Default `PERCENT` on every row reproduces the pre-041 rule exactly, so the changeset ships inert. Parsed only by `com.moneymaker.util.BracketMode`.
 - 031 / 035 — lets one config be run by several strategies: 031 added a `trade_config_strategy` tag table, 035 replaced it with the `trade_config.strategy_ids` CSV column. See [STRATEGIES.md](STRATEGIES.md#how-a-config-reaches-a-strategy).
 - 032 — backfills `trade_order.strategy_id` on rows written before 015.
 - 038 — `trade_config.max_parallel_per_side`: the per-side (CE/PE) parallel cap, seeded 1. See gate 5 above. Required by 031: the gates below put `strategy_id` in the predicate, and `strategy_id = 1` is never true for a NULL, so an un-backfilled pre-015 row would drop out of every cap and let an already-capped config re-enter.
@@ -718,7 +722,7 @@ so a config that stops trading is diagnosable rather than silently idle.
 
 ## Adding a new exit reason
 
-1. Pick an UPPER_SNAKE name. Currently used: `SIGNAL`, `TARGET`, `STOP_LOSS`, `TRAIL_SL`, `FORCE_CLOSE`.
+1. Pick an UPPER_SNAKE name. Currently used: `SIGNAL`, `TARGET`, `STOP_LOSS`, `TRAIL_SL`, `TIME_STOP`, `FLATTEN`, `FORCE_CLOSE`.
 2. Pass it as the `reason` arg to `OrderService.closeManually(...)` (or wherever the new close path lives).
 3. **Update this doc.** The Close-paths table above is the registry.
 
@@ -746,8 +750,10 @@ Trading-behaviour parameters — anything that controls *when* a trade enters, *
 | Entry direction allowed (BUY-only / SELL-only) | `tradeConfig.transactionType` |
 | Max trades per `(config, strategy)` per day (across all strikes, all statuses) | `tradeConfig.numberOfTradesPerDay` |
 | Max simultaneous OPEN trades per `(config, strategy)` per direction | `tradeConfig.numberOfParallelTrades` |
-| Profit target (per share) | `tradeConfig.targetPct` × entry premium, else `tradeConfig.target` → snapshotted to `target_at_entry` at open. **Today the percentage branch never fires** — `target_pct` is not selected by the combined query, so the absolute column always applies; see [S6](STRATEGY_ANALYSIS_TODO.md) |
-| Stop loss (per share, positive) | `tradeConfig.slPct` × entry premium, else `tradeConfig.stopLoss` → snapshotted to `stop_loss_at_entry` at open. Same caveat as the target: `sl_pct` does not reach the pipeline, so the absolute column is what the ceiling below caps |
+| **Which bracket column the target resolves from** | `strategy_defaults.target_mode` (changeset 041) — `PERCENT` (default) takes `tradeConfig.targetPct` × entry premium, `POINTS` takes the absolute `tradeConfig.target`. Keyed by **strategy**, not by config, so one config named by several strategies can bracket differently under each. Switchable from `/trade-configs` → Bulk edit configs → ⚖️ Strategy bracket — see [EOD_DOWNTREND.md](EOD_DOWNTREND.md#strategy-bracket-panel) |
+| **Which bracket column the stop resolves from** | `strategy_defaults.sl_mode` — same two values, resolved independently of the target so a points target with a percentage stop is expressible |
+| Profit target (per share) | `tradeConfig.targetPct` × entry premium or `tradeConfig.target`, per `target_mode` above → snapshotted to `target_at_entry` at open. Either mode falls back to the other column when its own is unset — a null here reads as "never breaches" in `PositionService` |
+| Stop loss (per share, positive) | `tradeConfig.slPct` × entry premium or `tradeConfig.stopLoss`, per `sl_mode` → snapshotted to `stop_loss_at_entry` at open, then capped by the ceiling below |
 | Ceiling on the stop loss, in points (whichever is lower applies) | `tradeConfig.maxSlPoints` — applied at open, so `stop_loss_at_entry` already carries the capped value. Blank on the admin form resolves to the standing 60 (`TradeConfigAdminService.DEFAULT_MAX_SL_POINTS`), **not** to uncapped |
 | Where the stop moves as profit accrues | `tradeConfig.trailLadder` → snapshotted to `trail_ladder_at_entry` at open; blank = no trailing |
 | Lot quantity | `tradeConfig.lotQuantity` |

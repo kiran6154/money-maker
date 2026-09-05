@@ -317,7 +317,49 @@
     flex: 1;
     display: flex;
     min-height: 380px;
+    /* Anchors the zoom overlay below. The canvas child cannot host it — the
+       renderer clears that element before drawing. */
+    position: relative;
 }
+
+/* Zoom controls, bottom-left so they clear lightweight-charts' own price scale
+   on the right and its time axis underneath. */
+.chart-zoom {
+    position: absolute;
+    left: 10px;
+    bottom: 34px;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.chart-zoom-btn {
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font: inherit;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 6px;
+    /* The chart draws right up to the edge, so the buttons need their own
+       separation from whatever candle happens to be behind them. */
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+.chart-zoom-btn:hover {
+    color: var(--text, #0f172a);
+    background: #fff;
+    border-color: rgba(15, 23, 42, 0.25);
+}
+
+.chart-zoom-btn:active { transform: translateY(1px); }
 
 .chart-canvas {
     position: relative;

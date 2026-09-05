@@ -50,8 +50,8 @@ class ObservationContextFactoryTest {
 
     /** key = symbol|interval|optionType|strike|optionToken|itmDepth|otmDepth */
     private static void cacheLeg(String interval, String close) {
-        SharedData.strikeMarketDataByInstrumentAndInterval.put(
-                "NIFTY|" + interval + "|CE|21000|" + TOKEN + "|1|1", seriesOf(close));
+        SharedData.putStrikeSeries(
+                "NIFTY|" + interval + "|CE|21000|" + TOKEN + "|1|1", seriesOf(close), null);
     }
 
     private static TradeOrder openOrder() {

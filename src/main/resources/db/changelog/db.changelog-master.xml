@@ -49,5 +49,10 @@
     <include file="db/changelog/038_add_max_parallel_per_side.xml"/>
     <include file="db/changelog/039_add_downtrend_rule_indicator_grid.xml"/>
     <include file="db/changelog/040_add_opposite_side_to_strategy_defaults.xml"/>
+    <include file="db/changelog/041_add_bracket_mode_to_strategy_defaults.xml"/>
+    <include file="db/changelog/042_pressure_intraday_clock_and_strike_offset.xml"/>
+    <include file="db/changelog/043_add_time_exits_to_trade_order.xml"/>
+    <include file="db/changelog/044_seed_pressure_strategy_defaults.xml"/>
+    <include file="db/changelog/045_index_option_chain_volume_by_bar.xml"/>
 
 </databaseChangeLog>

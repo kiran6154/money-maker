@@ -335,3 +335,66 @@ Legend for effort:
 | Fix sketch | Populate it at entry alongside `quantity`, or drop the column via a new changeset if `quantity` already covers the need. |
 | Effort | **S** |
 | Priority | _TBD -- filed 2026-08-31 from the full-2024 insights pass._ |
+
+## 27. Open-session-in-view makes every backtest `save()` quadratic — 87% of a Pressure replay — **RESOLVED 2026-09-05**
+
+| | |
+|---|---|
+| Where | [`SharedData.latestCachedCandle`](../src/main/java/com/moneymaker/shared/data/SharedData.java), reached once per OPEN position per tick via `BacktestingPositionMonitorService.currentQuote`, and again from `OrderService.forceCloseOpenPositions`. |
+| Why | It answers "newest candle for this contract" by iterating **every** entry of `strikeMarketDataByInstrumentAndInterval` and calling `key.split("\|")` on each one — a regex split allocating seven strings — purely to read `parts[4]` and compare it to the wanted token. Cost is `O(cache size x open positions)` per tick with a heavy constant, and the cache is shared by every config in the run, so it grows with the number of books rather than with the number of positions being monitored. |
+| Measured | Full-year Pressure replay, 2026-09-05, seven books (12 option configs + 1 spot), 6-7 concurrent OPEN positions: `phases ms: indicator=3058 strategy=100 orders=8143 positions=73304 (ticks=73)` — **positions is 87% of an ~85 s day**, against ~45 s/day overall and a ~3 h full-year run. A 60-second delta profile of `performance_schema` over the same run attributes only **~1.4 s of SQL per 60 s wall**, so this is not I/O: it is in-JVM string work. For contrast the strategy's own scoring is 100 ms. |
+| Why it went unnoticed | With one or two configs and one open position the scan is a handful of entries and the constant does not matter — which is every run before the Pressure books existed. It scales with *books*, and Pressure is the first strategy to run twelve of them at once. |
+| Fix sketch | Cheapest correct fix, behaviour-identical: reject on a substring test before splitting (`if (!key.contains(optionToken)) continue;`), which skips the regex for the ~90% of entries that cannot match. Better: stop parsing the key at read time at all — maintain a side index `Map<optionToken, Map<intervalMinutes, List<MarketData>>>` written wherever the strike cache is written and cleared wherever it is cleared, so the lookup is two hash gets. The finest-interval rule and the `atOrBefore` walk both survive unchanged either way. **Pure performance — no trade decision changes**, so no Rule 0 exposure and no paired backtest needed; a replay before and after must produce a byte-identical ledger, and that equality is the test to write. |
+| Effort | **S** for the substring guard, **M** for the side index (touches every writer and both clear sites, plus the force-close path). |
+| Priority | _Filed 2026-09-05 during the first valid full-year Pressure run._ |
+
+### Correction — the scan was NOT the cause
+
+**The diagnosis above was wrong, and the record is kept because the way it was
+wrong is the useful part.** The scan is real and it was worth removing, but
+replacing it with a contract-id index changed the runtime by nothing: a clean
+five-day window still ran at ~85 s/day with the position phase still growing
+day over day.
+
+Guessing had failed twice by then (first the VWAP aggregate query, then this
+scan), so the next step was **five consecutive `jstack` samples**. All five
+landed on the same line — the closing `tradeOrderRepository.save(order)` in
+`PositionService.handleOne` — while `performance_schema` attributed only ~1.4 s
+of SQL per 60 s of wall time.
+
+**Slow `save()`, fast SQL, degrading within a run, resetting between runs.** That
+is `spring.jpa.open-in-view`, which defaults to `true` and is not set in
+`application.properties`. A whole replay is one long HTTP request, so it runs in
+a **single Hibernate session**; every `TradeOrder` any tick loads stays managed,
+and each flush dirty-checks the entire accumulated context. Cost is quadratic in
+the rows the run has touched, which is exactly the observed curve: 34 s on the
+replay's third day, 112 s by its fourteenth.
+
+| | before | after |
+|---|---:|---:|
+| per day | 85,000–126,000 ms | 4,500–8,500 ms |
+| position phase | 85–112 s | 1.6–2.8 s |
+| across the run | grows steadily | flat over 9 days |
+| full-year projection | 12 h and rising | ~24 min |
+
+**Fix as landed:** `BacktestAnalysisService.detachEverythingLoadedThisTick()`
+clears the persistence context after each replayed tick.
+
+**Why not `spring.jpa.open-in-view=false`**, which is the usual answer and is how
+this was first confirmed: it changes behaviour for the whole application,
+including five Thymeleaf views that may touch a lazy association after their
+controller returns. A `LazyInitializationException` there would appear at
+runtime on a page no test covers. Clearing inside the replay loop is scoped by
+construction — nothing outside it can be affected — and it is safe there because
+the replay holds no entity across ticks: every tick reloads what it needs.
+
+**The index change was kept** even though it was not the bottleneck. It is a
+strict improvement, it is now covered by `SharedDataStrikeIndexTest`, and one of
+those tests deliberately asserts that a write bypassing `putStrikeSeries` is
+invisible — which immediately caught a direct write in
+`OrderServiceForceCloseTest` that would otherwise have silently stopped quoting
+a position.
+
+| Lesson | Three wrong guesses cost more than one profiler run would have. When a
+hypothesis about performance survives a code change without moving the number,
+stop hypothesising and sample the stack. |

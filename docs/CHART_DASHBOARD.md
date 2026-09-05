@@ -25,6 +25,8 @@ the frontend requests chart data separately for:
 - the underlying index
 - the ATM PE option
 - the ATM CE option
+- two **averaged strike ladders** per side — ATM±1 and ATM±2 — each drawn as one
+  synthetic candle series whose OHLC is the mean of the legs
 
 The dashboard supports two data sources:
 
@@ -79,12 +81,37 @@ The template contains:
 - refresh button: `refreshChartsBtn`
 - fullscreen toggle: `fullscreenChartsBtn`
 
-Three panes are rendered across two rows — the index chart spans the full width
-on top, the two option charts share the row beneath it:
+Eleven panes are rendered across six rows — the index chart spans the full width
+on top, then five option rows of two:
 
-- row 1, full width: `underlyingPane`
-- row 2, left: `pePane`
-- row 2, right: `cePane`
+- row 1, full width: `underlyingPane` — toolbar timeframe
+- row 2: `pePane`, `cePane` — toolbar timeframe
+- row 3: `pe15mPane`, `ce15mPane` — **pinned 15m**
+- row 4: `pe10mPane`, `ce10mPane` — **pinned 10m**
+- row 5: `peAvg3Pane`, `ceAvg3Pane` — **ATM±1 averaged**, toolbar timeframe
+- row 6: `peAvg5Pane`, `ceAvg5Pane` — **ATM±2 averaged**, toolbar timeframe
+
+**Pane key ≠ API `chartType`.** The pinned and averaged panes are ordinary PE / CE
+requests with one extra dial each, so `PANE_SPEC` maps a pane key to three
+things: the `series` that goes on the wire, the `timeframe` to ask at (`null` =
+follow the toolbar chip), and the `strikeSpan` to average over (`0` = the plain
+contract). `PE_15M` and `PE_AVG3` are dashboard identifiers only — the backend is
+asked for `chartType=PE&timeframe=15m` and
+`chartType=PE&strikeSpan=1` respectively, and knows nothing about pinning or
+about which row a pane sits in.
+
+The 5m/10m/15m chip moves rows 1-2 and 5-6; rows 3-4 hold, which is the point —
+three horizons on the same two legs, readable against each other without touching
+a control. Rows 5-6 follow the chip rather than pinning because the comparison
+they invite is *vertical* at one timeframe: the same instant, the same side, one
+contract versus three versus five.
+
+Everything downstream is keyed by pane key and iterates `PANE_KEYS`, and each
+pane's element ids are its key's camelCase prefix plus a fixed suffix
+(`PE_15M` → `pe15mPaneTitle`, `pe15mChart`, …), so `els.panes` and `getPaneRoot`
+derive their lookups instead of listing eleven panes by hand. Note the option
+panes have no `…SelectedTimeframe` element — they show Expiry / Strike in the
+meta row and carry the timeframe in the badge (and, when pinned, the title).
 
 DOM order matches (underlying, PE, CE) so tab order follows the visual order.
 The toolbar is a flex row, not a fixed grid: a fixed `grid-template-columns`
@@ -100,6 +127,7 @@ Each pane has:
 - error state
 - no-data state
 - chart container
+- zoom controls (`+` / `−`), overlaid bottom-left of the canvas wrap
 
 ### JavaScript responsibilities
 
@@ -112,12 +140,14 @@ Each pane has:
 - reacting to filter changes
 - previous / next / today date navigation
 - single-select chip timeframes, multi-select chip SMA periods and overlays
+- per-pane strike-ladder width (`PANE_SPEC.strikeSpan`), sent as `strikeSpan`
 - refresh button clicks
 - keyboard shortcuts for date stepping, refresh, timeframe selection, dismissing
   a pinned readout, and exiting fullscreen mode
 - API calls
 - loading, error, and no-data states
 - TradingView `lightweight-charts` rendering
+- per-pane `+` / `−` zoom, mirrored across all eleven panes
 
 ### What happens when the user selects NIFTY and refreshes
 
@@ -143,16 +173,20 @@ Example for `date=2024-06-06`, `timeframe=5m`, `smaPeriods=20,50,100,200,500`:
 - `GET /api/charts/market-data?date=2024-06-06&dataSource=HISTORICAL_ICICI&indexSymbol=NIFTY&chartType=PE&timeframe=5m&smaPeriods=20,50,100,200,500`
 - `GET /api/charts/market-data?date=2024-06-06&dataSource=HISTORICAL_ICICI&indexSymbol=NIFTY&chartType=CE&timeframe=5m&smaPeriods=20,50,100,200,500`
 
-If the user selects multiple timeframes, the frontend sends one API call per
-timeframe per chart type.
+**One request per pane, not per chart type.** Timeframes is single-select (see
+below), so a refresh issues exactly eleven requests — one per pane:
 
-Example for `5m,10m,15m`:
+| Panes | Requests |
+|---|---|
+| `UNDERLYING` | 1 |
+| `PE`, `CE` at the toolbar timeframe | 2 |
+| `PE`, `CE` pinned 15m and 10m | 4 |
+| `PE`, `CE` averaged ATM±1 and ATM±2 | 4 |
 
-- 3 requests for UNDERLYING
-- 3 requests for PE
-- 3 requests for CE
-
-Total: 9 requests
+The four averaged panes cost more at the database than their count suggests —
+each is a 3- or 5-leg fetch — but each is still **one** HTTP request and, on
+`HISTORICAL_ICICI`, **one** query: see
+[Averaged strike ladders](#averaged-strike-ladders-atmn-panes).
 
 ### Timeframe handling
 
@@ -161,7 +195,7 @@ Responses are stored by chart type and timeframe.
 **Timeframes is single-select.** The chip group is bound with
 `bindChipGroup(..., { single: true })`, so picking a chip clears its siblings and
 re-clicking the active one is a no-op — deliberately, since re-selecting an
-unchanged timeframe would otherwise fire a full nine-request refresh. Each
+unchanged timeframe would otherwise fire a full eleven-request refresh. Each
 refresh therefore issues one request per pane rather than one per pane per
 timeframe.
 
@@ -217,11 +251,26 @@ Two behaviours differ from the other chip groups and are deliberate:
   response already carries all the fields, so refetching would fire nine
   identical requests just to hide a line.
 
-SuperTrend is not part of `smaPeriods`. It renders as two
-line series — `#26a69a` for uptrend bars, `#ef5350` for downtrend bars, matching
-the candle up/down colours — each carrying whitespace points for the other's
-bars, so the pair reads as one line that changes colour at a flip. A single
-`lightweight-charts` line series cannot change colour mid-series, hence the split.
+SuperTrend is not part of `smaPeriods`. It renders as **one** line series whose
+colour changes at each flip — `#26a69a` while the trend is up, `#ef5350` while it
+is down, matching the candle up/down colours. `LineData.color` overrides the
+series colour per point in `lightweight-charts` v4, so a single series is enough.
+
+> It used to be drawn as *two* series, one per direction, each carrying
+> whitespace points for the other's bars, on the belief that a line series could
+> not change colour mid-series. The two were meant to interleave into one
+> colour-changing line and instead showed up as two separate lines at once. The
+> single-series form makes that impossible — there is only ever one line to draw.
+
+The legend matches: **one swatch, coloured by the direction at the right-hand
+edge of the chart**, reading `SuperTrend 7,3 · Buy` or `· Sell`. It used to show a
+green *and* a red swatch side by side, which misrepresented the indicator — a
+SuperTrend reads buy or sell at any one moment and never both, so a two-colour
+key described a pair of lines that should not exist. While the ATR is still
+warming up there is no reading, and the swatch is muted with no Buy/Sell suffix.
+`latestSupertrendDirection` walks back from the newest bar rather than reading
+the last element outright, so trailing warm-up or gap bars cannot report "no
+signal" on a series that plainly has one.
 
 ### Chart rendering
 
@@ -302,6 +351,7 @@ The controller receives:
 - `timeframe`
 - `smaPeriods`
 - `strike` (optional)
+- `strikeSpan` (optional, defaults to `0`)
 
 It converts them into `MarketChartRequest`:
 
@@ -312,6 +362,7 @@ It converts them into `MarketChartRequest`:
 - `timeframe -> ChartTimeframe`
 - `smaPeriods -> List<Integer>`
 - `strike -> BigDecimal` (blank or `AUTO` becomes `null`)
+- `strikeSpan -> int` (`0` charts the single strike)
 
 ### Strike selection
 
@@ -326,6 +377,81 @@ picker, returning `{expiryDate, atmStrike, strikes}`. The strikes come from the
 same table the candles come from — `historical_option_candles` for
 HISTORICAL_ICICI, `instrument_details` for TOKEN_BASED — so the picker can only
 ever offer a strike that actually renders.
+
+### Averaged strike ladders (ATM±N panes)
+
+`strikeSpan` widens a request from one contract to a ladder centred on the strike
+it would otherwise have charted, and returns **one synthetic candle series** whose
+OHLC is the mean of the legs bar for bar:
+
+| `strikeSpan` | Legs | Panes |
+|---|---|---|
+| `0` (default) | the strike alone | every pane in rows 1-4 |
+| `1` | ATM−1, ATM, ATM+1 | `peAvg3Pane`, `ceAvg3Pane` |
+| `2` | ATM−2 … ATM+2 | `peAvg5Pane`, `ceAvg5Pane` |
+
+**Why average at all.** A single option's premium is noisy, and it steps as the
+underlying walks across the strike grid — a move that is really about *which side
+of 24500 spot is on* shows up as a jump in a series that is supposed to be about
+direction. The mean of a ladder straddling the money moves with the underlying
+instead, so the SMAs over it are a much quieter read. Note this is the average of
+the **strike ladder**, not of CE and PE: PE and CE keep their own panes, and each
+side gets its own averaged pair.
+
+**±1 is one step of the index's grid**, not one row of whatever strikes happen to
+be imported — 50 for NIFTY, 100 for BANKNIFTY. `ChartStrikeLadder` owns that step
+and now also owns the ATM rounding both chart services used to do for themselves,
+so "round to ATM" and "one strike up" cannot drift apart. An ATM rounded on a
+50-point grid with a ladder stepped by 100 would centre the average somewhere the
+underlying never was.
+
+**The ladder straddles the money for either right.** For a CE the lower legs are
+ITM and the upper OTM; for a PE it is the reverse. Because the span is symmetric,
+the same count sits either side whichever right is charted, which is what lets the
+PE and CE panes in a row be read against each other.
+
+**Every leg must be present, or the bar is dropped.** `ChartStrikeAverager` emits a
+timestamp only when *all* legs have a candle for it. Averaging whichever legs
+happen to be there would keep the series unbroken at the cost of changing what a
+bar means from bar to bar — the mean of five premiums sits well below the mean of
+the three innermost, so a leg appearing or disappearing steps the whole level and
+drags an SMA through it. That is a crossover the market never printed; a gap is
+honest, a step is not. The consequence worth knowing is that an illiquid outer leg
+shortens the series, and a leg with no candles at all in the window empties it.
+
+**`averagedStrikes` reports what was really averaged**, not what was asked for. A
+leg with no candles drops out, so an "ATM±2" pane can be drawing three contracts;
+the Strike meta cell shows the range and the count (`24400-24600 (avg of 5)`) so
+that discrepancy is visible rather than implied by the heading.
+
+**The synthetic bar is always a valid candle.** Each leg satisfies
+`low <= open,close <= high`, and the mean preserves every one of those
+inequalities, so the pane can never render an inverted bar however far apart the
+legs' premiums are.
+
+**Averaging happens before aggregation and before indicators.** The order is
+average → aggregate to the timeframe → compute overlays → trim to the window, so
+the SMAs and SuperTrend are computed on the bars actually drawn, exactly as for a
+single-strike series. The averager deliberately leaves every overlay field null.
+
+**Cost.** On `HISTORICAL_ICICI` a ladder is **one** query —
+`findRecentCandlesUpToForStrikes` uses `strike_price IN (…)`, which the
+`uk_historical_option_series_time` index serves as a handful of range dives — with
+the page sized for the whole ladder, since the `LIMIT` is over the union of the
+legs rather than per leg. `TOKEN_BASED` is inherently per-strike: each leg needs
+its own `instrument_details` token before `market_data` can be queried, so it
+issues one lookup and one fetch per leg.
+
+> `strike_price` is `DECIMAL(12,4)` and reads back as `24450.0000`, while the
+> ladder carries a plain `24450`. Those are not `BigDecimal.equals`-equal, so the
+> service keys its legs in a `TreeMap` (which compares numerically) and
+> `HistoricalOptionCandleStrikeLadderQueryTest` pins that the SQL `IN` compares
+> numerically too. Get either wrong and every averaged pane returns empty and
+> looks like missing data.
+
+`strikeSpan` is capped at `MAX_STRIKE_SPAN` (5) in `ChartDashboardService`, so a
+hand-written URL cannot turn one pane into a hundred-leg fetch. The dashboard only
+ever asks for 1 and 2.
 
 ### DTOs used
 
@@ -347,13 +473,16 @@ ever offer a strike that actually renders.
 - `timeframe` is present
 - `smaPeriods` is present
 - all SMA periods are from `20,50,100,200,500`
+- `strikeSpan` is between `0` and `MAX_STRIKE_SPAN` (5)
 
 ### Response behavior
 
 Success:
 
 - HTTP `200`
-- `MarketChartResponse`
+- `MarketChartResponse` — `atmStrike` is the strike actually plotted (the ladder's
+  centre on an averaged request), and `averagedStrikes` lists the legs that were
+  averaged, empty for an ordinary single-strike series
 
 No data:
 
@@ -469,11 +598,15 @@ When `chartType = PE` or `chartType = CE`:
 3. choose a reference price
 4. calculate the ATM strike
 5. resolve the weekly expiry
-6. resolve the option token from `instrument_details`
-7. fetch option candles from `market_data`
-8. compute runtime SMA values from 5-minute closes using prior-day lookback
+6. build the strike ladder — the strike alone unless `strikeSpan > 0`
+7. per leg: resolve the option token from `instrument_details`, then fetch its
+   candles from `market_data`. A leg with no token or no candles is skipped, and
+   narrows the average rather than failing the request
+8. average the legs into one series (a one-leg ladder passes straight through, so
+   the ordinary chart has no separate code path to drift from)
 9. aggregate by requested timeframe
-10. return chart data
+10. compute overlays on the aggregated series
+11. return chart data
 
 ### Reference price
 
@@ -779,6 +912,19 @@ If a pane shows no data, check:
 9. are there browser console errors
 10. did the TradingView `lightweight-charts` CDN load successfully
 
+If only an **averaged** pane is empty while the single-strike pane beside it
+draws, the ladder is the difference — check in this order:
+
+11. do the neighbouring strikes exist for that expiry at all (the strike picker
+    lists exactly what is chartable)
+12. does one leg have a *shorter* history than the others — the all-legs rule
+    trims the series to the intersection, so one illiquid outer strike shortens
+    every bar it is missing from
+13. what does `averagedStrikes` say in the response — it names the legs that
+    actually contributed, and the pane's Strike meta cell shows the same
+14. on `TOKEN_BASED`, does `instrument_details` carry a token for each leg — a
+    leg with no token is skipped silently and simply narrows the average
+
 ---
 
 ## Current Notes
@@ -794,16 +940,84 @@ If a pane shows no data, check:
 
 `MarketChartRequest.fromDate` draws one continuous series across
 `[fromDate, date]` instead of a single day. Absent, the API keeps the
-original single-day behaviour. Exposed as `fromDate` on
-`GET /api/charts/market-data` and as the **From (continuous)** control in the
-toolbar.
+original single-day behaviour. The API contract is unchanged and still takes an
+arbitrary `fromDate`.
 
-In the UI, a **fresh browser session opens with From prefilled to 45 days
-before Date** (`DEFAULT_CONTINUOUS_LOOKBACK_DAYS` in `chart-dashboard.js`), so
-the continuous view works without picking a from-date. The default applies only
-when the field was never persisted: clearing From (the × button) stores an
-empty value, so the single-day choice survives reloads, and a trade deep-link
-that carries `date` without `fromDate` still opens single-day.
+**The dashboard has no control for this — it is always continuous.** Every
+request the page makes carries `fromDate = Date − 45 days`
+(`CONTINUOUS_LOOKBACK_DAYS` in `chart-dashboard.js`), so the chart is always one
+series running through session boundaries, and the toolbar carries neither a
+from-date picker nor a mode toggle. Both existed briefly and were removed: the
+window was not a decision anyone was making per chart, and fixing it also
+removes the inverted-range case the picker had to guard (a From after the To
+came back as a silently empty chart).
+
+**The viewport still opens on the selected day.** Fetching 45 days is not the
+same as showing 45 days: `focusSelectedSession` sets the visible range to the
+selected date's own session (~78 five-minute bars) and leaves the remaining
+~2,400 bars off-screen to the left, one drag away. The window is there to warm
+the SMAs and put the recent past within scrolling reach — fitting all of it would
+squeeze the day you actually selected into a few pixels.
+
+The session is matched on the raw ISO string's date prefix rather than by
+converting epoch seconds back to a calendar day: the API already returns
+`+05:30` timestamps, so a prefix compare *is* the market's session boundary and
+needs no timezone arithmetic to get wrong. When the selected date has no bars in
+a given series — a holiday, or an option leg that had not started trading yet —
+that pane falls back to `fitContent()`; the whole window is a worse view but an
+honest one, where an empty viewport would look broken.
+
+Resizing and the fullscreen toggle preserve the visible logical range rather than
+re-fitting, so the same bars stay on screen and simply get more room. They used
+to call `fitContent()`, which threw away both the session focus and wherever the
+user had scrolled to.
+
+Each pane carries its own `+` / `−` buttons, overlaid bottom-left so they clear
+lightweight-charts' price scale on the right and its time axis underneath. They
+step the **visible logical range** (bar indices) rather than `barSpacing`, so
+they speak the same units as `focusSelectedSession` and the resize handler and
+compose with both. The two factors are exact inverses (`0.8` and `1.25`), so
+zooming in and back out returns to the range you started from instead of
+drifting, and the step is centred on what is on screen rather than the right
+edge — the buttons sit next to a chart the user has usually already scrolled to
+a particular bar. The visible span is clamped to `[5, 20000]` bars; without the
+floor, repeated `+` eventually asks for a zero-width range and the pane goes
+blank with no way back short of a reload.
+
+The buttons live on `.chart-canvas-wrap`, **not** `.chart-canvas` — the renderer
+clears the canvas element's `innerHTML` before creating the chart, so anything
+parked inside it disappears on the first refresh.
+
+### Zoom is synced across panes
+
+Moving one pane's window — the `+` / `−` buttons, the wheel, a drag — moves all
+ten, via `subscribeVisibleTimeRangeChange` on each chart broadcasting to the
+others behind a `syncingRanges` re-entry guard.
+
+The broadcast carries a **time range, not a logical range**, and that distinction
+is load-bearing now that the panes no longer share a timeframe: bar 40 of a
+5-minute series and bar 40 of a 15-minute series are three quarters of an hour
+apart, so mirroring bar indices would drift the pinned rows out of alignment with
+the top ones. Wall-clock times mean the same instant on every pane whatever its
+bucket size.
+
+Each `setVisibleRange` is individually guarded, because a window can fall
+entirely outside one pane's data — an option leg that had not started trading
+yet — and lightweight-charts throws rather than clamping. One pane refusing a
+window must not stop the other six from following.
+
+Consequences worth knowing:
+
+- **Single-day is no longer reachable from the dashboard.** The API path is
+  unchanged and still draws one day when `fromDate` is absent — it is simply not
+  something this page asks for any more.
+- **Deep links get the window too.** The orders-ledger *Chart* button links with
+  the trade's `date`, which now opens the 45 days ending on that day rather than
+  the day alone. The trade's own session is the right-hand edge of the chart.
+- **Nothing about it is remembered**, because there is nothing to remember. The
+  page actively clears the two keys earlier versions wrote
+  (`mm.chartDashboard.continuous` and `mm.chartDashboard.fromDate`) so returning
+  browsers do not carry dead entries.
 
 Two things worth knowing:
 

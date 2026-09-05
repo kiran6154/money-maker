@@ -6,6 +6,7 @@ import com.moneymaker.dto.TradeConfigCombinedDTO;
 import com.moneymaker.dto.TradeSignal;
 import com.moneymaker.entity.Instrument;
 import com.moneymaker.entity.MarketData;
+import com.moneymaker.entity.StrategyDefaults;
 import com.moneymaker.entity.TradeConfig;
 import com.moneymaker.entity.TradeOrder;
 import com.moneymaker.journal.JournalRecorder;
@@ -13,9 +14,11 @@ import com.moneymaker.journal.ObservationContextFactory;
 import com.moneymaker.journal.ObservationKind;
 import com.moneymaker.order.dto.OrderPurgeRequestDTO;
 import com.moneymaker.order.dto.OrderPurgeResultDTO;
+import com.moneymaker.repository.StrategyDefaultsRepository;
 import com.moneymaker.repository.TradeOrderRepository;
 import com.moneymaker.shared.data.SharedData;
 import com.moneymaker.telegram.NotificationService;
+import com.moneymaker.util.BracketMode;
 import com.moneymaker.util.TrailLadder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -70,16 +73,28 @@ public class OrderService {
     private final JournalRecorder journal;
     private final ObservationContextFactory observations;
 
+    /**
+     * Per-strategy bracket modes (changeset 041). Read at order open rather than
+     * carried on {@link TradeConfigCombinedDTO}, because the DTO siblings of one
+     * config deliberately share a single {@code TradeConfig} instance — see
+     * {@code TradeConfigScheduler.fetchTradeConfigsByDate} — so a per-strategy
+     * value cannot live on the config without copying it first.
+     */
+    private final StrategyDefaultsRepository strategyDefaultsRepository;
+
     public OrderService(OrderPlacementFactory placementFactory,
                         TradeOrderRepository tradeOrderRepository,
                         NotificationService notifier,
                         JournalRecorder journal,
-                        ObservationContextFactory observations) {
+                        ObservationContextFactory observations,
+                        StrategyDefaultsRepository strategyDefaultsRepository) {
         this.placementFactory = Objects.requireNonNull(placementFactory, "placementFactory must not be null");
         this.tradeOrderRepository = Objects.requireNonNull(tradeOrderRepository, "tradeOrderRepository must not be null");
         this.notifier = Objects.requireNonNull(notifier, "notifier must not be null");
         this.journal = Objects.requireNonNull(journal, "journal must not be null");
         this.observations = Objects.requireNonNull(observations, "observations must not be null");
+        this.strategyDefaultsRepository = Objects.requireNonNull(
+                strategyDefaultsRepository, "strategyDefaultsRepository must not be null");
     }
 
     /**
@@ -177,6 +192,54 @@ public class OrderService {
             log.debug("[order] skip signal — direction {} != config.transactionType {} (entry suppressed)",
                     signal.getAction(), configTxn);
             return;
+        }
+
+        // Entry-time window (changeset 042): TradeConfig.entryFrom / entryTo
+        // bound when a NEW entry may open. Null on either side means unbounded
+        // there, which is how every config behaved before 042 — so this is inert
+        // for strategies 1-4.
+        //
+        // Entries only. An exit is never gated on the window: a rule that could
+        // strand an open position past its own stop-loss would be a risk control
+        // that creates risk. This sits after the open-position lookup above, so
+        // a closing signal has already been handled and returned.
+        LocalTime signalTime = signal.getSignalTime() != null
+                ? signal.getSignalTime().toLocalTime()
+                : null;
+        LocalTime entryFrom = config.getTradeConfig() != null ? config.getTradeConfig().getEntryFrom() : null;
+        LocalTime entryTo = config.getTradeConfig() != null ? config.getTradeConfig().getEntryTo() : null;
+        if (signalTime != null) {
+            if (entryFrom != null && signalTime.isBefore(entryFrom)) {
+                log.debug("[order] skip signal — {} is before entryFrom={} for tradeConfigId={} strategyId={}",
+                        signalTime, entryFrom, signal.getTradeConfigId(), strategyId);
+                return;
+            }
+            if (entryTo != null && signalTime.isAfter(entryTo)) {
+                log.debug("[order] skip signal — {} is after entryTo={} for tradeConfigId={} strategyId={}",
+                        signalTime, entryTo, signal.getTradeConfigId(), strategyId);
+                return;
+            }
+        }
+
+        // One-position-per-BOOK cap (changeset 042). Null book_id skips it
+        // entirely, so this is inert for every pre-042 config.
+        //
+        // Why the existing caps are not enough: a book that sells CE on
+        // down-pressure and PE on up-pressure is TWO configs, because
+        // trading_side is single-valued. numberOfParallelTrades and
+        // maxParallelPerSide both key on (trade_config_id, strategy_id), so the
+        // two legs hold two independent budgets and a "one position at a time"
+        // strategy could sit in a CE short and a PE short simultaneously — which
+        // is not one position, and would double the book's risk while halving
+        // the meaning of its trade count.
+        String bookId = config.getTradeConfig() != null ? config.getTradeConfig().getBookId() : null;
+        if (bookId != null && !bookId.isBlank()) {
+            long openInBook = tradeOrderRepository.countOpenInBook(bookId, strategyId, STATUS_OPEN);
+            if (openInBook >= 1) {
+                log.debug("[order] skip signal — book={} already holds {} OPEN trade(s) for strategyId={} "
+                                + "(one position per book)", bookId, openInBook, strategyId);
+                return;
+            }
         }
 
         // Per-day cap: respect TradeConfig.numberOfTradesPerDay if set. Counts all
@@ -332,17 +395,32 @@ public class OrderService {
             Integer lotQuantity = config.getTradeConfig().getLotQuantity();
             order.setQuantity(lotQuantity != null && lotQuantity > 0 ? lotQuantity : 1);
 
+            // Which of the two bracket columns this strategy exits on (041).
+            // Resolved once per open, from the DTO's strategy rather than the
+            // config, because one config can run under several strategies.
+            StrategyDefaults defaults = bracketDefaults(config.getStrategyId());
             order.setTargetAtEntry(bracketAtEntry(
+                    bracketMode(defaults, true, config.getStrategyId()),
                     config.getTradeConfig().getTargetPct(),
                     config.getTradeConfig().getTarget(),
                     signal.getPrice()));
             order.setStopLossAtEntry(capStopLoss(
                     bracketAtEntry(
+                            bracketMode(defaults, false, config.getStrategyId()),
                             config.getTradeConfig().getSlPct(),
                             config.getTradeConfig().getStopLoss(),
                             signal.getPrice()),
                     config.getTradeConfig().getMaxSlPoints()));
             order.setTrailLadderAtEntry(trailLadderAtEntry(config.getTradeConfig(), order));
+
+            // Changeset 043: the two time-based exits, frozen onto the row for
+            // the same reasons as the bracket above — PositionService must not
+            // depend on the config caches surviving a restart, and editing the
+            // hold limit mid-session must not retroactively breach trades that
+            // are already open. Null stays null: no config that omits these gets
+            // an exit it did not ask for.
+            order.setMaxHoldMinutesAtEntry(config.getTradeConfig().getMaxHoldMinutes());
+            order.setFlattenAtEntry(config.getTradeConfig().getFlattenAt());
         }
         // Seed peak P&L tracking at the entry baseline (0). The position monitor
         // then reports max(0, observed P&L) and min(0, observed P&L) — which
@@ -372,22 +450,79 @@ public class OrderService {
      * Resolves one side of the exit bracket into the premium points that get
      * frozen onto the order.
      *
-     * <p>A percentage wins over the absolute column when the config carries one.
-     * The reason is the premium band: {@code min/max_option_price} spans 80-250 by
-     * default, so a fixed points bracket is a 12% move at the top of the band and
-     * a 38% move at the bottom — one of the two ends always gets a bracket that
-     * does not match the trade. A fraction of the entry premium is the same trade
-     * at either end. See changeset 027 for the measured difference.</p>
+     * <p>Which column wins is the strategy's {@code target_mode} / {@code sl_mode}
+     * (changeset 041), not a rule baked in here. {@code PERCENT} — the default, and
+     * what every pre-041 trade did — prefers the percentage, because the premium
+     * band matters: {@code min/max_option_price} spans 80-250 by default, so a
+     * fixed points bracket is a 12% move at the top of the band and a 38% move at
+     * the bottom, while a fraction of the entry premium is the same trade at
+     * either end (see 027 for the measured difference). {@code POINTS} prefers the
+     * absolute column, for a config that trades one premium level and wants a
+     * bracket in rupees rather than in percent.</p>
+     *
+     * <p><b>Either mode falls back to the other column when its own is unset.</b>
+     * That is not tidiness — {@code PositionService.thresholdBreach} reads a null
+     * target or stop as "never breaches", so resolving to null would silently
+     * delete that exit for the life of the trade. A bracket that is present but
+     * expressed in the other unit is strictly better than no bracket.</p>
      *
      * <p>Resolved here, once, rather than in {@code PositionService}: the monitor
      * must keep comparing a plain points value it can trust not to move, and the
      * entry price it would need is only unambiguous at open.</p>
      */
-    private BigDecimal bracketAtEntry(BigDecimal pct, BigDecimal absolute, BigDecimal entryPrice) {
-        if (pct != null && pct.signum() > 0 && entryPrice != null && entryPrice.signum() > 0) {
+    private BigDecimal bracketAtEntry(BracketMode mode, BigDecimal pct,
+                                      BigDecimal absolute, BigDecimal entryPrice) {
+        boolean pctUsable = pct != null && pct.signum() > 0
+                && entryPrice != null && entryPrice.signum() > 0;
+        boolean absoluteUsable = absolute != null && absolute.signum() > 0;
+
+        if (mode == BracketMode.POINTS && absoluteUsable) {
+            return absolute;
+        }
+        if (pctUsable) {
             return entryPrice.multiply(pct).setScale(2, RoundingMode.HALF_UP);
         }
         return absolute;
+    }
+
+    /**
+     * The {@code strategy_defaults} row backing a strategy's bracket modes, or
+     * {@code null} when it has none.
+     *
+     * <p>A missing row is normal, not an error: changeset 033 seeded only
+     * strategy 1 and deliberately left others out, and a hand-made config can
+     * name a strategy the EOD detector never generates for. {@link #bracketMode}
+     * reads {@code null} as the legacy {@code PERCENT} rule, so those strategies
+     * keep the bracket they have today.</p>
+     */
+    private StrategyDefaults bracketDefaults(Integer strategyId) {
+        if (strategyId == null) {
+            return null;
+        }
+        return strategyDefaultsRepository.findById(strategyId).orElse(null);
+    }
+
+    /**
+     * One side's bracket mode, degrading to {@code PERCENT} if the column holds
+     * something {@link BracketMode} cannot read.
+     *
+     * <p>Same call as {@link #trailLadderAtEntry}: a config typo must not answer
+     * itself with a silent trading outage. {@code PERCENT} is the pre-041
+     * behaviour, so degrading to it costs nothing beyond ignoring the typo, and
+     * the error names the strategy and the value.</p>
+     */
+    private BracketMode bracketMode(StrategyDefaults defaults, boolean target, Integer strategyId) {
+        if (defaults == null) {
+            return BracketMode.PERCENT;
+        }
+        try {
+            return target ? defaults.targetMode() : defaults.slMode();
+        } catch (IllegalArgumentException ex) {
+            log.error("[order] strategyId={} has an unusable {} \"{}\" — falling back to PERCENT: {}",
+                    strategyId, target ? "target_mode" : "sl_mode",
+                    target ? defaults.getTargetMode() : defaults.getSlMode(), ex.getMessage());
+            return BracketMode.PERCENT;
+        }
     }
 
     /**

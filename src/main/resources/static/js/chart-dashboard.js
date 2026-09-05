@@ -10,15 +10,24 @@
     const OVERLAY_SUPERTREND = 'supertrend';
     const DEFAULT_OVERLAYS = [OVERLAY_SMA_HIGH, OVERLAY_SUPERTREND];
     const NO_DATA_MESSAGE = 'No market data available for selected date.';
-    // First-visit window for the continuous view: From defaults to this many
-    // days before Date, so the chart opens usable without picking a from-date.
-    const DEFAULT_CONTINUOUS_LOOKBACK_DAYS = 45;
+    // The chart is always one continuous series across this many days ending at
+    // Date. Not a mode and not a picker: there is no single-day view and no
+    // from-date to choose, so there is also no inverted range to guard against.
+    const CONTINUOUS_LOOKBACK_DAYS = 45;
+    // One click of + or -. Exact inverses (0.8 x 1.25 = 1), so zooming in and
+    // back out returns to the range you started from rather than drifting.
+    const ZOOM_IN_FACTOR = 0.8;
+    const ZOOM_OUT_FACTOR = 1.25;
+    // Floor and ceiling in bars. Without the floor, repeated + eventually asks
+    // for a zero-width range and the pane goes blank with no way back short of
+    // a reload.
+    const MIN_VISIBLE_BARS = 5;
+    const MAX_VISIBLE_BARS = 20000;
     const CHART_HEIGHT_FALLBACK = 360;
     const MARKET_TIMEZONE = 'Asia/Kolkata';
     const LS_PREFIX = 'mm.chartDashboard.';
     const LS_KEYS = {
         date: LS_PREFIX + 'date',
-        fromDate: LS_PREFIX + 'fromDate',
         dataSource: LS_PREFIX + 'dataSource',
         indexSymbol: LS_PREFIX + 'indexSymbol',
         timeframes: LS_PREFIX + 'timeframes',
@@ -73,15 +82,88 @@
         label: 'SuperTrend 7,3'
     };
 
+    /**
+     * Pane keys. These are the dashboard's own identifiers, NOT the API's
+     * `chartType` — the fixed-timeframe panes below are ordinary PE / CE series
+     * that happen to be pinned to one timeframe. `PANE_SPEC` maps a key to the
+     * series the backend should be asked for and the timeframe to ask at.
+     */
     const CHART_TYPES = {
         PE: 'PE',
         UNDERLYING: 'UNDERLYING',
-        CE: 'CE'
+        CE: 'CE',
+        PE_15M: 'PE_15M',
+        CE_15M: 'CE_15M',
+        PE_10M: 'PE_10M',
+        CE_10M: 'CE_10M',
+        PE_AVG3: 'PE_AVG3',
+        CE_AVG3: 'CE_AVG3',
+        PE_AVG5: 'PE_AVG5',
+        CE_AVG5: 'CE_AVG5'
     };
+
+    /**
+     * `series` is what goes on the wire as `chartType`; `timeframe` is the fixed
+     * one this pane always draws, or `null` to follow the toolbar's chip;
+     * `strikeSpan` is how many strikes either side of the plotted strike the
+     * backend averages into one synthetic series, `0` being the plain contract.
+     *
+     * <p>Pinning is what makes the 15m / 10m rows useful: the 5m/10m/15m chip
+     * moves the top two rows, while these keep a standing 15-minute and
+     * 10-minute view of the same two legs so the three horizons can be read
+     * against each other without touching a control.</p>
+     *
+     * <p>The two averaged rows answer a different question. A single strike's
+     * premium is noisy and steps as the underlying walks across the strike grid;
+     * the mean of a ladder straddling the money tracks the underlying instead of
+     * tracking which side of a strike it sits on, so an SMA over it is a much
+     * quieter line. They follow the toolbar chip rather than pinning, since the
+     * comparison being made is against the panes above them at the same
+     * timeframe, not across horizons.</p>
+     */
+    const PANE_SPEC = {
+        PE:         { series: 'PE',         timeframe: null,  strikeSpan: 0 },
+        UNDERLYING: { series: 'UNDERLYING', timeframe: null,  strikeSpan: 0 },
+        CE:         { series: 'CE',         timeframe: null,  strikeSpan: 0 },
+        PE_15M:     { series: 'PE',         timeframe: '15m', strikeSpan: 0 },
+        CE_15M:     { series: 'CE',         timeframe: '15m', strikeSpan: 0 },
+        PE_10M:     { series: 'PE',         timeframe: '10m', strikeSpan: 0 },
+        CE_10M:     { series: 'CE',         timeframe: '10m', strikeSpan: 0 },
+        PE_AVG3:    { series: 'PE',         timeframe: null,  strikeSpan: 1 },
+        CE_AVG3:    { series: 'CE',         timeframe: null,  strikeSpan: 1 },
+        PE_AVG5:    { series: 'PE',         timeframe: null,  strikeSpan: 2 },
+        CE_AVG5:    { series: 'CE',         timeframe: null,  strikeSpan: 2 }
+    };
+
+    const PANE_KEYS = Object.keys(CHART_TYPES).map(key => CHART_TYPES[key]);
+
+    /** The API series behind a pane key. */
+    function seriesOf(paneKey) {
+        const spec = PANE_SPEC[paneKey];
+        return spec ? spec.series : paneKey;
+    }
+
+    /** The timeframe a pane draws: its pinned one, else whatever the chip says. */
+    function timeframeOf(paneKey) {
+        const spec = PANE_SPEC[paneKey];
+        return (spec && spec.timeframe) ? spec.timeframe : state.activeTimeframe;
+    }
+
+    /** True when the pane is pinned and so ignores the toolbar chip. */
+    function isPinned(paneKey) {
+        const spec = PANE_SPEC[paneKey];
+        return !!(spec && spec.timeframe);
+    }
+
+    /** Strikes either side to average into this pane; 0 for a plain contract. */
+    function strikeSpanOf(paneKey) {
+        const spec = PANE_SPEC[paneKey];
+        return spec && spec.strikeSpan ? spec.strikeSpan : 0;
+    }
 
     const state = {
         date: '',
-        /** Blank = single-day view; set = continuous window ending at `date`. */
+        /** Always derived, never picked: date - CONTINUOUS_LOOKBACK_DAYS. */
         fromDate: '',
         dataSource: DEFAULT_DATA_SOURCE,
         indexSymbol: DEFAULT_INDEX,
@@ -90,27 +172,21 @@
         activeTimeframe: DEFAULT_TIMEFRAME,
         strike: '',
         overlays: [...DEFAULT_OVERLAYS],
-        responses: {
-            PE: new Map(),
-            UNDERLYING: new Map(),
-            CE: new Map()
-        },
-        charts: {
-            PE: null,
-            UNDERLYING: null,
-            CE: null
-        },
-        controllers: {
-            PE: null,
-            UNDERLYING: null,
-            CE: null
-        }
+        // Built from PANE_KEYS rather than listed, so adding a pane above is a
+        // one-line change here instead of three easily-forgotten ones.
+        responses: {},
+        charts: {},
+        controllers: {}
     };
+
+    PANE_KEYS.forEach(paneKey => {
+        state.responses[paneKey] = new Map();
+        state.charts[paneKey] = null;
+        state.controllers[paneKey] = null;
+    });
 
     const els = {
         date: document.getElementById('chartDate'),
-        fromDate: document.getElementById('chartFromDate'),
-        clearFromDate: document.getElementById('clearFromDateBtn'),
         dataSource: document.getElementById('chartDataSource'),
         indexSymbol: document.getElementById('chartIndexSymbol'),
         timeframes: document.getElementById('chartTimeframes'),
@@ -123,51 +199,34 @@
         todayDateBtn: document.getElementById('todayDateBtn'),
         fullscreenBtn: document.getElementById('fullscreenChartsBtn'),
 
-        panes: {
-            PE: {
-                title: document.getElementById('pePaneTitle'),
-                activeBadge: document.getElementById('peActiveTimeframe'),
-                selectedDate: document.getElementById('peSelectedDate'),
-                selectedIndex: document.getElementById('peSelectedIndex'),
-                selectedTimeframe: document.getElementById('peSelectedTimeframe'),
-                expiryDate: document.getElementById('peExpiryDate'),
-                atmStrike: document.getElementById('peAtmStrike'),
-                legend: document.getElementById('peSmaLegend'),
-                loading: document.getElementById('peLoadingState'),
-                error: document.getElementById('peErrorState'),
-                empty: document.getElementById('peNoDataState'),
-                chart: document.getElementById('peChart')
-            },
-            UNDERLYING: {
-                title: document.getElementById('underlyingPaneTitle'),
-                activeBadge: document.getElementById('underlyingActiveTimeframe'),
-                selectedDate: document.getElementById('underlyingSelectedDate'),
-                selectedIndex: document.getElementById('underlyingSelectedIndex'),
-                selectedTimeframe: document.getElementById('underlyingSelectedTimeframe'),
-                expiryDate: null,
-                atmStrike: null,
-                legend: document.getElementById('underlyingSmaLegend'),
-                loading: document.getElementById('underlyingLoadingState'),
-                error: document.getElementById('underlyingErrorState'),
-                empty: document.getElementById('underlyingNoDataState'),
-                chart: document.getElementById('underlyingChart')
-            },
-            CE: {
-                title: document.getElementById('cePaneTitle'),
-                activeBadge: document.getElementById('ceActiveTimeframe'),
-                selectedDate: document.getElementById('ceSelectedDate'),
-                selectedIndex: document.getElementById('ceSelectedIndex'),
-                selectedTimeframe: document.getElementById('ceSelectedTimeframe'),
-                expiryDate: document.getElementById('ceExpiryDate'),
-                atmStrike: document.getElementById('ceAtmStrike'),
-                legend: document.getElementById('ceSmaLegend'),
-                loading: document.getElementById('ceLoadingState'),
-                error: document.getElementById('ceErrorState'),
-                empty: document.getElementById('ceNoDataState'),
-                chart: document.getElementById('ceChart')
-            }
-        }
+        /**
+         * Filled after `els` is built, from PANE_KEYS. Every pane's element ids
+         * are its key's camelCase prefix plus a fixed suffix (PE_15M ->
+         * pe15mPaneTitle, pe15mChart, …), so the eleven panes need one rule here
+         * rather than eleven twelve-line literals — and the two the underlying
+         * pane does not have (expiry, strike) resolve to null on their own.
+         */
+        panes: {}
     };
+
+    PANE_KEYS.forEach(paneKey => {
+        const prefix = paneIdPrefix(paneKey);
+        const byId = suffix => document.getElementById(prefix + suffix);
+        els.panes[paneKey] = {
+            title: byId('PaneTitle'),
+            activeBadge: byId('ActiveTimeframe'),
+            selectedDate: byId('SelectedDate'),
+            selectedIndex: byId('SelectedIndex'),
+            selectedTimeframe: byId('SelectedTimeframe'),
+            expiryDate: byId('ExpiryDate'),
+            atmStrike: byId('AtmStrike'),
+            legend: byId('SmaLegend'),
+            loading: byId('LoadingState'),
+            error: byId('ErrorState'),
+            empty: byId('NoDataState'),
+            chart: byId('Chart')
+        };
+    });
 
     function init() {
         hydrateDefaults();
@@ -189,7 +248,6 @@
         const url = new URLSearchParams(window.location.search);
         const linked = {
             date: url.get('date'),
-            fromDate: url.get('fromDate'),
             indexSymbol: url.get('indexSymbol'),
             dataSource: url.get('dataSource'),
             strike: url.get('strike')
@@ -224,24 +282,6 @@
         if (els.date && (linked.date || !els.date.value)) {
             els.date.value = linked.date || storedDate || localDateString(new Date());
         }
-        if (els.fromDate) {
-            if (linked.date || linked.fromDate) {
-                // A deep link picks its own window: no fromDate in the URL means
-                // the single day it linked (the orders-ledger case), not the
-                // default lookback.
-                els.fromDate.value = linked.fromDate || '';
-            } else {
-                // null = never persisted, so open with the default continuous
-                // window. '' = the user cleared back to single-day view on a
-                // previous visit; respect that.
-                const storedFrom = readStoredValue(LS_KEYS.fromDate);
-                els.fromDate.value = storedFrom !== null
-                    ? storedFrom
-                    : defaultContinuousFromDate(els.date ? els.date.value : '');
-            }
-        }
-        state.fromDate = els.fromDate ? els.fromDate.value : '';
-
         // The ladder itself loads async in init(); remember the choice so
         // reloadStrikeOptions can re-select it if it is still available.
         state.strike = linked.strike || storedStrike || '';
@@ -249,10 +289,15 @@
 
     function bindEvents() {
         if (els.date) els.date.addEventListener('change', onLadderFiltersChanged);
-        if (els.fromDate) els.fromDate.addEventListener('change', onLadderFiltersChanged);
-        if (els.clearFromDate) els.clearFromDate.addEventListener('click', function () {
-            if (els.fromDate) els.fromDate.value = '';
-            onLadderFiltersChanged();
+        // Delegated: every pane's buttons are static markup, but the charts
+        // behind them are destroyed and rebuilt on every refresh, so binding per
+        // button would still have to survive that. One listener does not care.
+        document.addEventListener('click', function (event) {
+            const button = event.target.closest('.chart-zoom-btn');
+            if (!button) return;
+            const chartType = button.getAttribute('data-zoom-chart');
+            const zoomingIn = button.getAttribute('data-zoom') === 'in';
+            zoomChart(chartType, zoomingIn ? ZOOM_IN_FACTOR : ZOOM_OUT_FACTOR);
         });
         if (els.dataSource) els.dataSource.addEventListener('change', onLadderFiltersChanged);
         if (els.indexSymbol) els.indexSymbol.addEventListener('change', onLadderFiltersChanged);
@@ -298,7 +343,7 @@
                 if (single) {
                     // Bail before the callback when the active chip is clicked
                     // again: the selection is unchanged, and onFiltersChanged
-                    // would otherwise fire a full nine-request refresh for it.
+                    // would otherwise fire a full eleven-request refresh for it.
                     if (button.classList.contains('is-selected')) return;
                     chips().forEach(chip => chip.classList.toggle('is-selected', chip === button));
                 } else {
@@ -325,7 +370,7 @@
      * Overlays are a pure render concern — the responses already in
      * state.responses carry every SMA and SuperTrend field regardless. So this
      * redraws from cache instead of going through refreshAllCharts, which would
-     * fire nine identical requests just to hide a line.
+     * fire eleven identical requests just to hide a line.
      */
     function onOverlaysChanged() {
         updateStateFromControls();
@@ -403,13 +448,9 @@
 
     function updateStateFromControls() {
         state.date = els.date ? els.date.value : '';
-        // Guard the inverted range here rather than at the API: a from-date after
-        // the to-date would otherwise come back as a silently empty chart.
-        const rawFrom = els.fromDate ? els.fromDate.value : '';
-        state.fromDate = (rawFrom && state.date && rawFrom < state.date) ? rawFrom : '';
-        if (rawFrom && !state.fromDate && els.fromDate) {
-            els.fromDate.value = '';
-        }
+        // Always the 45-day window. Derived rather than entered, so the inverted
+        // range the old from-date picker had to guard against cannot occur.
+        state.fromDate = continuousFromDate(state.date);
         state.dataSource = els.dataSource && els.dataSource.value ? els.dataSource.value : DEFAULT_DATA_SOURCE;
         state.indexSymbol = els.indexSymbol && els.indexSymbol.value ? els.indexSymbol.value : DEFAULT_INDEX;
         state.timeframes = getSelectedValues(els.timeframes, [DEFAULT_TIMEFRAME]);
@@ -481,9 +522,7 @@
         }
 
         clearResponses();
-        fetchPaneData(CHART_TYPES.PE);
-        fetchPaneData(CHART_TYPES.UNDERLYING);
-        fetchPaneData(CHART_TYPES.CE);
+        PANE_KEYS.forEach(fetchPaneData);
     }
 
     function clearResponses() {
@@ -500,7 +539,10 @@
         setPaneEmpty(chartType, false);
         renderPaneMetadata(chartType, null);
 
-        const requests = state.timeframes.map(timeframe =>
+        // A pinned pane fetches its own timeframe and ignores the chip; the rest
+        // fetch whatever the chip currently selects.
+        const wanted = isPinned(chartType) ? [timeframeOf(chartType)] : state.timeframes;
+        const requests = wanted.map(timeframe =>
             fetchChartData(chartType, timeframe, controller.signal)
                 .then(response => ({ timeframe, response }))
         );
@@ -540,21 +582,30 @@
             date: state.date,
             dataSource: state.dataSource,
             indexSymbol: state.indexSymbol,
-            chartType: chartType,
+            chartType: seriesOf(chartType),
             timeframe: timeframe,
             smaPeriods: state.smaPeriods.join(',')
         });
 
-        // Continuous mode. Absent => the backend draws the single day, which is
-        // the original behaviour; present => one series across [fromDate, date].
+        // Always sent, so the backend always draws one series across
+        // [fromDate, date]. Its single-day path (fromDate absent) is still
+        // supported and still reachable from the API — just not from this page.
         if (state.fromDate) {
             params.set('fromDate', state.fromDate);
         }
 
         // Blank strike = ATM (auto); the backend resolves it. The underlying
         // chart has no strike, so never send one for it.
-        if (state.strike && chartType !== CHART_TYPES.UNDERLYING) {
+        if (state.strike && seriesOf(chartType) !== CHART_TYPES.UNDERLYING) {
             params.set('strike', state.strike);
+        }
+
+        // Only sent when the pane actually averages a ladder. Omitting it on the
+        // other panes keeps their request identical to what it was, so the plain
+        // contract panes cannot be perturbed by this feature.
+        const span = strikeSpanOf(chartType);
+        if (span > 0 && seriesOf(chartType) !== CHART_TYPES.UNDERLYING) {
+            params.set('strikeSpan', String(span));
         }
 
         return fetch('/api/charts/market-data?' + params.toString(), { signal })
@@ -588,7 +639,7 @@
 
     function renderPane(chartType) {
         const pane = els.panes[chartType];
-        const response = state.responses[chartType].get(state.activeTimeframe);
+        const response = state.responses[chartType].get(timeframeOf(chartType));
 
         renderPaneMetadata(chartType, response || null);
 
@@ -616,27 +667,49 @@
         const pane = els.panes[chartType];
         if (!pane) return;
 
-        if (pane.title && chartType === CHART_TYPES.UNDERLYING) {
-            pane.title.textContent = state.indexSymbol || DEFAULT_INDEX;
-        } else if (pane.title) {
-            // "ATM" is only honest while the picker is on auto — once a strike is
-            // chosen explicitly the heading has to name it instead.
-            pane.title.textContent = state.strike
-                ? chartType + ' ' + state.strike
-                : 'ATM ' + chartType;
-        }
-        if (pane.activeBadge) pane.activeBadge.textContent = state.activeTimeframe;
+        const paneTimeframe = timeframeOf(chartType);
+
+        // chartTypeLabel already special-cases the underlying pane, so the
+        // heading and the fallback summary cannot name a pane differently.
+        if (pane.title) pane.title.textContent = chartTypeLabel(chartType);
+        if (pane.activeBadge) pane.activeBadge.textContent = paneTimeframe;
         if (pane.selectedDate) pane.selectedDate.textContent = state.date || '-';
         if (pane.selectedIndex) pane.selectedIndex.textContent = state.indexSymbol || DEFAULT_INDEX;
-        if (pane.selectedTimeframe) pane.selectedTimeframe.textContent = state.activeTimeframe;
+        if (pane.selectedTimeframe) pane.selectedTimeframe.textContent = paneTimeframe;
         if (pane.expiryDate) pane.expiryDate.textContent = response && response.expiryDate ? response.expiryDate : '-';
-        if (pane.atmStrike) pane.atmStrike.textContent = response && response.atmStrike != null ? response.atmStrike : '-';
+        if (pane.atmStrike) pane.atmStrike.textContent = strikeMetaText(response);
+    }
+
+    /**
+     * The Strike meta cell. An averaged pane names the ladder it really drew
+     * rather than its centre — the backend drops a leg that had no candles, so
+     * "±2 avg" in the heading can be three contracts in the data, and the count
+     * here is the only place that discrepancy is visible.
+     *
+     * <p>Driven by the response rather than by the pane's own strikeSpan for
+     * exactly that reason: the pane knows what it asked for, only the response
+     * knows what came back.</p>
+     */
+    function strikeMetaText(response) {
+        if (!response) return '-';
+
+        const legs = Array.isArray(response.averagedStrikes) ? response.averagedStrikes : [];
+        if (legs.length) {
+            const values = legs.map(toNumber).filter(Number.isFinite);
+            if (values.length) {
+                const span = values.length === 1
+                    ? formatStrike(values[0])
+                    : formatStrike(Math.min.apply(null, values)) + '-' +
+                      formatStrike(Math.max.apply(null, values));
+                return span + ' (avg of ' + values.length + ')';
+            }
+        }
+
+        return response.atmStrike != null ? String(response.atmStrike) : '-';
     }
 
     function renderVisiblePanes() {
-        renderPane(CHART_TYPES.PE);
-        renderPane(CHART_TYPES.UNDERLYING);
-        renderPane(CHART_TYPES.CE);
+        PANE_KEYS.forEach(renderPane);
     }
 
     function renderSmaLegends() {
@@ -664,14 +737,21 @@
             });
 
             if (showSupertrend()) {
+                // One swatch, not two. SuperTrend reads buy or sell at any one
+                // moment and never both, so a two-colour key misrepresented the
+                // indicator — it is a direction, not a pair of lines.
+                const direction = latestSupertrendDirection(
+                    state.responses[chartType].get(timeframeOf(chartType)));
                 const supertrendItem = document.createElement('span');
                 supertrendItem.className = 'chart-sma-legend-item';
-                supertrendItem.style.color = SUPERTREND_CONFIG.upColor;
+                supertrendItem.style.color = direction == null
+                    ? 'var(--text-muted)'
+                    : (direction ? SUPERTREND_CONFIG.upColor : SUPERTREND_CONFIG.downColor);
                 supertrendItem.innerHTML =
                     '<span class="chart-sma-legend-swatch"></span>' +
-                    '<span style="color:' + SUPERTREND_CONFIG.downColor + '">' +
-                    '<span class="chart-sma-legend-swatch"></span></span>' +
-                    '<span>' + escapeHtml(SUPERTREND_CONFIG.label) + '</span>';
+                    '<span>' + escapeHtml(SUPERTREND_CONFIG.label) +
+                    (direction == null ? '' : ' · ' + (direction ? 'Buy' : 'Sell')) +
+                    '</span>';
                 pane.legend.appendChild(supertrendItem);
             }
         });
@@ -744,7 +824,8 @@
                 renderSupertrend(chart, response.data);
             }
 
-            chart.timeScale().fitContent();
+            focusSelectedSession(chart, response.data);
+            attachRangeSync(chartType, chart);
             attachResizeHandler(chartType, chart, pane.chart);
             attachCandleTooltip(chartType, chart, pane.chart, response.data);
         } catch (error) {
@@ -791,10 +872,29 @@
         state.charts[chartType] = { chart: null, container: pane.chart, fallback: true };
     }
 
+    /**
+     * A pane's display name, used by both the heading and the fallback summary
+     * so the two cannot disagree.
+     *
+     * <p>"ATM" is only honest while the picker is on auto — once a strike is
+     * chosen explicitly the name has to carry it instead. A pinned pane appends
+     * its timeframe, since several option panes otherwise share a name and only
+     * the badge tells them apart; an averaged pane appends its ladder width for
+     * the same reason.</p>
+     */
     function chartTypeLabel(chartType) {
-        if (chartType === CHART_TYPES.PE) return 'ATM PE';
-        if (chartType === CHART_TYPES.CE) return 'ATM CE';
-        return state.indexSymbol || DEFAULT_INDEX;
+        const series = seriesOf(chartType);
+        if (series === CHART_TYPES.UNDERLYING) return state.indexSymbol || DEFAULT_INDEX;
+
+        let label = state.strike ? series + ' ' + state.strike : 'ATM ' + series;
+        const span = strikeSpanOf(chartType);
+        if (span > 0) {
+            label += ' ±' + span + ' avg';
+        }
+        if (isPinned(chartType)) {
+            label += ' · ' + timeframeOf(chartType);
+        }
+        return label;
     }
 
     function setPaneLoading(chartType, visible) {
@@ -901,69 +1001,77 @@
     }
 
     /**
-     * SuperTrend is one line that changes colour when the trend flips, which a
-     * single lightweight-charts line series cannot express. So it is drawn as two
-     * series — one green, one red — where each carries whitespace points
-     * ({time} with no value) for the bars belonging to the other. Whitespace
-     * breaks the line instead of connecting across it, so the two series
-     * interleave into what looks like one colour-changing line.
+     * What SuperTrend is saying at the right-hand edge of the chart: {@code true}
+     * for buy, {@code false} for sell, {@code null} while the ATR is still warming
+     * up and there is no reading at all.
+     *
+     * <p>Walks back from the newest bar rather than reading the last element
+     * outright, so trailing warm-up or gap bars cannot report "no signal" on a
+     * series that plainly has one.</p>
+     */
+    function latestSupertrendDirection(response) {
+        if (!response || !Array.isArray(response.data)) return null;
+        for (let i = response.data.length - 1; i >= 0; i--) {
+            const direction = response.data[i][SUPERTREND_CONFIG.directionField];
+            if (direction != null) return direction === true;
+        }
+        return null;
+    }
+
+    /**
+     * SuperTrend: one line series whose colour changes at each flip.
+     *
+     * <p>{@code LineData.color} overrides the series colour per point in
+     * lightweight-charts v4, so the band is a single continuous series carrying
+     * green points while the trend is up and red while it is down.</p>
+     *
+     * <p>This replaced a two-series design — one green series and one red, each
+     * holding whitespace for the other's bars — which was meant to interleave
+     * into one colour-changing line and instead rendered as <b>two separate
+     * lines drawn at once</b>. One series makes that failure structurally
+     * impossible: there is only ever one line to draw.</p>
      */
     function renderSupertrend(chart, candles) {
         if (!Array.isArray(candles) || !candles.length) return;
 
-        const sorted = [...candles].sort(compareCandlesByTime);
-        const upPoints = [];
-        const downPoints = [];
-        let hasUp = false;
-        let hasDown = false;
+        const points = [];
+        let hasReading = false;
 
-        sorted.forEach(candle => {
+        [...candles].sort(compareCandlesByTime).forEach(candle => {
             const time = toChartTime(candle.time);
             if (time == null) return;
 
             const value = toNumber(candle[SUPERTREND_CONFIG.field]);
             const isUp = candle[SUPERTREND_CONFIG.directionField];
 
+            // Genuine whitespace: the warm-up bars before the ATR has enough
+            // history to produce a band at all.
             if (!Number.isFinite(value) || isUp == null) {
-                upPoints.push({ time });
-                downPoints.push({ time });
+                points.push({ time });
                 return;
             }
 
-            if (isUp === true) {
-                upPoints.push({ time, value });
-                downPoints.push({ time });
-                hasUp = true;
-            } else {
-                upPoints.push({ time });
-                downPoints.push({ time, value });
-                hasDown = true;
-            }
+            points.push({
+                time: time,
+                value: value,
+                color: isUp === true ? SUPERTREND_CONFIG.upColor : SUPERTREND_CONFIG.downColor
+            });
+            hasReading = true;
         });
 
-        if (!hasUp && !hasDown) return;
+        if (!hasReading) return;
 
-        const baseOptions = {
+        const series = chart.addLineSeries({
+            // Only a fallback for a point that somehow carries no colour of its
+            // own; every point above sets one.
+            color: SUPERTREND_CONFIG.downColor,
             lineWidth: SUPERTREND_CONFIG.lineWidth,
             priceLineVisible: false,
             lastValueVisible: false,
             crosshairMarkerVisible: false,
             lineStyle: window.LightweightCharts.LineStyle.Solid
-        };
-
-        if (hasUp) {
-            const upSeries = chart.addLineSeries(
-                Object.assign({}, baseOptions, { color: SUPERTREND_CONFIG.upColor })
-            );
-            upSeries.setData(upPoints);
-        }
-
-        if (hasDown) {
-            const downSeries = chart.addLineSeries(
-                Object.assign({}, baseOptions, { color: SUPERTREND_CONFIG.downColor })
-            );
-            downSeries.setData(downPoints);
-        }
+        });
+        series.setData(points);
     }
 
     /**
@@ -972,7 +1080,7 @@
      * plot area, or press Escape to dismiss it.
      *
      * <p>Pinning rather than tracking the pointer is the point of the gesture -
-     * the numbers stay put while you read across the three panes, and each pane
+     * the numbers stay put while you read across the panes, and each pane
      * holds its own pin so an underlying candle and its CE / PE counterparts can
      * be compared side by side.</p>
      *
@@ -1174,6 +1282,143 @@
         return leftTime - rightTime;
     }
 
+    /**
+     * Points the viewport at the selected date, with the rest of the 45-day
+     * window sitting off-screen to the left for the user to scroll back to.
+     *
+     * <p>The window exists so the SMAs are warm and the recent past is one drag
+     * away — not so that six weeks can be squeezed into one pane. Fitting all of
+     * it made the selected session a few pixels wide, which is the thing this
+     * function exists to prevent.</p>
+     *
+     * <p>Matched on the raw ISO string's date prefix rather than by converting
+     * the epoch seconds back to a calendar day: the API already returns
+     * {@code +05:30} timestamps, so a prefix compare is exactly the market's own
+     * session boundary and needs no timezone arithmetic to get wrong.</p>
+     *
+     * <p>Falls back to {@code fitContent()} when the selected date has no bars in
+     * this series — a holiday, or an option leg that had not started trading yet.
+     * Showing the whole window is a worse view but an honest one; an empty
+     * viewport would just look broken.</p>
+     */
+    function focusSelectedSession(chart, candles) {
+        const timeScale = chart.timeScale();
+        const times = (candles || [])
+            .filter(candle => String(candle && candle.time || '').startsWith(state.date))
+            .map(candle => toChartTime(candle.time))
+            .filter(time => time != null);
+
+        if (times.length < 2) {
+            timeScale.fitContent();
+            return;
+        }
+
+        const from = Math.min.apply(null, times);
+        const to = Math.max.apply(null, times);
+        if (!(to > from)) {
+            timeScale.fitContent();
+            return;
+        }
+        timeScale.setVisibleRange({ from: from, to: to });
+    }
+
+    /**
+     * Resizes a pane without moving the viewport.
+     *
+     * <p>Both callers used to {@code fitContent()} here, which re-fitted to the
+     * whole 45-day window on every resize and every fullscreen toggle — undoing
+     * the session focus and discarding wherever the user had scrolled to. Keeping
+     * the logical range means the same bars stay on screen and simply get more
+     * room.</p>
+     */
+    /**
+     * One + / - step on a pane, zooming about the centre of what is on screen.
+     *
+     * <p>Centre rather than the right edge: the buttons sit beside a chart the
+     * user has usually already scrolled to a particular bar, and anchoring to the
+     * edge would slide that bar out of view on every click.</p>
+     *
+     * <p>Works on the logical range (bar indices) rather than {@code barSpacing},
+     * so it composes with {@code focusSelectedSession} and the resize handler —
+     * all three speak the same units.</p>
+     */
+    function zoomChart(chartType, factor) {
+        const current = state.charts[chartType];
+        if (!current || !current.chart) return;
+
+        const timeScale = current.chart.timeScale();
+        const range = timeScale.getVisibleLogicalRange();
+        if (!range) return;
+
+        const centre = (range.from + range.to) / 2;
+        let half = ((range.to - range.from) / 2) * factor;
+        half = Math.min(Math.max(half, MIN_VISIBLE_BARS / 2), MAX_VISIBLE_BARS / 2);
+
+        timeScale.setVisibleLogicalRange({ from: centre - half, to: centre + half });
+    }
+
+    /**
+     * Guard against the obvious feedback loop: every {@code setVisibleRange} below
+     * makes that chart fire its own range-changed event, which would come back
+     * here and re-broadcast forever.
+     */
+    let syncingRanges = false;
+
+    /**
+     * Mirrors one pane's visible window onto the other six.
+     *
+     * <p><b>Time range, not logical range.</b> The panes no longer share a
+     * timeframe — bar 40 of a 5-minute series and bar 40 of a 15-minute series are
+     * three quarters of an hour apart — so syncing bar indices would drift the
+     * pinned rows out of alignment with the top ones. Wall-clock times mean the
+     * same instant on every pane whatever its bucket size, which is the whole
+     * point of showing three horizons at once.</p>
+     *
+     * <p>Each {@code setVisibleRange} is guarded: a range can fall entirely
+     * outside a given pane's data — an option leg that had not started trading
+     * yet — and lightweight-charts throws rather than clamping. One pane refusing
+     * a window must not stop the rest from following.</p>
+     */
+    function broadcastVisibleRange(sourceKey, range) {
+        if (syncingRanges || !range) return;
+        syncingRanges = true;
+        try {
+            PANE_KEYS.forEach(paneKey => {
+                if (paneKey === sourceKey) return;
+                const entry = state.charts[paneKey];
+                if (!entry || !entry.chart) return;
+                try {
+                    entry.chart.timeScale().setVisibleRange(range);
+                } catch (error) {
+                    // This pane cannot show that window; the others still can.
+                }
+            });
+        } finally {
+            syncingRanges = false;
+        }
+    }
+
+    /**
+     * Makes a pane a sync source. Covers every way the window can move — the
+     * +/- buttons, the mouse wheel, a drag — because all of them end in the same
+     * range-changed event.
+     */
+    function attachRangeSync(chartType, chart) {
+        chart.timeScale().subscribeVisibleTimeRangeChange(range => {
+            broadcastVisibleRange(chartType, range);
+        });
+    }
+
+    function applyChartSize(chart, container) {
+        const timeScale = chart.timeScale();
+        const range = timeScale.getVisibleLogicalRange();
+        const size = getChartSize(container);
+        chart.applyOptions({ width: size.width, height: size.height });
+        if (range) {
+            timeScale.setVisibleLogicalRange(range);
+        }
+    }
+
     function toChartTime(value) {
         const parsed = Date.parse(value);
         if (Number.isNaN(parsed)) {
@@ -1231,9 +1476,7 @@
 
     function attachResizeHandler(chartType, chart, container) {
         const resize = () => {
-            const size = getChartSize(container);
-            chart.applyOptions({ width: size.width, height: size.height });
-            chart.timeScale().fitContent();
+            applyChartSize(chart, container);
         };
 
         if (typeof ResizeObserver === 'function') {
@@ -1287,11 +1530,18 @@
         return { width: width, height: height };
     }
 
+    /**
+     * The pane's root <article>. Ids follow the key: PE -> pePane,
+     * PE_15M -> pe15mPane — derived rather than listed so a new pane needs no
+     * edit here.
+     */
     function getPaneRoot(chartType) {
-        if (chartType === CHART_TYPES.PE) return document.getElementById('pePane');
-        if (chartType === CHART_TYPES.UNDERLYING) return document.getElementById('underlyingPane');
-        if (chartType === CHART_TYPES.CE) return document.getElementById('cePane');
-        return null;
+        return document.getElementById(paneIdPrefix(chartType) + 'Pane');
+    }
+
+    /** camelCase element-id prefix for a pane key: PE_15M -> "pe15m". */
+    function paneIdPrefix(paneKey) {
+        return String(paneKey).toLowerCase().replace(/_(.)/g, (m, c) => c.toUpperCase());
     }
 
     function stepDate(days) {
@@ -1324,9 +1574,7 @@
             const chartType = CHART_TYPES[key];
             const current = state.charts[chartType];
             if (!current || !current.chart || !current.container) return;
-            const size = getChartSize(current.container);
-            current.chart.applyOptions({ width: size.width, height: size.height });
-            current.chart.timeScale().fitContent();
+            applyChartSize(current.chart, current.container);
         });
     }
 
@@ -1385,7 +1633,11 @@
     function persistState() {
         try {
             localStorage.setItem(LS_KEYS.date, state.date || '');
-            localStorage.setItem(LS_KEYS.fromDate, state.fromDate || '');
+            // Both were written by earlier versions of this page (a from-date
+            // string, then the toggle). Neither has a control any more, so drop
+            // them rather than leaving dead entries in every returning browser.
+            localStorage.removeItem(LS_PREFIX + 'continuous');
+            localStorage.removeItem(LS_PREFIX + 'fromDate');
             localStorage.setItem(LS_KEYS.dataSource, state.dataSource || DEFAULT_DATA_SOURCE);
             localStorage.setItem(LS_KEYS.indexSymbol, state.indexSymbol || DEFAULT_INDEX);
             localStorage.setItem(LS_KEYS.timeframes, JSON.stringify(state.timeframes || [DEFAULT_TIMEFRAME]));
@@ -1424,11 +1676,11 @@
         return new Date(parts[0], parts[1] - 1, parts[2]);
     }
 
-    /** From-date DEFAULT_CONTINUOUS_LOOKBACK_DAYS before the given to-date. */
-    function defaultContinuousFromDate(toDateValue) {
+    /** The continuous window's start: CONTINUOUS_LOOKBACK_DAYS before the to-date. */
+    function continuousFromDate(toDateValue) {
         const toDate = parseDateInput(toDateValue);
         if (!toDate) return '';
-        toDate.setDate(toDate.getDate() - DEFAULT_CONTINUOUS_LOOKBACK_DAYS);
+        toDate.setDate(toDate.getDate() - CONTINUOUS_LOOKBACK_DAYS);
         return localDateString(toDate);
     }
 

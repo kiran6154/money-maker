@@ -20,10 +20,14 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.TreeMap;
 
 @Service
 @RequiredArgsConstructor
@@ -52,6 +56,7 @@ public class HistoricalIciciChartDashboardService {
     private final HistoricalOptionCandleRepository optionCandleRepository;
     private final ChartTimeframeAggregator chartTimeframeAggregator;
     private final ChartIndicatorService chartIndicatorService;
+    private final ChartStrikeAverager chartStrikeAverager;
 
     public MarketChartResponse getMarketChartData(MarketChartRequest request) {
         return switch (request.getChartType()) {
@@ -98,19 +103,37 @@ public class HistoricalIciciChartDashboardService {
         // series only exists within its own expiry cycle, so a range spanning an
         // expiry shows candles only where THIS contract traded - the series stops
         // rather than silently splicing in a different contract.
+        List<BigDecimal> ladder =
+                ChartStrikeLadder.around(request.getIndexSymbol(), strike, request.getStrikeSpan());
+        Map<BigDecimal, List<ChartCandleResponse>> legs = fetchOptionLegs(
+                request.getIndexSymbol(),
+                expiryDate.get(),
+                ladder,
+                request.getChartType(),
+                request.getFromDate(),
+                request.getDate());
+
         List<ChartCandleResponse> data = finish(
-                fetchOptionCandles(
-                        request.getIndexSymbol(),
-                        expiryDate.get(),
-                        strike,
-                        request.getChartType(),
-                        request.getFromDate(),
-                        request.getDate()),
+                chartStrikeAverager.average(legs.values()),
                 request.getTimeframe(),
                 request.getFromDate(),
                 request.getDate()
         );
-        return buildResponse(request, expiryDate.get(), strike, data);
+        return buildResponse(request, expiryDate.get(), strike, averagedStrikes(request, legs), data);
+    }
+
+    /**
+     * The ladder legs to report back, or empty for an ordinary single-strike
+     * chart.
+     *
+     * <p>Reports the legs that came back with candles, not the ones asked for:
+     * an outer strike with nothing in the window drops out of the average, and
+     * a pane captioned "ATM±2" while drawing three contracts would be naming
+     * something it did not plot.
+     */
+    private List<BigDecimal> averagedStrikes(MarketChartRequest request,
+                                             Map<BigDecimal, List<ChartCandleResponse>> legs) {
+        return request.getStrikeSpan() > 0 ? List.copyOf(legs.keySet()) : List.of();
     }
 
     /**
@@ -214,29 +237,69 @@ public class HistoricalIciciChartDashboardService {
                 .toList();
     }
 
-    /** Full lookback window, ascending, OHLC only. */
-    private List<ChartCandleResponse> fetchOptionCandles(IndexSymbol indexSymbol,
-                                                         LocalDate expiryDate,
-                                                         BigDecimal strikePrice,
-                                                         ChartType chartType,
-                                                         LocalDate fromDate,
-                                                         LocalDate tradingDate) {
+    /**
+     * Full lookback window for every strike on the ladder, split into one
+     * ascending OHLC leg per strike.
+     *
+     * <p>A one-strike ladder — the ordinary chart — is simply the single-leg
+     * case, so there is no separate code path for it to drift away from.
+     *
+     * <p>Keyed by a {@link TreeMap}, which is what makes the lookup numeric:
+     * {@code BigDecimal.equals} distinguishes {@code 24450} from the
+     * {@code 24450.0000} the {@code DECIMAL(12,4)} column returns, so a
+     * {@code HashMap} here would file every leg under a key the requested ladder
+     * could never match. The ordering is a bonus - the reported legs come out
+     * ascending.
+     *
+     * <p>Strikes with no candles at all are absent from the result rather than
+     * present-and-empty, so the caller can report what was really averaged.
+     */
+    private Map<BigDecimal, List<ChartCandleResponse>> fetchOptionLegs(IndexSymbol indexSymbol,
+                                                                       LocalDate expiryDate,
+                                                                       List<BigDecimal> strikes,
+                                                                       ChartType chartType,
+                                                                       LocalDate fromDate,
+                                                                       LocalDate tradingDate) {
+        if (strikes.isEmpty()) {
+            return Map.of();
+        }
+
         LocalDateTime dayEnd = tradingDate.atTime(MARKET_CLOSE);
-        List<HistoricalOptionCandle> recentCandles = optionCandleRepository.findRecentCandlesUpTo(
+        // The page is a LIMIT over the union of the legs, so it has to be sized
+        // for all of them: one leg's worth would return only the newest bars of
+        // the innermost strikes and leave the rest of the ladder looking untraded.
+        int pageSize = pageSizeFor(fromDate, tradingDate) * strikes.size();
+
+        List<HistoricalOptionCandle> recentCandles = optionCandleRepository.findRecentCandlesUpToForStrikes(
                 indexSymbol.name(),
                 OPTION_EXCHANGE,
                 expiryDate,
-                strikePrice,
+                strikes,
                 chartType.name(),
                 dayEnd,
-                PageRequest.of(0, pageSizeFor(fromDate, tradingDate))
+                PageRequest.of(0, pageSize)
         );
 
-        return recentCandles.stream()
+        Map<BigDecimal, List<ChartCandleResponse>> byStrike = new TreeMap<>();
+        recentCandles.stream()
                 .filter(Objects::nonNull)
+                .filter(candle -> candle.getStrikePrice() != null)
                 .sorted(Comparator.comparing(HistoricalOptionCandle::getDateTime))
-                .map(this::toChartCandle)
-                .toList();
+                .forEach(candle -> byStrike
+                        .computeIfAbsent(candle.getStrikePrice(), key -> new ArrayList<>())
+                        .add(toChartCandle(candle)));
+
+        // Re-key to the requested ladder values so the reported legs read as
+        // "24450" rather than the column's "24450.0000". TreeMap lookups compare
+        // numerically, so this matches across scales.
+        Map<BigDecimal, List<ChartCandleResponse>> legs = new LinkedHashMap<>();
+        strikes.forEach(strike -> {
+            List<ChartCandleResponse> leg = byStrike.get(strike);
+            if (leg != null && !leg.isEmpty()) {
+                legs.put(strike, leg);
+            }
+        });
+        return legs;
     }
 
     private Optional<LocalDate> resolveExpiryDate(IndexSymbol indexSymbol, LocalDate selectedDate) {
@@ -282,17 +345,20 @@ public class HistoricalIciciChartDashboardService {
     }
 
     private BigDecimal calculateAtmStrike(IndexSymbol indexSymbol, BigDecimal referencePrice) {
-        int step = switch (indexSymbol) {
-            case NIFTY -> 50;
-            case BANKNIFTY -> 100;
-        };
-
-        return BigDecimal.valueOf(Math.round(referencePrice.doubleValue() / step) * step);
+        return ChartStrikeLadder.atmStrike(indexSymbol, referencePrice);
     }
 
     private MarketChartResponse buildResponse(MarketChartRequest request,
                                               LocalDate expiryDate,
                                               BigDecimal atmStrike,
+                                              List<ChartCandleResponse> data) {
+        return buildResponse(request, expiryDate, atmStrike, List.of(), data);
+    }
+
+    private MarketChartResponse buildResponse(MarketChartRequest request,
+                                              LocalDate expiryDate,
+                                              BigDecimal atmStrike,
+                                              List<BigDecimal> averagedStrikes,
                                               List<ChartCandleResponse> data) {
         return new MarketChartResponse(
                 request.getIndexSymbol(),
@@ -301,6 +367,7 @@ public class HistoricalIciciChartDashboardService {
                 request.getDate(),
                 expiryDate,
                 atmStrike,
+                averagedStrikes,
                 data
         );
     }

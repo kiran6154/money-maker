@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      trade_order: the two time-based exits, snapshotted at entry.
+
+      WHY SNAPSHOT AND NOT READ THE CONFIG
+      ====================================
+      Exactly the reasoning behind 011 (target_at_entry / stop_loss_at_entry) and
+      036 (trail_ladder_at_entry), and it applies with more force here:
+
+        1. PositionService must not depend on SharedData still being populated.
+           It walks trade_order rows, and in live mode a restart mid-session
+           leaves the config caches empty while positions are still open. A
+           time stop that silently stops existing because a cache was cold is
+           worse than no time stop.
+
+        2. Editing a config mid-session must not re-time trades already open.
+           Shortening max_hold_minutes from 90 to 60 at 13:00 would otherwise
+           instantly breach - and close - every position opened before 12:00,
+           which is a mass liquidation triggered by a form submit.
+
+      BEHAVIOUR-NEUTRAL FOR EVERY EXISTING TRADE
+      ==========================================
+      Both columns are nullable and PositionService reads null as "this exit does
+      not apply". Rows written before this changeset have null in both, so no
+      historical trade acquires an exit it did not have, and no config that omits
+      the 042 columns produces one. Strategies 1-4 are unaffected.
+
+      WHY flatten_at IS A TIME AND NOT A TIMESTAMP
+      ===========================================
+      It is a time-of-day rule ("close everything at 15:15"), and the trade
+      already carries its own entry_time, so the date is never ambiguous: these
+      are intraday strategies and forceCloseOpenPositions squares off the same
+      session. Storing a full timestamp would invite a row whose flatten moment
+      is on a different day from its entry, which is not a thing this system can
+      mean.
+
+      TWO NEW exit_reason VALUES
+      ==========================
+      TIME_STOP  - max_hold_minutes elapsed
+      FLATTEN    - flatten_at reached
+
+      Both are distinct from the existing FORCE_CLOSE, which is the replay's
+      end-of-day sweep (15:20) and means "the run ended with this still open".
+      Collapsing them would make it impossible to tell a strategy that exits on
+      its own clock from one that had to be cleaned up after, which is exactly
+      the distinction a 90-minute-max-hold engine is measured on. exit_reason is
+      a free-text column, so no schema change is needed for the values
+      themselves - they are listed here because this is the changeset that
+      introduces them and docs/ORDERS_AND_POSITIONS.md points back at it.
+    -->
+    <changeSet id="043_add_time_exits_to_trade_order" author="moneymaker">
+        <!-- Same ddl-auto=update guard as 035 / 041 / 042. -->
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="trade_order" columnName="max_hold_minutes_at_entry"/>
+            </not>
+        </preConditions>
+        <addColumn tableName="trade_order">
+            <!--
+              Minutes from entry_time after which PositionService closes the
+              trade with exit_reason = TIME_STOP. NULL = no time stop.
+            -->
+            <column name="max_hold_minutes_at_entry" type="INT"/>
+            <!--
+              Time-of-day at which PositionService closes the trade with
+              exit_reason = FLATTEN regardless of P&L. NULL = no flatten.
+            -->
+            <column name="flatten_at_entry" type="TIME"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

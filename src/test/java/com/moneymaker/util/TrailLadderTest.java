@@ -63,16 +63,41 @@ class TrailLadderTest {
     }
 
     @Test
-    @DisplayName("rejects a rung that locks at or above its own trigger")
-    void rejectsLockAtOrAboveTrigger() {
-        // The killer case: peak has just reached the trigger, so current P&L can
-        // equal it, and the breach test is pnl <= lock. Such a rung is a
-        // take-profit that would fire the moment it arms.
-        assertThatThrownBy(() -> TrailLadder.parse("25:25"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("locks at or above its own trigger");
+    @DisplayName("rejects a rung that locks ABOVE its own trigger")
+    void rejectsLockAboveTrigger() {
+        // The floor would sit above the peak that armed it, so the trade would
+        // exit at a P&L it has never reached. Not a trailing stop under any
+        // reading.
         assertThatThrownBy(() -> TrailLadder.parse("25:30"))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("locks above its own trigger");
+    }
+
+    @Test
+    @DisplayName("ACCEPTS lock == trigger — a give-back trail, not a take-profit")
+    void acceptsLockEqualToTrigger() {
+        // This used to be rejected on the grounds that "the trade would exit the
+        // moment the rung arms". That was wrong about this codebase:
+        // PositionService.handleOne arms rungs AFTER its breach check, so the bar
+        // whose excursion earns the rung cannot also exit on it, and the earliest
+        // a lock == trigger floor can fire is the next bar.
+        //
+        // The distinction from target_at_entry is real: a target books +25 on the
+        // way UP, this books +25 only on the way BACK DOWN from a higher peak. A
+        // trade that runs to +60 and retraces exits here at +25 having reached
+        // +60; on a target it would have exited at +25 without ever seeing it.
+        //
+        // Required by the Pressure strategy's "arm at +25, exit on a fall back to
+        // +25" trail. See docs/PRESSURE_STRATEGY.md.
+        List<TrailLadder.Rung> rungs = TrailLadder.parse("25:25");
+        assertThat(rungs).hasSize(1);
+        assertThat(rungs.get(0).trigger()).isEqualByComparingTo("25");
+        assertThat(rungs.get(0).lock()).isEqualByComparingTo("25");
+
+        // And it resolves as a floor once the peak reaches it.
+        assertThat(TrailLadder.lockFor("25:25", new java.math.BigDecimal("25"))).isEqualByComparingTo("25");
+        assertThat(TrailLadder.lockFor("25:25", new java.math.BigDecimal("60"))).isEqualByComparingTo("25");
+        assertThat(TrailLadder.lockFor("25:25", new java.math.BigDecimal("24"))).isNull();
     }
 
     @Test

@@ -52,9 +52,41 @@ import java.util.function.Function;
  * a backtest day, because {@code AnalysisScheduler} derives its {@code from}
  * bound from the advancing tick time. Below that boundary ta4j averages however
  * many bars happen to precede the candle, which is a different number once the
- * list has been trimmed — so the warm-up region is always recomputed. It costs
- * one pass, because there the window is a pure prefix and a running sum
- * reproduces ta4j's loop term for term.
+ * list has been trimmed — so a warm-up value can never be reused across calls.
+ *
+ * <h3>The warm-up region is computed lazily (the "lazy SMA tail")</h3>
+ * Recomputing the warm-up on every call was measured at ~180–210k
+ * {@code BigDecimal} divide+stamp operations per backtest day — ~97% of all SMA
+ * computation once full-window reuse landed — for values that are almost never
+ * read. Warm-up indices sit at the <em>oldest</em> end of the multi-week
+ * lookback, and every observable reader of a stamp (or of a trend flag derived
+ * from one) on a candle that is not the series' last candle is a same-day
+ * lookback:
+ * <ul>
+ *   <li>{@code SmaTrendCalculator} resets its deviation counters and its
+ *       {@code prev} pointer on every new trading day, so the only flags
+ *       anything consumes — the last candle's, read by the strategy rules via
+ *       {@code RuleEngine}, and by {@code SmaDowntrendScanner} (whose
+ *       sufficiency gate additionally pins every judged candle at
+ *       {@code index >= period - 1}) — depend solely on stamps of candles
+ *       sharing the last candle's trading day;</li>
+ *   <li>{@code CommonRules.isSma20SlopeUp} reads the previous candle's stamp
+ *       only when that candle is on the same trading day as the decision
+ *       candle;</li>
+ *   <li>the journal's {@code SmaStateContributor} reads the last candle
+ *       alone;</li>
+ *   <li>stamped analysis lists are never persisted (only the bulk-download
+ *       flow saves {@code market_data} rows, from its own fresh lists), and the
+ *       chart dashboards compute their own indicators.</li>
+ * </ul>
+ * So warm-up indices on trading days <em>before</em> the last candle's are
+ * skipped outright: not summed, not divided, not stamped (see
+ * {@link #warmUpComputeStart}). A stale stamp left behind on such a candle is
+ * never trusted later either: as the lookback's left edge advances, a candle
+ * only ever moves toward <em>lower</em> indices, so a warm-up candle can never
+ * re-enter the {@code index >= period} region where stamps are reused. Warm-up
+ * indices that do fall on the last candle's day are computed exactly as before
+ * — same running prefix sum, same divisor, same stamps.
  *
  * <p>In live mode every fetch builds fresh {@code MarketData} objects with null
  * SMA fields, so nothing is ever skipped and the result is the full computation —
@@ -107,14 +139,26 @@ public class SMAIndicatorImpl implements Indicator {
         double last = 0d;
 
         // Warm-up region: window is [0..i], so one forward accumulation gives
-        // every value in it. Always recomputed — see the class Javadoc.
-        BigDecimal running = BigDecimal.ZERO;
+        // every value in it. Computed lazily — indices on trading days before
+        // the last candle's are skipped because nothing observable reads them;
+        // see the class Javadoc and warmUpComputeStart. The return value never
+        // comes from here: size >= period is guaranteed above, so the
+        // full-window loop below always runs at least once. With no stamp
+        // column for this period (writer == null) the region is all dead work
+        // and is skipped wholesale.
         int warmUp = Math.min(period - 1, size);
-        WARMUP_COMPUTED.add(warmUp);
-        for (int i = 0; i < warmUp; i++) {
-            running = running.add(low(marketData.get(i)), MATH_CONTEXT);
-            last = running.divide(BigDecimal.valueOf(i + 1L), MATH_CONTEXT).doubleValue();
-            if (writer != null) {
+        int warmUpStart = writer == null ? warmUp : warmUpComputeStart(marketData, warmUp);
+        WARMUP_COMPUTED.add(warmUp - warmUpStart);
+        if (warmUpStart < warmUp) {
+            BigDecimal running = BigDecimal.ZERO;
+            // Prefix below the computed range: summed (the window is the whole
+            // prefix) but neither divided nor stamped.
+            for (int i = 0; i < warmUpStart; i++) {
+                running = running.add(low(marketData.get(i)), MATH_CONTEXT);
+            }
+            for (int i = warmUpStart; i < warmUp; i++) {
+                running = running.add(low(marketData.get(i)), MATH_CONTEXT);
+                last = running.divide(BigDecimal.valueOf(i + 1L), MATH_CONTEXT).doubleValue();
                 writer.accept(marketData.get(i), last);
             }
         }
@@ -153,6 +197,54 @@ public class SMAIndicatorImpl implements Indicator {
         }
 
         return last;
+    }
+
+    /**
+     * First warm-up index whose value must actually be computed, in
+     * {@code [0, warmUp]}; returning {@code warmUp} skips the region entirely.
+     *
+     * <p>Indices whose candle falls on a trading day before the last candle's
+     * are skipped — the reader inventory in the class Javadoc is what makes
+     * that sound. Indices on the last candle's day are computed, preserving the
+     * pre-change stamps for every same-day reader ({@code SmaTrendCalculator}
+     * flags, the slope rule's previous-candle read).
+     *
+     * <p>Timestamps in these series are chronological and non-null
+     * ({@code market_data} and both historical tables declare the column
+     * {@code NOT NULL}); if one is ever missing, fall back to 0 — compute the
+     * whole region, the pre-change behaviour.
+     */
+    private static int warmUpComputeStart(List<MarketData> marketData, int warmUp) {
+        if (warmUp <= 0) {
+            return warmUp;
+        }
+        MarketData lastCandle = marketData.get(marketData.size() - 1);
+        if (lastCandle.getTimestamp() == null) {
+            return 0;
+        }
+        java.time.LocalDate lastDay = lastCandle.getTimestamp().toLocalDate();
+
+        MarketData topOfWarmUp = marketData.get(warmUp - 1);
+        if (topOfWarmUp.getTimestamp() == null) {
+            return 0;
+        }
+        if (!topOfWarmUp.getTimestamp().toLocalDate().equals(lastDay)) {
+            // Whole warm-up region predates the decision day — nothing reads it.
+            return warmUp;
+        }
+        // Warm-up reaches into the decision day: compute from its first candle.
+        int i = warmUp - 1;
+        while (i > 0) {
+            MarketData prev = marketData.get(i - 1);
+            if (prev.getTimestamp() == null) {
+                return 0;
+            }
+            if (!prev.getTimestamp().toLocalDate().equals(lastDay)) {
+                break;
+            }
+            i--;
+        }
+        return i;
     }
 
     /**

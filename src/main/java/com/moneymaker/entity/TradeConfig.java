@@ -7,6 +7,7 @@ import lombok.Setter;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 @Entity
 @Table(name = "trade_config")
@@ -209,6 +210,151 @@ public class TradeConfig {
      */
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = Boolean.TRUE;
+
+    // ------------------------------------------------------------------
+    // Changeset 042 — the intraday clock, the exact-offset strike, and the
+    // book id. Added for Strategy 5 (Pressure); see docs/PRESSURE_STRATEGY.md.
+    //
+    // Every field below is nullable (or defaults to FALSE) and every consumer
+    // reads null as "the rule that applied before 042", so a config that sets
+    // none of them behaves exactly as it did before. That is what keeps
+    // strategies 1-4 bit-identical, and it is asserted by
+    // PressureConfigColumnsAreOptionalTest.
+    // ------------------------------------------------------------------
+
+    /**
+     * Earliest time-of-day at which a NEW entry may open, inclusive.
+     * {@code null} = no lower bound, which is how every config behaved before
+     * changeset 042.
+     *
+     * <p>Applies to entries only. An exit — target, stop, trail, time stop,
+     * flatten — is never gated on this, because a window that could strand an
+     * open position past its own stop-loss would be a risk control that creates
+     * risk.</p>
+     */
+    @Column(name = "entry_from")
+    private LocalTime entryFrom;
+
+    /**
+     * Latest time-of-day at which a NEW entry may open, inclusive.
+     * {@code null} = no upper bound. See {@link #entryFrom}.
+     */
+    @Column(name = "entry_to")
+    private LocalTime entryTo;
+
+    /**
+     * Maximum minutes a position may stay OPEN, measured from
+     * {@code trade_order.entry_time}. {@code null} = no time stop, which is how
+     * every config behaved before changeset 042.
+     *
+     * <p>Enforced by {@code PositionService}, which closes the trade with
+     * {@code exit_reason = TIME_STOP} at the first monitored bar at or after the
+     * deadline. Snapshotted onto the order at entry like the rest of the
+     * bracket, so editing it mid-session cannot re-time trades already open.</p>
+     */
+    @Column(name = "max_hold_minutes")
+    private Integer maxHoldMinutes;
+
+    /**
+     * Time-of-day at which any still-OPEN position of this config is closed
+     * regardless of P&amp;L, with {@code exit_reason = FLATTEN}. {@code null} =
+     * no intraday flatten.
+     *
+     * <p>Deliberately distinct from the two close-time mechanisms that already
+     * exist. {@code CommonRules.isMarketCloseTime} (15:15) emits a <i>signal</i>
+     * a strategy may act on, and the replay's {@code forceCloseOpenPositions}
+     * sweep (15:20) runs only after the day's last tick. This one is a
+     * position-level rule needing no strategy cooperation — which is what
+     * Strategy 5 requires, since it emits entries only and has no exit
+     * signal at all.</p>
+     */
+    @Column(name = "flatten_at")
+    private LocalTime flattenAt;
+
+    /**
+     * Signed distance from ATM, in index points, identifying the single contract
+     * this config trades. {@code null} = keep the {@link #itmDepth} /
+     * {@link #otmDepth} strike-<i>set</i> expansion.
+     *
+     * <pre>
+     *   &gt; 0   ITM by that many points     CE = ATM - offset,  PE = ATM + offset
+     *   = 0   ATM
+     *   &lt; 0   OTM by that many points
+     * </pre>
+     *
+     * <p>The depth columns are counts of strike steps that expand into a set of
+     * legs which {@code AbstractSmaCrossStrategy} then ranks by premium. Pressure
+     * needs one exact contract instead, so this is expressed in points and
+     * resolves to a single strike — see {@code OffsetStrikeSelector}.</p>
+     */
+    @Column(name = "strike_offset_points")
+    private Integer strikeOffsetPoints;
+
+    /**
+     * The strike grid this config addresses, in index points. {@code null} =
+     * fall back to {@code instrument.strike_points}.
+     *
+     * <p>Exists because those two disagree for NIFTY and both are right for
+     * their own consumer: {@code instrument.strike_points} is 100, while the
+     * imported {@code historical_option_candles} are on a 50-point grid. Editing
+     * the instrument row would move every strike strategies 1-4 pick on
+     * historical replay — a Rule 0 behaviour change needing its own measured
+     * before/after — so the config carries its own step instead and the shared
+     * row stays untouched.</p>
+     */
+    @Column(name = "strike_step_points")
+    private Integer strikeStepPoints;
+
+    /**
+     * Comparison-bucket label shared by the configs that together make up one
+     * book, e.g. {@code "SELL_ITM300"}. {@code null} = no book, and the
+     * cross-config cap below does not apply.
+     *
+     * <p>What it buys: a book that sells CE on down-pressure and PE on
+     * up-pressure is <b>two</b> configs, because {@code trading_side} is
+     * single-valued. Every cap in {@code OrderService} keys on
+     * {@code (trade_config_id, strategy_id)}, so those two configs hold two
+     * independent budgets and could run a CE short and a PE short at the same
+     * moment. Pressure allows exactly one position at a time across the whole
+     * book, and this label is what lets the cap count across both legs.</p>
+     *
+     * <p>Deliberately a plain string and not a foreign key: a book is a bucket
+     * in a measurement run, not a durable domain entity, and a shared label is
+     * exactly enough to group by.</p>
+     */
+    @Column(name = "book_id", length = 32)
+    private String bookId;
+
+    /**
+     * Whether this config trades the <b>underlying itself</b> rather than an
+     * option leg. {@code false} (the default) is every config that has ever
+     * existed.
+     *
+     * <p>{@code true} is the Pressure SPOT baseline book: same signals, same
+     * clock, same brackets, but entry and exit are priced in index points off
+     * {@code historical_spot_candles} instead of off a premium. It is the row
+     * that separates "how good is the signal" from "how good are the option
+     * mechanics".</p>
+     *
+     * <p>Not folded into {@code trading_side} as a third value, because
+     * {@code resolveOptionType} in both {@code AnalysisScheduler} and
+     * {@code AbstractSmaCrossStrategy} derives CE/PE from that column and reads
+     * anything else as "fetch nothing" — a spot config would look like a broken
+     * option config to two shared code paths. An explicit flag keeps the branch
+     * visible at every call site.</p>
+     *
+     * <p>Defaulted in the field, not only in the DB, for the reason spelled out
+     * on {@link #isActive}: Hibernate names every column in its INSERT, so a
+     * null field is written as an explicit NULL and the column default never
+     * fires.</p>
+     */
+    @Column(name = "underlying_leg", nullable = false)
+    private Boolean underlyingLeg = Boolean.FALSE;
+
+    /** Null-safe read — a pre-042 in-memory instance behaves as "trades an option". */
+    public boolean tradesUnderlyingLeg() {
+        return Boolean.TRUE.equals(underlyingLeg);
+    }
 
     /**
      * When this row was last written. Stamped automatically on every insert and

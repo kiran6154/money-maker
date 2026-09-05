@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      Two indexes for queries added by the Pressure work (042-044). Both were
+      measured, not guessed - see the numbers in each changeset below.
+
+      Neither changes a result. An index cannot alter what a query returns, so
+      there is no Rule 0 exposure here and no before/after trade comparison is
+      required. What they change is whether a full-year replay takes four hours
+      or a few minutes.
+    -->
+
+    <!--
+      chain-volume aggregate: (stock_code, exchange_code, expiry_date, datetime)
+
+      MEASURED PROBLEM
+      ================
+      HistoricalOptionCandleRepository.sumVolumeByBar - the front-weekly chain
+      volume behind the Pressure VWAP proxy - showed up as the hottest statement
+      of the whole replay in performance_schema:
+
+          calls 764 | avg 414 ms | avg rows examined 11,030 | total 316 s
+
+      WHY THE EXISTING INDEX CANNOT SERVE IT
+      ======================================
+      uk_historical_option_series_time is
+          (stock_code, exchange_code, expiry_date, strike_price, option_right, datetime)
+
+      The query filters stock_code + exchange_code + expiry_date, ranges on
+      datetime, and GROUPs BY datetime. It deliberately does NOT constrain
+      strike_price or option_right, because summing across the whole chain is
+      the entire point of it.
+
+      Those two columns sit at positions 4 and 5, *ahead of* datetime at 6. A
+      composite B-tree can only be used left-to-right up to the first column
+      that is not an equality match, so MySQL gets three columns of prefix and
+      then has to scan every row of that expiry - all strikes, both rights,
+      every date - and filter datetime afterwards. 11,030 rows examined per call
+      is exactly that scan.
+
+      This index puts datetime immediately after expiry_date, so the range is
+      seekable and the GROUP BY streams in index order with no sort.
+
+      WHY NOT REORDER THE UNIQUE KEY INSTEAD
+      ======================================
+      It is a UNIQUE constraint and it is what makes the natural key natural -
+      (series, time) identifies a candle. Reordering it would let two rows with
+      the same strike and right at the same timestamp coexist, which is the one
+      thing that key exists to prevent. A second, non-unique index is the
+      cheaper and safer answer.
+    -->
+    <changeSet id="045_index_option_chain_volume_by_bar" author="moneymaker">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <indexExists tableName="historical_option_candles"
+                             indexName="idx_hoc_chain_volume_by_bar"/>
+            </not>
+        </preConditions>
+        <createIndex tableName="historical_option_candles"
+                     indexName="idx_hoc_chain_volume_by_bar">
+            <column name="stock_code"/>
+            <column name="exchange_code"/>
+            <column name="expiry_date"/>
+            <column name="datetime"/>
+        </createIndex>
+    </changeSet>
+
+    <!--
+      book cap: (strategy_id, status, trade_config_id)
+
+      MEASURED PROBLEM
+      ================
+      TradeOrderRepository.countOpenInBook - the one-position-per-book cap added
+      in 042 - runs on every candidate entry signal, roughly 1,000 times per
+      replayed day. EXPLAIN reports:
+
+          type: ALL   key: NULL   (i.e. a full scan of trade_order)
+
+      The only usable index, idx_trade_order_open_lookup, leads with
+      trade_config_id; this query does not filter on it (that is the whole point
+      - it counts ACROSS the configs in a book) so the index cannot be used.
+
+      WHY IT MATTERS EVEN THOUGH IT IS CURRENTLY CHEAP
+      ================================================
+      At the few hundred rows a run starts with, a full scan costs nothing -
+      which is exactly why this would have gone unnoticed. But trade_order grows
+      to several thousand rows over a full year while the call count per day
+      stays flat, so the cost is quadratic in the length of the run: the last
+      day of a replay pays several times what the first day paid, and the
+      slowdown looks like "the machine got busy" rather than like a missing
+      index.
+
+      COLUMN ORDER
+      ============
+      strategy_id and status are both equality predicates and are the selective
+      pair; trade_config_id trails so the join back to trade_config can be
+      satisfied from the index rather than the row.
+    -->
+    <changeSet id="045_index_trade_order_book_cap" author="moneymaker">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <indexExists tableName="trade_order" indexName="idx_trade_order_book_cap"/>
+            </not>
+        </preConditions>
+        <createIndex tableName="trade_order" indexName="idx_trade_order_book_cap">
+            <column name="strategy_id"/>
+            <column name="status"/>
+            <column name="trade_config_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

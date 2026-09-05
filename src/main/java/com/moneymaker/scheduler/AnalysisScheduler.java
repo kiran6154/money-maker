@@ -9,7 +9,9 @@ import com.moneymaker.entity.TradeConfig;
 import com.moneymaker.indicator.IndicatorConfig;
 import com.moneymaker.indicator.IndicatorService;
 import com.moneymaker.market.exception.HistoricalDataMissingException;
+import com.moneymaker.market.instrument.OffsetStrikeSelector;
 import com.moneymaker.market.instrument.OptionInstrumentResolver;
+import com.moneymaker.market.instrument.SyntheticUnderlyingContract;
 import com.moneymaker.market.instrument.UnderlyingSymbols;
 import com.moneymaker.journal.JournalRecorder;
 import com.moneymaker.journal.ObservationContextFactory;
@@ -223,6 +225,31 @@ public class AnalysisScheduler {
                     String marketDataKey = toMarketDataKey(symbol, interval);
                     SharedData.marketDataByInstrumentAndInterval.put(marketDataKey, marketDataList);
 
+                    // ---- changeset 042: the SPOT baseline book ---------------
+                    // A config that trades the underlying itself has no option
+                    // leg to fetch. Publishing the spot series into the STRIKE
+                    // cache under a pseudo-contract key is what lets the whole
+                    // downstream stack treat it like any other contract:
+                    // Strategy5 finds it by the same prefix scan, and
+                    // SharedData.latestCachedCandle - and therefore
+                    // BacktestingPositionMonitorService and the force-close
+                    // sweep - resolve its quotes with no knowledge of spot at
+                    // all. See SyntheticUnderlyingContract for why this is a
+                    // pseudo-contract and not a second exit engine.
+                    //
+                    // Guarded on the flag, so no pre-042 config reaches it.
+                    if (dto.getTradeConfig() != null && dto.getTradeConfig().tradesUnderlyingLeg()) {
+                        String spotKey = marketDataKey
+                                + "|" + SyntheticUnderlyingContract.SIDE
+                                + "|" + SyntheticUnderlyingContract.STRIKE
+                                + "|" + SyntheticUnderlyingContract.TOKEN
+                                + "|" + dto.getTradeConfig().getItmDepth()
+                                + "|" + dto.getTradeConfig().getOtmDepth();
+                        SharedData.putStrikeSeries(spotKey, marketDataList, analysisDateTime);
+                        logger.debug("[strikes] tradeConfigId={} underlying-leg: published spot series as {}",
+                                dto.getTradeConfig().getId(), spotKey);
+                    }
+
                     List<List<Integer>> strikeList = withOpenPositionStrikes(
                             calculateStrikesForCandles(marketDataList, dto.getInstrument(), dto.getTradeConfig()),
                             dto.getTradeConfig(), openOrders);
@@ -235,6 +262,16 @@ public class AnalysisScheduler {
                     if (!indexLineEmitted && logger.isDebugEnabled()) {
                         logIndexLine(dto, marketDataList, strikeList);
                         indexLineEmitted = true;
+                    }
+
+                    // An underlying-leg config has no option leg: the block above
+                    // already published its only tradable series. Fetching a
+                    // strike ladder for it would be pure waste - roughly 249
+                    // days x 5 candidate strikes of queries that nothing reads -
+                    // and resolveOptionType would refuse it anyway, since
+                    // trading_side does not resolve to CE or PE for a spot book.
+                    if (dto.getTradeConfig() != null && dto.getTradeConfig().tradesUnderlyingLeg()) {
+                        continue;
                     }
 
                     fetchAndShareStrikeMarketData(strikeList, dto.getInstrument(), dto.getTradeConfig(), timeframe, analysisDateTime.toLocalDate(), interval, startOfDay, analysisDateTime, marketDataKey, dto.getStrategyId(), analysisDateTime);
@@ -389,6 +426,32 @@ public class AnalysisScheduler {
                 && tradeConfig.getTradingSide().toUpperCase().contains("C");
         List<List<Integer>> allStrikes = new ArrayList<>();
         MarketData candle = marketDataList.get(marketDataList.size()-1);
+
+        // ---- changeset 042: exact-offset mode -------------------------------
+        // A config that names strike_offset_points wants ONE contract at a
+        // signed points distance from ATM, not the depth-count strike SET the
+        // block below expands. Returns the ordered candidate list from
+        // OffsetStrikeSelector; fetchAndShareStrikeMarketData stops at the first
+        // candidate that actually has candles, so the dense-ladder case costs
+        // exactly one fetch.
+        //
+        // Guarded on the column being set, so a config that predates 042 - which
+        // is every config strategies 1-4 run - never reaches this branch and the
+        // expansion below is bit-identical to what it has always done.
+        if (tradeConfig.getStrikeOffsetPoints() != null) {
+            int step = tradeConfig.getStrikeStepPoints() != null && tradeConfig.getStrikeStepPoints() > 0
+                    ? tradeConfig.getStrikeStepPoints()
+                    : strikeStep;
+            int atm = OffsetStrikeSelector.atm(candle.getClose().doubleValue(), step);
+            List<Integer> candidates = OffsetStrikeSelector.candidates(
+                    atm, isCall ? "CE" : "PE", tradeConfig.getStrikeOffsetPoints(), step);
+            logger.debug("[strikes] tradeConfigId={} offset-mode: spot={} step={} ATM={} offset={} -> candidates {}",
+                    tradeConfig.getId(), candle.getClose(), step, atm,
+                    tradeConfig.getStrikeOffsetPoints(), candidates);
+            allStrikes.add(candidates);
+            return allStrikes;
+        }
+
              double closePrice = candle.getClose().doubleValue();
             int baseStrike = (int) (Math.floor(closePrice / strikeStep) * strikeStep);
 
@@ -440,7 +503,77 @@ public class AnalysisScheduler {
             return;
         }
 
+        // ---- changeset 042: exact-offset mode walks candidates in order -----
+        // In offset mode strikeList.get(0) is OffsetStrikeSelector's ordered
+        // candidate list - the exact strike first, then +/-1 and +/-2 steps -
+        // and only the FIRST one that actually has candles is wanted. Any
+        // further lists are the open-position strikes withOpenPositionStrikes
+        // pinned, and those must all be fetched regardless: a position whose
+        // strike drifted out of the ATM window still needs a live quote or it
+        // freezes at a stale price and its stop can never trigger.
+        //
+        // Depth-count configs - everything strategies 1-4 run - take the else
+        // branch, which is the original single loop over uniqueStrikes.
+        boolean offsetMode = tradeConfig != null && tradeConfig.getStrikeOffsetPoints() != null;
+        if (offsetMode) {
+            List<Integer> candidates = strikeList.get(0);
+            boolean got = false;
+            for (Integer strike : candidates) {
+                if (fetchOneStrike(strike, instrument, tradeConfig, timeframe, interval,
+                        startOfDay, endOfDay, parentMarketDataKey, strategyId, observedAt,
+                        optionType, expiryDate)) {
+                    got = true;
+                    break;
+                }
+            }
+            if (!got) {
+                logger.warn("[strikes] tradeConfigId={} offset-mode: none of the candidate strikes {} "
+                                + "had candles for {} {} - no leg tradable this tick",
+                        tradeConfig.getId(), candidates, optionType, expiryDate);
+            }
+            java.util.Set<Integer> pinned = new java.util.LinkedHashSet<>();
+            for (int li = 1; li < strikeList.size(); li++) {
+                if (strikeList.get(li) != null) pinned.addAll(strikeList.get(li));
+            }
+            for (Integer strike : pinned) {
+                fetchOneStrike(strike, instrument, tradeConfig, timeframe, interval,
+                        startOfDay, endOfDay, parentMarketDataKey, strategyId, observedAt,
+                        optionType, expiryDate);
+            }
+            return;
+        }
+
         for (Integer strike : uniqueStrikes(strikeList)) {
+            fetchOneStrike(strike, instrument, tradeConfig, timeframe, interval,
+                    startOfDay, endOfDay, parentMarketDataKey, strategyId, observedAt,
+                    optionType, expiryDate);
+        }
+    }
+
+    /**
+     * Fetches, caches and journals ONE strike's series.
+     *
+     * <p>Extracted verbatim from the body of the loop that used to live in
+     * {@link #fetchAndShareStrikeMarketData}, so the depth-count path does
+     * exactly what it did before. It became a method only because the
+     * exact-offset path (changeset 042) needs to stop after the first candidate
+     * that yields data, which a single flat loop cannot express.</p>
+     *
+     * @return true when a non-empty series was cached for this strike
+     */
+    private boolean fetchOneStrike(Integer strike,
+                                   Instrument instrument,
+                                   TradeConfig tradeConfig,
+                                   Integer timeframe,
+                                   String interval,
+                                   LocalDateTime startOfDay,
+                                   LocalDateTime endOfDay,
+                                   String parentMarketDataKey,
+                                   Integer strategyId,
+                                   LocalDateTime observedAt,
+                                   String optionType,
+                                   LocalDate expiryDate) {
+        {
             // Cache per contract, not per strike — a CE and a PE config on the
             // same day walk identical strikes.
             String optionTokenCacheKey = SharedData.optionTokenKey(expiryDate, strike, optionType);
@@ -450,7 +583,7 @@ public class AnalysisScheduler {
                 if (optionToken == null) {
                     logger.warn("No option instrument found for strike: {}, type: {}, expiry: {}",
                             strike, optionType, expiryDate);
-                    continue;
+                    return false;
                 }
                 SharedData.optionTokenMap.put(optionTokenCacheKey, optionToken);
 
@@ -469,7 +602,7 @@ public class AnalysisScheduler {
             if (strikeMarketDataList == null || strikeMarketDataList.isEmpty()) {
                 logger.warn("No strike market data available for option token: {}, strike: {}, interval: {}",
                         optionToken, strike, interval);
-                continue;
+                return false;
             }
 
 
@@ -479,13 +612,11 @@ public class AnalysisScheduler {
             }
             String strikeMarketDataKey = toStrikeMarketDataKey(parentMarketDataKey, strike, optionType, optionToken, tradeConfig);
             SharedData.strikeMarketDataList = strikeMarketDataList;
-            SharedData.strikeMarketDataByInstrumentAndInterval.put(
-                    strikeMarketDataKey,
-                    strikeMarketDataList);
-            // S8 stamp: marks this key as written by this tick, so strategies
-            // can refuse a series that stopped being refreshed when its strike
-            // left the ATM window.
-            SharedData.strikeMarketDataTick.put(strikeMarketDataKey, observedAt);
+            // Publishes the series, the S8 freshness stamp (which lets strategies
+            // refuse a strike that stopped being refreshed when it left the ATM
+            // window) and the contract-id index, in one place. Never put into
+            // the cache directly - see SharedData.strikeSeriesByToken.
+            SharedData.putStrikeSeries(strikeMarketDataKey, strikeMarketDataList, observedAt);
 
             // CANDIDATE: every leg evaluated this tick, whether or not it is
             // traded. `selected` is left false here because nothing has decided
@@ -508,6 +639,7 @@ public class AnalysisScheduler {
                         strikeMarketDataList,
                         isSellSide(tradeConfig)), false);
             }
+            return true;
         }
     }
 

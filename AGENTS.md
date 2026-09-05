@@ -102,6 +102,7 @@ When changing anything in these areas, read the relevant doc first:
 | Schedulers (all 5) | [`docs/SCHEDULERS.md`](docs/SCHEDULERS.md) | LoginScheduler, AnalysisScheduler, TradeConfigScheduler, OrderScheduler, PositionScheduler — cadence, pipeline, mode-gating |
 | **Strategy gaps / TODO** | [`docs/STRATEGY_ANALYSIS_TODO.md`](docs/STRATEGY_ANALYSIS_TODO.md) | **Rule 0 — every strategy gap, open question and analysis follow-up goes here, not in `GAPS.md`** |
 | Strategies (`stratergy_id`) | [`docs/STRATEGIES.md`](docs/STRATEGIES.md) | What each strategy id runs, the shared `AbstractSmaCrossStrategy` engine, Strategy2's SMA-20 slope filter, how to add one |
+| **Pressure strategy (id 5)** | [`docs/PRESSURE_STRATEGY.md`](docs/PRESSURE_STRATEGY.md) | The NIFTY intraday continuation engine: the five spot indicators, the pressure score, the entry clock, the seven comparison books, and why strategies 1-4 are untouched |
 | Orders + position monitoring | [`docs/ORDERS_AND_POSITIONS.md`](docs/ORDERS_AND_POSITIONS.md) | Order lifecycle, dedupe rules, broker factories, peak / SL / target tracking, `trade_order` columns |
 | Broker rate limiting + retry | [`docs/RATE_LIMITING.md`](docs/RATE_LIMITING.md) | Resilience4j wiring, the cache / reshape PR roadmap |
 | Telegram alerts + dedupe | [`docs/NOTIFICATIONS.md`](docs/NOTIFICATIONS.md) | `NotificationService` facade, `sendIfChanged` / `sendThrottled`, backtest gate |
@@ -157,7 +158,7 @@ See the recipe in [`Readme.md` → Adding a new broker](Readme.md#adding-a-new-b
 See [`docs/SCHEDULERS.md` → Adding a new scheduler](docs/SCHEDULERS.md#adding-a-new-scheduler). Put the work in a service so the backtest can replay it.
 
 ### Adding a DB column / table
-1. Create `src/main/resources/db/changelog/NNN_<purpose>.xml`. Numbering is sequential — current head is 036. Check the directory before picking a number: `018` is already used twice (`018_create_sma_downtrend_rule_table.xml` and `018_create_historical_chart_tables.xml`), so confirm your number is actually free.
+1. Create `src/main/resources/db/changelog/NNN_<purpose>.xml`. Numbering is sequential — current head is 044. Check the directory before picking a number: `018` is already used twice (`018_create_sma_downtrend_rule_table.xml` and `018_create_historical_chart_tables.xml`), so confirm your number is actually free.
 2. `<include>` it in `db.changelog-master.xml`.
 3. Add / update the JPA entity with `@Column(name="…")`.
 4. Update relevant repositories.

@@ -10,9 +10,12 @@
 > implemented and verified** (buffer-pool raise applied via `SET PERSIST`; all
 > seven parity ledger diffs byte-identical — see "Measured results"). Outcome
 > on the current 2C/4T machine: full-year cold 18.2 → 10.0 min, January
-> 152 → 33 s cold / 15 s warm. **9b is struck off by measurement; 9c ("lazy
-> SMA" / warm-up skip) is the one remaining serial lever and still needs
-> sign-off.** See "Live considerations" at the end of the sub-minute section.
+> 152 → 33 s cold / 15 s warm. **9b is struck off by measurement.** The last
+> serial lever — the SMA warm-up skip ("lazy SMA tail", Phase 13 below) — is
+> **implemented 2026-09-04**; its unit-parity harness passes and the ledger
+> diff is its remaining merge gate. Phase 9c proper (coarse-timeframe
+> re-evaluation skip) stays deferred. See "Live considerations" at the end of
+> the sub-minute section.
 >
 > Phase 0 below was not in the original list and turned out to matter more than
 > any of the numbered phases once the data set grew.
@@ -822,6 +825,63 @@ then pays only strategy + order + position work over in-memory candles.
 - Worker schemas are reset between runs by the driver as in Phase 10;
   only the in-JVM immutable-data cache persists.
 
+### Phase 13 — lazy SMA warm-up skip ✅ implemented 2026-09-04 (ledger diff = merge gate)
+
+The "lazy SMA tail" named by the measured-results bullet above. After Phase 8,
+the per-day SMA counters showed full-window **reuse** working (~294–449k values
+reused vs ~3–8k computed) while the **warm-up region** — the first
+`period − 1` indices of every series — was recomputed on *every call*:
+~178–210k `BigDecimal` divide + `doubleValue` + stamp operations per active
+day, ~97% of all SMA computation.
+
+Those indices sit at the *oldest* end of the multi-week lookback, and the
+reader inventory (verified in code, recorded in `SMAIndicatorImpl`'s Javadoc)
+shows every observable consumer of a stamp — or of a trend flag derived from
+one — on a candle that is not the series' last candle is a **same-day**
+lookback:
+
+- `SmaTrendCalculator` resets its deviation counters and `prev` pointer per
+  trading day, so the only flags anything consumes (the last candle's — the
+  strategy rules via `RuleEngine`, and `SmaDowntrendScanner`, whose
+  sufficiency gate additionally pins every judged candle at
+  `index ≥ period − 1`) depend solely on stamps of the last candle's day;
+- `CommonRules.isSma20SlopeUp` reads the previous candle only when it shares
+  the decision candle's trading day;
+- the journal's `SmaStateContributor` reads the last candle alone;
+- stamped analysis lists are never persisted, and the chart dashboards compute
+  their own indicators (`ChartIndicatorService`).
+
+**What changed:** `SMAIndicatorImpl` skips warm-up indices on trading days
+before the last candle's — not summed, not divided, not stamped. Warm-up
+indices *on* the decision day (short option series early in an expiry cycle)
+are computed exactly as before, same prefix sum, same divisor, same stamps. A
+stale stamp left on a skipped candle is never trusted later: as the lookback's
+left edge advances, a candle only ever moves toward lower indices, so it can
+never re-enter the `index ≥ period` region where stamps are reused. A null
+timestamp anywhere the decision needs one falls back to computing the whole
+region (the pre-change behaviour).
+
+- **Verified:** `SMAIndicatorImplLazyWarmupTest` — 7 scenarios pinning the
+  readable surface (returned value, all stamps at `index ≥ period − 1`, all
+  decision-day stamps, last-candle trend flags, the slope read) against a full
+  ta4j-equivalent recompute, exact `Double` equality; includes a
+  moving-left-edge tick simulation across day boundaries with shared objects,
+  and a sentinel test proving skipped stamps are neither trusted nor
+  overwritten. Strategy/scanner/backtest unit tests pass unchanged.
+- **Merge gate (not yet run):** the checklist ledger diff — same window
+  replayed with the change absent and present, byte-identical `trade_order`
+  dump required.
+- **Expected size:** the day-line `warmup=` counter should collapse from
+  ~180–210k to ~0 on typical days (non-zero only when a series' decision day
+  reaches into its warm-up region). Wall-clock effect **unmeasured** until the
+  next run's day lines; the divide+stamp volume it removes is ~97% of SMA
+  computation, which the phase timers attribute to the dominant `indicator`
+  phase.
+- **Live impact:** `SMAIndicatorImpl` is shared code, so live skips the same
+  unread work (live candles are fresh objects, so skipped old-day warm-up
+  stamps stay `null` there rather than stale). Decisions are unchanged by the
+  same reader inventory; see item 9 under "Live considerations".
+
 ### The hardware statement
 
 On a modern 8-core/16-thread desktop (~1.7–2× the single-thread speed of this
@@ -841,6 +901,7 @@ target actually means before building past Phase 10.
 | 10 — parallel workers | `BacktestAutorunRunner` (double-gated), `scripts/backtest-parallel.ps1` (schema provisioning, chunking, merge), `backtest.autorun.*` keys documented in `application.properties` |
 | 11 — cross-day cache | `BacktestMarketDataCache` retains series across days, `appendRight` delta fetches, 5-day idle eviction |
 | 12 — warm workers | `backtest.autorun.exit=false` + the driver's `-Warm` mode (resident JVMs driven over `POST /api/backtest/analysis`) |
+| 13 — lazy SMA warm-up skip (added on main, 2026-09-04) | `SMAIndicatorImpl.warmUpComputeStart` + `SMAIndicatorImplLazyWarmupTest` (7-scenario readable-surface parity harness) |
 | Buffer pool | `SET PERSIST innodb_buffer_pool_size = 1.5G` — **already applied to the server**, survives restart |
 
 The full unit-test suite (246 tests) passes on the branch. The parity runs
@@ -890,6 +951,15 @@ below have **not** been executed yet — they are the merge gate.
    request window where a per-slice build would not. Every imported option row
    carries OI and nothing outside the journal reads bucket OI, so this cannot
    affect trades; noted so a journal-level diff isn't misread as a bug.
+9. **Phase 13 also runs in live** (it is inside `SMAIndicatorImpl`, the same
+   shared file as item 1). Warm-up SMA values on trading days before the
+   decision candle's are no longer computed in either mode; in live they stay
+   `null` on the fresh per-tick objects instead of carrying a value nothing
+   reads. Every decision input (last-candle SMA + flags, the same-day slope
+   read, the EOD scanner's judged flags) is computed exactly as before — the
+   reader inventory in the Phase 13 section is the argument, and the unit
+   harness pins it. If a live number ever looks off, check items 1 and 9
+   together: they are the only shared-code changes from this plan.
 
 ### Verification plan (the merge gate) ✅ executed 2026-09-04, all gates passed
 

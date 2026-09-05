@@ -7,6 +7,7 @@ import com.moneymaker.entity.TradeConfig;
 import com.moneymaker.entity.TradeOrder;
 import com.moneymaker.journal.JournalRecorder;
 import com.moneymaker.journal.ObservationContextFactory;
+import com.moneymaker.repository.StrategyDefaultsRepository;
 import com.moneymaker.repository.TradeOrderRepository;
 import com.moneymaker.shared.data.SharedData;
 import com.moneymaker.telegram.NotificationService;
@@ -67,7 +68,8 @@ class OrderServiceForceCloseTest {
         when(repo.save(any(TradeOrder.class))).thenAnswer(inv -> inv.getArgument(0));
 
         orderService = new OrderService(placementFactory, repo, notifier,
-                mock(JournalRecorder.class), mock(ObservationContextFactory.class));
+                mock(JournalRecorder.class), mock(ObservationContextFactory.class),
+                mock(StrategyDefaultsRepository.class));
 
         SharedData.strikeMarketDataByInstrumentAndInterval = new ConcurrentHashMap<>();
     }
@@ -107,8 +109,14 @@ class OrderServiceForceCloseTest {
         // Key shape must match AnalysisScheduler.toStrikeMarketDataKey, and the
         // interval segment must be a real Kite interval ("5minute") or
         // SharedData.latestCachedCandle sorts it as unparseable and skips it.
-        SharedData.strikeMarketDataByInstrumentAndInterval.put(
-                "256265|5minute|CE|24000|" + OPTION_TOKEN + "|0|0", List.of(md));
+        //
+        // Published through putStrikeSeries, not straight into the map: since
+        // GAPS #27 the lookup goes through a contract-id index maintained at
+        // write time, so a direct put is invisible to it. (That is asserted
+        // deliberately in SharedDataStrikeIndexTest.directWriteIsNotIndexed.)
+        SharedData.putStrikeSeries(
+                "256265|5minute|CE|24000|" + OPTION_TOKEN + "|0|0", List.of(md),
+                LocalDateTime.of(2026, 8, 31, 15, 25));
     }
 
     private void cacheConfig(Integer lotQuantity) {

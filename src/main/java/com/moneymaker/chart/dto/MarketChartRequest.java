@@ -40,4 +40,20 @@ public class MarketChartRequest {
      * pre-existing behaviour. Ignored for {@code UNDERLYING} charts.
      */
     private BigDecimal strike;
+
+    /**
+     * How many strikes either side of the plotted strike to average into one
+     * synthetic series. {@code 0} — the default and the pre-existing behaviour
+     * — charts the single strike alone.
+     *
+     * <p>{@code 1} averages {@code strike-1, strike, strike+1}; {@code 2} widens
+     * that to {@code strike-2 … strike+2}. "±1" is one step of the index's own
+     * strike grid (50 for NIFTY, 100 for BANKNIFTY) — the same grid the ATM
+     * rounding uses — not one row of whatever strikes happen to be imported.
+     *
+     * <p>A span straddles the money on either side whichever right is charted:
+     * for a CE the lower legs are ITM and the upper OTM, for a PE the reverse.
+     * Ignored for {@code UNDERLYING} charts.
+     */
+    private int strikeSpan;
 }

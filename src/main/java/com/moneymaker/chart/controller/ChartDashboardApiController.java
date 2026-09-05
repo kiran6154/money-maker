@@ -39,6 +39,10 @@ public class ChartDashboardApiController {
             @RequestParam("smaPeriods") String smaPeriods,
             @RequestParam(value = "dataSource", defaultValue = "TOKEN_BASED") ChartDataSource dataSource,
             @RequestParam(value = "strike", required = false) String strike,
+            // Optional. > 0 averages that many strikes either side of the plotted
+            // strike into one synthetic series; 0 (the default) charts the single
+            // strike, which is the pre-existing behaviour.
+            @RequestParam(value = "strikeSpan", defaultValue = "0") int strikeSpan,
             // Optional. Present => draw a continuous window [fromDate, date]
             // instead of the single day. Absent keeps the original behaviour.
             @RequestParam(value = "fromDate", required = false)
@@ -52,7 +56,8 @@ public class ChartDashboardApiController {
                     parseSmaPeriods(smaPeriods),
                     dataSource,
                     fromDate,
-                    parseStrike(strike)
+                    parseStrike(strike),
+                    strikeSpan
             );
             MarketChartResponse response = chartDashboardService.getMarketChartData(request);
             return ResponseEntity.ok(response);

@@ -12,6 +12,13 @@ import java.util.List;
  * reads as "once the trade has been 25 points in profit, the stop moves to +2;
  * at 50 it moves to +25; at 75 to +50". See changeset 036.</p>
  *
+ * <p>A rung may lock at <b>exactly</b> its own trigger ({@code "25:25"}): that is
+ * a pure give-back trail — "reach +25, then exit if you fall back to +25" — and
+ * it is what the Pressure strategy uses. It is safe because
+ * {@code PositionService} arms rungs after its breach check, so such a floor
+ * cannot fire on the bar that armed it. Only {@code lock > trigger} is refused.
+ * See the check in {@link #parse} for the full argument.</p>
+ *
  * <p>Same discipline as {@link StrategyIds}, for the same reason: a
  * multi-value column is only as sound as the guarantee that nothing else
  * invents its own splitting, ordering or whitespace rules. <b>Do not parse this
@@ -73,13 +80,28 @@ public final class TrailLadder {
                 throw new IllegalArgumentException("trailLadder rung \"" + fragment
                         + "\" has a non-positive trigger — a rung arms on profit, so it must be above 0");
             }
-            // lock == trigger would close the trade the instant the rung arms:
-            // peak has just reached trigger, so current P&L can equal it, and the
-            // breach check is pnl <= lock. That is a take-profit wearing a
-            // trailing stop's clothes, and target_at_entry already exists for it.
-            if (lock.compareTo(trigger) >= 0) {
+            // lock > trigger is still refused: the floor would sit ABOVE the
+            // peak that armed it, so the trade exits at a P&L it has never
+            // reached. That is not a trailing stop under any reading.
+            //
+            // lock == trigger is ALLOWED, and used to be refused. The original
+            // objection was "the trade would exit the moment the rung arms",
+            // and it is wrong about this codebase: PositionService.handleOne
+            // arms rungs (applyTrail) strictly AFTER its breach check, so the
+            // bar whose excursion earns a rung cannot also exit on it. The
+            // earliest a lock == trigger floor can fire is the NEXT bar, which
+            // is exactly "give back everything above +N and you are out" — a
+            // real give-back trail, and the shape the Pressure strategy's
+            // "arm at +25, exit on a fall back to +25" specifies.
+            //
+            // It is genuinely different from target_at_entry: a target exits at
+            // +N on the way UP, this exits at +N on the way BACK DOWN, and only
+            // after +N was reached. A trade that runs to +60 and retraces books
+            // +25 here and would have booked +25 on the target long before ever
+            // seeing +60.
+            if (lock.compareTo(trigger) > 0) {
                 throw new IllegalArgumentException("trailLadder rung \"" + fragment
-                        + "\" locks at or above its own trigger — the trade would exit the moment the rung arms");
+                        + "\" locks above its own trigger — the floor would sit above the peak that armed it");
             }
             rungs.add(new Rung(trigger, lock));
         }

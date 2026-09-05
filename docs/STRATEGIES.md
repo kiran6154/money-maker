@@ -63,8 +63,9 @@ so a new strategy bean appears in the UI with no further wiring.
 | 2 | [`Strategy2`](../src/main/java/com/moneymaker/strategy/Strategy2.java) | Baseline **plus**: no SELL entry while the 20-period SMA is sloping upward. |
 | 3 | [`Strategy3`](../src/main/java/com/moneymaker/strategy/Strategy3.java) | Baseline **inverted**: BUY entry on the cross-**up** + up-trend, SELL exit at the close signal. Requires `transaction_type = BUY`. |
 | 4 | [`Strategy4`](../src/main/java/com/moneymaker/strategy/Strategy4.java) | Baseline detection **unchanged, execution inverted**: the sell signal is placed as a BUY, the close-time exit as SELL. Requires `transaction_type = BUY`. |
+| 5 | [`Strategy5`](../src/main/java/com/moneymaker/strategy/Strategy5.java) | **Pressure** — not an SMA strategy at all. Scores NIFTY 5-min **spot** on RSI / VWAP / Supertrend / opening range / ADX and trades the continuation on an exact-offset option leg. See [PRESSURE_STRATEGY.md](PRESSURE_STRATEGY.md). |
 
-All extend
+**Strategies 1–4** extend
 [`AbstractSmaCrossStrategy`](../src/main/java/com/moneymaker/strategy/AbstractSmaCrossStrategy.java),
 which holds *everything* except the id and the rule sets: cache-key ownership
 matching, the premium sort, the SMA-cross gate, the entry price band, the
@@ -72,6 +73,15 @@ signal emission. Strategies 1 and 2 override none of it, so those two are
 identical apart from the one rule described below; strategy 3 additionally
 flips the engine's *detection* direction, and strategy 4 keeps the baseline
 detection and inverts only the *emitted* action (see their sections).
+
+> **Strategy 5 is a different lineage and everything below this line is about
+> 1–4.** It subclasses the same base only to share its small helpers and keep one
+> registration shape, but it **fully replaces `execute`** — none of the shared
+> engine described in the next section runs for it. Its decision input is the
+> underlying, not the option premium; it emits entries only, with no exit signal;
+> and it resolves one exact strike rather than ranking a set. Do not reason about
+> it from this page — read
+> [PRESSURE_STRATEGY.md](PRESSURE_STRATEGY.md) instead.
 
 ---
 

@@ -95,8 +95,9 @@ class Strategy4InvertedExecutionTest {
         List<MarketData> series = new ArrayList<>();
         series.add(candle(TICK.minusMinutes(5), "108", "106", 101.0));
         series.add(candle(TICK, "105", "95", 100.0));
-        SharedData.strikeMarketDataByInstrumentAndInterval.put(KEY, series);
-        SharedData.strikeMarketDataTick.put(KEY, TICK);
+        // One call writes the series, the S8 stamp and the contract-id index
+        // together — see SharedData.putStrikeSeries (GAPS #27).
+        SharedData.putStrikeSeries(KEY, series, TICK);
     }
 
     private static Strategy4 strategyScanning(String underlyingToken) {

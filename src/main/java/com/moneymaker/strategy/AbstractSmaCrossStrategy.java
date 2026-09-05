@@ -297,7 +297,11 @@ public abstract class AbstractSmaCrossStrategy implements Strategy {
      * unresolved side, so a default would have this config scanning some other
      * config's legs.</p>
      */
-    private String resolveOptionType(TradeConfigCombinedDTO config) {
+    // Widened from private to protected for Strategy5, which does not use the
+    // inherited scan loop but still has to name its config's leg the same way
+    // the cache keys were written. Visibility only - the body is unchanged and
+    // no existing caller or behaviour moves.
+    protected String resolveOptionType(TradeConfigCombinedDTO config) {
         if (config == null || config.getTradeConfig() == null) return null;
         String side = config.getTradeConfig().getTradingSide();
         if (side == null) return null;

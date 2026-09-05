@@ -57,7 +57,7 @@ class TradeConfigCombinedQueryContractTest {
      * rather than shift a later block silently.
      */
     private static final List<String> EXPECTED_COLUMNS = List.of(
-            // trade_config: 0..24
+            // trade_config: 0..32
             "tc.id", "tc.trading_side", "tc.trading_date", "tc.target", "tc.stop_loss",
             "tc.p_instrument", "tc.max_loss", "tc.option_depth", "tc.transaction_type",
             "tc.lot_quantity", "tc.stratergy_id", "tc.no_of_trades", "tc.no_of_parrellel_trades",
@@ -66,15 +66,18 @@ class TradeConfigCombinedQueryContractTest {
             "tc.max_sl_points", "tc.trail_ladder",
             "tc.target_pct", "tc.sl_pct",
             "tc.max_parallel_per_side",
-            // instrument: 25..29
+            // changeset 042 — Pressure clock, exact-offset strike, book id
+            "tc.entry_from", "tc.entry_to", "tc.max_hold_minutes", "tc.flatten_at",
+            "tc.strike_offset_points", "tc.strike_step_points", "tc.book_id", "tc.underlying_leg",
+            // instrument: 33..37
             "i.id", "i.ins_name", "i.ins_id", "i.lot_qty", "i.strike_points",
-            // instrument_details: 30..41
+            // instrument_details: 38..49
             "id.instrument_token", "id.exchange_token", "id.tradingsymbol", "id.name",
             "id.last_price", "id.expiry", "id.strike", "id.tick_size", "id.lot_size",
             "id.instrument_type", "id.segment", "id.exchange");
 
-    private static final int INSTRUMENT_START = 25;
-    private static final int DETAILS_START = 30;
+    private static final int INSTRUMENT_START = 33;
+    private static final int DETAILS_START = 38;
 
     private static List<String> selectedColumns() throws Exception {
         Method m = TradeConfigRepository.class
@@ -118,7 +121,7 @@ class TradeConfigCombinedQueryContractTest {
      */
     private static Object[] syntheticRow() {
         List<Object> row = new ArrayList<>();
-        // trade_config 0..21
+        // trade_config 0..32
         row.add(7);                                   // id
         row.add("SELL");                              // trading_side
         row.add(java.sql.Date.valueOf("2026-05-08")); // trading_date
@@ -144,13 +147,22 @@ class TradeConfigCombinedQueryContractTest {
         row.add(new BigDecimal("0.20"));              // target_pct
         row.add(new BigDecimal("0.30"));              // sl_pct
         row.add(1);                                   // max_parallel_per_side
-        // instrument 25..29
+        // changeset 042 — Pressure clock, exact-offset strike, book id
+        row.add(java.sql.Time.valueOf("09:25:00"));   // entry_from
+        row.add(java.sql.Time.valueOf("14:15:00"));   // entry_to
+        row.add(90);                                  // max_hold_minutes
+        row.add(java.sql.Time.valueOf("15:15:00"));   // flatten_at
+        row.add(300);                                 // strike_offset_points
+        row.add(50);                                  // strike_step_points
+        row.add("SELL_ITM300");                       // book_id
+        row.add(Boolean.FALSE);                       // underlying_leg
+        // instrument 33..37
         row.add(11);                                  // i.id
         row.add("NIFTY");                             // ins_name
         row.add("256265");                            // ins_id
         row.add(75);                                  // lot_qty
         row.add(new BigDecimal("50"));                // strike_points
-        // instrument_details 30..41
+        // instrument_details 38..49
         row.add(256265);                              // instrument_token
         row.add(1001);                                // exchange_token
         row.add("NIFTY26MAY24000CE");                 // tradingsymbol
@@ -253,5 +265,54 @@ class TradeConfigCombinedQueryContractTest {
         assertThat(det.getInstrumentType()).isEqualTo("CE");
         assertThat(det.getSegment()).isEqualTo("NFO-OPT");
         assertThat(det.getExchange()).isEqualTo("NFO");
+    }
+
+    @Test
+    @DisplayName("042's eight columns actually reach the DTO — same inertness trap as 027 and 036")
+    void pressureColumnsReachTheConfig() throws Exception {
+        // Every one of these eight is read as "rule not configured" when null, so
+        // an unmapped column would not fail anywhere — it would just mean the
+        // Pressure entry window, the time stop, the flatten, the exact strike and
+        // the one-position-per-book cap all silently do not exist at runtime.
+        // That is exactly how 036's trail and 027's percentage bracket stayed
+        // dead for months, so they are pinned here on the day they land.
+        TradeConfig tc = (TradeConfig) invokePrivate(new TradeConfigScheduler(), "mapToTradeConfig",
+                new Class<?>[]{Object[].class}, new Object[]{syntheticRow()});
+
+        assertThat(tc.getEntryFrom()).isEqualTo(java.time.LocalTime.of(9, 25));
+        assertThat(tc.getEntryTo()).isEqualTo(java.time.LocalTime.of(14, 15));
+        assertThat(tc.getMaxHoldMinutes()).isEqualTo(90);
+        assertThat(tc.getFlattenAt()).isEqualTo(java.time.LocalTime.of(15, 15));
+        assertThat(tc.getStrikeOffsetPoints()).isEqualTo(300);
+        assertThat(tc.getStrikeStepPoints()).isEqualTo(50);
+        assertThat(tc.getBookId()).isEqualTo("SELL_ITM300");
+        assertThat(tc.tradesUnderlyingLeg()).isFalse();
+    }
+
+    @Test
+    @DisplayName("a row with every 042 column NULL maps to the pre-042 reading, not to zeros")
+    void pressureColumnsAreOptional() throws Exception {
+        // The guarantee that keeps strategies 1-4 bit-identical after 042. A null
+        // TIME must stay null rather than becoming midnight, and a null
+        // underlying_leg must read FALSE — a midnight entry_from would be a
+        // window that rejects nothing (harmless) but a midnight entry_to would
+        // reject EVERY entry, silently stopping all four existing strategies.
+        Object[] row = syntheticRow();
+        for (int i = 25; i <= 31; i++) {
+            row[i] = null;
+        }
+        row[32] = null; // underlying_leg
+
+        TradeConfig tc = (TradeConfig) invokePrivate(new TradeConfigScheduler(), "mapToTradeConfig",
+                new Class<?>[]{Object[].class}, new Object[]{row});
+
+        assertThat(tc.getEntryFrom()).isNull();
+        assertThat(tc.getEntryTo()).isNull();
+        assertThat(tc.getMaxHoldMinutes()).isNull();
+        assertThat(tc.getFlattenAt()).isNull();
+        assertThat(tc.getStrikeOffsetPoints()).isNull();
+        assertThat(tc.getStrikeStepPoints()).isNull();
+        assertThat(tc.getBookId()).isNull();
+        assertThat(tc.tradesUnderlyingLeg()).isFalse();
     }
 }

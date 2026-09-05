@@ -92,18 +92,20 @@ public class SharedData {
      */
     public static MarketData latestCachedCandle(String optionToken, LocalDateTime atOrBefore) {
         if (optionToken == null) return null;
-        Map<String, List<MarketData>> cache = strikeMarketDataByInstrumentAndInterval;
-        if (cache == null || cache.isEmpty()) return null;
+
+        // Two hash lookups, no scan and no key parsing. This used to iterate the
+        // WHOLE strike cache and run key.split("\\|") on every entry just to read
+        // one segment — see the note on strikeSeriesByToken for why that turned
+        // out to be 87% of a Pressure replay.
+        Map<Integer, List<MarketData>> byInterval = strikeSeriesByToken.get(optionToken);
+        if (byInterval == null || byInterval.isEmpty()) return null;
 
         List<MarketData> finest = null;
         int finestWidth = Integer.MAX_VALUE;
-        for (Map.Entry<String, List<MarketData>> e : cache.entrySet()) {
-            String[] parts = e.getKey().split("\\|");
-            if (parts.length < 5) continue;
-            if (!optionToken.equals(parts[4])) continue;
+        for (Map.Entry<Integer, List<MarketData>> e : byInterval.entrySet()) {
             List<MarketData> list = e.getValue();
             if (list == null || list.isEmpty()) continue;
-            int width = intervalMinutes(parts[1]);
+            int width = e.getKey();
             if (width < finestWidth) {
                 finestWidth = width;
                 finest = list;
@@ -118,6 +120,81 @@ public class SharedData {
             return md;
         }
         return null;
+    }
+
+    /**
+     * Contract-id index over {@link #strikeMarketDataByInstrumentAndInterval}:
+     * {@code optionToken -> intervalMinutes -> series}.
+     *
+     * <h3>Why this exists</h3>
+     * {@link #latestCachedCandle} is called once per OPEN position per tick (and
+     * again by the force-close sweep) and its only question is "newest bar for
+     * this contract". It used to answer that by walking every entry of the strike
+     * cache and calling {@code key.split("\\|")} — a regex split allocating seven
+     * strings — purely to read segment 4.
+     *
+     * <p>The cost scales with the number of <b>configs in the run</b>, not with
+     * the number of positions being monitored, because every config writes into
+     * the same cache. With one or two configs that is a handful of entries and
+     * nobody notices; the Pressure books are the first to run twelve at once, and
+     * there it measured as <b>87% of the whole replay</b> (a day's
+     * {@code positions} phase at 105 s out of 114 s, while SQL accounted for only
+     * ~1.4 s per 60 s of wall time). See GAPS #27.</p>
+     *
+     * <h3>Maintained only through {@link #putStrikeSeries} / {@link #clearStrikeCaches}</h3>
+     * A side index is only as sound as the guarantee that nothing writes the main
+     * map behind its back — the same one-owner rule {@code TrailLadder} and
+     * {@code StrategyIds} follow. <b>Do not put into
+     * {@code strikeMarketDataByInstrumentAndInterval} directly.</b> A key written
+     * without its index entry is invisible to the position monitor, which means
+     * the trade silently stops being quoted and its stop-loss can never fire —
+     * exactly the S8 failure this cache already had once.
+     *
+     * <h3>Collisions are benign</h3>
+     * Two configs can cache the same {@code (token, interval)} under keys that
+     * differ only in their depth segments. Those series are fetched with identical
+     * arguments and are value-identical, so the later write simply replaces the
+     * earlier one — which is the same answer the old scan gave, since it treated
+     * such ties as interchangeable.
+     */
+    public static Map<String, Map<Integer, List<MarketData>>> strikeSeriesByToken = new ConcurrentHashMap<>();
+
+    /**
+     * The one supported way to publish a strike series.
+     *
+     * <p>Writes the main cache, the {@link #strikeMarketDataTick} freshness stamp
+     * and the {@link #strikeSeriesByToken} index together, parsing the key once
+     * here rather than on every read.
+     *
+     * @param key        {@code instrumentToken|interval|optionType|strike|optionToken|itmDepth|otmDepth}
+     * @param series     the candles; null or empty is ignored
+     * @param observedAt the tick that produced it, for the S8 freshness stamp
+     */
+    public static void putStrikeSeries(String key, List<MarketData> series, LocalDateTime observedAt) {
+        if (key == null || series == null || series.isEmpty()) return;
+        strikeMarketDataByInstrumentAndInterval.put(key, series);
+        if (observedAt != null) {
+            strikeMarketDataTick.put(key, observedAt);
+        }
+        String[] parts = key.split("\\|");
+        if (parts.length < 5) return;
+        strikeSeriesByToken
+                .computeIfAbsent(parts[4], k -> new ConcurrentHashMap<>())
+                .put(intervalMinutes(parts[1]), series);
+    }
+
+    /**
+     * Clears the strike cache and everything derived from it, together.
+     *
+     * <p>Called from the replay's per-day teardown. Clearing the main map without
+     * the index would leave the position monitor quoting yesterday's candles for
+     * a contract that is no longer cached — stale prices that look entirely
+     * normal in the ledger.
+     */
+    public static void clearStrikeCaches() {
+        strikeMarketDataByInstrumentAndInterval.clear();
+        strikeMarketDataTick.clear();
+        strikeSeriesByToken.clear();
     }
 
     /**

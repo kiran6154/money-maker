@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      trade_config: the intraday clock, the exact-offset strike, and the book id.
+
+      Added for the Pressure strategy (Strategy 5, docs/PRESSURE_STRATEGY.md).
+      Every column here is a trading-behaviour number under CLAUDE.md #9 - it
+      decides when a trade may open, how long it may live, and which contract it
+      opens on - so it is config, not a constant in a service.
+
+      BEHAVIOUR-NEUTRAL FOR EVERY EXISTING CONFIG
+      ===========================================
+      All eight columns are nullable (or default FALSE) and every consumer treats
+      null as "the rule that applied before this changeset":
+
+        entry_from / entry_to    null -> no entry-time window, entries allowed
+                                 whenever a signal fires (today's behaviour)
+        max_hold_minutes         null -> no time stop; a trade exits only on
+                                 target / stop / trail / end-of-day force close
+        flatten_at               null -> no intraday flatten; the replay's
+                                 15:20 force-close sweep remains the only one
+        strike_offset_points     null -> AnalysisScheduler keeps using the
+                                 itm_depth / otm_depth strike-SET expansion
+        strike_step_points       null -> fall back to instrument.strike_points
+        book_id                  null -> the one-position-per-book cap does not
+                                 apply; only the existing per-config caps do
+        underlying_leg           FALSE -> the config trades an option, as always
+
+      So strategies 1-4 are bit-identical after this lands. That is deliberate
+      and it is asserted: PressureConfigColumnsAreOptionalTest pins that a config
+      with all eight unset takes exactly the pre-042 path.
+
+      WHY strike_step_points EXISTS AT ALL
+      ====================================
+      instrument.strike_points is 100 for NIFTY while historical_option_candles
+      is on a 50-point grid (20250, 20300, 20350 ...). Both are "correct" for
+      their own consumer - the live Kite chain and the imported ICICI CSVs - and
+      changing the instrument row would silently move every strike strategies 1-4
+      pick on historical replay, which is a Rule 0 behaviour change needing its
+      own measured before/after. Giving the config its own step lets the Pressure
+      books address the real 50-point grid while the shared row stays untouched.
+
+      WHY THE OFFSET IS SIGNED FROM ATM, NOT A DEPTH COUNT
+      ====================================================
+      itm_depth / otm_depth are COUNTS of strike steps and they expand into a SET
+      of strikes that AbstractSmaCrossStrategy then ranks by premium. Pressure
+      needs one exact contract - "ATM minus 300 points" - so the offset is in
+      POINTS and resolves to a single strike:
+
+          strike_offset_points > 0   ITM by that many points
+          strike_offset_points = 0   ATM
+          strike_offset_points < 0   OTM by that many points
+
+          CE strike = ATM - strike_offset_points
+          PE strike = ATM + strike_offset_points
+
+      WHY book_id IS A STRING AND NOT A FOREIGN KEY
+      =============================================
+      A "book" is a comparison bucket in a measurement run (SELL_ITM300,
+      BUY_ATM, SPOT ...), not a durable domain entity. What it has to do is let
+      OrderService count OPEN trades across the CE config and the PE config that
+      together make one book, so that "ONE position at a time" holds across both
+      legs - every existing cap keys on (trade_config_id, strategy_id) and would
+      otherwise let a CE short and a PE short run concurrently. A shared label is
+      exactly enough for that and needs no second table.
+
+      WHY underlying_leg IS NOT JUST trading_side = 'SPOT'
+      ====================================================
+      resolveOptionType() in both AnalysisScheduler and AbstractSmaCrossStrategy
+      derives CE/PE from trading_side and returns null - "fetch nothing" - for
+      anything else. Overloading that column would make a spot config look like a
+      broken option config to two shared code paths. An explicit boolean keeps
+      the branch visible at every call site.
+    -->
+    <changeSet id="042_add_pressure_clock_and_strike_offset" author="moneymaker">
+        <!--
+          Guarded exactly as 035 / 041 were, for the same reason: this project
+          runs spring.jpa.hibernate.ddl-auto=update, so a branch booted with the
+          entity present but this file not yet in the master lets Hibernate
+          create the columns first, and a bare addColumn then dies on the next
+          start with "Duplicate column name".
+        -->
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="trade_config" columnName="book_id"/>
+            </not>
+        </preConditions>
+        <addColumn tableName="trade_config">
+            <!--
+              Earliest time-of-day a NEW entry may open. Inclusive. The Pressure
+              spec's "first new entry after 09:25 inclusive" - it exists because
+              the opening range is only complete at 09:30 and RSI/ADX are still
+              warming from the previous session before that.
+            -->
+            <column name="entry_from" type="TIME"/>
+            <!--
+              Latest time-of-day a NEW entry may open. Inclusive. 14:15 for
+              Pressure, which with a 90-minute max hold puts the last possible
+              time-stop exit at 15:45 - past the close - so flatten_at is what
+              actually bounds it.
+            -->
+            <column name="entry_to" type="TIME"/>
+            <!--
+              Maximum minutes a position may stay OPEN before PositionService
+              closes it with exit_reason = TIME_STOP. Measured from entry_time.
+            -->
+            <column name="max_hold_minutes" type="INT"/>
+            <!--
+              Time-of-day at which any still-OPEN position of this config is
+              closed with exit_reason = FLATTEN, regardless of P&L.
+
+              Distinct from the replay's own end-of-day force-close (15:20 by
+              default, app.market.replay-last-tick-offset-minutes) and from
+              CommonRules.isMarketCloseTime (15:15, which emits a SIGNAL a
+              strategy may act on). This one is a position-level rule that needs
+              no strategy cooperation, because Pressure emits entries only.
+            -->
+            <column name="flatten_at" type="TIME"/>
+            <!--
+              Signed distance from ATM in INDEX POINTS - see the header. Null
+              keeps the itm_depth / otm_depth strike-set expansion.
+            -->
+            <column name="strike_offset_points" type="INT"/>
+            <!--
+              The strike grid this config addresses, in index points. Null falls
+              back to instrument.strike_points. See the header for why NIFTY
+              needs 50 here while the instrument row says 100.
+            -->
+            <column name="strike_step_points" type="INT"/>
+            <!--
+              Comparison-bucket label shared by the configs that make up one
+              book. Null disables the cross-config one-position cap.
+            -->
+            <column name="book_id" type="VARCHAR(32)"/>
+            <!--
+              TRUE = this config trades the underlying itself rather than an
+              option leg. Used by the Pressure SPOT baseline book.
+
+              Defaulted in the entity as well as here: Hibernate names every
+              column in its INSERT, so a null field is written as an explicit
+              NULL and a column default never fires - the trap that broke
+              trade_config.source and is called out on TradeConfig.isActive.
+            -->
+            <column name="underlying_leg" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <!--
+      Explicit backfill rather than relying on the engine to apply the DEFAULT to
+      pre-existing rows - the pattern 036 and 041 established. Scoped to NULL so
+      a re-run cannot overwrite a value someone has since set.
+    -->
+    <changeSet id="042_seed_underlying_leg_false" author="moneymaker">
+        <update tableName="trade_config">
+            <column name="underlying_leg" valueBoolean="false"/>
+            <where>underlying_leg IS NULL</where>
+        </update>
+    </changeSet>
+
+    <!--
+      One index for the cross-config one-position cap. OrderService counts OPEN
+      trade_order rows for a (book, strategy) pair on every candidate entry, and
+      the book is resolved by joining back through trade_config, so the lookup
+      "which configs are in this book" runs once per candidate signal.
+    -->
+    <changeSet id="042_index_trade_config_book" author="moneymaker">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <indexExists tableName="trade_config" indexName="idx_trade_config_book"/>
+            </not>
+        </preConditions>
+        <createIndex tableName="trade_config" indexName="idx_trade_config_book">
+            <column name="book_id"/>
+            <column name="trading_date"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -96,6 +97,44 @@ public interface HistoricalOptionCandleRepository extends JpaRepository<Historic
             Pageable pageable);
 
     /**
+     * The same window as {@link #findRecentCandlesUpTo}, but across a ladder of
+     * strikes at once. Backs the dashboard's averaged ATM±N panes.
+     *
+     * <p>One {@code IN} rather than one query per strike: an ATM±2 pane is five
+     * legs, and the two averaged rows are four panes, so the per-strike form
+     * would add twenty round trips to every refresh for data one index range
+     * already covers. {@code uk_historical_option_series_time} leads with the
+     * series columns, so the {@code IN} plans as a handful of range dives rather
+     * than a scan.
+     *
+     * <p>Callers must size {@code pageable} for the whole ladder — this is
+     * {@code LIMIT} over the union, not per strike — and must expect the oldest
+     * timestamp in the page to be ragged, carrying only some of its legs. That
+     * is harmless downstream: {@code ChartStrikeAverager} drops any timestamp
+     * that is not present on every leg, and the cut always falls in the SMA
+     * warm-up rather than in the drawn window.
+     */
+    @Query("""
+        SELECT c
+        FROM HistoricalOptionCandle c
+        WHERE c.stockCode = :stockCode
+          AND c.exchangeCode = :exchangeCode
+          AND c.expiryDate = :expiryDate
+          AND c.strikePrice IN :strikePrices
+          AND c.optionRight = :optionRight
+          AND c.dateTime <= :toInclusive
+        ORDER BY c.dateTime DESC
+    """)
+    List<HistoricalOptionCandle> findRecentCandlesUpToForStrikes(
+            @Param("stockCode") String stockCode,
+            @Param("exchangeCode") String exchangeCode,
+            @Param("expiryDate") LocalDate expiryDate,
+            @Param("strikePrices") Collection<BigDecimal> strikePrices,
+            @Param("optionRight") String optionRight,
+            @Param("toInclusive") LocalDateTime toInclusive,
+            Pageable pageable);
+
+    /**
      * Ascending candle range for one option series. Backs the DB-backed backtest
      * market-data provider.
      *
@@ -146,4 +185,47 @@ public interface HistoricalOptionCandleRepository extends JpaRepository<Historic
             @Param("exchangeCode") String exchangeCode,
             @Param("expiryDate") LocalDate expiryDate,
             @Param("optionRight") String optionRight);
+
+    /**
+     * Total traded volume per bar across every strike and both sides of one
+     * expiry — the weight series behind the Pressure strategy's session VWAP.
+     *
+     * <p><b>Only used by the opt-in {@code OPTION_TAPE_VWAP} anchor mode, which
+     * is NOT the default.</b> The Pressure reference uses an unweighted session
+     * typical-price mean and no volume at all (author, 2026-09-05), so on a
+     * normal run this query never fires. NIFTY is an index and has no traded
+     * volume of its own — 19,572 of the 19,602 {@code historical_spot_candles}
+     * rows for 2024 carry {@code volume = 0} — so summing the option chain's own
+     * traded volume is the only volume series available here — see
+     * {@code com.moneymaker.indicator.series.SessionAnchoredPrice} for what is done
+     * with it, and {@code docs/STRATEGY_ANALYSIS_TODO.md} for the deviation it
+     * represents against the strategy spec.</p>
+     *
+     * <p><b>Scoped to one expiry on purpose.</b> The caller passes the front
+     * weekly. Summing every expiry present would fold monthly and far-weekly
+     * positional flow into a weight that is supposed to track intraday index
+     * activity, and those contracts trade on a different clock. Verified
+     * coverage: all 249 trading days of 2024 have front-weekly volume, roughly
+     * 340 contracts per 5-minute bar.</p>
+     *
+     * <p>Returns {@code [timestamp, totalVolume]} pairs ascending. Bars where the
+     * whole chain was untraded simply sum to zero rather than being absent —
+     * {@code SessionAnchoredPrice} reads a zero weight as "no weight", not as a gap.</p>
+     */
+    @Query("""
+        SELECT c.dateTime, COALESCE(SUM(c.volume), 0)
+        FROM HistoricalOptionCandle c
+        WHERE c.stockCode = :stockCode
+          AND c.exchangeCode = :exchangeCode
+          AND c.expiryDate = :expiryDate
+          AND c.dateTime BETWEEN :from AND :to
+        GROUP BY c.dateTime
+        ORDER BY c.dateTime ASC
+    """)
+    List<Object[]> sumVolumeByBar(
+            @Param("stockCode") String stockCode,
+            @Param("exchangeCode") String exchangeCode,
+            @Param("expiryDate") LocalDate expiryDate,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
 }

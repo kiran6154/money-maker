@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      strategy_defaults row for Strategy 5 (Pressure).
+
+      WHY target_mode / sl_mode = POINTS
+      ==================================
+      The Pressure spec's bracket is an absolute +50 / -50 on the option premium,
+      identical for every leg it trades. The default for a strategy with no row
+      here is PERCENT (BracketMode.parse(null)), which would resolve the bracket
+      as a FRACTION of entry premium and silently give an ITM300 leg trading at
+      ~350 a 70-point target instead of a 50-point one. That is a 40% wider
+      bracket than specified, on every trade, and nothing would log it.
+
+      This is precisely the S6 inertness class of bug the 041 changeset
+      documents, arriving from the other direction: there the columns existed
+      and were not read, here the row would not exist and the default would be
+      wrong for this strategy.
+
+      WHY auto_config_enabled = FALSE
+      ===============================
+      This is the load-bearing part for "do not change the existing strategies".
+
+      EodDowntrendDetectionService walks every sma_downtrend_rule at end of day
+      and generates next-day trade_config rows for each strategy tagged on it.
+      Strategy 5 must never appear in that output: its configs are a measurement
+      book with a fixed clock, an exact strike offset and a book id, and the
+      detector knows about none of those - it would emit half-configured rows
+      that run as an unbounded-clock, depth-count strategy. Worse, they would
+      interleave with strategies 1-4's generated configs on the same dates.
+
+      Pressure configs come from PressureConfigGenerator instead, which is an
+      explicit, dated, idempotent bulk operation. FALSE here is what keeps the
+      two lineages apart, and the detector logs by name when it skips a
+      disabled strategy rather than doing it silently.
+
+      WHY lot_quantity / max_loss / no_of_trades ARE PLACEHOLDERS
+      ==========================================================
+      Every column on this table exists for the DETECTOR to stamp onto configs
+      it generates. With auto_config_enabled = FALSE nothing here is ever
+      copied anywhere - PressureConfigGenerator sets each of these on the
+      config rows itself, from the spec. They are filled with the table's
+      NOT NULL requirements satisfied and nothing more; the two that DO get
+      read at order time, whatever generated the config, are target_mode and
+      sl_mode above.
+    -->
+    <changeSet id="044_seed_pressure_strategy_defaults" author="moneymaker">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM strategy_defaults WHERE strategy_id = 5
+            </sqlCheck>
+        </preConditions>
+        <insert tableName="strategy_defaults">
+            <column name="strategy_id" valueNumeric="5"/>
+            <!--
+              Nominal only. Pressure runs BOTH directions across its books
+              (SELL_* and BUY_*), and the direction that actually gates an entry
+              is trade_config.transaction_type on each individual config, which
+              OrderService reads. This column is only ever consumed by the
+              detector, which is disabled below.
+            -->
+            <column name="transaction_type" value="SELL"/>
+            <column name="lot_quantity" valueNumeric="75"/>
+            <column name="max_loss" valueNumeric="0"/>
+            <column name="no_of_trades" valueNumeric="0"/>
+            <column name="no_of_parallel_trades" valueNumeric="1"/>
+            <!-- See the header: this is what keeps Pressure out of the EOD detector. -->
+            <column name="auto_config_enabled" valueBoolean="false"/>
+            <column name="opposite_side" valueBoolean="false"/>
+            <!-- The two that matter. See the header. -->
+            <column name="target_mode" value="POINTS"/>
+            <column name="sl_mode" value="POINTS"/>
+        </insert>
+    </changeSet>
+
+</databaseChangeLog>

@@ -22,6 +22,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.DayOfWeek;
 import java.util.ArrayList;
 import java.util.List;
@@ -297,9 +298,9 @@ public class TradeConfigScheduler {
     // column to the query, append it to the end of its block and extend the
     // matching mapper. Never reorder.
     //
-    //   0..24  trade_config    (max_parallel_per_side last)
-    //   25..29 instrument
-    //   30..41 instrument_details
+    //   0..32  trade_config    (underlying_leg last)
+    //   33..37 instrument
+    //   38..49 instrument_details
     // ------------------------------------------------------------------
 
     // Helper to safely convert to BigDecimal
@@ -338,16 +339,60 @@ public class TradeConfigScheduler {
         tc.setTargetPct(toBigDecimal(row[i++])); // target_pct
         tc.setSlPct(toBigDecimal(row[i++])); // sl_pct
         tc.setMaxParallelPerSide(toInteger(row[i++])); // max_parallel_per_side
+        // Changeset 042. Same inertness trap as 036 / 027 above: a column that
+        // reaches the DB but not this mapper leaves the field null on every DTO
+        // in SharedData.combinedDto, and every consumer of these eight reads
+        // null as "rule not configured" — so the Pressure clock, the exact
+        // strike and the book cap would all silently not exist at runtime, with
+        // nothing logged either way.
+        tc.setEntryFrom(toLocalTime(row[i++]));          // entry_from
+        tc.setEntryTo(toLocalTime(row[i++]));            // entry_to
+        tc.setMaxHoldMinutes(toInteger(row[i++]));       // max_hold_minutes
+        tc.setFlattenAt(toLocalTime(row[i++]));          // flatten_at
+        tc.setStrikeOffsetPoints(toInteger(row[i++]));   // strike_offset_points
+        tc.setStrikeStepPoints(toInteger(row[i++]));     // strike_step_points
+        tc.setBookId(ConverterUtility.toString(row[i++]));  // book_id
+        tc.setUnderlyingLeg(toBoolean(row[i++]));        // underlying_leg
 
         // Instrument will be set separately by mapToInstrument
         return tc;
     }
 
+    /**
+     * MySQL {@code TIME} arrives as {@link java.sql.Time} through a native
+     * query, but a driver or an H2-backed test can hand back a
+     * {@link LocalTime} or a plain string instead. Null stays null — that is
+     * the "no window configured" reading every consumer of these columns
+     * depends on, so it must never become a zero-valued midnight.
+     */
+    private static LocalTime toLocalTime(Object value) {
+        if (value == null) return null;
+        if (value instanceof LocalTime lt) return lt;
+        if (value instanceof java.sql.Time t) return t.toLocalTime();
+        if (value instanceof java.sql.Timestamp ts) return ts.toLocalDateTime().toLocalTime();
+        String s = value.toString().trim();
+        return s.isEmpty() ? null : LocalTime.parse(s);
+    }
+
+    /**
+     * {@code underlying_leg} is NOT NULL in the schema, but map defensively
+     * anyway: a row created by a path that predates changeset 042 — or an H2
+     * test fixture — can still present null, and the safe reading is FALSE
+     * ("trades an option"), never a null that would NPE at the call site.
+     */
+    private static boolean toBoolean(Object value) {
+        if (value == null) return false;
+        if (value instanceof Boolean b) return b;
+        if (value instanceof Number n) return n.intValue() != 0;
+        String s = value.toString().trim();
+        return "1".equals(s) || "true".equalsIgnoreCase(s);
+    }
+
     private Instrument mapToInstrument(Object[] row, TradeConfig tc) {
-        // Instrument starts after the 25 trade_config columns (0..24,
-        // max_parallel_per_side last). Bump this whenever a column is appended
-        // to the trade_config block of fetchCombinedByTradingDate.
-        int i = 25;  // Starting index for Instrument fields
+        // Instrument starts after the 33 trade_config columns (0..32,
+        // underlying_leg last -- changeset 042). Bump this whenever a column is
+        // appended to the trade_config block of fetchCombinedByTradingDate.
+        int i = 33;  // Starting index for Instrument fields
         Instrument ins = new Instrument();
         ins.setId(toInteger(row[i++])); // id
         ins.setInsName(ConverterUtility.toString(row[i++])); // ins_name
@@ -360,8 +405,8 @@ public class TradeConfigScheduler {
     }
 
     private InstrumentDetails mapToInstrumentDetails(Object[] row, TradeConfig tc, Instrument ins) {
-        // InstrumentDetails starts after trade_config (25) + instrument (5) columns
-        int i = 30;  // Starting index for InstrumentDetails fields
+        // InstrumentDetails starts after trade_config (33) + instrument (5) columns
+        int i = 38;  // Starting index for InstrumentDetails fields
         InstrumentDetails id = new InstrumentDetails();
         id.setInstrumentToken(toInteger(row[i++])); // instrument_token
         id.setExchangeToken(toInteger(row[i++])); // exchange_token
