@@ -109,6 +109,18 @@ public class StrategyDefaults {
     @Column(name = "trail_atr_multiple", precision = 6, scale = 2)
     private BigDecimal trailAtrMultiple;
 
+    /** Changeset 049, Strategy 9: block entries whose near-ATM volume surge exceeds this multiple. Null = gate off. */
+    @Column(name = "max_volume_surge", precision = 6, scale = 2)
+    private BigDecimal maxVolumeSurge;
+
+    /** Changeset 049, Strategy 9: the signal candle must close at least this fraction of its range above its low. Null = gate off. */
+    @Column(name = "min_candle_close_position", precision = 5, scale = 3)
+    private BigDecimal minCandleClosePosition;
+
+    /** Changeset 049, Strategy 9: no entry with fewer calendar days to the leg's expiry. Null = gate off. */
+    @Column(name = "min_days_to_expiry")
+    private Integer minDaysToExpiry;
+
     /** Null-safe read — a pre-040 in-memory instance behaves as "detected side". */
     public boolean tradesOppositeSide() {
         return Boolean.TRUE.equals(oppositeSide);

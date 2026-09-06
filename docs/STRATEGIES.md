@@ -67,8 +67,9 @@ so a new strategy bean appears in the UI with no further wiring.
 | 6 | [`Strategy6`](../src/main/java/com/moneymaker/strategy/Strategy6.java) | Strategy 2 **plus three entry gates**: the leg's 15-minute SMA-50 must be in a whole-day down-trend (unknown allows), no entry bar after 14:45, and a `STOP_LOSS` exit locks the book for the day. |
 | 7 | [`Strategy7`](../src/main/java/com/moneymaker/strategy/Strategy7.java) | Strategy 6 **plus the first-hour regime gate**: after 10:15, no entry on a leg whose side the underlying's first hour moved against by more than 0.2 × ATR-14 (unknown allows; opening-bar entries untouched). |
 | 8 | [`Strategy8`](../src/main/java/com/moneymaker/strategy/Strategy8.java) | **20SMA 15min candle** — not an SMA-cross. On the leg's own 15-minute candles: SMA-20 of closes sloping down **and** close below the previous close → SELL; no cross gate, no down-trend rule. Exits on a **chandelier trail** (peak − 2 × ATR-14, `trail_atr_multiple`), no target (`target_mode = NONE`), 14:45 cut-off, 15:15 close signal. |
+| 9 | [`Strategy9`](../src/main/java/com/moneymaker/strategy/Strategy9.java) | Strategy 8 **plus three configurable gates** from the 2026-09-06 indicator / volume study: signal candle not closing on its low (`min_candle_close_position`), no near-ATM option-volume spike on the signal bar (`max_volume_surge`), and a minimum number of days to expiry (`min_days_to_expiry`). Each null = off; all null = Strategy 8. |
 
-**Strategies 1–4, 6, 7 and 8** extend
+**Strategies 1–4 and 6–9** extend
 [`AbstractSmaCrossStrategy`](../src/main/java/com/moneymaker/strategy/AbstractSmaCrossStrategy.java),
 which holds *everything* except the id and the rule sets: cache-key ownership
 matching, the premium sort, the SMA-cross gate, the entry price band, the
@@ -466,6 +467,53 @@ deliberately does not add. Note the detector only writes a 15-minute row when
 it found a down-trend on that width, so the ATM leg the replay traded on every
 bar is not always what a tagged config offers; a hand-made config with a
 15-minute row and depth 0 is the faithful setup.
+
+---
+
+## Strategy 9 — Strategy 8 with the three gates that survived the indicator study
+
+Built 2026-09-06 from a study of 74 features (momentum, directional-vs-sideways
+measures, price action, option volume / OI / put-call ratios, straddle-implied
+volatility, calendar, prev-day regime) stamped on every 15-minute bar and
+conditioned on Strategy 8's replay trades — S30 in
+[STRATEGY_ANALYSIS_TODO.md](STRATEGY_ANALYSIS_TODO.md) has the method and the
+numbers. Most indicators (RSI, Supertrend, EMA alignment, ADX, 60-minute slope,
+Bollinger width, Choppiness) reshuffled the trades without adding points; the
+three below moved both years and are implementable from what the engine
+already caches.
+[`Strategy9`](../src/main/java/com/moneymaker/strategy/Strategy9.java) extends
+`Strategy8` and appends them as required sell rules; each is switched by one
+nullable `strategy_defaults` column (changeset 049), read once per session.
+
+| Rule | Column (seed) | What it checks | Unknown ⇒ allow when |
+|---|---|---|---|
+| `candleNotAtLow` | `min_candle_close_position` (0.25) | `(close − low) / (high − low)` of the signal candle ≥ threshold. Two thirds of Strategy 8's entries close on the low and average +2.9; the rest +9.7 to +19. | `high == low` |
+| `noNearAtmVolumeSpike` | `max_volume_surge` (2.00) | Signal-bar volume summed over every cached 15-minute leg (both sides) with strike within ±200 of the session-open ATM (underlying's first 15-minute close, rounded to `instrument.strike_points`), over the median of the same sum across the previous 25 bars, ≤ threshold. Entries on a > 2× spike averaged +0.5 a trade. | no underlying series for the day, fewer than 10 prior bars, zero median, or no leg in the window |
+| `minDaysToExpiry` | `min_days_to_expiry` (2) | Calendar days from the session to `OptionInstrumentResolver.resolveExpiry(...)` ≥ threshold. 0–1 DTE entries averaged +0.5, 2+ DTE +10 to +14. | no resolver / no expiry |
+
+**Replay** (Python replica on the dbeaver export, Jan-2024 → Dec-2025, ATM
+leg, 1 pt/round trip; Strategy 8 intraday base: 1,780 trades, +2.0/trade,
++3,532 pts, PF 1.16, drawdown −727):
+
+| Gates on | Trades | Avg | Total | PF | Max DD | 2024 / 2025 avg |
+|---|---|---|---|---|---|---|
+| volume only | 1,431 | +2.8 | +3,972 | 1.24 | −361 | 2.7 / 2.8 |
+| candle only | 1,318 | +3.0 | +3,932 | 1.26 | −481 | 4.1 / 1.9 |
+| volume + candle | 1,074 | +3.4 | +3,637 | 1.30 | −417 | 3.9 / 2.9 |
+| all three (seed) | 602 | +4.8 | +2,902 | 1.38 | −265 | 5.7 / 3.9 |
+
+Held to expiry (S29's carry-over, not built): base 1,060 / +6.0 / +6,366;
+volume only 898 / +7.6 / +6,823, DD −336; all three 457 / +12.5 / +5,704,
+PF 1.79, DD −296, 12.7 / 12.3 by year. The volume gate is the only one that
+adds total points; the other two trade quantity for quality. Null
+`min_days_to_expiry` to keep the trade count.
+
+**Deployment notes.** The volume gate measures the legs the cache holds: run
+Strategy 9 on configs whose legs span at least ±200 points (depth ≥ 2), or on
+a day that also runs the auto-downtrend configs, to reproduce the replay; a
+lone depth-0 leg measures only itself and the `[tick]` debug line reports
+`legs=1`. Same prerequisites as Strategy 8 otherwise (`transaction_type =
+SELL`, a 15-minute `sma_timeframe` row, no rule tag from the changeset).
 
 ---
 

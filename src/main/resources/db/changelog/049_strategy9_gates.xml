@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      Strategy 9 (STRATEGIES.md "Strategy 9", STRATEGY_ANALYSIS_TODO.md S30):
+      Strategy 8 plus three gates, each switched by one nullable column so an
+      operator can turn any of them off without a deploy. Null = gate off;
+      all three null = the row trades exactly as Strategy 8.
+
+        max_volume_surge          signal-bar near-ATM option volume over the
+                                  trailing 25-bar median must not exceed this
+        min_candle_close_position (close - low) / (high - low) of the signal
+                                  candle must be at least this
+        min_days_to_expiry        calendar days to the leg's expiry, at least
+
+      Seeds are the replay's measured values (2.00 / 0.250 / 2). The row is a
+      copy of strategy 8's block (target_mode NONE, trail_atr_multiple 2.00),
+      so it needs changeset 048's row to exist; on a database without it,
+      insert 8 first (048 comment) or 9 by hand. No sma_downtrend_rule tag is
+      added (CLAUDE.md Rule 0(c)):
+          INSERT INTO sma_downtrend_rule_strategy (rule_id, strategy_id, enabled)
+          SELECT rs.rule_id, 9, TRUE
+            FROM sma_downtrend_rule_strategy rs
+           WHERE rs.strategy_id = 1 AND rs.enabled = TRUE;
+    -->
+    <changeSet id="049_strategy9_gate_columns" author="moneymaker">
+        <addColumn tableName="strategy_defaults">
+            <column name="max_volume_surge" type="DECIMAL(6,2)"/>
+            <column name="min_candle_close_position" type="DECIMAL(5,3)"/>
+            <column name="min_days_to_expiry" type="INT"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="049_seed_strategy9_defaults" author="moneymaker">
+        <sql>
+            INSERT INTO strategy_defaults
+                (strategy_id, transaction_type, lot_quantity, max_loss,
+                 no_of_trades, no_of_parallel_trades, auto_config_enabled, opposite_side,
+                 target_mode, sl_mode, trail_atr_multiple,
+                 max_volume_surge, min_candle_close_position, min_days_to_expiry)
+            SELECT 9, s.transaction_type, s.lot_quantity, s.max_loss,
+                   s.no_of_trades, s.no_of_parallel_trades, s.auto_config_enabled, FALSE,
+                   s.target_mode, s.sl_mode, s.trail_atr_multiple,
+                   2.00, 0.250, 2
+              FROM strategy_defaults s
+             WHERE s.strategy_id = 8
+               AND NOT EXISTS (SELECT 1 FROM strategy_defaults x WHERE x.strategy_id = 9)
+        </sql>
+    </changeSet>
+</databaseChangeLog>
