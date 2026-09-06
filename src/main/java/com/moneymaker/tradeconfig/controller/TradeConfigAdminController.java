@@ -75,14 +75,21 @@ public class TradeConfigAdminController {
         return "trade-configs";
     }
 
+    /**
+     * Paged list. {@code strategyId} narrows to configs that run under that
+     * strategy — matched on the tag set, so a config tagged {@code 1,2} shows
+     * under both — and is applied before paging, so the count and the pager
+     * describe the filtered set.
+     */
     @GetMapping("/api/trade-configs")
     @ResponseBody
     public PagedResponse<TradeConfigViewDTO> list(
             @RequestParam(value = "date", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(value = "strategyId", required = false) Integer strategyId,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "10") int size) {
-        return service.list(date, page, size);
+        return service.list(date, strategyId, page, size);
     }
 
     /**

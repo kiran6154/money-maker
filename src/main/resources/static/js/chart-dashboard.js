@@ -315,6 +315,19 @@
             const zoomingIn = button.getAttribute('data-zoom') === 'in';
             zoomChart(chartType, zoomingIn ? ZOOM_IN_FACTOR : ZOOM_OUT_FACTOR);
         });
+        // Ctrl / Cmd + wheel keeps wheel-zoom available on the pane under the
+        // pointer, now that the plain wheel has been handed back to the page.
+        // Same convention as every map and canvas app, and it is also what a
+        // trackpad pinch arrives as, so pinch-to-zoom works over a pane too.
+        // passive:false because this listener has to be allowed to preventDefault
+        // — otherwise the browser zooms the whole document instead.
+        document.addEventListener('wheel', function (event) {
+            if (!event.ctrlKey && !event.metaKey) return;
+            const paneKey = paneKeyAt(event.target);
+            if (!paneKey) return;
+            event.preventDefault();
+            zoomChart(paneKey, event.deltaY < 0 ? ZOOM_IN_FACTOR : ZOOM_OUT_FACTOR);
+        }, { passive: false });
         if (els.dataSource) els.dataSource.addEventListener('change', onLadderFiltersChanged);
         if (els.indexSymbol) els.indexSymbol.addEventListener('change', onLadderFiltersChanged);
         bindChipGroup(els.timeframes, onFiltersChanged, { single: true });
@@ -1001,6 +1014,20 @@
                 secondsVisible: false,
                 tickMarkFormatter: formatChartTickMark
             },
+            // The wheel belongs to the page, not to the chart.
+            //
+            // handleScale.mouseWheel used to be true, which made a plain wheel
+            // zoom the pane under the pointer. lightweight-charts calls
+            // preventDefault() whenever it consumes a wheel event, so the page
+            // could not be scrolled at all while the pointer was over a chart —
+            // and with eleven stacked panes the pointer is over a chart almost
+            // everywhere. Scrolling down the dashboard zoomed a chart instead.
+            //
+            // With it false, a vertical-only wheel has deltaX === 0 and a scale
+            // handler that is off, so lightweight-charts returns before
+            // preventDefault() and the page scrolls normally. deltaX is still
+            // handled, so a horizontal trackpad swipe pans the series — that is
+            // a gesture the page has no other use for.
             handleScroll: {
                 mouseWheel: true,
                 pressedMouseMove: true,
@@ -1009,7 +1036,7 @@
             },
             handleScale: {
                 axisPressedMouseMove: true,
-                mouseWheel: true,
+                mouseWheel: false,
                 pinch: true
             }
         });
@@ -1682,6 +1709,23 @@
      * PE_15M -> pe15mPane — derived rather than listed so a new pane needs no
      * edit here.
      */
+    /**
+     * The pane whose chart container holds {@code node}, or null when the
+     * pointer is over the toolbar, a card header, or the page background.
+     *
+     * <p>Matched by containment rather than by an id lookup on the target: the
+     * wheel lands on whatever canvas or overlay lightweight-charts has under the
+     * cursor, which is several levels below the element this code named.</p>
+     */
+    function paneKeyAt(node) {
+        if (!node) return null;
+        for (const paneKey of PANE_KEYS) {
+            const pane = els.panes[paneKey];
+            if (pane && pane.chart && pane.chart.contains(node)) return paneKey;
+        }
+        return null;
+    }
+
     function getPaneRoot(chartType) {
         return document.getElementById(paneIdPrefix(chartType) + 'Pane');
     }

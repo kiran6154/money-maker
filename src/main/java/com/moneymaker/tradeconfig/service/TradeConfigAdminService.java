@@ -95,13 +95,28 @@ public class TradeConfigAdminService {
 
     /* ---------------- queries ---------------- */
 
-    public PagedResponse<TradeConfigViewDTO> list(LocalDate date, int page, int pageSize) {
+    /**
+     * The admin page's list. {@code strategyId} narrows to the configs that
+     * actually <b>run</b> under that strategy, {@code null} meaning all.
+     *
+     * <p><b>Filtered before paging, deliberately.</b> The obvious alternative —
+     * letting the browser hide non-matching rows in the page it already has —
+     * would make "page 2 of 5" mean "page 2 of the unfiltered set, minus whatever
+     * the filter removed", so a strategy with four configs spread across five
+     * pages would look like it had one. The row count and the pager have to
+     * describe the filtered set or they describe nothing.</p>
+     */
+    public PagedResponse<TradeConfigViewDTO> list(LocalDate date, Integer strategyId, int page, int pageSize) {
         int safePage = Math.max(page, 0);
         int safeSize = Math.max(pageSize, 1);
 
         List<TradeConfig> all = (date == null)
                 ? tradeConfigRepository.findAll()
                 : tradeConfigRepository.findByTradingDate(date);
+
+        if (strategyId != null) {
+            all = new ArrayList<>(all.stream().filter(tc -> runsStrategy(tc, strategyId)).toList());
+        }
 
         all.sort(Comparator.comparing(TradeConfig::getId, Comparator.nullsLast(Integer::compareTo)).reversed());
 
@@ -928,16 +943,25 @@ public class TradeConfigAdminService {
                 : tradeConfigRepository.findBySourceAndTradingDateBetween(source.name(), fromDate, toDate);
 
         if (strategyId != null) {
-            matches = matches.stream()
-                    .filter(tc -> {
-                        List<Integer> tags = StrategyIds.parse(tc.getStrategyIds());
-                        return tags.isEmpty()
-                                ? strategyId.equals(tc.getStratergyId())
-                                : tags.contains(strategyId);
-                    })
-                    .toList();
+            matches = matches.stream().filter(tc -> runsStrategy(tc, strategyId)).toList();
         }
         return matches;
+    }
+
+    /**
+     * Does {@code tc} run under {@code strategyId}?
+     *
+     * <p>Answers on the <b>tag set</b>, not on {@code stratergy_id}. A config
+     * tagged {@code "1,2"} runs under both, so filtering on the primary column
+     * alone would hide half the fleet from the strategy that is really trading
+     * it. Falls back to the primary when the tag column is blank, which is
+     * exactly what dispatch does.</p>
+     */
+    private boolean runsStrategy(TradeConfig tc, Integer strategyId) {
+        List<Integer> tags = StrategyIds.parse(tc.getStrategyIds());
+        return tags.isEmpty()
+                ? strategyId.equals(tc.getStratergyId())
+                : tags.contains(strategyId);
     }
 
     /**

@@ -15,6 +15,10 @@
         }
         .tc-toolbar .form-row { margin-bottom: 0; min-width: 160px; }
         .tc-toolbar .spacer    { flex: 1; }
+        /* The report header carries controls, not just a title — same shape the
+           backtest page gives its Orders ledger header. */
+        .card-header { gap: 10px; }
+        .card-header .spacer { flex: 1; }
         .tc-date-control {
             display: grid;
             grid-template-columns: 34px minmax(140px, 1fr) 34px auto;
@@ -339,6 +343,13 @@
                     <button id="tc-next-date" class="btn btn-ghost tc-date-step" type="button" title="Next day">&gt;</button>
                     <button id="tc-today-date" class="btn btn-ghost tc-date-today" type="button">Today</button>
                 </div>
+            </div>
+            <div class="form-row">
+                <label for="tc-filter-strategy">Strategy</label>
+                <select id="tc-filter-strategy" class="form-control" style="min-width:150px;"
+                        title="Show only the configs that run under this strategy. Matched on the config's strategy tags, so one tagged 1,2 appears under both.">
+                    <option value="">All strategies</option>
+                </select>
             </div>
             <div class="form-row">
                 <label for="tc-page-size">Rows per page</label>
@@ -786,6 +797,15 @@
         <div class="card-header">
             <h3>Configured trade configs</h3>
             <span id="tc-count" class="badge badge-info">0 rows</span>
+            <span id="tc-scope" class="bd-hint"></span>
+            <div class="spacer"></div>
+            <span id="tc-export-note" class="bd-hint"></span>
+            <!-- Exports the whole filtered set, not the page on screen — see
+                 exportConfigs(). -->
+            <button id="tc-export-csv" class="btn btn-ghost" type="button"
+                    title="Download every config matching the current filters as CSV">⭳ CSV</button>
+            <button id="tc-export-txt" class="btn btn-ghost" type="button"
+                    title="Download every config matching the current filters as tab-separated TXT">⭳ TXT</button>
         </div>
         <div class="report-scroll">
             <table class="report-table" id="tc-table">
@@ -826,18 +846,95 @@
     </div>
 </main>
 
+<!-- Shared CSV / TXT writer, also used by the Orders ledger on the backtest page. -->
+<script th:src="@{/js/table-export.js}"></script>
+<script>
+// Declared ahead of every consumer on purpose. It used to sit in a LATER script
+// block, which threw "TcPanes is not defined" the moment the bulk-delete panel
+// below reached TcPanes.onFirstShow — a top-level `const` is only bound once its
+// own block has run, and classic scripts run in document order. The
+// ReferenceError then aborted the rest of that IIFE, so every handler declared
+// after that line silently went unwired too: the whole delete flow was dead, not
+// just the lazy calendar load. Keep this block first.
+// ─────────── Tabbed-card controller ───────────
+// Owns every `.bd-header` collapse and every `.tc-tab` switch on this page, so
+// the four panels below no longer each carry their own copy. Panels register
+// their lazy load with TcPanes.onFirstShow(paneId, fn) instead of hanging it off
+// their own toggle click.
+//
+// "Shown" deliberately means BOTH the card is expanded AND the pane's tab is
+// active. Firing on either alone would load Detection rules the moment someone
+// opened the card to run Generate — three panes, one wanted, two wasted calls.
+const TcPanes = (function () {
+    const once = {};
+    const fired = {};
+
+    function activePaneId(card) {
+        const pane = card.querySelector('.tc-pane.is-active');
+        return pane ? pane.id : null;
+    }
+
+    function fire(paneId) {
+        if (!paneId || fired[paneId]) return;
+        const pane = document.getElementById(paneId);
+        if (!pane || !pane.classList.contains('is-active')) return;
+        const card = pane.closest('.glass-card');
+        if (card && card.classList.contains('bd-collapsed')) return;
+        const fn = once[paneId];
+        if (!fn) return;
+        fired[paneId] = true;
+        fn();
+    }
+
+    document.addEventListener('click', function (ev) {
+        const tab = ev.target.closest('.tc-tab');
+        if (tab) {
+            const strip = tab.closest('.tc-tabs');
+            const card = tab.closest('.glass-card');
+            const target = tab.getAttribute('data-pane');
+            strip.querySelectorAll('.tc-tab').forEach(function (b) {
+                const on = b === tab;
+                b.classList.toggle('is-active', on);
+                b.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+            card.querySelectorAll('.tc-pane').forEach(function (pane) {
+                pane.classList.toggle('is-active', pane.id === target);
+            });
+            fire(target);
+            return;
+        }
+        const header = ev.target.closest('.bd-header');
+        if (header && header.parentElement.classList.contains('glass-card')) {
+            const card = header.parentElement;
+            card.classList.toggle('bd-collapsed');
+            card.classList.toggle('bd-card-open');
+            fire(activePaneId(card));
+        }
+    });
+
+    return {
+        /** Run `fn` the first time `paneId` is actually visible. */
+        onFirstShow: function (paneId, fn) { once[paneId] = fn; }
+    };
+})();
+</script>
 <script th:inline="javascript">
 (function () {
     // ---------- state ----------
     const LS_PREFIX = 'mm.tradeConfigs.';
     const LS_KEYS = {
         filterDate: LS_PREFIX + 'filterDate',
+        filterStrategy: LS_PREFIX + 'filterStrategy',
         pageSize: LS_PREFIX + 'pageSize'
     };
     const state = {
         page: 0,
         size: 10,
         date: null,
+        /** null = all strategies. Sent to the API, not applied in the browser. */
+        strategyId: null,
+        /** totalItems from the last list response — what an export has to cover. */
+        total: 0,
         editingId: null,
         instruments: [],
         strategies: []
@@ -858,6 +955,11 @@
 
     const els = {
         filterDate:   document.getElementById('tc-filter-date'),
+        filterStrategy: document.getElementById('tc-filter-strategy'),
+        exportCsv:    document.getElementById('tc-export-csv'),
+        exportTxt:    document.getElementById('tc-export-txt'),
+        scope:        document.getElementById('tc-scope'),
+        exportNote:   document.getElementById('tc-export-note'),
         prevDate:     document.getElementById('tc-prev-date'),
         nextDate:     document.getElementById('tc-next-date'),
         todayDate:    document.getElementById('tc-today-date'),
@@ -944,6 +1046,8 @@
         try {
             if (state.date) localStorage.setItem(LS_KEYS.filterDate, state.date);
             else localStorage.removeItem(LS_KEYS.filterDate);
+            if (state.strategyId != null) localStorage.setItem(LS_KEYS.filterStrategy, String(state.strategyId));
+            else localStorage.removeItem(LS_KEYS.filterStrategy);
             localStorage.setItem(LS_KEYS.pageSize, String(state.size));
         } catch (e) {
             // localStorage may be unavailable; keep the in-memory workflow alive.
@@ -973,8 +1077,36 @@
     async function loadStrategies() {
         const r = await fetch('/api/trade-configs/strategies');
         state.strategies = await r.json();
-        els.strategy.innerHTML = '<option value="">— select —</option>' +
-            state.strategies.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+        const options = state.strategies.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+        els.strategy.innerHTML = '<option value="">— select —</option>' + options;
+        // Same source as the form's picker, so the filter can never offer a
+        // strategy the app cannot actually run.
+        els.filterStrategy.innerHTML = '<option value="">All strategies</option>' + options;
+        els.filterStrategy.value = state.strategyId == null ? '' : String(state.strategyId);
+    }
+
+    function setFilterStrategy(value, reload) {
+        const parsed = (value === '' || value === null || value === undefined) ? null : Number(value);
+        state.strategyId = Number.isFinite(parsed) ? parsed : null;
+        els.filterStrategy.value = state.strategyId == null ? '' : String(state.strategyId);
+        state.page = 0;
+        persistState();
+        if (reload) loadList();
+    }
+
+    /** Human-readable description of what the list is currently showing. */
+    function filterScopeLabel() {
+        const parts = [];
+        parts.push(state.date ? state.date : 'all dates');
+        parts.push(state.strategyId == null ? 'all strategies' : ('strategy ' + state.strategyId));
+        return parts.join(' · ');
+    }
+
+    /** Filename stem carrying the same scope, so a folder of exports stays readable. */
+    function exportBaseName() {
+        return 'trade-configs_'
+            + (state.date ? state.date : 'all-dates')
+            + (state.strategyId == null ? '' : '_S' + state.strategyId);
     }
 
     // ---------- timeframe rows ----------
@@ -1292,12 +1424,18 @@
     }
 
     // ---------- list / pagination ----------
-    async function loadList() {
+    /** Query params shared by the list and the export, so the two cannot drift. */
+    function listParams(page, size) {
         const params = new URLSearchParams();
         if (state.date) params.set('date', state.date);
-        params.set('page', String(state.page));
-        params.set('size', String(state.size));
-        const r = await fetch('/api/trade-configs?' + params.toString());
+        if (state.strategyId != null) params.set('strategyId', String(state.strategyId));
+        params.set('page', String(page));
+        params.set('size', String(size));
+        return params;
+    }
+
+    async function loadList() {
+        const r = await fetch('/api/trade-configs?' + listParams(state.page, state.size).toString());
         const data = await r.json();
         renderList(data);
     }
@@ -1386,7 +1524,11 @@
             if (!v.active) tr.classList.add('row-retired');
             els.rows.appendChild(tr);
         });
+        state.total = data.totalItems || 0;
         els.count.textContent = data.totalItems + ' row' + (data.totalItems === 1 ? '' : 's');
+        els.scope.textContent = filterScopeLabel();
+        els.exportCsv.disabled = state.total === 0;
+        els.exportTxt.disabled = state.total === 0;
         els.table.style.display = items.length ? '' : 'none';
         els.empty.style.display = items.length ? 'none' : '';
 
@@ -1394,6 +1536,99 @@
         els.pageInfo.textContent = 'page ' + (data.page + 1) + ' / ' + totalPages;
         els.prev.disabled = data.page <= 0;
         els.next.disabled = data.page + 1 >= totalPages;
+    }
+
+    // ---------- export ----------
+
+    /**
+     * Columns of the export, as [header, valueOf(view)] pairs.
+     *
+     * <p>Built from the DTO, <b>not</b> from the rendered row. The table prints
+     * an em dash for null, folds three fields into one "Target" cell and puts
+     * HTML inside four more; a spreadsheet wants the values. So the export is
+     * wider than the table and flatter: every column holds one fact, nulls are
+     * empty cells, and the bracket is split back into its points / percent /
+     * ceiling parts rather than exported as the string the cell happened to
+     * render.</p>
+     */
+    const EXPORT_COLUMNS = [
+        ['id',                v => v.id],
+        ['source',            v => v.source],
+        ['trading_date',      v => v.tradingDate],
+        ['instrument',        v => v.instrumentName],
+        ['trading_side',      v => v.tradingSide],
+        ['transaction_type',  v => v.transactionType],
+        ['strategy_id',       v => v.strategyId],
+        // The full tag set, which is what actually decides dispatch. Semicolons,
+        // not commas: a comma here would need quoting in every single row.
+        ['strategy_ids',      v => (v.strategyIds || []).join(';')],
+        ['target_points',     v => v.target],
+        ['target_pct',        v => v.targetPct],
+        ['stop_loss_points',  v => v.stopLoss],
+        ['sl_pct',            v => v.slPct],
+        ['max_sl_points',     v => v.maxSlPoints],
+        ['trail_ladder',      v => v.trailLadder],
+        ['max_loss',          v => v.maxLoss],
+        ['lot_quantity',      v => v.lotQuantity],
+        ['trades_per_day',    v => v.numberOfTradesPerDay],
+        ['parallel_trades',   v => v.numberOfParallelTrades],
+        ['max_parallel_side', v => v.maxParallelPerSide],
+        ['itm_depth',         v => v.itmDepth],
+        ['atm_depth',         v => v.atmDepth],
+        ['otm_depth',         v => v.otmDepth],
+        ['option_depth',      v => v.optionDepth],
+        ['min_option_price',  v => v.minOptionPrice],
+        ['max_option_price',  v => v.maxOptionPrice],
+        ['timeframes',        v => (v.timeframes || [])
+                                    .map(t => t.timePeriod + 'm/SMA' + t.sma + (t.slope != null ? '/sl' + t.slope : ''))
+                                    .join(';')],
+        ['active',            v => v.active],
+        ['updated_date',      v => v.updatedDate]
+    ];
+
+    /**
+     * Exports every config matching the current filters -- <b>not</b> the page on
+     * screen.
+     *
+     * <p>The table is server-paged ten rows at a time, so exporting what is
+     * rendered would quietly hand back page 3 of 12 under a filename that claims
+     * to be the whole set. This re-requests page 0 with a size that covers
+     * {@code state.total}, which the last list response already reported, so the
+     * file matches the row count in the badge beside the button.</p>
+     */
+    let exportNoteTimer = null;
+    /** Transient status beside the export buttons; the form alert is inside the collapsed card. */
+    function exportNote(message) {
+        els.exportNote.textContent = message || '';
+        clearTimeout(exportNoteTimer);
+        if (message) exportNoteTimer = setTimeout(() => { els.exportNote.textContent = ''; }, 6000);
+    }
+
+    async function exportConfigs(format) {
+        const buttons = [els.exportCsv, els.exportTxt];
+        buttons.forEach(b => { b.disabled = true; });
+        try {
+            const size = Math.max(state.total, 1);
+            const r = await fetch('/api/trade-configs?' + listParams(0, size).toString());
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const data = await r.json();
+            const items = data.items || [];
+            if (!items.length) {
+                exportNote('Nothing to export for ' + filterScopeLabel() + '.');
+                return;
+            }
+            const rows = [EXPORT_COLUMNS.map(c => c[0])];
+            items.forEach(v => rows.push(EXPORT_COLUMNS.map(c => c[1](v))));
+            const written = TableExport.save(rows, exportBaseName(), format);
+            // Worth saying out loud: the count proves the file covers the whole
+            // filtered set rather than the ten rows that were on screen.
+            exportNote('Exported ' + written + ' config' + (written === 1 ? '' : 's')
+                       + ' \u2014 ' + filterScopeLabel());
+        } catch (e) {
+            exportNote('Export failed: ' + e.message);
+        } finally {
+            buttons.forEach(b => { b.disabled = state.total === 0; });
+        }
     }
 
     // ---------- row actions (event delegation) ----------
@@ -1437,6 +1672,11 @@
     els.filterDate.addEventListener('change', () => {
         setFilterDate(els.filterDate.value || null, true);
     });
+    els.filterStrategy.addEventListener('change', () => {
+        setFilterStrategy(els.filterStrategy.value, true);
+    });
+    els.exportCsv.addEventListener('click', () => exportConfigs('csv'));
+    els.exportTxt.addEventListener('click', () => exportConfigs('txt'));
     els.date.addEventListener('change', () => updateContextNote(state.editingId ? 'Editing date' : 'Creating for'));
     els.pageSize.addEventListener('change', () => {
         state.size = Number(els.pageSize.value) || 10;
@@ -1451,10 +1691,19 @@
     (async function init() {
         const storedDate = storedValue(LS_KEYS.filterDate);
         const storedSize = Number(storedValue(LS_KEYS.pageSize));
+        const storedStrategy = Number(storedValue(LS_KEYS.filterStrategy));
         state.size = Number.isFinite(storedSize) && storedSize > 0 ? storedSize : 10;
         els.pageSize.value = String(state.size);
         setFilterDate(storedDate || today(), false);
+        // Set before loadStrategies so it can select the remembered option as it
+        // builds the list; a value assigned to an empty <select> is dropped.
+        state.strategyId = Number.isFinite(storedStrategy) ? storedStrategy : null;
         await Promise.all([loadInstruments(), loadStrategies()]);
+        // A remembered strategy the app no longer runs would filter to nothing
+        // with no way to tell why, so fall back to All when it is not on offer.
+        if (state.strategyId != null && !state.strategies.some(s => s.id === state.strategyId)) {
+            setFilterStrategy('', false);
+        }
         await loadList();
     })();
 })();
@@ -1791,67 +2040,6 @@
 })();
 </script>
 <script>
-// ─────────── Tabbed-card controller ───────────
-// Owns every `.bd-header` collapse and every `.tc-tab` switch on this page, so
-// the four panels below no longer each carry their own copy. Panels register
-// their lazy load with TcPanes.onFirstShow(paneId, fn) instead of hanging it off
-// their own toggle click.
-//
-// "Shown" deliberately means BOTH the card is expanded AND the pane's tab is
-// active. Firing on either alone would load Detection rules the moment someone
-// opened the card to run Generate — three panes, one wanted, two wasted calls.
-const TcPanes = (function () {
-    const once = {};
-    const fired = {};
-
-    function activePaneId(card) {
-        const pane = card.querySelector('.tc-pane.is-active');
-        return pane ? pane.id : null;
-    }
-
-    function fire(paneId) {
-        if (!paneId || fired[paneId]) return;
-        const pane = document.getElementById(paneId);
-        if (!pane || !pane.classList.contains('is-active')) return;
-        const card = pane.closest('.glass-card');
-        if (card && card.classList.contains('bd-collapsed')) return;
-        const fn = once[paneId];
-        if (!fn) return;
-        fired[paneId] = true;
-        fn();
-    }
-
-    document.addEventListener('click', function (ev) {
-        const tab = ev.target.closest('.tc-tab');
-        if (tab) {
-            const strip = tab.closest('.tc-tabs');
-            const card = tab.closest('.glass-card');
-            const target = tab.getAttribute('data-pane');
-            strip.querySelectorAll('.tc-tab').forEach(function (b) {
-                const on = b === tab;
-                b.classList.toggle('is-active', on);
-                b.setAttribute('aria-selected', on ? 'true' : 'false');
-            });
-            card.querySelectorAll('.tc-pane').forEach(function (pane) {
-                pane.classList.toggle('is-active', pane.id === target);
-            });
-            fire(target);
-            return;
-        }
-        const header = ev.target.closest('.bd-header');
-        if (header && header.parentElement.classList.contains('glass-card')) {
-            const card = header.parentElement;
-            card.classList.toggle('bd-collapsed');
-            card.classList.toggle('bd-card-open');
-            fire(activePaneId(card));
-        }
-    });
-
-    return {
-        /** Run `fn` the first time `paneId` is actually visible. */
-        onFirstShow: function (paneId, fn) { once[paneId] = fn; }
-    };
-})();
 
 // ─────────── Generate AUTO configs panel ───────────
 // Config generation is trade-config-domain work (POST /api/trade-configs/generate),

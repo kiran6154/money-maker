@@ -177,6 +177,12 @@
                 <input id="pg-include-open" type="checkbox" />
                 <span>include OPEN</span>
             </label>
+            <!-- Exports exactly the rows the table is showing, strategy filter
+                 included — see exportOrders(). -->
+            <button id="orders-export-csv" class="btn btn-ghost" type="button"
+                    title="Download the rows shown below as CSV">⭳ CSV</button>
+            <button id="orders-export-txt" class="btn btn-ghost" type="button"
+                    title="Download the rows shown below as tab-separated TXT">⭳ TXT</button>
             <button id="pg-clear" class="btn btn-danger" type="button">🗑 Clear ledger</button>
         </div>
         <p style="color: var(--text-muted); margin: 0 0 12px;">
@@ -245,6 +251,8 @@
     </div>
 </main>
 
+<!-- Shared CSV / TXT writer, also used by the Configured trade configs table. -->
+<script th:src="@{/js/table-export.js}"></script>
 <script th:inline="javascript">
     const backtestEnabled = /*[[${backtestEnabled}]]*/ false;
 
@@ -604,6 +612,84 @@
             ordersEmpty.style.display  = list.length ? 'none' : '';
         }
     }
+
+    // -------- ledger export --------
+
+    /**
+     * Columns of the export, as [header, valueOf(order)] pairs.
+     *
+     * <p>Read off the API payload rather than the rendered table. The table
+     * writes an em dash for null, a Unicode minus on the SL column so it lines up
+     * with P/L, and HTML in four more; none of that belongs in a spreadsheet. So
+     * the file carries raw values — stop_loss_at_entry keeps the positive
+     * magnitude the DB stores, times stay ISO, nulls are empty cells — and adds
+     * the three charge fields that only exist on the nested {@code charges}
+     * object.</p>
+     */
+    const ORDER_EXPORT_COLUMNS = [
+        ['id',                  o => o.id],
+        ['trade_config_id',     o => o.tradeConfigId],
+        ['strategy_id',         o => o.strategyId],
+        ['instrument',          o => o.instrumentName],
+        ['option_strike',       o => o.optionStrike],
+        ['option_type',         o => o.optionType],
+        ['entry_direction',     o => o.entryDirection],
+        ['entry_reason',        o => o.entryReason],
+        ['entry_price',         o => o.entryPrice],
+        ['entry_time',          o => o.entryTime],
+        ['exit_price',          o => o.exitPrice],
+        ['exit_time',           o => o.exitTime],
+        ['profit_per_share',    o => o.profit],
+        ['peak_profit',         o => o.peakProfit],
+        ['peak_loss',           o => o.peakLoss],
+        ['target_at_entry',     o => o.targetAtEntry],
+        ['stop_loss_at_entry',  o => o.stopLossAtEntry],
+        ['trail_sl_at',         o => o.trailSlAt],
+        ['trail_ladder_at_entry', o => o.trailLadderAtEntry],
+        ['quantity',            o => o.quantity],
+        ['gross_pl',            o => o.charges && o.charges.grossPl],
+        ['total_charges',       o => o.charges && o.charges.totalCharges],
+        ['net_pl',              o => o.charges && o.charges.netPl],
+        ['status',              o => o.status],
+        ['exit_reason',         o => o.exitReason],
+        ['fill_status',         o => o.fillStatus],
+        ['entry_broker_order_id', o => o.entryBrokerOrderId],
+        ['exit_broker_order_id',  o => o.exitBrokerOrderId]
+    ];
+
+    /**
+     * What the ledger is currently showing, for the filename and the status line.
+     * The date range comes from the same two inputs the fetch used, so an
+     * exported file says which window and which strategy produced it.
+     */
+    function ordersScope() {
+        const range = (anFrom.value || anTo.value)
+            ? (anFrom.value || 'start') + '_to_' + (anTo.value || 'end')
+            : 'all-dates';
+        return range + (stratFilter === null ? '' : '_S' + stratFilter);
+    }
+
+    /**
+     * Exports the rows on screen — the fetched date range, narrowed by the
+     * strategy chips. Nothing is refetched: /api/orders is unpaged, so
+     * {@code allOrders} already holds the whole window, and filtering the same
+     * array the table renders is what guarantees the file and the screen agree.
+     */
+    function exportOrders(format) {
+        const list = stratFilter === null
+            ? allOrders
+            : allOrders.filter(o => o.strategyId === stratFilter);
+        if (!list.length) {
+            alert('Nothing to export — the ledger has no rows for this filter.');
+            return;
+        }
+        const rows = [ORDER_EXPORT_COLUMNS.map(c => c[0])];
+        list.forEach(o => rows.push(ORDER_EXPORT_COLUMNS.map(c => c[1](o))));
+        TableExport.save(rows, 'orders_' + ordersScope(), format);
+    }
+
+    document.getElementById('orders-export-csv').addEventListener('click', () => exportOrders('csv'));
+    document.getElementById('orders-export-txt').addEventListener('click', () => exportOrders('txt'));
 
     // Per-row sync handler (delegated)
     document.getElementById('orders-rows').addEventListener('click', async (ev) => {

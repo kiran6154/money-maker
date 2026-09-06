@@ -149,7 +149,8 @@ Each pane has:
 - API calls
 - loading, error, and no-data states
 - TradingView `lightweight-charts` rendering
-- per-pane `+` / `−` zoom, mirrored across all eleven panes
+- per-pane `+` / `−` zoom and Ctrl / Cmd + wheel zoom, mirrored across all
+  eleven panes (a plain wheel scrolls the page)
 - the `1D` / `10D` / `20D` / `Max` zoom spans, applied to all eleven panes
 
 ### What happens when the user selects NIFTY and refreshes
@@ -1030,11 +1031,13 @@ removes the inverted-range case the picker had to guard (a From after the To
 came back as a silently empty chart).
 
 **The viewport still opens on the selected day.** Fetching 45 days is not the
-same as showing 45 days: `focusSelectedSession` sets the visible range to the
+same as showing 45 days: `applyZoomWindow` sets the visible range to the
 selected date's own session (~78 five-minute bars) and leaves the remaining
 ~2,400 bars off-screen to the left, one drag away. The window is there to warm
 the SMAs and put the recent past within scrolling reach — fitting all of it would
-squeeze the day you actually selected into a few pixels.
+squeeze the day you actually selected into a few pixels. `1D` is only the
+*default*; the [zoom chips](#zoom-spans) widen the viewport to 10 or 20 sessions,
+or to the whole window, without changing what was fetched.
 
 The session is matched on the raw ISO string's date prefix rather than by
 converting epoch seconds back to a calendar day: the API already returns
@@ -1052,7 +1055,7 @@ user had scrolled to.
 Each pane carries its own `+` / `−` buttons, overlaid bottom-left so they clear
 lightweight-charts' price scale on the right and its time axis underneath. They
 step the **visible logical range** (bar indices) rather than `barSpacing`, so
-they speak the same units as `focusSelectedSession` and the resize handler and
+they speak the same units as `applyZoomWindow` and the resize handler and
 compose with both. The two factors are exact inverses (`0.8` and `1.25`), so
 zooming in and back out returns to the range you started from instead of
 drifting, and the step is centred on what is on screen rather than the right
@@ -1065,9 +1068,35 @@ The buttons live on `.chart-canvas-wrap`, **not** `.chart-canvas` — the render
 clears the canvas element's `innerHTML` before creating the chart, so anything
 parked inside it disappears on the first refresh.
 
+### The wheel scrolls the page; Ctrl + wheel zooms
+
+`handleScale.mouseWheel` is **false** in `createPaneChart`. It used to be true,
+which made a plain wheel zoom the pane under the pointer — and because
+lightweight-charts calls `preventDefault()` on every wheel event it consumes, the
+page could not be scrolled at all while the pointer was over a chart. With eleven
+stacked panes the pointer is over a chart almost everywhere, so scrolling down the
+dashboard zoomed a chart instead of moving the page.
+
+The internals make the fix exact rather than approximate: lightweight-charts
+returns early — before `preventDefault()` — when the wheel's `deltaX` is 0 *and*
+the scale handler is off, which is precisely a vertical-only wheel. So the page
+gets its scroll back while `handleScroll.mouseWheel` stays true and a horizontal
+trackpad swipe still pans the series, a gesture the page has no other use for.
+
+Wheel-zoom is not lost, it is behind a modifier. A delegated `wheel` listener
+(registered `passive: false`, since it must be allowed to `preventDefault`) zooms
+the pane under the pointer on **Ctrl / Cmd + wheel**, resolving the pane by
+walking up from the event target with `paneKeyAt` — the wheel lands on whichever
+canvas or overlay lightweight-charts has under the cursor, several levels below
+the container this code named. Browsers also deliver a trackpad pinch as
+Ctrl + wheel, so pinch-to-zoom over a pane works through the same path.
+
+The remaining ways to change the window are unchanged: the `+` / `−` buttons, a
+drag, and the `1D` / `10D` / `20D` / `Max` chips.
+
 ### Zoom is synced across panes
 
-Moving one pane's window — the `+` / `−` buttons, the wheel, a drag — moves all
+Moving one pane's window — the `+` / `−` buttons, Ctrl + wheel, a drag — moves all
 ten, via `subscribeVisibleTimeRangeChange` on each chart broadcasting to the
 others behind a `syncingRanges` re-entry guard.
 
