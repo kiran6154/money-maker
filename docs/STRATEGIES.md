@@ -68,8 +68,9 @@ so a new strategy bean appears in the UI with no further wiring.
 | 7 | [`Strategy7`](../src/main/java/com/moneymaker/strategy/Strategy7.java) | Strategy 6 **plus the first-hour regime gate**: after 10:15, no entry on a leg whose side the underlying's first hour moved against by more than 0.2 × ATR-14 (unknown allows; opening-bar entries untouched). |
 | 8 | [`Strategy8`](../src/main/java/com/moneymaker/strategy/Strategy8.java) | **20SMA 15min candle** — not an SMA-cross. On the leg's own 15-minute candles: SMA-20 of closes sloping down **and** close below the previous close → SELL; no cross gate, no down-trend rule. Exits on a **chandelier trail** (peak − 2 × ATR-14, `trail_atr_multiple`), no target (`target_mode = NONE`), 14:45 cut-off, 15:15 close signal. |
 | 9 | [`Strategy9`](../src/main/java/com/moneymaker/strategy/Strategy9.java) | Strategy 8 **plus three configurable gates** from the 2026-09-06 indicator / volume study: signal candle not closing on its low (`min_candle_close_position`), no near-ATM option-volume spike on the signal bar (`max_volume_surge`), and a minimum number of days to expiry (`min_days_to_expiry`). Each null = off; all null = Strategy 8. |
+| 10 | [`Strategy10`](../src/main/java/com/moneymaker/strategy/Strategy10.java) | **Strategy 9 tuned for the intraday form** (optimisation of 2026-09-06, S31): same three gates but seeded with the expiry gate **off** and the candle threshold at **0.35**, and the last entry bar at **13:15** instead of 14:45. Replay: +32% points over Strategy 9 with a smaller drawdown, both years. |
 
-**Strategies 1–4 and 6–9** extend
+**Strategies 1–4 and 6–10** extend
 [`AbstractSmaCrossStrategy`](../src/main/java/com/moneymaker/strategy/AbstractSmaCrossStrategy.java),
 which holds *everything* except the id and the rule sets: cache-key ownership
 matching, the premium sort, the SMA-cross gate, the entry price band, the
@@ -528,6 +529,48 @@ a day that also runs the auto-downtrend configs, to reproduce the replay; a
 lone depth-0 leg measures only itself and the `[tick]` debug line reports
 `legs=1`. Same prerequisites as Strategy 8 otherwise (`transaction_type =
 SELL`, a 15-minute `sma_timeframe` row, no rule tag from the changeset).
+
+---
+
+## Strategy 10 — Strategy 9 tuned for the intraday form
+
+The 2026-09-06 optimisation (S31 in
+[STRATEGY_ANALYSIS_TODO.md](STRATEGY_ANALYSIS_TODO.md)) tried forty-odd
+single changes to Strategy 9 on the replica — chandelier multiple and cap,
+each gate threshold, entry windows, sides, one trade a day, premium floors and
+India-VIX gates — and found that nothing improves the exit, the volume gate or
+the side choice in both years, while the expiry gate costs the Wednesday and
+Thursday trades. The combination that improved both years re-admits them and
+tightens two other things. [`Strategy10`](../src/main/java/com/moneymaker/strategy/Strategy10.java)
+extends `Strategy9` and differs only in:
+
+| | Strategy 9 | Strategy 10 |
+|---|---|---|
+| `min_days_to_expiry` (seed) | 2 | **NULL** — gate off |
+| `min_candle_close_position` (seed) | 0.25 | **0.35** |
+| `max_volume_surge` (seed) | 2.00 | 2.00 |
+| last entry bar | 14:45 (30 min before the close signal) | **13:15** (120 min) — `entryCutoffMinutesBeforeCloseSignal()` |
+
+The two seeds are its own `strategy_defaults` row (changeset 050, copied from
+strategy 9's block); the cut-off is strategy identity in the same sense as
+Strategy 8's 30 minutes. Everything else — the rule, the chandelier exit, the
+volume gate's cache dependency, the 15:15 close signal — is Strategy 9.
+
+**Replay** (Python replica, dbeaver export, Jan-2024 → Dec-2025, ATM leg,
+gross points per share):
+
+| | Trades | Total | Avg | PF | Max DD | Worst month | 2024 / 2025 |
+|---|---|---|---|---|---|---|---|
+| Strategy 9 as seeded | 602 | +3,504 | +5.8 | 1.5 | −246 | −151 | 2,096 / 1,408 |
+| Strategy 10 | 714 | +4,609 | +6.5 | 1.6 | −207 | −54 | 2,651 / 1,957 |
+
+In the engine's own 2024 Strategy 9 ledger (+1,821 gross) the same change
+projects to roughly +2,300; treat +20–30% as the expectation, since the
+combination was chosen on these two years. India VIX (Yahoo Finance
+^INDIAVIX) was tested as a gate in every form that is knowable at 09:15 —
+level, previous-day change, opening gap, distance from the 20-day mean — and
+none improved both years; the rule's loss months are quiet or falling-VIX
+months, not spikes.
 
 ---
 
