@@ -459,6 +459,16 @@ public class OrderService {
                     config.getTradeConfig().getMaxSlPoints()));
             order.setTrailLadderAtEntry(trailLadderAtEntry(config.getTradeConfig(), order));
 
+            // Changeset 048: a strategy that trails on volatility (Strategy 8)
+            // freezes its chandelier distance here — multiple × the ATR the
+            // signal carried — and drops the ladder, so PositionService has one
+            // trail per trade and needs nothing beyond the row after a restart.
+            BigDecimal atrDistance = trailAtrDistanceAtEntry(defaults, signal, order);
+            order.setTrailAtrDistanceAtEntry(atrDistance);
+            if (atrDistance != null) {
+                order.setTrailLadderAtEntry(null);
+            }
+
             // Changeset 043: the two time-based exits, frozen onto the row for
             // the same reasons as the bracket above — PositionService must not
             // depend on the config caches surviving a restart, and editing the
@@ -518,6 +528,9 @@ public class OrderService {
      */
     private BigDecimal bracketAtEntry(BracketMode mode, BigDecimal pct,
                                       BigDecimal absolute, BigDecimal entryPrice) {
+        if (mode == BracketMode.NONE) {
+            return null;
+        }
         boolean pctUsable = pct != null && pct.signum() > 0
                 && entryPrice != null && entryPrice.signum() > 0;
         boolean absoluteUsable = absolute != null && absolute.signum() > 0;
@@ -541,6 +554,27 @@ public class OrderService {
      * reads {@code null} as the legacy {@code PERCENT} rule, so those strategies
      * keep the bracket they have today.</p>
      */
+    /**
+     * {@code strategy_defaults.trail_atr_multiple × signal.atr}, rounded to the
+     * tick, or null when the strategy does not trail on ATR. A strategy that
+     * asks for it but emitted a signal without an ATR (series too short for the
+     * ATR window) opens on its fixed stop alone and says so once per trade.
+     */
+    private BigDecimal trailAtrDistanceAtEntry(StrategyDefaults defaults, TradeSignal signal, TradeOrder order) {
+        if (defaults == null || defaults.getTrailAtrMultiple() == null
+                || defaults.getTrailAtrMultiple().signum() <= 0) {
+            return null;
+        }
+        if (signal == null || signal.getAtr() == null || signal.getAtr().signum() <= 0) {
+            log.warn("[order] strategyId={} trails on ATR (x{}) but the signal for {} {}{} carries no ATR — "
+                            + "this trade runs on its fixed stop-loss only",
+                    defaults.getStrategyId(), defaults.getTrailAtrMultiple(),
+                    order.getInstrumentName(), order.getOptionStrike(), order.getOptionType());
+            return null;
+        }
+        return signal.getAtr().multiply(defaults.getTrailAtrMultiple()).setScale(2, RoundingMode.HALF_UP);
+    }
+
     private StrategyDefaults bracketDefaults(Integer strategyId) {
         if (strategyId == null) {
             return null;

@@ -86,6 +86,28 @@ public final class RuleEngine {
      * the one that never gates anything: SELL is this path's exit-only direction,
      * exactly as BUY is exit-only in {@link #decide}.</p>
      */
+    /**
+     * Decision for a strategy whose trigger is not an SMA cross (Strategy 8):
+     * SELL when the sell rules pass, otherwise BUY when the buy rules pass,
+     * otherwise NONE. No primary-SMA requirement — the rules carry their own
+     * warm-up guards. Everything else ({@code TradeRules#empty()} fails closed,
+     * required-then-anyOf evaluation, the named reason) is the same as
+     * {@link #decide}.
+     */
+    public static Decision decideWithoutCrossGate(RuleContext ctx, TradeRules sellRules, TradeRules buyRules) {
+        EvalResult s = evaluateWithReason(ctx, sellRules);
+        if (s.pass) {
+            return new Decision(TradeAction.SELL, "no cross gate, sell rules OK [" + s.reason + "]");
+        }
+        EvalResult b = evaluateWithReason(ctx, buyRules);
+        if (b.pass) {
+            return new Decision(TradeAction.BUY,
+                    "no cross gate, sell rules FAIL [" + s.reason + "], buy rules OK [" + b.reason + "]");
+        }
+        return new Decision(TradeAction.NONE,
+                "no cross gate, sell rules FAIL [" + s.reason + "], buy rules FAIL [" + b.reason + "]");
+    }
+
     public static Decision decideBuyEntry(RuleContext ctx, TradeRules sellRules, TradeRules buyRules) {
         if (ctx.primarySmaPeriod == null) {
             return new Decision(TradeAction.NONE, "primarySma=null");

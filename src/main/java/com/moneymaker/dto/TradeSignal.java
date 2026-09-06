@@ -40,4 +40,17 @@ public class TradeSignal {
     private String interval;
     /** Close price of the candle that triggered the signal — used for entry/exit price. */
     private BigDecimal price;
+
+    /**
+     * ATR of the signal bar's series, set only by strategies whose exit needs it
+     * (Strategy 8's chandelier trail — see {@code trail_atr_distance_at_entry}).
+     * Null for every other signal.
+     */
+    private BigDecimal atr;
+
+    /** The pre-048 shape: every existing caller, no ATR attached. */
+    public TradeSignal(String strikeKey, TradeAction action, Integer tradeConfigId, Integer strategyId,
+                       LocalDateTime signalTime, Integer primarySma, String interval, BigDecimal price) {
+        this(strikeKey, action, tradeConfigId, strategyId, signalTime, primarySma, interval, price, null);
+    }
 }

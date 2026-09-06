@@ -208,9 +208,7 @@ public abstract class AbstractSmaCrossStrategy implements Strategy {
                         dataList, primarySma, config, asOf,
                         marketHours != null ? marketHours.closeSignalTime() : null,
                         key);
-                RuleEngine.Decision decision = entryAction() == TradeAction.BUY
-                        ? RuleEngine.decideBuyEntry(ctx, sellRules, buyRules)
-                        : RuleEngine.decide(ctx, sellRules, buyRules);
+                RuleEngine.Decision decision = decide(ctx, sellRules, buyRules);
 
                 // What actually gets emitted. Identity for most strategies;
                 // Strategy4 inverts the detected direction here, so the reason
@@ -237,7 +235,8 @@ public abstract class AbstractSmaCrossStrategy implements Strategy {
                     SharedData.tradeSignals.add(new TradeSignal(
                             key, action, tradeConfigId, getId(),
                             lastCandle.getTimestamp(), primarySma, interval,
-                            lastCandle.getClose()));
+                            lastCandle.getClose(),
+                            action == mapAction(entryAction()) ? signalAtr(ctx) : null));
                 }
             }
         }
@@ -453,6 +452,30 @@ public abstract class AbstractSmaCrossStrategy implements Strategy {
      */
     protected TradeAction entryAction() {
         return TradeAction.SELL;
+    }
+
+    /**
+     * The decision for one leg's newest settled bar. The baseline is the SMA
+     * cross gate followed by the period's rules ({@link RuleEngine#decide}, or
+     * its buy-side mirror for BUY-entry strategies). A strategy whose trigger
+     * is not a cross overrides this — Strategy 8 routes the same rules through
+     * {@link RuleEngine#decideWithoutCrossGate}. Everything around it (scan
+     * order, stale-bar guard, price band, signal emission) is unchanged.
+     */
+    protected RuleEngine.Decision decide(RuleContext ctx, TradeRules sellRules, TradeRules buyRules) {
+        return entryAction() == TradeAction.BUY
+                ? RuleEngine.decideBuyEntry(ctx, sellRules, buyRules)
+                : RuleEngine.decide(ctx, sellRules, buyRules);
+    }
+
+    /**
+     * Volatility measure attached to an <i>entry</i> signal, for exits that
+     * need one at entry time (the ATR chandelier trail, changeset 048). Null by
+     * default: strategies 1-7 attach nothing and their orders trail on the
+     * config's ladder as before.
+     */
+    protected BigDecimal signalAtr(RuleContext ctx) {
+        return null;
     }
 
     /**

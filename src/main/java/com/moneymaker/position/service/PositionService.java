@@ -146,7 +146,13 @@ public class PositionService {
         // next bar. TrailLadder.parse allows lock <= trigger and refuses only
         // lock > trigger, which would put the floor above the peak that armed
         // it — see that class for the full argument.
-        applyTrail(order);
+        // The chandelier fills at the floor that was in force when the breach
+        // was seen: a bar whose low extends the peak and whose high crosses the
+        // floor must not be filled at the floor the low would set afterwards.
+        // The ladder keeps its pre-048 behaviour (rung locks apply immediately).
+        if (hit == null || order.getTrailAtrDistanceAtEntry() == null) {
+            applyTrail(order);
+        }
 
         log.debug("[position] orderId={} {} {}{} entry={}@{} cur={}@{} pl={} maxPL={} maxLoss={} target={} stopLoss={} trailSl={} → {}",
                 order.getId(), order.getInstrumentName(), order.getOptionStrike(), order.getOptionType(),
@@ -206,6 +212,23 @@ public class PositionService {
      * stop rather than letting the exception abort the tick for every other order.</p>
      */
     private void applyTrail(TradeOrder order) {
+        // Chandelier (changeset 048): the floor follows the favourable extreme at a
+        // fixed distance, so the stop only ever tightens. peak − distance can be
+        // negative — a trailed stop that is still a loss — which thresholdBreach
+        // honours whenever it is tighter than the fixed stop.
+        BigDecimal atrDistance = order.getTrailAtrDistanceAtEntry();
+        if (atrDistance != null) {
+            BigDecimal peak = order.getPeakProfit();
+            if (peak == null) return;
+            BigDecimal lock = peak.subtract(atrDistance);
+            BigDecimal current = order.getTrailSlAt();
+            if (current == null || lock.compareTo(current) > 0) {
+                log.info("[position] TRAIL orderId={} peak={} → chandelier floor {} (was {}) distance={}",
+                        order.getId(), peak, lock, current, atrDistance);
+                order.setTrailSlAt(lock);
+            }
+            return;
+        }
         String ladder = order.getTrailLadderAtEntry();
         if (ladder == null || ladder.isBlank()) return;
 
