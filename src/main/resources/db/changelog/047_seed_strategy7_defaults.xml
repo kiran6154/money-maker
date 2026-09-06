@@ -12,7 +12,7 @@
       Why a changeset and not an operator INSERT
       ==========================================
       Strategy 7 is Strategy 6 plus the first-hour gate, and its measured edge
-      (STRATEGY_ANALYSIS_TODO.md S22) was replayed on the SAME strategy_defaults
+      (STRATEGY_ANALYSIS_TODO.md S28) was replayed on the SAME strategy_defaults
       block strategy 1 runs on - transaction_type SELL, the same max_loss,
       no_of_trades and no_of_parallel_trades - just as Strategy 6's was (046).
       So the block is copied from strategy 1, which also means the strategies

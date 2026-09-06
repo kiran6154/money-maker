@@ -12,7 +12,7 @@ import java.util.List;
 
 /**
  * {@link Strategy6} plus one regime gate taken from the intraday regime study
- * (the 10:15 checkpoint), reshaped for a one-sided premium short — S22 in
+ * (the 10:15 checkpoint), reshaped for a one-sided premium short — S28 in
  * {@code docs/STRATEGY_ANALYSIS_TODO.md} has the numbers:
  *
  * <p><b>First hour not against the leg.</b> For a signal bar that starts at or
@@ -29,7 +29,7 @@ import java.util.List;
  * <i>against</i> the leg (Strategy 6: 84 such trades, −1,881 points, profit
  * factor 0.23, versus +1,866 on sideways days and +2,036 on favourable trends).
  * Nothing known at the open flags those days — the gap rule and the
- * expected-move level were tried and rejected (S22) — but the direction of the
+ * expected-move level were tried and rejected (S28) — but the direction of the
  * first hour is the best partial tell for the afternoon: the 43 after-10:15
  * entries this gate removed were trend-against days 35% of the time against a
  * 14% base rate. Replay: 525 trades, +2,125 points, profit factor 1.31,
@@ -48,7 +48,7 @@ import java.util.List;
  *
  * <p>The checkpoint and the threshold are strategy identity, not
  * {@code TradeConfig} columns, for the same reason as Strategy 6's constants
- * (S21 open question (a)).</p>
+ * (S27 open question (a)).</p>
  */
 @Component
 public class Strategy7 extends Strategy6 {

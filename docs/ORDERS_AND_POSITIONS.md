@@ -763,7 +763,7 @@ Trading-behaviour parameters — anything that controls *when* a trade enters, *
 | Lot quantity | `tradeConfig.lotQuantity` |
 | Tradeable premium band at signal time (default 80–250) | `tradeConfig.minOptionPrice` / `tradeConfig.maxOptionPrice` |
 | Which in-band leg wins when a cap allows one | highest premium first — `AbstractSmaCrossStrategy.premiumComparator` |
-| Whether a stop-loss closes the book for the day | `Strategy.stopLossLocksBookForDay()` — declared per strategy (identity, like a rule set), enforced here as gate 6. Only `Strategy6` declares it; promoting it to a `TradeConfig` column is an open question in [S21](STRATEGY_ANALYSIS_TODO.md) |
+| Whether a stop-loss closes the book for the day | `Strategy.stopLossLocksBookForDay()` — declared per strategy (identity, like a rule set), enforced here as gate 6. Only `Strategy6` declares it; promoting it to a `TradeConfig` column is an open question in [S27](STRATEGY_ANALYSIS_TODO.md) |
 | Active broker | `broker.active` (application property) |
 | Backtest replay window | `fromDate` / `toDate` from the `/api/backtest/analysis` request |
 

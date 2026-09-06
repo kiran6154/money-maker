@@ -319,7 +319,7 @@ newest settled bar belonging to an earlier session — which is every tick befor
 SMA-50 not yet stamped on that bar. This is the same convention as
 `isSma20SlopeUp`, and it is deliberate: the 09:15 entries were the replay's best
 slice, and gating them on evidence that does not exist yet cost 200 points
-(see S21). The full case list is on the method's Javadoc.
+(see S27). The full case list is on the method's Javadoc.
 
 **Where the 15-minute series comes from.** The bean declares
 `confirmationTimeframes() = {15}`, and `AnalysisScheduler` unions that into the
@@ -339,7 +339,7 @@ average the same as the ones it lets through) but on top of the other three it
 raised the profit factor from 1.17 to 1.28 and was the only variant positive in
 every half-year. Numbers, the variant grid and the caveats (in-sample selection,
 unverified charge rates, lot 75 throughout) are in
-[S21](STRATEGY_ANALYSIS_TODO.md#s21-strategy6s-three-gates-are-replay-selected--the-constants-are-strategy-identity-not-config).
+[S27](STRATEGY_ANALYSIS_TODO.md#s27-strategy6s-three-gates-are-replay-selected--the-constants-are-strategy-identity-not-config).
 
 **Config prerequisites.** `transaction_type = SELL`, like strategies 1 and 2.
 Tag an existing config `"1,2,6"` (or `"2,6"`) to run it alongside the others —
@@ -363,12 +363,12 @@ remove the trades those knobs remove, and the knobs then cut good ones. The
 same holds for the bracket (`target_pct` 0.25 / `sl_pct` 0.25: 1,856;
 `max_sl_points` 45: 1,584) and the close signal (15:00: 2,069, a wash).
 The detector's `max_deviation` barely matters (0 / 2 / 5 → PF 1.29 / 1.30 /
-1.28). Numbers in S21.
+1.28). Numbers in S27.
 
 The three numbers on the bean (`15` minutes, SMA `50`, `30` minutes before the
 close signal) are strategy identity — what makes a config tagged 6 differ from
 one tagged 2 — and deliberately not `TradeConfig` columns yet; that question is
-recorded in S21 rather than guessed at (CLAUDE.md #9).
+recorded in S27 rather than guessed at (CLAUDE.md #9).
 
 ## Strategy 7 — Strategy 6 with the first-hour regime gate
 
@@ -393,7 +393,7 @@ partial tell for the afternoon: the after-10:15 entries this gate removes were
 trend-against days 35% of the time against a 14% base rate. Replay: **525
 trades, +2,125 pts, PF 1.31**, positive in all four half-years (Strategy 6:
 561, +2,021, 1.28); flat across thresholds −0.1…−0.3 and with the 09:15 ATM
-straddle as the normaliser instead of ATR (S22).
+straddle as the normaliser instead of ATR (S28).
 
 **Data it reads.** The underlying series `AnalysisScheduler` already caches
 under `token|interval` (the first two segments of the leg's own cache key), at
@@ -412,7 +412,7 @@ tagging it on a rule is the operator's decision (the same one-row-per-rule
 generated config — each keeps its own caps, budget, lock and position — and
 diff the 6 and 7 ledgers to see exactly which trades the gate removed.
 The checkpoint (10:15) and threshold (0.20 ATR) are strategy identity, not
-`TradeConfig` columns (S21 open question (a) applies).
+`TradeConfig` columns (S27 open question (a) applies).
 
 ## Adding a strategy
 

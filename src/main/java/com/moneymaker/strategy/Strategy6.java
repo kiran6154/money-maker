@@ -12,7 +12,7 @@ import java.util.Set;
 
 /**
  * {@link Strategy2} plus the three entry gates the 2024-2025 dbviewer replay
- * singled out (analysis 2026-09-05, see the S21 entry in
+ * singled out (analysis 2026-09-05, see the S27 entry in
  * {@code docs/STRATEGY_ANALYSIS_TODO.md} for the numbers):
  *
  * <ol>
@@ -45,7 +45,7 @@ import java.util.Set;
  * band, the 15:15 exit — is inherited unchanged. The 20-SMA slope filter is
  * kept because with these gates in place it raised the profit factor
  * (1.17 → 1.28) and was the only variant positive in every half-year; on its
- * own it was noise (S21).</p>
+ * own it was noise (S27).</p>
  *
  * <p><b>Config prerequisites.</b> {@code transaction_type = SELL}, like
  * strategies 1 and 2. The 15-minute confirmation series is fetched by
@@ -57,7 +57,7 @@ import java.util.Set;
  *
  * <p>The three numbers below are strategy identity, deliberately not
  * {@code TradeConfig} columns (CLAUDE.md #9 — recorded as an open question in
- * S21): they are what makes a config tagged 6 different from one tagged 2.
+ * S27): they are what makes a config tagged 6 different from one tagged 2.
  * Promote them to columns the day a second strategy wants different values.</p>
  */
 @Component
