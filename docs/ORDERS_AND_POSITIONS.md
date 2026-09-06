@@ -282,28 +282,45 @@ So a backtest run never hits a live broker even with `broker.active=ZERODHA`.
 For every row with `status='OPEN'`:
 
 ```
-quote = monitor.currentQuote(order)               # → {price, asOf}
-if quote == null:           skip this tick (e.g. strike fell out of active-set in backtest)
+quote = monitor.currentQuote(order)          # → {price, asOf, high, low}
+if quote == null:            skip this tick (e.g. strike fell out of active-set in backtest)
 if asOf <= order.entry_time: skip this tick (the candle that opened the trade
-                              cannot also close it — see "Same-candle guard" below)
+                             cannot also close it — see "Same-candle guard" below)
 
-pnl = perShareProfit(entry_direction, entry_price, quote.price)
-peak_profit = max(peak_profit, pnl)
-peak_loss   = min(peak_loss,   pnl)
+pnl        = perShareProfit(entry_direction, entry_price, quote.price)   # the CLOSE
+adversePnl = the same at the bar's ADVERSE extreme (high for SELL, low for BUY),
+             falling back to pnl when the monitor supplies no high/low (live LTP)
+
+# --- 1. DETECT first, before anything this bar earns is armed ----------------
+# Thresholds are read from the snapshot on the row, NOT from SharedData / live config.
+if   pnl >= target_at_entry                       → hit = "TARGET"        # CLOSE, not the wick
+elif asOf >= entry_time + max_hold_minutes_at_entry → hit = "TIME_STOP"   # 043
+elif asOf.time >= flatten_at_entry                → hit = "FLATTEN"       # 043
+else:
+    floor  = max(-stop_loss_at_entry, trail_sl_at)    # whichever is TIGHTER
+    reason = "TRAIL_SL" if the trail supplied the floor else "STOP_LOSS"
+    hit    = reason if adversePnl <= floor else null  # the WICK, not the close
+
+# --- 2. Track the extremes ---------------------------------------------------
+peak_profit = max(peak_profit, favourablePnl)   # bar's favourable extreme
+peak_loss   = min(peak_loss,   adversePnl)
 last_monitored_price = price
-last_monitored_at    = now
+last_monitored_at    = asOf
 
-# Ratchet the trailing floor up to whatever rung the PEAK has earned (never down).
-lock = highest trail_ladder_at_entry rung whose trigger <= peak_profit
-if lock != null and lock > trail_sl_at: trail_sl_at = lock
+# --- 3. ARM rungs only AFTER the breach check --------------------------------
+# so the bar whose excursion earns a rung can never also exit on it.
+# Skipped on the exit tick for the chandelier; the ladder still ratchets.
+applyTrail(order)
 
-# Read thresholds from the snapshot on the row, NOT from SharedData / live config.
-floor  = max(-order.stop_loss_at_entry, order.trail_sl_at)   # whichever is TIGHTER
-reason = "TRAIL_SL" if the trail supplied the floor else "STOP_LOSS"
+# --- 4. Close ----------------------------------------------------------------
+# A floor exit fills AT THE FLOOR — the resting order's trigger price — not at
+# the bar's close and not at the wick that touched it. See below.
+exitPrice = quote.price
+if hit == "TRAIL_SL":  exitPrice = priceAtPnl(trail_sl_at)
+if hit == "STOP_LOSS": exitPrice = priceAtPnl(-stop_loss_at_entry)
 
-if pnl >= order.target_at_entry → OrderService.closeManually(id, price, now, "TARGET")
-if pnl <= floor                 → OrderService.closeManually(id, price, now, reason)
-else                            → save row
+if hit → OrderService.closeManually(id, exitPrice, asOf, hit)
+else   → save row
 
 # After the decision above is settled, never before it:
 PositionJournal.observe(order, asOf, pnl, decision)   # MONITOR row + any EVENT rows
@@ -327,6 +344,41 @@ stopped-out one afterwards. Taking the higher floor and labelling it by whicheve
 put it there makes the answer independent of evaluation order. A trail sitting
 *exactly* on the fixed stop reports `STOP_LOSS`, because it moved nothing.
 
+### Resting-order stop model — the wick triggers, the floor fills (S4 decision, 2026-08-31)
+
+A floor is an SL order **resting at the broker**, not a decision re-taken each
+bar. Three consequences, and they are asymmetric on purpose:
+
+| | Detected on | Filled at |
+|---|---|---|
+| `STOP_LOSS` / `TRAIL_SL` | the bar's **adverse extreme** (high for a SELL, low for a BUY) | **the floor itself** |
+| `TARGET` | the bar's **close** | the close |
+| `TIME_STOP` / `FLATTEN` / `FORCE_CLOSE` | the clock | the close |
+
+**Why the wick and not the close.** A bar that spikes through the stop and
+recovers has already filled the resting order; scoring it on the close would
+report a trade the broker would never have still held. **Why the floor and not
+the wick.** The order rests *at* its trigger price, so that is the fill — pricing
+it at the wick's extreme would invent slippage in the strategy's favour on a
+recovery bar and against it on a gap.
+
+**Why the target uses the close instead.** There is no resting order on that side
+when `target_mode` is `NONE`, and where a target does exist, filling it on a wick
+would claim the best tick of the bar. Close-only is the conservative reading; the
+stop's wick rule is also the conservative one. Both err the same direction.
+
+**Bar internals are unordered, so detection is adverse-first.** Within one bar the
+engine cannot know whether the high or the low came first. It therefore tests the
+floor *armed by previous ticks* before arming anything this bar's own excursion
+earned — a rung cannot exit on the bar that created it, and the chandelier does not
+ratchet on the tick it exits. This can understate a trail, never flatter it.
+
+**What this model does not price.** The fill is exactly the floor, with **zero
+slippage and no gap risk** — a bar that opens far through the stop still fills at
+the stop. On the 2024 Strategy 8 replay that covered 63% of exits
+(487 of 770), and its cost is unmeasured: see
+[S32 in STRATEGY_ANALYSIS_TODO.md](STRATEGY_ANALYSIS_TODO.md).
+
 ### Chandelier trail (changeset 048)
 
 A second trailing shape, per strategy rather than per config. When
@@ -346,6 +398,20 @@ and it only ever tightens. Exit reason `TRAIL_SL`, filled at the floor in force
 when the breach was seen — on the exit tick the chandelier does **not** ratchet
 first (the ladder still does, unchanged). Pinned in
 `PositionServiceAtrTrailTest`.
+
+**The distance is per-leg, and its spread is wide.** `trail_atr_multiple` is one
+number but `TradeSignal.atr` is not — on the 2024 Strategy 8 replay the frozen
+`trail_atr_distance_at_entry` ranged **18.11 to 301.35 points** (2 × ATR-14 of the
+leg's 15-minute series) against a fixed stop capped at 60 and a premium band of
+80–250. So which floor governs is decided by the leg's volatility, not by design:
+on 34% of entries the chandelier was already tighter at entry and drove the exit
+from the first monitored bar, while at the top of the range a 301-point distance on
+a ≤250-point premium cannot be reached before the fixed stop fires. Read
+"chandelier trail" as *the tighter of two floors*, which is what the code does — not
+as a trail that always governs. On that same replay the trail measured **net-positive
+on its own exits** (−3,448 with it vs −4,899 re-priced without it): the shape is
+working as intended. Measured numbers and the remaining, optional question about the
+multiple are in [S33 in STRATEGY_ANALYSIS_TODO.md](STRATEGY_ANALYSIS_TODO.md).
 
 `BracketMode.NONE` (also 048) is the third value of `target_mode` / `sl_mode`:
 `bracketAtEntry` returns null for that side, which the monitor reads as "never

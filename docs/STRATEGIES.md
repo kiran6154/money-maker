@@ -460,6 +460,12 @@ expiry: the rule is a quality filter on theta, not the source of the profit.
 **This bean is the intraday form**; holding to expiry needs the carry-over
 work listed in S29.
 
+**First engine replay** (2026-09-06, 2024, depth-2 CE+PE configs, not the
+single ATM leg above): 770 trades, +2,715 pts, +3.53/trade, PF 1.20, max DD −818;
+look-ahead audited clean. S31 / S32 / S33 in
+[STRATEGY_ANALYSIS_TODO.md](STRATEGY_ANALYSIS_TODO.md) carry the numbers, the
+audit, and why the chandelier is really the tighter of two floors.
+
 **Config prerequisites:** `transaction_type = SELL`, a 15-minute
 `sma_timeframe` row, the `strategy_defaults` row from changeset 048, and — for
 `AUTO_DOWNTREND` generation — a `sma_downtrend_rule_strategy` tag the changeset
@@ -507,6 +513,14 @@ volume only 898 / +7.6 / +6,823, DD −336; all three 457 / +12.5 / +5,704,
 PF 1.79, DD −296, 12.7 / 12.3 by year. The volume gate is the only one that
 adds total points; the other two trade quantity for quality. Null
 `min_days_to_expiry` to keep the trade count.
+
+**First engine replay** (2026-09-06, cross-run on Strategy 8's 2024 depth-2
+config set, seeds as shipped): 298 trades, +1,821 pts, +6.11/trade, 52.7% win,
+PF 1.47, max DD −238 — against 770 / +2,715 / +3.53 / 42.9% / 1.20 / −818 for
+Strategy 8 on the same configs. Same shape as the replay table above. Note the
+two ledgers are not nested: only 119 of the 298 share an entry with Strategy 8;
+the rest are entries the freed slot let through. S30 in
+[STRATEGY_ANALYSIS_TODO.md](STRATEGY_ANALYSIS_TODO.md).
 
 **Deployment notes.** The volume gate measures the legs the cache holds: run
 Strategy 9 on configs whose legs span at least ±200 points (depth ≥ 2), or on
