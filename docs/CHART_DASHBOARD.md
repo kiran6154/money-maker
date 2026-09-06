@@ -78,6 +78,7 @@ The template contains:
 - SMA chip group: `chartSmaPeriods`
 - strike select: `chartStrike`
 - overlay toggle chips: `chartOverlays` (`SMA High`, `SuperTrend`)
+- zoom chip group: `chartZoom` (`1D`, `10D`, `20D`, `Max`)
 - refresh button: `refreshChartsBtn`
 - fullscreen toggle: `fullscreenChartsBtn`
 
@@ -135,11 +136,12 @@ Each pane has:
 
 - default control values
 - localStorage persistence for the last-used date, source, index, timeframe,
-  SMA, strike, overlay toggles, and active timeframe
+  SMA, strike, overlay toggles, zoom span, and active timeframe
 - reading filter values
 - reacting to filter changes
 - previous / next / today date navigation
-- single-select chip timeframes, multi-select chip SMA periods and overlays
+- single-select chip timeframes and zoom span, multi-select chip SMA periods and
+  overlays
 - per-pane strike-ladder width (`PANE_SPEC.strikeSpan`), sent as `strikeSpan`
 - refresh button clicks
 - keyboard shortcuts for date stepping, refresh, timeframe selection, dismissing
@@ -148,6 +150,7 @@ Each pane has:
 - loading, error, and no-data states
 - TradingView `lightweight-charts` rendering
 - per-pane `+` / `−` zoom, mirrored across all eleven panes
+- the `1D` / `10D` / `20D` / `Max` zoom spans, applied to all eleven panes
 
 ### What happens when the user selects NIFTY and refreshes
 
@@ -251,16 +254,44 @@ Two behaviours differ from the other chip groups and are deliberate:
   response already carries all the fields, so refetching would fire nine
   identical requests just to hide a line.
 
-SuperTrend is not part of `smaPeriods`. It renders as **one** line series whose
-colour changes at each flip — `#26a69a` while the trend is up, `#ef5350` while it
-is down, matching the candle up/down colours. `LineData.color` overrides the
-series colour per point in `lightweight-charts` v4, so a single series is enough.
+SuperTrend is not part of `smaPeriods`. It is drawn the way Kite draws it: **one
+band at a time, with a break at every flip.** The band is `#26a69a` while the
+trend is up (line under price, "buy") and `#ef5350` while it is down (line over
+price, "sell"), matching the candle up/down colours.
 
-> It used to be drawn as *two* series, one per direction, each carrying
-> whitespace points for the other's bars, on the belief that a line series could
-> not change colour mid-series. The two were meant to interleave into one
-> colour-changing line and instead showed up as two separate lines at once. The
-> single-series form makes that impossible — there is only ever one line to draw.
+`renderSupertrend` builds **two** line series, one per direction, and every bar
+belonging to the *other* direction is a real `WhitespaceData` point — a bare
+`{ time }`. Two properties fall out of that, and both are required:
+
+- **Exactly one side of price carries a line at any bar.** A bar contributes a
+  value to one series and whitespace to the other, so the buy band and the sell
+  band can never be drawn over the same candle.
+- **The flip is a break, not a segment.** At a flip the band teleports from
+  `lower` to `upper` (or back) across roughly six ATRs — a discontinuity, not a
+  move the indicator made. Whitespace is the only way to break a line in
+  `lightweight-charts`, and whitespace cannot share a timestamp with a value, so
+  the break is what forces two series rather than one.
+
+This is `plot(dir > 0 ? st : na, style=linebr)` in Pine terms, which is what Kite
+and TradingView render.
+
+> **Two earlier attempts, and what each got wrong.** The original two-series form
+> was correct but was read as a bug — "two separate lines at once" is simply what
+> a green run followed by a red run looks like — and was replaced by a single
+> series using `LineData.color` for per-point colour. A single series *can* change
+> colour mid-series, but it cannot carry a break: every consecutive pair of points
+> is joined, so each flip rendered as a near-vertical segment running from below
+> the candles to above them, putting the indicator on the buy side and the sell
+> side at the same time. Dropping the whitespace from the two-series form would
+> reintroduce the other failure — each series would join straight across the
+> other's stretch and both lines would span the whole chart. The whitespace is
+> load-bearing.
+
+The band values themselves were verified against a TradingView `ta.supertrend`
+reference (Wilder ATR seeded with the SMA of the first 7 true ranges, band
+ratchet on the previous close, flip tested against the active band) over a
+400-bar series: zero direction mismatches, zero band mismatches, same flip count.
+`ChartIndicatorService` is arithmetically correct — only the plotting was wrong.
 
 The legend matches: **one swatch, coloured by the direction at the right-hand
 edge of the chart**, reading `SuperTrend 7,3 · Buy` or `· Sell`. It used to show a
@@ -271,6 +302,51 @@ warming up there is no reading, and the swatch is muted with no Buy/Sell suffix.
 `latestSupertrendDirection` walks back from the newest bar rather than reading
 the last element outright, so trailing warm-up or gap bars cannot report "no
 signal" on a series that plainly has one.
+
+### Zoom spans
+
+Every response carries the whole continuous window — `CONTINUOUS_LOOKBACK_DAYS`
+(45) calendar days back from the selected date — so how much of it is *on screen*
+is a separate choice from what was fetched. The `chartZoom` chip group makes that
+choice explicit:
+
+| Chip | Window |
+|---|---|
+| `1D` (default) | the selected session only |
+| `10D` | the last **10 trading sessions** ending at the selected date |
+| `20D` | the last **20 trading sessions** ending at the selected date |
+| `Max` | `fitContent()` — the whole 45-day window |
+
+**Sessions, not calendar days.** Ten calendar days back covers a different number
+of trading sessions depending on where the weekends and holidays fall, so a `10D`
+measured that way would be a different width every time it was clicked.
+`sessionBoundsUpTo` buckets the bars by the `YYYY-MM-DD` prefix of their raw ISO
+timestamp — the API already returns `+05:30` times, so a prefix compare is exactly
+the market's own session boundary — and `applyZoomWindow` takes the last N of
+those buckets. 45 calendar days is roughly 30 sessions, so `20D` always fits
+inside the fetched window.
+
+Three properties hold at every span:
+
+- **The window always ends at the selected session.** A chip never silently shows
+  a different stretch of history than the date picker says.
+- **A missing session falls back to `fitContent()`.** A holiday, or an option leg
+  that had not started trading yet, has no bars on the selected date; the whole
+  series is a worse view but an honest one, where an empty viewport would look
+  broken. `setVisibleRange` throwing (lightweight-charts does not clamp) falls
+  back the same way.
+- **A short series shows what it has.** A leg with six sessions of data renders
+  all six under `10D` rather than refusing to zoom.
+
+Changing the chip **does not refetch and does not redraw** — `onZoomChanged` only
+moves the viewport, one step cheaper than the overlay toggles, which at least have
+to rebuild the series. `applyZoomToAllPanes` measures each pane against its own
+data, exactly as a render does, and holds the `syncingRanges` guard for the whole
+loop so the first pane's new range cannot broadcast over the windows the other ten
+are about to compute for themselves.
+
+The per-pane `+` / `−` buttons are unchanged and still work on the logical range;
+they compose with the chips rather than replacing them.
 
 ### Chart rendering
 
@@ -302,7 +378,8 @@ Clicking a candle pins a floating readout inside the pane, driven by
 - absolute and percent change for the candle
 - one row per selected SMA period, in the period's line colour:
   `L <sma low>` always, plus `H <sma high>` when the **SMA High** overlay is on
-- a SuperTrend row (value + `UP` / `DOWN`) when the **SuperTrend** overlay is on
+- a SuperTrend row (value + `Buy` / `Sell`, matching the legend) when the
+  **SuperTrend** overlay is on
 
 Dismiss a pin by clicking the same candle again, clicking empty plot area, or
 pressing `Escape`. Escape is layered: it clears pinned readouts first and only

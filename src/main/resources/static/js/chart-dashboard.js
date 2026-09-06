@@ -10,6 +10,14 @@
     const OVERLAY_SUPERTREND = 'supertrend';
     const DEFAULT_OVERLAYS = [OVERLAY_SMA_HIGH, OVERLAY_SUPERTREND];
     const NO_DATA_MESSAGE = 'No market data available for selected date.';
+    // Preset viewport widths, as a count of *trading sessions* ending at the
+    // selected date. Sessions rather than calendar days: ten calendar days back
+    // covers a different number of sessions depending on where the weekends and
+    // holidays fall, so a "10D" measured that way would be a different width
+    // every time it was clicked. MAX is the whole continuous window.
+    const ZOOM_MAX = 'max';
+    const ZOOM_SESSION_SPANS = { '1d': 1, '10d': 10, '20d': 20 };
+    const DEFAULT_ZOOM = '1d';
     // The chart is always one continuous series across this many days ending at
     // Date. Not a mode and not a picker: there is no single-day view and no
     // from-date to choose, so there is also no inverted range to guard against.
@@ -34,6 +42,7 @@
         smaPeriods: LS_PREFIX + 'smaPeriods',
         strike: LS_PREFIX + 'strike',
         overlays: LS_PREFIX + 'overlays',
+        zoom: LS_PREFIX + 'zoom',
         activeTimeframe: LS_PREFIX + 'activeTimeframe'
     };
     const timeLabelFormatter = new Intl.DateTimeFormat('en-IN', {
@@ -172,6 +181,7 @@
         activeTimeframe: DEFAULT_TIMEFRAME,
         strike: '',
         overlays: [...DEFAULT_OVERLAYS],
+        zoom: DEFAULT_ZOOM,
         // Built from PANE_KEYS rather than listed, so adding a pane above is a
         // one-line change here instead of three easily-forgotten ones.
         responses: {},
@@ -193,6 +203,7 @@
         smaPeriods: document.getElementById('chartSmaPeriods'),
         strike: document.getElementById('chartStrike'),
         overlays: document.getElementById('chartOverlays'),
+        zoom: document.getElementById('chartZoom'),
         refreshBtn: document.getElementById('refreshChartsBtn'),
         prevDateBtn: document.getElementById('prevDateBtn'),
         nextDateBtn: document.getElementById('nextDateBtn'),
@@ -264,6 +275,10 @@
         const storedActiveTimeframe = readStoredValue(LS_KEYS.activeTimeframe);
         const storedStrike = readStoredValue(LS_KEYS.strike);
         const storedOverlays = readStoredListAllowEmpty(LS_KEYS.overlays, DEFAULT_OVERLAYS);
+        // Validated rather than trusted: an unknown stored value would select no
+        // chip at all, leaving the group visually blank while state fell back to
+        // the default — a toolbar that disagrees with the chart.
+        const storedZoom = readStoredValue(LS_KEYS.zoom);
 
         if (els.indexSymbol) {
             els.indexSymbol.value = linked.indexSymbol || storedIndex || els.indexSymbol.value || DEFAULT_INDEX;
@@ -275,6 +290,7 @@
         setMultiSelectValues(els.timeframes, storedTimeframes);
         setMultiSelectValues(els.smaPeriods, storedSmaPeriods);
         setMultiSelectValues(els.overlays, storedOverlays);
+        setMultiSelectValues(els.zoom, [isKnownZoom(storedZoom) ? storedZoom : DEFAULT_ZOOM]);
         if (storedActiveTimeframe) {
             state.activeTimeframe = storedActiveTimeframe;
         }
@@ -305,6 +321,7 @@
         bindChipGroup(els.smaPeriods, onFiltersChanged);
         if (els.strike) els.strike.addEventListener('change', onFiltersChanged);
         bindChipGroup(els.overlays, onOverlaysChanged, { allowEmpty: true });
+        bindChipGroup(els.zoom, onZoomChanged, { single: true });
         if (els.refreshBtn) els.refreshBtn.addEventListener('click', refreshAllCharts);
         if (els.prevDateBtn) els.prevDateBtn.addEventListener('click', () => stepDate(-1));
         if (els.nextDateBtn) els.nextDateBtn.addEventListener('click', () => stepDate(1));
@@ -377,6 +394,18 @@
         persistState();
         renderSmaLegends();
         renderVisiblePanes();
+    }
+
+    /**
+     * Zoom is a pure viewport concern: every response already carries the whole
+     * continuous window, so this moves the panes rather than refetching or even
+     * redrawing them. Same reasoning as onOverlaysChanged, one step cheaper —
+     * the series on screen do not change at all, only which bars are in view.
+     */
+    function onZoomChanged() {
+        updateStateFromControls();
+        persistState();
+        applyZoomToAllPanes();
     }
 
     /** Filters that invalidate the strike ladder: reload it, then redraw. */
@@ -457,6 +486,14 @@
         state.smaPeriods = getSelectedValues(els.smaPeriods, DEFAULT_SMA_PERIODS);
         state.strike = els.strike && els.strike.value ? els.strike.value : '';
         state.overlays = getToggledValues(els.overlays);
+        const zoom = getSelectedValues(els.zoom, [DEFAULT_ZOOM])[0];
+        state.zoom = isKnownZoom(zoom) ? zoom : DEFAULT_ZOOM;
+    }
+
+    /** Guards both the stored value and the DOM against an unrecognised span. */
+    function isKnownZoom(value) {
+        return value === ZOOM_MAX
+            || Object.prototype.hasOwnProperty.call(ZOOM_SESSION_SPANS, String(value));
     }
 
     /** Chip values with no fallback, so an intentionally empty group stays empty. */
@@ -824,7 +861,7 @@
                 renderSupertrend(chart, response.data);
             }
 
-            focusSelectedSession(chart, response.data);
+            applyZoomWindow(chart, response.data);
             attachRangeSync(chartType, chart);
             attachResizeHandler(chartType, chart, pane.chart);
             attachCandleTooltip(chartType, chart, pane.chart, response.data);
@@ -1019,23 +1056,38 @@
     }
 
     /**
-     * SuperTrend: one line series whose colour changes at each flip.
+     * SuperTrend, drawn the way Kite draws it: one band at a time, and nothing
+     * joining the two.
      *
-     * <p>{@code LineData.color} overrides the series colour per point in
-     * lightweight-charts v4, so the band is a single continuous series carrying
-     * green points while the trend is up and red while it is down.</p>
+     * <p>A SuperTrend is a single trend state — buy while the band sits under
+     * price, sell while it sits above — so at any bar exactly one side of price
+     * may carry a line. The flip is a <b>discontinuity</b>: the band teleports
+     * from {@code lower} to {@code upper} (or back) across roughly six ATRs of
+     * price. It is not a move the indicator made, so it must not be drawn.</p>
      *
-     * <p>This replaced a two-series design — one green series and one red, each
-     * holding whitespace for the other's bars — which was meant to interleave
-     * into one colour-changing line and instead rendered as <b>two separate
-     * lines drawn at once</b>. One series makes that failure structurally
-     * impossible: there is only ever one line to draw.</p>
+     * <h3>Why two series rather than one colour-changing one</h3>
+     * A single line series can carry per-point colours, but it cannot carry a
+     * <i>break</i>: every consecutive pair of points is joined, so each flip
+     * rendered as a near-vertical segment running from below the candles to
+     * above them. That segment is the indicator appearing on the buy side and
+     * the sell side at the same time — the artifact this function exists to
+     * avoid. Whitespace is the only way to break a line, and whitespace cannot
+     * share a timestamp with a value, so the two directions need two series.
+     *
+     * <p>Each series therefore holds a real {@code WhitespaceData} point — a
+     * bare {@code {time}} — for every bar belonging to the other direction.
+     * Without those, lightweight-charts would join each series straight across
+     * the other's stretch and both lines would span the whole chart. This is
+     * exactly {@code plot(dir > 0 ? st : na, style=linebr)} in Pine terms, which
+     * is what Kite and TradingView render.</p>
      */
     function renderSupertrend(chart, candles) {
         if (!Array.isArray(candles) || !candles.length) return;
 
-        const points = [];
-        let hasReading = false;
+        const upPoints = [];
+        const downPoints = [];
+        let hasUp = false;
+        let hasDown = false;
 
         [...candles].sort(compareCandlesByTime).forEach(candle => {
             const time = toChartTime(candle.time);
@@ -1044,34 +1096,50 @@
             const value = toNumber(candle[SUPERTREND_CONFIG.field]);
             const isUp = candle[SUPERTREND_CONFIG.directionField];
 
-            // Genuine whitespace: the warm-up bars before the ATR has enough
-            // history to produce a band at all.
+            // Warm-up bars, before the ATR can produce a band at all: neither
+            // side has a reading, so neither side draws.
             if (!Number.isFinite(value) || isUp == null) {
-                points.push({ time });
+                upPoints.push({ time });
+                downPoints.push({ time });
                 return;
             }
 
-            points.push({
-                time: time,
-                value: value,
-                color: isUp === true ? SUPERTREND_CONFIG.upColor : SUPERTREND_CONFIG.downColor
-            });
-            hasReading = true;
+            // The bar belongs to one direction and is whitespace for the other.
+            // That asymmetry is what produces the break at the flip.
+            if (isUp === true) {
+                upPoints.push({ time: time, value: value });
+                downPoints.push({ time });
+                hasUp = true;
+            } else {
+                upPoints.push({ time });
+                downPoints.push({ time: time, value: value });
+                hasDown = true;
+            }
         });
 
-        if (!hasReading) return;
+        if (!hasUp && !hasDown) return;
 
-        const series = chart.addLineSeries({
-            // Only a fallback for a point that somehow carries no colour of its
-            // own; every point above sets one.
-            color: SUPERTREND_CONFIG.downColor,
+        const baseOptions = {
             lineWidth: SUPERTREND_CONFIG.lineWidth,
             priceLineVisible: false,
             lastValueVisible: false,
             crosshairMarkerVisible: false,
             lineStyle: window.LightweightCharts.LineStyle.Solid
-        });
-        series.setData(points);
+        };
+
+        if (hasUp) {
+            const upSeries = chart.addLineSeries(
+                Object.assign({}, baseOptions, { color: SUPERTREND_CONFIG.upColor })
+            );
+            upSeries.setData(upPoints);
+        }
+
+        if (hasDown) {
+            const downSeries = chart.addLineSeries(
+                Object.assign({}, baseOptions, { color: SUPERTREND_CONFIG.downColor })
+            );
+            downSeries.setData(downPoints);
+        }
     }
 
     /**
@@ -1214,7 +1282,7 @@
                 lines.push(tooltipLineRow(
                     isUp ? SUPERTREND_CONFIG.upColor : SUPERTREND_CONFIG.downColor,
                     SUPERTREND_CONFIG.label,
-                    formatPrice(supertrend) + '   ' + (isUp ? 'UP' : 'DOWN')
+                    formatPrice(supertrend) + '   ' + (isUp ? 'Buy' : 'Sell')
                 ));
             }
         }
@@ -1283,43 +1351,129 @@
     }
 
     /**
-     * Points the viewport at the selected date, with the rest of the 45-day
-     * window sitting off-screen to the left for the user to scroll back to.
+     * Points a pane at the window the Zoom chip asks for: the last N trading
+     * sessions ending at the selected date, or the whole continuous window on
+     * Max.
      *
-     * <p>The window exists so the SMAs are warm and the recent past is one drag
-     * away — not so that six weeks can be squeezed into one pane. Fitting all of
-     * it made the selected session a few pixels wide, which is the thing this
-     * function exists to prevent.</p>
-     *
-     * <p>Matched on the raw ISO string's date prefix rather than by converting
-     * the epoch seconds back to a calendar day: the API already returns
-     * {@code +05:30} timestamps, so a prefix compare is exactly the market's own
-     * session boundary and needs no timezone arithmetic to get wrong.</p>
+     * <p>The continuous window exists so the SMAs are warm and the recent past
+     * is one drag away — not so that six weeks can be squeezed into one pane by
+     * default. Fitting all of it makes the selected session a few pixels wide,
+     * which is why 1D and not Max is the default; the wider spans are there for
+     * when reading several sessions against each other is the actual point.</p>
      *
      * <p>Falls back to {@code fitContent()} when the selected date has no bars in
      * this series — a holiday, or an option leg that had not started trading yet.
      * Showing the whole window is a worse view but an honest one; an empty
-     * viewport would just look broken.</p>
+     * viewport would just look broken. The rule is the same at every span: the
+     * window always <i>ends</i> at the selected session, so a chip never silently
+     * shows a different stretch of history than the date picker says.</p>
      */
-    function focusSelectedSession(chart, candles) {
+    function applyZoomWindow(chart, candles) {
         const timeScale = chart.timeScale();
-        const times = (candles || [])
-            .filter(candle => String(candle && candle.time || '').startsWith(state.date))
-            .map(candle => toChartTime(candle.time))
-            .filter(time => time != null);
 
-        if (times.length < 2) {
+        if (state.zoom === ZOOM_MAX) {
             timeScale.fitContent();
             return;
         }
 
-        const from = Math.min.apply(null, times);
-        const to = Math.max.apply(null, times);
+        const sessions = sessionBoundsUpTo(candles, state.date);
+        const days = Object.keys(sessions).sort();
+
+        if (!days.length || days[days.length - 1] !== state.date) {
+            timeScale.fitContent();
+            return;
+        }
+
+        const span = ZOOM_SESSION_SPANS[state.zoom] || 1;
+        // slice(-span) is deliberately forgiving: a series with only six sessions
+        // in it shows all six under the 10D chip rather than refusing to zoom.
+        const first = days.slice(-span)[0];
+        const from = sessions[first].from;
+        const to = sessions[days[days.length - 1]].to;
+
         if (!(to > from)) {
             timeScale.fitContent();
             return;
         }
-        timeScale.setVisibleRange({ from: from, to: to });
+
+        try {
+            timeScale.setVisibleRange({ from: from, to: to });
+        } catch (error) {
+            // lightweight-charts throws rather than clamping when a range falls
+            // outside the data it holds. The whole series beats leaving the pane
+            // wherever it happened to be.
+            timeScale.fitContent();
+        }
+    }
+
+    /**
+     * First and last bar time of every session in {@code candles} up to and
+     * including {@code lastDate}, keyed by its {@code YYYY-MM-DD} prefix.
+     *
+     * <p>Matched on the raw ISO string's date prefix rather than by converting
+     * the epoch seconds back to a calendar day: the API already returns
+     * {@code +05:30} timestamps, so a prefix compare is exactly the market's own
+     * session boundary and needs no timezone arithmetic to get wrong. String
+     * comparison against {@code lastDate} is sound for the same reason — ISO
+     * dates sort lexicographically.</p>
+     */
+    function sessionBoundsUpTo(candles, lastDate) {
+        const sessions = {};
+
+        (candles || []).forEach(candle => {
+            const day = String((candle && candle.time) || '').slice(0, 10);
+            if (day.length !== 10 || (lastDate && day > lastDate)) return;
+
+            const time = toChartTime(candle.time);
+            if (time == null) return;
+
+            const bounds = sessions[day];
+            if (!bounds) {
+                sessions[day] = { from: time, to: time };
+                return;
+            }
+            if (time < bounds.from) bounds.from = time;
+            if (time > bounds.to) bounds.to = time;
+        });
+
+        return sessions;
+    }
+
+    /**
+     * Guard against the obvious feedback loop: every {@code setVisibleRange} in
+     * this file makes that chart fire its own range-changed event, which would
+     * come back through {@code broadcastVisibleRange} and re-broadcast forever.
+     *
+     * <p>Declared here rather than beside {@code broadcastVisibleRange} because
+     * {@code applyZoomToAllPanes} just below is the first reader, and a
+     * {@code let} referenced above its own declaration only works by accident of
+     * when the functions happen to run.</p>
+     */
+    let syncingRanges = false;
+
+    /**
+     * Re-points every live pane after the Zoom chip changes.
+     *
+     * <p>Each pane is measured against its own data, exactly as it is during a
+     * render — an option leg with fewer sessions than the chip asks for shows
+     * what it has instead of inheriting a window it cannot fill. The sync guard
+     * is what makes that hold: without it the first pane's new range would
+     * broadcast to the other ten and overwrite the windows they were about to
+     * compute for themselves.</p>
+     */
+    function applyZoomToAllPanes() {
+        syncingRanges = true;
+        try {
+            PANE_KEYS.forEach(paneKey => {
+                const entry = state.charts[paneKey];
+                if (!entry || !entry.chart) return;
+
+                const response = state.responses[paneKey].get(timeframeOf(paneKey));
+                applyZoomWindow(entry.chart, response && response.data);
+            });
+        } finally {
+            syncingRanges = false;
+        }
     }
 
     /**
@@ -1339,7 +1493,7 @@
      * edge would slide that bar out of view on every click.</p>
      *
      * <p>Works on the logical range (bar indices) rather than {@code barSpacing},
-     * so it composes with {@code focusSelectedSession} and the resize handler —
+     * so it composes with {@code applyZoomWindow} and the resize handler —
      * all three speak the same units.</p>
      */
     function zoomChart(chartType, factor) {
@@ -1356,13 +1510,6 @@
 
         timeScale.setVisibleLogicalRange({ from: centre - half, to: centre + half });
     }
-
-    /**
-     * Guard against the obvious feedback loop: every {@code setVisibleRange} below
-     * makes that chart fire its own range-changed event, which would come back
-     * here and re-broadcast forever.
-     */
-    let syncingRanges = false;
 
     /**
      * Mirrors one pane's visible window onto the other six.
@@ -1645,6 +1792,7 @@
             localStorage.setItem(LS_KEYS.activeTimeframe, state.activeTimeframe || DEFAULT_TIMEFRAME);
             localStorage.setItem(LS_KEYS.strike, state.strike || '');
             localStorage.setItem(LS_KEYS.overlays, JSON.stringify(state.overlays || []));
+            localStorage.setItem(LS_KEYS.zoom, state.zoom || DEFAULT_ZOOM);
         } catch (e) {
             // localStorage can be disabled; the dashboard still works for this session.
         }
