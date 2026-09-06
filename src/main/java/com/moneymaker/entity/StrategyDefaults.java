@@ -100,6 +100,15 @@ public class StrategyDefaults {
     @Column(name = "sl_mode", nullable = false, length = 8)
     private String slMode;
 
+    /**
+     * Changeset 048. When set, every trade this strategy opens trails on a
+     * chandelier stop at {@code trail_atr_multiple × ATR} of the signal bar
+     * (frozen onto {@code trade_order.trail_atr_distance_at_entry}) instead of
+     * the config's ladder. Null = ladder / fixed stop, as before.
+     */
+    @Column(name = "trail_atr_multiple", precision = 6, scale = 2)
+    private BigDecimal trailAtrMultiple;
+
     /** Null-safe read — a pre-040 in-memory instance behaves as "detected side". */
     public boolean tradesOppositeSide() {
         return Boolean.TRUE.equals(oppositeSide);

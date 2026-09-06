@@ -56,5 +56,6 @@
     <include file="db/changelog/045_index_option_chain_volume_by_bar.xml"/>
     <include file="db/changelog/046_seed_strategy6_defaults.xml"/>
     <include file="db/changelog/047_seed_strategy7_defaults.xml"/>
+    <include file="db/changelog/048_strategy8_atr_trail.xml"/>
 
 </databaseChangeLog>

@@ -207,4 +207,13 @@ public class TradeOrder {
      */
     @Column(name = "flatten_at_entry")
     private LocalTime flattenAtEntry;
+
+    /**
+     * Changeset 048: chandelier distance in points, snapshotted at entry
+     * ({@code strategy_defaults.trail_atr_multiple × signal ATR}). Non-null
+     * means {@code trail_sl_at} follows {@code peak_profit − this} on every
+     * tick; null means the ladder (if any) trails as before.
+     */
+    @Column(name = "trail_atr_distance_at_entry", precision = 12, scale = 4)
+    private BigDecimal trailAtrDistanceAtEntry;
 }

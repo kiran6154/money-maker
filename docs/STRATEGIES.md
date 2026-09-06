@@ -66,8 +66,9 @@ so a new strategy bean appears in the UI with no further wiring.
 | 5 | [`Strategy5`](../src/main/java/com/moneymaker/strategy/Strategy5.java) | **Pressure** — not an SMA strategy at all. Scores NIFTY 5-min **spot** on RSI / VWAP / Supertrend / opening range / ADX and trades the continuation on an exact-offset option leg. See [PRESSURE_STRATEGY.md](PRESSURE_STRATEGY.md). |
 | 6 | [`Strategy6`](../src/main/java/com/moneymaker/strategy/Strategy6.java) | Strategy 2 **plus three entry gates**: the leg's 15-minute SMA-50 must be in a whole-day down-trend (unknown allows), no entry bar after 14:45, and a `STOP_LOSS` exit locks the book for the day. |
 | 7 | [`Strategy7`](../src/main/java/com/moneymaker/strategy/Strategy7.java) | Strategy 6 **plus the first-hour regime gate**: after 10:15, no entry on a leg whose side the underlying's first hour moved against by more than 0.2 × ATR-14 (unknown allows; opening-bar entries untouched). |
+| 8 | [`Strategy8`](../src/main/java/com/moneymaker/strategy/Strategy8.java) | **20SMA 15min candle** — not an SMA-cross. On the leg's own 15-minute candles: SMA-20 of closes sloping down **and** close below the previous close → SELL; no cross gate, no down-trend rule. Exits on a **chandelier trail** (peak − 2 × ATR-14, `trail_atr_multiple`), no target (`target_mode = NONE`), 14:45 cut-off, 15:15 close signal. |
 
-**Strategies 1–4, 6 and 7** extend
+**Strategies 1–4, 6, 7 and 8** extend
 [`AbstractSmaCrossStrategy`](../src/main/java/com/moneymaker/strategy/AbstractSmaCrossStrategy.java),
 which holds *everything* except the id and the rule sets: cache-key ownership
 matching, the premium sort, the SMA-cross gate, the entry price band, the
@@ -413,6 +414,60 @@ generated config — each keeps its own caps, budget, lock and position — and
 diff the 6 and 7 ledgers to see exactly which trades the gate removed.
 The checkpoint (10:15) and threshold (0.20 ATR) are strategy identity, not
 `TradeConfig` columns (S21 open question (a) applies).
+
+## Strategy 8 — the "20SMA 15min candle" rule, no cross gate, chandelier exit
+
+Defined 2026-09-06 from the user's rule and the dbeaver-export replay (S29 in
+[STRATEGY_ANALYSIS_TODO.md](STRATEGY_ANALYSIS_TODO.md) has the numbers).
+[`Strategy8`](../src/main/java/com/moneymaker/strategy/Strategy8.java) reuses
+the shared engine's scan, premium sort, stale-bar guard, price band and signal
+emission, but **not its trigger**: it overrides the new
+`AbstractSmaCrossStrategy.decide(...)` hook to route its rules through
+`RuleEngine.decideWithoutCrossGate`, so the SMA-cross gate and the per-period
+down-trend rules never run for it.
+
+**Entry (SELL), all required, in this order:**
+
+| Rule | What it checks |
+|---|---|
+| `is15MinuteSeries` | The cache key's interval segment is `15minute`. The rule reads the *traded* series, so the config needs a 15-minute `sma_timeframe` row; `execute` narrows the config to its first such row (one evaluation per leg per tick) and logs once a day when there is none. The row's SMA period does not matter. |
+| `sma20SlopeDown` | Plain 20-bar mean of closes on the newest settled bar is below the same mean one bar earlier. Consecutive bars of the series, across the session boundary, exactly as a chart draws it; needs 21 bars (the 35-day 15-minute lookback gives hundreds). |
+| `closeBelowPrevClose` | The bar closes below the previous bar's close. |
+| `entryAtOrBefore1445` | Bar starts at or before close-signal − 30 min ([`CommonRules.isAtOrBeforeEntryCutoff`](../src/main/java/com/moneymaker/strategy/rules/CommonRules.java)), as Strategy 6. |
+
+**Exit:** the standard close-signal BUY (`isMarketCloseTime`) plus the ledger
+exits: the chandelier floor (below) and the config's `sl_pct` / `max_sl_points`
+as the hard cap on the first stop. No profit target — changeset 048 seeds
+`strategy_defaults.target_mode = NONE`, the new `BracketMode` value that makes
+`bracketAtEntry` return null. `stopLossLocksBookForDay()` is false: the replay
+re-entered after stops.
+
+**The chandelier trail** ([ORDERS_AND_POSITIONS.md](ORDERS_AND_POSITIONS.md#trailing-stop-loss-changeset-036)):
+the signal carries ATR-14 of the 15-minute series (`TradeSignal.atr`, set by
+`Strategy8.signalAtr`); `OrderService` freezes `trail_atr_multiple × ATR` onto
+`trade_order.trail_atr_distance_at_entry` and drops the ladder for that trade;
+`PositionService` then floors the stop at `peak_profit − distance` on every
+tick, so the stop starts at entry + 2 × ATR (or the `sl_pct` cap if tighter)
+and only ratchets down. Fills at the floor, `exit_reason = TRAIL_SL`.
+
+**Replay it was built from** (Python replica on the dbeaver export, Jan-2024 →
+Dec-2025, ATM leg only, 1 pt/round-trip cost): intraday, chandelier 2 × ATR:
+1,780 trades, +2.0/trade, +3,532 pts, PF 1.16; the same entries carried to the
+weekly expiry: 1,060 trades, +6.0/trade, +6,366 pts, PF 1.43, max drawdown −423.
+The always-in baseline with the same exit (no signal) made +5,518 pts held to
+expiry: the rule is a quality filter on theta, not the source of the profit.
+**This bean is the intraday form**; holding to expiry needs the carry-over
+work listed in S29.
+
+**Config prerequisites:** `transaction_type = SELL`, a 15-minute
+`sma_timeframe` row, the `strategy_defaults` row from changeset 048, and — for
+`AUTO_DOWNTREND` generation — a `sma_downtrend_rule_strategy` tag the changeset
+deliberately does not add. Note the detector only writes a 15-minute row when
+it found a down-trend on that width, so the ATM leg the replay traded on every
+bar is not always what a tagged config offers; a hand-made config with a
+15-minute row and depth 0 is the faithful setup.
+
+---
 
 ## Adding a strategy
 

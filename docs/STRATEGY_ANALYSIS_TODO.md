@@ -351,6 +351,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Effort | **S** to count from existing logs. |
 | Priority | _Open — filed 2026-09-05 at build time. Lowest of the three Pressure entries; likely theoretical, but unmeasured._ |
 
+### S29. `Strategy8` is the intraday form of the "20SMA 15min candle" rule — the replay's edge was in carrying to expiry
+
+| | |
+|---|---|
+| Where | [`Strategy8`](../src/main/java/com/moneymaker/strategy/Strategy8.java), [`RuleEngine.decideWithoutCrossGate`](../src/main/java/com/moneymaker/strategy/rules/RuleEngine.java), the chandelier trail in [`PositionService`](../src/main/java/com/moneymaker/position/service/PositionService.java) (changeset 048). Filed 2026-09-06 with the strategy. |
+| Why | The rule (15-min SMA-20 slope down + close below previous close, sell the ATM option, chandelier 2 × ATR-14 stop, no target) was replayed on the dbeaver export Jan-2024 → Dec-2025 in Python before it was coded here. **Measured:** intraday (square-off 15:15) 1,780 trades, +2.0 pts/trade, +3,532 pts, PF 1.16, 20/24 months positive; held to the weekly expiry 1,060 trades, +6.0/trade, +6,366 pts, PF 1.43, max DD −423, 22/24 months positive. The always-in baseline with the same exit and no signal made +5,518 pts held to expiry (PF 1.19, DD −1,008): the entry rule adds ~850 pts and halves the trade count and drawdown; the profit is theta. The bean implements the intraday form because every ledger invariant (15:15 close signal, 15:20 force-close, per-day caps and loss cap, backtest day loop) assumes flat overnight. |
+| Differences from the replica | Ledger fills a trailed stop at the floor even when the bar gapped through it (replica: at the open); `max_sl_points = 60` on the standing rule caps the first stop below 30% on premiums above 200 (replica: pure 30%); the replica traded the ATM strike on every bar while a tagged `AUTO_DOWNTREND` config offers the detector's legs and only when it wrote a 15-minute row; ATR is a simple mean, not Wilder, in both. Costs: replica 1 pt/round trip; here `charge_rate`. |
+| Impact | **Unquantified in this engine.** The Python numbers are not an engine replay. Measure by running a `8`-tagged month (or a hand-made 15-minute depth-0 config) through the backtest and diffing the ledger against the replica's `LG V1 chand 2xATR intraday` sheet trade by trade, as was done for strategies 6/7. |
+| Fix sketch | Hold-to-expiry needs: (a) `Strategy8.buyRulesFor` to fire the close-time BUY only on the leg's expiry day; (b) `OrderService.forceCloseOpenPositions` to skip strategy-8 orders on non-expiry days; (c) the backtest day loop and `BacktestingPositionMonitorService` cache to keep quoting an order opened on an earlier day; (d) per-day caps to count carried positions as open; (e) overnight margin. Behind a `strategy_defaults.carry_to_expiry` flag so nothing changes for 1–7. Do not build it without the paired before/after replay (Rule 0(c)). |
+| Effort | **M** for the measurement. **L** for the carry-over. |
+| Priority | _Open — filed 2026-09-06. Measure first: if the engine's intraday ledger does not reproduce the replica's +2.0/trade, the carry-over is moot._ |
+
+---
+
 ### S26. Pressure's trigger fires close to, but not identically with, the reference implementation
 
 | | |

@@ -40,7 +40,15 @@ public enum BracketMode {
      * for every existing row and for any strategy with no {@code strategy_defaults}
      * row at all — adding the switch changes no ledger until someone flips it.</p>
      */
-    PERCENT;
+    PERCENT,
+    /**
+     * No bracket on this side (changeset 048): the trade opens with a null
+     * target or a null fixed stop, which {@code PositionService.thresholdBreach}
+     * reads as "never breaches". Strategy 8 uses it for its target — the
+     * chandelier trail is its only profit-taking exit. Not a fallback like the
+     * other two: NONE means none even when the columns are populated.
+     */
+    NONE;
 
     /**
      * The mode a stored column value names.
@@ -70,6 +78,6 @@ public enum BracketMode {
             }
         }
         throw new IllegalArgumentException(
-                "unknown bracket mode \"" + raw + "\" — expected POINTS or PERCENT");
+                "unknown bracket mode \"" + raw + "\" — expected POINTS or PERCENT (or NONE)");
     }
 }

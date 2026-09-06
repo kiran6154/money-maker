@@ -78,6 +78,7 @@ Liquibase changesets that built this:
 - 043 — `max_hold_minutes_at_entry` / `flatten_at_entry`, the two clock exits (Pressure; see [PRESSURE_STRATEGY.md](PRESSURE_STRATEGY.md#exits)).
 - 011 — target / stop-loss snapshot columns.
 - 036 — trailing stop-loss (`trail_ladder_at_entry`, `trail_sl_at`) + the `max_sl_points` ceiling on `trade_config`.
+- 048 — `trail_atr_distance_at_entry`, the chandelier distance (Strategy 8), plus `strategy_defaults.trail_atr_multiple` and the `NONE` bracket mode. See [Chandelier trail](#chandelier-trail-changeset-048).
 - 029 — `trade_order.quantity`, plus the `charge_rate` table (date-effective brokerage / statutory rates). See [Charges and net P&L](#charges-and-net-pl).
 - 027 — `trade_config.target_pct` / `sl_pct`, the premium-relative bracket the snapshot resolves. Nullable: null keeps the absolute columns. See [EOD_DOWNTREND.md](EOD_DOWNTREND.md).
 - 041 — `strategy_defaults.target_mode` / `sl_mode`, the per-strategy switch that decides which of 027's two shapes each bracket side resolves from. Default `PERCENT` on every row reproduces the pre-041 rule exactly, so the changeset ships inert. Parsed only by `com.moneymaker.util.BracketMode`.
@@ -325,6 +326,30 @@ the *order of the two `if`s* would decide the exit reason on exactly those ticks
 stopped-out one afterwards. Taking the higher floor and labelling it by whichever
 put it there makes the answer independent of evaluation order. A trail sitting
 *exactly* on the fixed stop reports `STOP_LOSS`, because it moved nothing.
+
+### Chandelier trail (changeset 048)
+
+A second trailing shape, per strategy rather than per config. When
+`strategy_defaults.trail_atr_multiple` is set, `OrderService.openOrder` freezes
+`multiple × TradeSignal.atr` (the ATR the strategy measured on its signal bar)
+onto `trade_order.trail_atr_distance_at_entry` and nulls
+`trail_ladder_at_entry` for that trade — one trail per trade, and nothing
+beyond the row is needed after a restart. A signal without an ATR opens on the
+fixed stop only and is logged once.
+
+`PositionService.applyTrail` then sets `trail_sl_at = peak_profit − distance`
+whenever that is higher than the current floor. The floor may be negative (a
+stop that is still a loss); `thresholdBreach` already honours a trailed floor
+whenever it is tighter than the fixed stop, so the first effective stop is
+`entry + distance` or the `sl_pct` / `max_sl_points` cap, whichever is nearer,
+and it only ever tightens. Exit reason `TRAIL_SL`, filled at the floor in force
+when the breach was seen — on the exit tick the chandelier does **not** ratchet
+first (the ladder still does, unchanged). Pinned in
+`PositionServiceAtrTrailTest`.
+
+`BracketMode.NONE` (also 048) is the third value of `target_mode` / `sl_mode`:
+`bracketAtEntry` returns null for that side, which the monitor reads as "never
+breaches". Strategy 8 seeds it for the target; nothing else uses it.
 
 ### Trailing stop-loss (changeset 036)
 
