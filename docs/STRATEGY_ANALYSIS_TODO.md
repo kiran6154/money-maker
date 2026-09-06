@@ -351,6 +351,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Effort | **S** to count from existing logs. |
 | Priority | _Open — filed 2026-09-05 at build time. Lowest of the three Pressure entries; likely theoretical, but unmeasured._ |
 
+### S30. Indicator / price-action / volume study on Strategy 8: three gates transferred, the rest did not — and the volume gate depends on leg coverage
+
+| | |
+|---|---|
+| Where | [`Strategy9`](../src/main/java/com/moneymaker/strategy/Strategy9.java) (changeset 049). Filed 2026-09-06 with the strategy. |
+| Why | 74 features on every 15-minute bar (RSI 7/14, ADX/DI 15-min and daily, Supertrend, EMA 9/21, SMA slopes, 60-min slope, Choppiness, efficiency ratio, Bollinger width/%B, day range/ATR, prev-day range/body, consecutive closes, candle close position, opening range, position in the day range, gap, TWAP, near-ATM option volume vs trailing median, put/call volume and OI ratios, OI build by side, ATM straddle %, straddle-implied vol weekly and ~30-day, hour, DTE, prev-day ADX/DI regime) were conditioned on Strategy 8's replay trades; ~420 allow-rules per base were scored, the best per feature re-run in the Python engine, plus all pairs of the top-10 and triples of the top-6 (~200 engine runs) and a walk-forward (rule chosen on 2024 tested on 2025 and the reverse). **Measured (hold-to-expiry base +6.0/trade, +6,366):** near-ATM volume spike > 2× → +0.5/trade on a third of entries, gate +458 pts, DD −423 → −336, both years; candle closing on its low → +2.9 vs +9.7–19, gate +236 pts; DTE 0–1 → +0.5 vs +10–14, gate −276 pts but PF 1.43 → 1.60. Regime (fade the prev-day trend +12.3, follow it +2.9) did not survive the engine — skipping with-trend days lost 826 pts because the freed slots refill. RSI, Supertrend, EMA, ADX, 60-min slope, Bollinger width, Choppiness, OI build: no net gain. India VIX was not used (nseindia.com and niftyindices.com refuse the sandbox); a straddle-implied ~30-day vol stood in and showed no usable gate either. |
+| Caveat | The gate the bean implements sums volume over the **cached legs** within ±200 of the session-open ATM. The replica summed every 50-point strike in that window; the leg-level version (the traded option alone against its own history) was tried and **hurt** (hold +3,676 vs +6,366) because a strike's own history is dominated by the days it was not near ATM. A depth-0 config therefore does not run the gate the study measured. Walk-forward: rules chosen on one year improved the other year's average in 5 of 6 tests but lowered total points in 5 of 6 — the gates are quality filters. |
+| Impact | **Unquantified in this engine** (same status as S29). Measure with a `9`-tagged month on depth ≥ 2 configs, diffing against the replica's gated ledgers (`20sma_15min_indicator_study.xlsx`, LG sheets). |
+| Fix sketch | If the engine ledger reproduces the replica, consider the V2 (spot-signal) form — `day move already in favour` was the one gate that added points there (+856) — as its own strategy on the underlying series; not built. |
+| Effort | **M** for the measurement. |
+| Priority | _Open — filed 2026-09-06._ |
+
+---
+
 ### S29. `Strategy8` is the intraday form of the "20SMA 15min candle" rule — the replay's edge was in carrying to expiry
 
 | | |
