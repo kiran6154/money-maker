@@ -120,6 +120,12 @@ public class Strategy9 extends Strategy8 {
 
     // ------------------------------------------------------------ settings
 
+    /** Tests: supply the repository the container would inject. */
+    void useRepository(StrategyDefaultsRepository repository) {
+        this.strategyDefaultsRepository = repository;
+        this.settingsDay = null;
+    }
+
     /** Pin the thresholds (tests, or a caller without a repository); null restores the repository lookup. */
     void useSettings(GateSettings fixed) {
         this.pinnedSettings = fixed;
@@ -135,12 +141,12 @@ public class Strategy9 extends Strategy8 {
         if (pinnedSettings != null) return pinnedSettings;
         if (strategyDefaultsRepository == null) return GateSettings.OFF;
         if (day != null && day.equals(settingsDay)) return settings;
-        StrategyDefaults row = strategyDefaultsRepository.findById(ID).orElse(null);
+        StrategyDefaults row = strategyDefaultsRepository.findById(getId()).orElse(null);
         GateSettings s = row == null ? GateSettings.OFF
                 : new GateSettings(row.getMaxVolumeSurge(), row.getMinCandleClosePosition(), row.getMinDaysToExpiry());
         settings = s; settingsDay = day;
         if (row == null) {
-            log.warn("[strategy{}] no strategy_defaults row — all three gates off, trading as Strategy 8", ID);
+            log.warn("[strategy{}] no strategy_defaults row — all three gates off, trading as Strategy 8", getId());
         }
         return s;
     }

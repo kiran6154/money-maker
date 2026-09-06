@@ -396,6 +396,19 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 
 ---
 
+### S31. Optimising Strategy 9: the expiry gate is where the points went; VIX gates do not help
+
+| | |
+|---|---|
+| Where | [`Strategy10`](../src/main/java/com/moneymaker/strategy/Strategy10.java) (changeset 050). Filed 2026-09-06 with the strategy. |
+| Why | Forty-odd single changes to the replica's Strategy 9 (chandelier k 1.5–3 × cap 30/50%, volume threshold 1.5/3/off, candle 0.15–0.5/off, DTE 1/3/off, entry windows, CE/PE only, one trade a day, premium ≥ 100/150, India-VIX level/prev-day change/opening gap/20-day distance) and their combinations, scored on 2024 and 2025 separately. **Measured:** the exit, the volume gate and the sides are at a local optimum (every variant lost points in at least one year). Removing the DTE gate adds +529 pts over two years but widens the drawdown (−246 → −372); adding candle ≥ 0.35 and a 13:15 last-entry bar on top gives 714 trades, +4,609 gross, avg +6.5, PF 1.6, DD −207, worst month −54 (Strategy 9: 602 / +3,504 / +5.8 / 1.5 / −246 / −151), +555 in 2024 and +549 in 2025. VIX: no gate improved both years; loss months (Feb, Jun, Jul 2024) had flat or falling VIX; daily P&L correlates *positively* with the same-day VIX change for the CE-heavy Strategy 8 book (+0.17). |
+| Impact | **Unquantified in this engine** — same status as S29/S30; the engine's 2024 Strategy 9 ledger reproduced the replica's trade count within 6% and the exit mix within 3%, so the projection (+20–30%) is reasonable but in-sample. |
+| Fix sketch | Measure with a `10`-tagged 2024 run against the replica's `DTE gate off + candle 0.35 + before 13:30` ledger (vix_and_optimisation.xlsx, Combos). If it holds, the remaining lever is positional (S29). |
+| Effort | **S** for the measurement. |
+| Priority | _Open — filed 2026-09-06._ |
+
+---
+
 ### S30. Indicator / price-action / volume study on Strategy 8: three gates transferred, the rest did not — and the volume gate depends on leg coverage
 
 | | |
