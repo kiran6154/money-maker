@@ -127,6 +127,20 @@ After the live cron stores configs into `SharedData`, and at the top of each bac
 - The data-fetch loop **de-duplicates by `trade_config.id`**. Since 031 `SharedData.combinedDto` holds one entry per `(config × tagged strategy)`, and what this loop fetches depends only on the config — so without the guard a config tagged with two strategies would issue every rate-limited `MarketDataService` call twice for identical data.
 - Then `runStrategies(asOf)` walks **every** DTO — including each tag of a fanned-out config — and invokes the `Strategy` bean that DTO was scoped to (`TradeConfigCombinedDTO.getStrategyId()`, falling back to `stratergy_id`) — see [STRATEGIES.md](STRATEGIES.md) — which writes `TradeSignal`s into `SharedData.tradeSignals`. Each signal carries the emitting `strategyId`.
 
+> **Confirmation timeframes.** A strategy may read an interval it does not
+> trade on: `Strategy.confirmationTimeframes()` (only `Strategy6` declares
+> one — 15 minutes) is unioned into the fetch set of every config the strategy
+> is tagged on, via `AnalysisScheduler.confirmationTimeframesByConfig`,
+> gathered across *all* tags **before** the once-per-config loop — otherwise a
+> config tagged `1,6` would fetch on strategy 1's turn and never see strategy
+> 6's series. The extra series is keyed, SMA-stamped and tick-stamped exactly
+> like a traded interval; the strikes it covers are derived from that
+> interval's own underlying bar, so at the rare tick where the 15-minute and
+> 5-minute ATM differ a leg may lack its confirmation series and the rule
+> reads "unknown" — see [STRATEGIES.md](STRATEGIES.md#strategy-6--strategy-2-with-higher-timeframe-confirmation-an-entry-cut-off-and-a-stop-loss-lock).
+> The tick cadence is unaffected: `BacktestAnalysisService` still derives it
+> from the configs' own `sma_timeframe` rows.
+
 > **Entry legs are also filtered by premium.** `AbstractSmaCrossStrategy` drops an entry signal
 > whose leg premium falls outside `trade_config.min_option_price` /
 > `max_option_price` — see

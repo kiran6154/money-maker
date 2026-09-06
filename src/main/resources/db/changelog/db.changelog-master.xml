@@ -54,5 +54,7 @@
     <include file="db/changelog/043_add_time_exits_to_trade_order.xml"/>
     <include file="db/changelog/044_seed_pressure_strategy_defaults.xml"/>
     <include file="db/changelog/045_index_option_chain_volume_by_bar.xml"/>
+    <include file="db/changelog/046_seed_strategy6_defaults.xml"/>
+    <include file="db/changelog/047_seed_strategy7_defaults.xml"/>
 
 </databaseChangeLog>

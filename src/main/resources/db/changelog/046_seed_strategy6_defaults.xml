@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      strategy_defaults row for Strategy 6 (STRATEGIES.md, "Strategy 6").
+
+      Why a changeset and not an operator INSERT
+      ==========================================
+      Strategy 6 is Strategy 2 plus three entry gates, and its measured edge
+      (STRATEGY_ANALYSIS_TODO.md S21) was replayed on the SAME strategy_defaults
+      block strategy 1 runs on - transaction_type SELL, the same max_loss,
+      no_of_trades and no_of_parallel_trades. Every knob change tried on top
+      (no_of_trades 2, 5-minute-only rules, SMA-200 dropped, premium floor 100)
+      made it worse, because the gates already remove the trades those knobs
+      remove and then some. So the block is not a decision left to whoever types
+      the INSERT: it is "whatever strategy 1 has", copied - which also means the
+      two strategies share ONE generated config row (configSignature) and appear
+      as "1,6" on it, exactly the shape the replay measured.
+
+      What it does NOT do
+      ===================
+      It does not tag strategy 6 on any sma_downtrend_rule, so nothing trades
+      until an operator says so (CLAUDE.md Rule 0(c)). Switching it on is one
+      row per rule:
+
+          INSERT INTO sma_downtrend_rule_strategy (rule_id, strategy_id, enabled)
+          SELECT rs.rule_id, 6, TRUE
+            FROM sma_downtrend_rule_strategy rs
+           WHERE rs.strategy_id = 1 AND rs.enabled = TRUE;
+
+      Idempotent and order-safe: a no-op when strategy 6 already has a row, and
+      a no-op on a database that has no strategy 1 row yet (fresh install before
+      the operator seeds strategy 1 - then insert 6 by hand the same way, see
+      docs/EOD_DOWNTREND.md "strategy_defaults"). opposite_side is FALSE: like 1
+      and 2 it sells the leg the downtrend was detected on. target_mode /
+      sl_mode (changeset 041) are copied too, so 6 brackets exactly as 1 does.
+    -->
+    <changeSet id="046_seed_strategy6_defaults" author="moneymaker">
+        <sql>
+            INSERT INTO strategy_defaults
+                (strategy_id, transaction_type, lot_quantity, max_loss,
+                 no_of_trades, no_of_parallel_trades, auto_config_enabled, opposite_side,
+                 target_mode, sl_mode)
+            SELECT 6, s.transaction_type, s.lot_quantity, s.max_loss,
+                   s.no_of_trades, s.no_of_parallel_trades, s.auto_config_enabled, FALSE,
+                   s.target_mode, s.sl_mode
+              FROM strategy_defaults s
+             WHERE s.strategy_id = 1
+               AND NOT EXISTS (SELECT 1 FROM strategy_defaults x WHERE x.strategy_id = 6)
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

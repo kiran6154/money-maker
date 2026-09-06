@@ -206,7 +206,8 @@ public abstract class AbstractSmaCrossStrategy implements Strategy {
 
                 RuleContext ctx = new RuleContext(lastCandle, dataList.size() - 1,
                         dataList, primarySma, config, asOf,
-                        marketHours != null ? marketHours.closeSignalTime() : null);
+                        marketHours != null ? marketHours.closeSignalTime() : null,
+                        key);
                 RuleEngine.Decision decision = entryAction() == TradeAction.BUY
                         ? RuleEngine.decideBuyEntry(ctx, sellRules, buyRules)
                         : RuleEngine.decide(ctx, sellRules, buyRules);

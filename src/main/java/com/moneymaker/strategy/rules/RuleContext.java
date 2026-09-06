@@ -35,9 +35,20 @@ public final class RuleContext {
      */
     public final LocalTime closeSignalTime;
 
+    /**
+     * The {@code SharedData.strikeMarketDataByInstrumentAndInterval} key of the
+     * series {@code allCandles} came from —
+     * {@code token|interval|optionType|strike|optionToken|itmDepth|otmDepth}.
+     * Lets a rule locate the <i>same leg</i> on another interval by swapping
+     * the second segment (see {@code CommonRules.higherTimeframeSmaDownTrending}).
+     * Null for callers that predate it or evaluate a hand-built list; rules
+     * that need it must treat null as "unknown", never as a verdict.
+     */
+    public final String strikeKey;
+
     public RuleContext(MarketData candle, int index, List<MarketData> allCandles,
                        Integer primarySmaPeriod, TradeConfigCombinedDTO config) {
-        this(candle, index, allCandles, primarySmaPeriod, config, null, null);
+        this(candle, index, allCandles, primarySmaPeriod, config, null, null, null);
     }
 
     public RuleContext(MarketData candle, int index, List<MarketData> allCandles,
@@ -49,6 +60,12 @@ public final class RuleContext {
     public RuleContext(MarketData candle, int index, List<MarketData> allCandles,
                        Integer primarySmaPeriod, TradeConfigCombinedDTO config,
                        LocalDateTime asOf, LocalTime closeSignalTime) {
+        this(candle, index, allCandles, primarySmaPeriod, config, asOf, closeSignalTime, null);
+    }
+
+    public RuleContext(MarketData candle, int index, List<MarketData> allCandles,
+                       Integer primarySmaPeriod, TradeConfigCombinedDTO config,
+                       LocalDateTime asOf, LocalTime closeSignalTime, String strikeKey) {
         this.candle = candle;
         this.index = index;
         this.allCandles = allCandles;
@@ -56,5 +73,6 @@ public final class RuleContext {
         this.config = config;
         this.asOf = asOf;
         this.closeSignalTime = closeSignalTime;
+        this.strikeKey = strikeKey;
     }
 }

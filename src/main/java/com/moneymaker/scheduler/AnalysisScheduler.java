@@ -159,6 +159,14 @@ public class AnalysisScheduler {
             // each tagged strategy scans the shared cache this loop populated.
             Set<Integer> fetchedConfigIds = new HashSet<>();
 
+            // Intervals a strategy reads without trading on them (Strategy6's
+            // 15-minute confirmation series). Collected across EVERY tag on a
+            // config before the loop, because the loop below fetches once per
+            // config for whichever tag happens to come first — a config tagged
+            // "1,6" must still get strategy 6's series on strategy 1's turn.
+            Map<Integer, Set<Integer>> confirmationTimeframes =
+                    confirmationTimeframesByConfig(combinedDtoList, strategyFactory);
+
             for (TradeConfigCombinedDTO dto : combinedDtoList) {
                 Integer configId = dto.getTradeConfig() != null ? dto.getTradeConfig().getId() : null;
                 if (configId != null && !fetchedConfigIds.add(configId)) {
@@ -186,6 +194,7 @@ public class AnalysisScheduler {
                 // Deriving the set from the config keeps the cache to what something
                 // actually reads, and drops roughly a third of the per-tick fetches.
                 Set<Integer> timeframes = timePeriodsOf(dto);
+                timeframes.addAll(confirmationTimeframes.getOrDefault(configId, Set.of()));
                 if (timeframes.isEmpty()) {
                     logger.warn("No timeframes configured for symbol: {}", symbol);
                     continue;
@@ -309,6 +318,42 @@ public class AnalysisScheduler {
             }
         }
         return periods;
+    }
+
+    /**
+     * Extra candle widths per config id, gathered from the
+     * {@code confirmationTimeframes()} of every strategy tagged on it. A
+     * strategy id the factory does not know contributes nothing (the dispatch
+     * would have refused it anyway); a strategy that declares nothing leaves the
+     * config's own {@code sma_timeframe} widths as the whole fetch set, so
+     * strategies 1-4 fetch exactly what they did before.
+     *
+     * <p>Package-private and static so the union can be pinned without
+     * constructing the scheduler.</p>
+     */
+    static Map<Integer, Set<Integer>> confirmationTimeframesByConfig(List<TradeConfigCombinedDTO> dtos,
+                                                                    StrategyFactory strategyFactory) {
+        Map<Integer, Set<Integer>> out = new HashMap<>();
+        if (dtos == null || strategyFactory == null) {
+            return out;
+        }
+        for (TradeConfigCombinedDTO dto : dtos) {
+            if (dto == null || dto.getTradeConfig() == null || dto.getTradeConfig().getId() == null) continue;
+            Integer strategyId = dto.getStrategyId();
+            if (strategyId == null) continue;
+            Set<Integer> extra;
+            try {
+                extra = strategyFactory.get(strategyId).confirmationTimeframes();
+            } catch (IllegalArgumentException ex) {
+                continue;
+            }
+            if (extra == null || extra.isEmpty()) continue;
+            Set<Integer> widths = out.computeIfAbsent(dto.getTradeConfig().getId(), k -> new LinkedHashSet<>());
+            for (Integer w : extra) {
+                if (w != null && w > 0) widths.add(w);
+            }
+        }
+        return out;
     }
 
     private String toMarketDataInterval(Integer timeframe) {

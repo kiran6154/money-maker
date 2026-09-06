@@ -64,8 +64,10 @@ so a new strategy bean appears in the UI with no further wiring.
 | 3 | [`Strategy3`](../src/main/java/com/moneymaker/strategy/Strategy3.java) | Baseline **inverted**: BUY entry on the cross-**up** + up-trend, SELL exit at the close signal. Requires `transaction_type = BUY`. |
 | 4 | [`Strategy4`](../src/main/java/com/moneymaker/strategy/Strategy4.java) | Baseline detection **unchanged, execution inverted**: the sell signal is placed as a BUY, the close-time exit as SELL. Requires `transaction_type = BUY`. |
 | 5 | [`Strategy5`](../src/main/java/com/moneymaker/strategy/Strategy5.java) | **Pressure** — not an SMA strategy at all. Scores NIFTY 5-min **spot** on RSI / VWAP / Supertrend / opening range / ADX and trades the continuation on an exact-offset option leg. See [PRESSURE_STRATEGY.md](PRESSURE_STRATEGY.md). |
+| 6 | [`Strategy6`](../src/main/java/com/moneymaker/strategy/Strategy6.java) | Strategy 2 **plus three entry gates**: the leg's 15-minute SMA-50 must be in a whole-day down-trend (unknown allows), no entry bar after 14:45, and a `STOP_LOSS` exit locks the book for the day. |
+| 7 | [`Strategy7`](../src/main/java/com/moneymaker/strategy/Strategy7.java) | Strategy 6 **plus the first-hour regime gate**: after 10:15, no entry on a leg whose side the underlying's first hour moved against by more than 0.2 × ATR-14 (unknown allows; opening-bar entries untouched). |
 
-**Strategies 1–4** extend
+**Strategies 1–4, 6 and 7** extend
 [`AbstractSmaCrossStrategy`](../src/main/java/com/moneymaker/strategy/AbstractSmaCrossStrategy.java),
 which holds *everything* except the id and the rule sets: cache-key ownership
 matching, the premium sort, the SMA-cross gate, the entry price band, the
@@ -293,6 +295,125 @@ fresh short at 15:15.
 
 ---
 
+## Strategy 6 — Strategy 2 with higher-timeframe confirmation, an entry cut-off and a stop-loss lock
+
+`Strategy6` extends `Strategy2` (so `sma20SlopeNotUp` is inherited) and
+appends two required sell rules; a third gate is a ledger question and is
+declared on the bean but enforced by `OrderService`:
+
+| Gate | Where it lives | What it does |
+|---|---|---|
+| `htf15Sma50DownOrUnknown` | [`CommonRules.higherTimeframeSmaDownTrending`](../src/main/java/com/moneymaker/strategy/rules/CommonRules.java) | Blocks the entry when the **same leg's 15-minute series** carries `isSma50DownTrending = false` on its newest settled bar (`SmaTrendCalculator`, `maxDeviations = 0` — the SMA-50 must have fallen on every 15-minute bar of the session). Applies to every primary period and to 5- and 15-minute signals alike. |
+| `entryAtOrBefore1445` | [`CommonRules.isAtOrBeforeEntryCutoff`](../src/main/java/com/moneymaker/strategy/rules/CommonRules.java) | The signal bar must start at or before `closeSignalTime − 30 min` — 14:45 on the standard session. Follows `app.market.*` rather than carrying a second clock. |
+| stop-loss lock | `Strategy.stopLossLocksBookForDay()` → [`OrderService.handleSignal`](../src/main/java/com/moneymaker/order/service/OrderService.java) gate 6 | Once this `(config, strategy)` has exited `STOP_LOSS` today, nothing further opens on that config for the session. `TRAIL_SL` does not lock. Read from `trade_order`, so a restart cannot forget it. |
+
+The rule order in the `[tick]` log is baseline down-trend, `sma20SlopeNotUp`,
+`htf15Sma50DownOrUnknown`, `entryAtOrBefore1445` — a blocked entry names the
+first rule that failed.
+
+**Unknown allows.** The confirmation rule is tri-state and lets the entry
+through whenever the question cannot be answered: no 15-minute series cached
+for the leg, the series not refreshed by this tick (the S8 stale-key rule), its
+newest settled bar belonging to an earlier session — which is every tick before
+09:30, so the day's first three 5-minute bars are judged on their own — or
+SMA-50 not yet stamped on that bar. This is the same convention as
+`isSma20SlopeUp`, and it is deliberate: the 09:15 entries were the replay's best
+slice, and gating them on evidence that does not exist yet cost 200 points
+(see S21). The full case list is on the method's Javadoc.
+
+**Where the 15-minute series comes from.** The bean declares
+`confirmationTimeframes() = {15}`, and `AnalysisScheduler` unions that into the
+fetch set for every config the strategy is tagged on — gathered across *all*
+tags before the once-per-config fetch, so a config tagged `1,6` gets the series
+on strategy 1's turn too (see
+[SCHEDULERS.md → AnalysisScheduler](SCHEDULERS.md#analysisscheduler)). The
+series is keyed exactly like a traded interval, and the rule finds it by
+swapping the interval segment of its own cache key (`RuleContext.strikeKey`).
+The config's own `sma_timeframe` rows need not name 15 minutes.
+
+**Why these three, and why the slope filter stays.** Replaying strategies 1
+and 2 over the dbviewer NIFTY series (Dec-2023 → Dec-2025, 1,581 / 963
+trades) the three gates were the ones that survived a rank-on-2024 /
+read-2025 check; the slope filter on its own was noise (the trades it blocks
+average the same as the ones it lets through) but on top of the other three it
+raised the profit factor from 1.17 to 1.28 and was the only variant positive in
+every half-year. Numbers, the variant grid and the caveats (in-sample selection,
+unverified charge rates, lot 75 throughout) are in
+[S21](STRATEGY_ANALYSIS_TODO.md#s21-strategy6s-three-gates-are-replay-selected--the-constants-are-strategy-identity-not-config).
+
+**Config prerequisites.** `transaction_type = SELL`, like strategies 1 and 2.
+Tag an existing config `"1,2,6"` (or `"2,6"`) to run it alongside the others —
+each strategy keeps its own caps, budget and position. For `AUTO_DOWNTREND`
+generation, changeset 046 seeds its `strategy_defaults` row as a copy of
+strategy 1's block (so the two share one generated config, `"1,…,6"`); what
+remains is the operator's decision to tag it on the rule, one row per rule:
+
+```sql
+INSERT INTO sma_downtrend_rule_strategy (rule_id, strategy_id, enabled)
+SELECT rs.rule_id, 6, TRUE
+  FROM sma_downtrend_rule_strategy rs
+ WHERE rs.strategy_id = 1 AND rs.enabled = TRUE;
+```
+
+**Leave the knobs where strategy 1 has them.** Every config-level change that
+helps strategy 1 on its own (`no_of_trades = 2`, 5-minute rules only, SMA-200
+dropped, `min_option_price = 100`) makes strategy 6 *worse* — 2,021 → 1,882 /
+1,071 / 1,889 / 1,567 points in the replay — because the three gates already
+remove the trades those knobs remove, and the knobs then cut good ones. The
+same holds for the bracket (`target_pct` 0.25 / `sl_pct` 0.25: 1,856;
+`max_sl_points` 45: 1,584) and the close signal (15:00: 2,069, a wash).
+The detector's `max_deviation` barely matters (0 / 2 / 5 → PF 1.29 / 1.30 /
+1.28). Numbers in S21.
+
+The three numbers on the bean (`15` minutes, SMA `50`, `30` minutes before the
+close signal) are strategy identity — what makes a config tagged 6 differ from
+one tagged 2 — and deliberately not `TradeConfig` columns yet; that question is
+recorded in S21 rather than guessed at (CLAUDE.md #9).
+
+## Strategy 7 — Strategy 6 with the first-hour regime gate
+
+`Strategy7` extends `Strategy6` and appends one required sell rule,
+`firstHourNotAgainstOrUnknown`
+([`CommonRules.firstHourMoveInFavourAtr`](../src/main/java/com/moneymaker/strategy/rules/CommonRules.java)):
+for a signal bar starting at or after **10:15**, the underlying's first-hour
+move (session open → last bar before the checkpoint), signed in the leg's
+favour (down for a CE config, up for a PE config) and divided by ATR-14 of the
+preceding sessions, must be **≥ −0.20**. A CE is not sold into a morning that
+rose more than a fifth of a day's range; a PE is not sold into one that fell
+that much. Entries before 10:15 — the opening-bar trades — are not judged.
+
+The rule comes from the intraday regime study's 10:15 checkpoint, reshaped for a
+one-sided short. Tagging every replay trade by how its day ended shows why it
+is the right shape: sideways days pay (Strategy 6: 367 trades, +1,866 pts, PF
+1.45), favourable trends pay more (110, +2,036, PF 3.93) and **all** the losses
+are trend-against days (84, −1,881, PF 0.23). Nothing known at the open flags
+those days — the gap rule (|open − prev close| ≤ 0.5 ATR) and the expected-move
+level were both tried and rejected — but the first hour's direction is the best
+partial tell for the afternoon: the after-10:15 entries this gate removes were
+trend-against days 35% of the time against a 14% base rate. Replay: **525
+trades, +2,125 pts, PF 1.31**, positive in all four half-years (Strategy 6:
+561, +2,021, 1.28); flat across thresholds −0.1…−0.3 and with the 09:15 ATM
+straddle as the normaliser instead of ATR (S22).
+
+**Data it reads.** The underlying series `AnalysisScheduler` already caches
+under `token|interval` (the first two segments of the leg's own cache key), at
+the signal's interval — a 15-minute signal reads 15-minute buckets, whose 10:00
+bucket closes on the same print as the 10:10 five-minute bar. ATR-14 is rolled
+up from that series' completed prior sessions (the detector sizes strike depth
+from the same quantity off daily bars; they agree to within the 15:30 print).
+**Unknown allows**, as for the 15-minute confirmation: before the checkpoint, no
+side on the config, no underlying series, the session's first bar missing (day
+starts after 09:30), fewer than 5 prior sessions, zero range.
+
+**Config prerequisites.** Same as Strategy 6: `transaction_type = SELL`;
+changeset 047 seeds its `strategy_defaults` row as a copy of strategy 1's;
+tagging it on a rule is the operator's decision (the same one-row-per-rule
+`INSERT` as Strategy 6 with `7`). Tag `"1,6,7"` to run all three on one
+generated config — each keeps its own caps, budget, lock and position — and
+diff the 6 and 7 ledgers to see exactly which trades the gate removed.
+The checkpoint (10:15) and threshold (0.20 ATR) are strategy identity, not
+`TradeConfig` columns (S21 open question (a) applies).
+
 ## Adding a strategy
 
 1. Extend `AbstractSmaCrossStrategy`, annotate `@Component`, return a fresh id
@@ -304,7 +425,11 @@ fresh short at 15:15.
    *detection* direction, override `entryAction()` (see `Strategy3`); to keep
    detection and flip only the *emitted* action, override `mapAction(...)`
    (see `Strategy4`). Either way the emitted-entry `transaction_type` guard in
-   `AbstractSmaCrossStrategy.execute` covers you automatically.
+   `AbstractSmaCrossStrategy.execute` covers you automatically. A rule that
+   needs the leg on another interval declares it in `confirmationTimeframes()`
+   and reads it through `RuleContext.strikeKey` (see `Strategy6`); a rule that
+   needs the ledger is declared on the bean and enforced in `OrderService`
+   (`stopLossLocksBookForDay()`), never queried from inside a `TradeRule`.
 3. **Pass a fully-empty `TradeRules` straight through.** Appending a required
    rule to an empty pair turns `RuleEngine`'s deliberate fail-closed ("no rules
    defined for this period") into "trade this period whenever my one rule

@@ -137,7 +137,11 @@ Open-position lookup index (`idx_trade_order_open_lookup`) covers `(trade_config
    - Counts **OPEN** trades for this `(config, strategy)` on the incoming signal's **option side** (CE / PE), **regardless of strike** — the gate above counts by BUY/SELL direction and happily stacked two CE SELLs on different strikes (orders 1941/1942, 2024-02-01).
    - Seeded **1** on every config: one CE and one PE may run in parallel, the same side never stacks. "Parallel trades" means both sides, not the same side twice.
    - `null` / `<= 0` → no side cap (the total/direction cap above still applies). New entities default to 1; a blank form field keeps the current value.
-6. **Exact duplicate?** (`(tradeConfigId, strategyId, optionToken, entryDirection, entryTime)`)
+6. **Stop-loss lock?** (`Strategy.stopLossLocksBookForDay()` — strategy identity, not a config field; only `Strategy6` declares it)
+   - When the emitting strategy declares the lock, a `STOP_LOSS` exit on any trade this `(config, strategy)` entered today closes its book: every further entry that session is skipped.
+   - Read from `trade_order` (`existsBy…ExitReason…EntryTimeBetween`), not remembered in-process, so a restart mid-session cannot forget it.
+   - `TRAIL_SL` does not lock — a trailed exit is the opposite outcome. Strategies that do not declare the lock (1–4) re-enter after a stop exactly as before; a service built without a `StrategyFactory` (unit tests) has no policy at all.
+7. **Exact duplicate?** (`(tradeConfigId, strategyId, optionToken, entryDirection, entryTime)`)
    - True when a row already exists with this same key — re-running the same backtest, or the same signal getting queued twice within one tick. Skipped to keep the ledger idempotent.
    - Legitimate re-entries on the same strike later in the day fire at a *different* `entryTime`, so this guard doesn't block them.
    - `strategyId` is in the key because two strategies tagged on one config can legitimately cross on the same leg at the same candle. Without it the second one's entry would be discarded as a duplicate and the strategy would look like it never fired.
@@ -759,6 +763,7 @@ Trading-behaviour parameters — anything that controls *when* a trade enters, *
 | Lot quantity | `tradeConfig.lotQuantity` |
 | Tradeable premium band at signal time (default 80–250) | `tradeConfig.minOptionPrice` / `tradeConfig.maxOptionPrice` |
 | Which in-band leg wins when a cap allows one | highest premium first — `AbstractSmaCrossStrategy.premiumComparator` |
+| Whether a stop-loss closes the book for the day | `Strategy.stopLossLocksBookForDay()` — declared per strategy (identity, like a rule set), enforced here as gate 6. Only `Strategy6` declares it; promoting it to a `TradeConfig` column is an open question in [S21](STRATEGY_ANALYSIS_TODO.md) |
 | Active broker | `broker.active` (application property) |
 | Backtest replay window | `fromDate` / `toDate` from the `/api/backtest/analysis` request |
 

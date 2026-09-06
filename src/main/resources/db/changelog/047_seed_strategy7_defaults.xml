@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      strategy_defaults row for Strategy 7 (STRATEGIES.md, "Strategy 7").
+
+      Why a changeset and not an operator INSERT
+      ==========================================
+      Strategy 7 is Strategy 6 plus the first-hour gate, and its measured edge
+      (STRATEGY_ANALYSIS_TODO.md S22) was replayed on the SAME strategy_defaults
+      block strategy 1 runs on - transaction_type SELL, the same max_loss,
+      no_of_trades and no_of_parallel_trades - just as Strategy 6's was (046).
+      So the block is copied from strategy 1, which also means the strategies
+      share ONE generated config row (configSignature) and appear as "1,6,7"
+      on it, exactly the shape the replay measured.
+
+      What it does NOT do
+      ===================
+      It does not tag strategy 7 on any sma_downtrend_rule, so nothing trades
+      until an operator says so (CLAUDE.md Rule 0(c)). Switching it on is one
+      row per rule:
+
+          INSERT INTO sma_downtrend_rule_strategy (rule_id, strategy_id, enabled)
+          SELECT rs.rule_id, 7, TRUE
+            FROM sma_downtrend_rule_strategy rs
+           WHERE rs.strategy_id = 1 AND rs.enabled = TRUE;
+
+      Idempotent and order-safe: a no-op when strategy 7 already has a row, and
+      a no-op on a database that has no strategy 1 row yet (fresh install before
+      the operator seeds strategy 1 - then insert 7 by hand the same way, see
+      docs/EOD_DOWNTREND.md "strategy_defaults"). opposite_side is FALSE: like 1
+      and 2 it sells the leg the downtrend was detected on. target_mode /
+      sl_mode (changeset 041) are copied too, so 7 brackets exactly as 1 does.
+    -->
+    <changeSet id="047_seed_strategy7_defaults" author="moneymaker">
+        <sql>
+            INSERT INTO strategy_defaults
+                (strategy_id, transaction_type, lot_quantity, max_loss,
+                 no_of_trades, no_of_parallel_trades, auto_config_enabled, opposite_side,
+                 target_mode, sl_mode)
+            SELECT 7, s.transaction_type, s.lot_quantity, s.max_loss,
+                   s.no_of_trades, s.no_of_parallel_trades, s.auto_config_enabled, FALSE,
+                   s.target_mode, s.sl_mode
+              FROM strategy_defaults s
+             WHERE s.strategy_id = 1
+               AND NOT EXISTS (SELECT 1 FROM strategy_defaults x WHERE x.strategy_id = 7)
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>
