@@ -466,7 +466,7 @@ Backtest mode is gated at `TelegramNotifier.send()` — `telegram.backtest-enabl
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/trade-configs` | Thymeleaf admin page |
-| GET | `/api/trade-configs?date=&page=&size=` | Paged list, optionally filtered by trading date |
+| GET | `/api/trade-configs?date=&strategyId=&page=&size=` | Paged list, optionally filtered by trading date and/or strategy — see [Filtering the list by strategy](#filtering-the-list-by-strategy) |
 | GET | `/api/trade-configs/{id}` | Single config + its `sma_timeframe` rows |
 | POST | `/api/trade-configs` | Create |
 | PUT | `/api/trade-configs/{id}?confirm=` | Update — `409 confirmRequired` while trades are open, see [Editing a config with live trades](#editing-a-config-with-live-trades) |
@@ -478,6 +478,71 @@ Backtest mode is gated at `TelegramNotifier.send()` — `telegram.backtest-enabl
 | POST | `/api/trade-configs/auto/bulk-update` | One field-set applied to every matching config at once, see [Bulk-editing many configs](#bulk-editing-many-configs) |
 | GET | `/api/trade-configs/instruments` | Instrument dropdown source |
 | GET | `/api/trade-configs/strategies` | Strategy dropdown source |
+
+### Filtering the list by strategy
+
+The **Strategy** picker in the `/trade-configs` toolbar narrows *Configured trade
+configs* to one strategy, alongside the existing trading-date filter. Both are
+remembered in `localStorage` and both are sent to the API.
+
+Two things about it are load-bearing:
+
+- **It matches on the tag set, not on `stratergy_id`.** A config tagged `1,2`
+  runs under both strategies (changeset 035), so filtering on the primary column
+  alone would hide half the fleet from the strategy actually trading it. The
+  service falls back to the primary id when the tag column is blank, which is
+  exactly what dispatch does — the predicate is now one private
+  `runsStrategy(...)` shared with the bulk-update selector, rather than the two
+  copies it used to be.
+- **It filters before paging, on the server.** The obvious shortcut — letting
+  the browser hide non-matching rows in the page it already has — would make
+  "page 2 of 5" mean "page 2 of the *unfiltered* set, minus whatever the filter
+  removed". A strategy whose four configs are spread over five pages would look
+  like it had one. The row count and the pager have to describe the filtered set
+  or they describe nothing.
+
+Pinned by `TradeConfigListStrategyFilterTest`, including the tag-set case, the
+blank-tag fallback, and a twelve-row fixture that fails if the filter is ever
+moved after the paging.
+
+A strategy remembered from a previous session that the app no longer runs falls
+back to **All strategies** on load, rather than filtering to an empty table with
+nothing on screen to explain why.
+
+### Exporting to CSV / TXT
+
+Both tables that people read for reconciliation have `⭳ CSV` and `⭳ TXT`
+buttons: the **Orders ledger** on `/backtest` and **Configured trade configs** on
+`/trade-configs`. `src/main/resources/static/js/table-export.js` is the single
+writer for both — the fiddly parts (RFC 4180 quoting, the UTF-8 BOM Excel needs,
+the formula-injection guard, the object-URL lifecycle) are exactly the parts that
+rot when duplicated.
+
+**Values, not rendered cells.** Both pages build their rows from the API payload,
+never by scraping the DOM. The tables print an em dash for null, a Unicode minus
+on the ledger's SL column so it lines up with P/L, and HTML in several more; a
+file carrying that is a screenshot in a spreadsheet's clothing. So nulls become
+empty cells, timestamps stay ISO, `stop_loss_at_entry` keeps the positive
+magnitude the DB stores, and both exports are **wider and flatter than the
+tables** — the ledger adds the three `charges` fields, and a config's bracket is
+split back into its points / percent / ceiling columns instead of the one string
+the cell happened to render.
+
+| | Orders ledger | Configured trade configs |
+|---|---|---|
+| Scope | the fetched date range, narrowed by the strategy chips | everything matching the date + strategy filters |
+| Source | `allOrders` in memory — `/api/orders` is unpaged, so the window is already there | **re-requests page 0 at `size = totalItems`** |
+| Filename | `orders_<from>_to_<to>[_S<n>].csv` | `trade-configs_<date>[_S<n>].csv` |
+
+That second row is the one worth knowing. The config table is server-paged ten
+rows at a time, so exporting what is rendered would hand back page 3 of 12 under
+a filename claiming to be the whole set. Re-requesting means the file matches the
+row count in the badge beside the button, and the confirmation line says how many
+rows were written so that is visible rather than assumed.
+
+`.txt` is tab-separated. TSV has no quoting mechanism, so a tab or newline inside
+a value collapses to a space — without that, one stray character shifts every
+following column.
 
 ### Cloning a day
 

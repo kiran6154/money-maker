@@ -341,6 +341,16 @@ Deleting trade configs does *not* clear the ledger — there is no FK between th
 two tables, and the bulk config delete only reaches trades belonging to configs
 it matched. Purge the ledger for trade rows; use the config panel for configs.
 
+### Exporting the ledger
+
+⭳ **CSV** / ⭳ **TXT** beside **Clear ledger** download the rows on screen — the
+fetched date range, narrowed by the strategy chips — as raw values rather than
+rendered cells, so a replay can be reconciled in a spreadsheet. Nothing is
+refetched: `/api/orders` is unpaged, so the whole window is already in the page,
+and exporting the same array the table renders is what guarantees the file and
+the screen agree. Columns, escaping and filename shape are described in
+[ORDERS_AND_POSITIONS.md](ORDERS_AND_POSITIONS.md#exporting-to-csv--txt).
+
 ---
 
 ## Adding a new stage
