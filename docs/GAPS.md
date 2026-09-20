@@ -398,3 +398,14 @@ a position.
 | Lesson | Three wrong guesses cost more than one profiler run would have. When a
 hypothesis about performance survives a code change without moving the number,
 stop hypothesising and sample the stack. |
+
+
+## 28. Historical option import ends mid-cycle: one expiry from 2025-03-21, and the 2025-03-20 23300 CE series is absent
+
+| | |
+|---|---|
+| Where | `historical_option_candles` (the ICICI CSV import, [HISTORICAL_CHART_DATA_PLAN.md](HISTORICAL_CHART_DATA_PLAN.md)); `HistoricalIciciMarketDataProvider.fetchBaseCandles`, which raises `HistoricalDataMissingException` on an empty series and so aborts the whole run (`BacktestController` answers 422). |
+| Why | Coverage scan on 2026-09-06: distinct expiries per session fall 6 → 5 → 4 → 3 → 2 → 1 between 2025-02-20 and 2025-03-21 — only contracts expiring on or before 2025-03-27 (the import's last day) were imported, so option bars per session drop from ~29k to ~4.7k over five weeks. The 2025 Strategy 8/9 replay then aborted on 2025-03-20 at `HIST:NIFTY:NFO:2025-03-20:23300:CE`: zero rows across the whole 35-day lookback while the neighbouring strikes on that expiry exist. Net effect: a depth-2 replay that touches late March 2025 either aborts or trades a thin book; one session (03-20) could not be replayed at all and 03-21 → 03-27 had to be run as a separate call. S30 / S31 in [STRATEGY_ANALYSIS_TODO.md](STRATEGY_ANALYSIS_TODO.md) carry the caveat on the numbers. |
+| Fix sketch | (a) Re-import the CSVs for the 2025-03-20 expiry (all strikes) and for the expiries beyond 03-27 that March sessions would have traded. (b) Separately, decide whether a missing *leg* should skip that leg with a WARN instead of aborting the run — the abort is deliberate (a thin import must not silently produce a half-replay), so that is a design question to put to the user, not a bug fix. Data only; no trading behaviour. |
+| Effort | **S** for the import; **M** if the abort semantics are revisited. |
+| Priority | _TBD — filed 2026-09-06 from the 2025 Strategy 8/9 replay._ |

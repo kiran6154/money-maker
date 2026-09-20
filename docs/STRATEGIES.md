@@ -462,7 +462,8 @@ work listed in S29.
 
 **First engine replay** (2026-09-06, 2024, depth-2 CE+PE configs, not the
 single ATM leg above): 770 trades, +2,715 pts, +3.53/trade, PF 1.20, max DD −818;
-look-ahead audited clean. S31 / S32 / S33 in
+look-ahead audited clean. 2025 (Jan 1 → Mar 27, 60 sessions, same recipe): 201 /
++1,426 / +7.09 / PF 1.49 / DD −199. S31 / S32 / S33 in
 [STRATEGY_ANALYSIS_TODO.md](STRATEGY_ANALYSIS_TODO.md) carry the numbers, the
 audit, and why the chandelier is really the tighter of two floors.
 
@@ -519,7 +520,9 @@ config set, seeds as shipped): 298 trades, +1,821 pts, +6.11/trade, 52.7% win,
 PF 1.47, max DD −238 — against 770 / +2,715 / +3.53 / 42.9% / 1.20 / −818 for
 Strategy 8 on the same configs. Same shape as the replay table above. Note the
 two ledgers are not nested: only 119 of the 298 share an entry with Strategy 8;
-the rest are entries the freed slot let through. S30 in
+the rest are entries the freed slot let through. 2025 (Jan 1 → Mar 27, 60
+sessions): 70 / +837 / +11.96 / 58.6% / PF 2.08 / DD −157 against 201 / +1,426 /
++7.09 / PF 1.49 / −199 for Strategy 8. S30 in
 [STRATEGY_ANALYSIS_TODO.md](STRATEGY_ANALYSIS_TODO.md).
 
 **Deployment notes.** The volume gate measures the legs the cache holds: run
