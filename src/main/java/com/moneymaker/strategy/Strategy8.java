@@ -145,8 +145,9 @@ public class Strategy8 extends AbstractSmaCrossStrategy {
         required.add(TradeRule.named("is15MinuteSeries", Strategy8::isSignalTimeframe));
         required.add(TradeRule.named("sma20SlopeDown", Strategy8::smaSlopeDown));
         required.add(TradeRule.named("closeBelowPrevClose", Strategy8::closeBelowPreviousClose));
-        required.add(TradeRule.named("entryAtOrBefore1445",
-                ctx -> CommonRules.isAtOrBeforeEntryCutoff(ctx, ENTRY_CUTOFF_MINUTES_BEFORE_CLOSE_SIGNAL)));
+        final int cutoff = entryCutoffMinutesBeforeCloseSignal();
+        required.add(TradeRule.named("entryCutoff-" + cutoff + "min",
+                ctx -> CommonRules.isAtOrBeforeEntryCutoff(ctx, cutoff)));
         return new TradeRules(required, new ArrayList<>());
     }
 
@@ -156,6 +157,14 @@ public class Strategy8 extends AbstractSmaCrossStrategy {
         List<TradeRule> anyOf = new ArrayList<>();
         anyOf.add(TradeRule.named("isMarketCloseTime", CommonRules::isMarketCloseTime));
         return new TradeRules(new ArrayList<>(), anyOf);
+    }
+
+    /**
+     * Minutes before the close signal after which no entry bar is admitted:
+     * 30 here (last bar 14:45). Strategy 10 shortens the day to 120 (13:15).
+     */
+    protected int entryCutoffMinutesBeforeCloseSignal() {
+        return ENTRY_CUTOFF_MINUTES_BEFORE_CLOSE_SIGNAL;
     }
 
     /** ATR-14 of the signal bar's series, carried on the signal for the chandelier distance. */

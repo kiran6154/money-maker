@@ -58,5 +58,6 @@
     <include file="db/changelog/047_seed_strategy7_defaults.xml"/>
     <include file="db/changelog/048_strategy8_atr_trail.xml"/>
     <include file="db/changelog/049_strategy9_gates.xml"/>
+    <include file="db/changelog/050_seed_strategy10_defaults.xml"/>
 
 </databaseChangeLog>
