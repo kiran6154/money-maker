@@ -8,19 +8,24 @@ import csv, datetime as D
 
 def load(path, date_from, date_to, warmup_days):
     """Candles from (date_from - warmup_days trading days) to date_to. Returns (bars, index of first shown bar)."""
-    rows = [r for r in csv.DictReader(open(path)) if r["datetime"][:10] <= date_to]
-    days = sorted({r["datetime"][:10] for r in rows})
+    rows = list(csv.DictReader(open(path)))
+    return window(dict(t=[r["datetime"] for r in rows],
+                       o=[float(r["open"]) for r in rows], h=[float(r["high"]) for r in rows],
+                       l=[float(r["low"]) for r in rows], c=[float(r["close"]) for r in rows],
+                       v=[float(r["volume"]) for r in rows]), date_from, date_to, warmup_days, path)
+
+
+def window(bars, date_from, date_to, warmup_days, name="series"):
+    """Cut in-memory candles (dict of t/o/h/l/c/v lists, time-ordered) to the same window as load()."""
+    days = sorted({t[:10] for t in bars["t"] if t[:10] <= date_to})
     shown = [d for d in days if d >= date_from]
     if not shown:
-        raise ValueError(f"no data in {path} from {date_from}")
+        raise ValueError(f"no data in {name} from {date_from}")
     start = days[max(0, days.index(shown[0]) - warmup_days)]
-    rows = [r for r in rows if r["datetime"][:10] >= start]
-    bars = dict(t=[r["datetime"] for r in rows],
-                o=[float(r["open"]) for r in rows], h=[float(r["high"]) for r in rows],
-                l=[float(r["low"]) for r in rows], c=[float(r["close"]) for r in rows],
-                v=[float(r["volume"]) for r in rows])
-    s0 = next(i for i, t in enumerate(bars["t"]) if t[:10] >= date_from)
-    return bars, s0
+    keep = [i for i, t in enumerate(bars["t"]) if start <= t[:10] <= date_to]
+    out = {k: [bars[k][i] for i in keep] for k in "tohlcv"}
+    s0 = next(i for i, t in enumerate(out["t"]) if t[:10] >= date_from)
+    return out, s0
 
 
 def run(bars, p):

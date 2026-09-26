@@ -18,17 +18,46 @@ swings (Pine port) → protected level → CHoCH / BOS → AVWAP pair from previ
 - **Exit:** stop loss (per `sl_rule`), else close of the next CHoCH candle.
 - Breaks are by touch or close (`break_mode`).
 
-## Variants (column `variant`, grouped by `family`)
-| Variant | Signals | Trades | Strike |
-|---|---|---|---|
-| `FUT` | future | future (long / short) | — |
-| `OPT_FUT_SIGNAL` | future | buy CE on bullish, PE on bearish | at the signal candle, from spot |
-| `OPT_NATIVE` | the option's own candles (buy-only: bullish setups on CE and PE) | that option | CE and PE fixed per day at the first completed candle, from spot |
+## Strategy → signal groups → variants
+**Terminology.** *Position* is long or short; *instrument* is FUT, CE or PE; *signal* is bullish or bearish (for the future
+signal group: future long / future short). Long and short positions can exist in futures and in both CE and PE. Short option
+P&L is sell-at-entry, buy-at-exit; margin is not modelled.
 
-Option variants run once per `strike_choices` entry (default `ATR2` = spot ± 2×ATR(14) of the timeframe, OTM, rounded to 50;
-also `ATM`, `ITMn`, `OTMn`) and the dashboard switches between them. Option prices come from the full Kite chain for the
-29-Sep expiry (`tools/kite_options.py`); spot from `tools/kite_spot.py`. Slippage per side is `slippage_pts`
-(futures 5, options 0.5). Charges: `ZERODHA_NFO_FUT` / `ZERODHA_NFO_OPT` in `charge_schedule`.
+**Strategy level** (one card per `family`, e.g. Foundation · 5 min): timeframe, engine rules, SL rule, and the option settings
+**expiry** (Weekly / Monthly) and **strike** — chosen on the card and applied to every option row and to the chart.
+
+| Group (`signal_source`) | Row (code) | Positions |
+|---|---|---|
+| **Future signal** | Futures (`S5M`) | long future on future long, short future on future short |
+| | Options long only (`S5M_FL`) | long CE on future long, long PE on future short |
+| | Options short only (`S5M_FS`) | short PE on future long, short CE on future short |
+| | Options long + short (`S5M_FB`) | both of the above |
+| **Option native signal** | Options long only (`S5M_NL`) | long on bullish setups on the option's own chart (CE and PE) |
+| | Options short only (`S5M_NS`) | short on bearish setups |
+| | Options long + short (`S5M_NB`) | both |
+
+Each option group is computed once per period with both sides; the long-only and short-only rows are the matching side of that
+run (same signals, same fills). **Group total** = every distinct position in the group (Futures + Options long + short for the
+future signal group; Options long + short for option native) — long only / short only are not added again. Clicking a group
+heading opens its cumulative P&L. The dashboard's All · Long · Short (Future long · Future short) switch filters by signal.
+Rows `S*M_OF / _OB / _OS / _ON` from earlier versions are kept disabled.
+
+**Option data (`option_source = WEEKLY_LOCAL`).** Weekly contracts: the nearest expiry at least `expiry_min_days` (1) calendar
+days away, so expiry day rolls to the next week. Prices come from the local ICICI weekly files under `weekly_dir`
+(`nifty_options` 5-minute, `nifty_options_1minute` 1-minute chunks) and from the full Kite chain for the 29-Sep expiry
+(`tools/kite_options.py`). The local files only hold strikes near the ATM of the day before expiry (a hindsight window), so they
+supply prices only: a strike picked from spot that is not in the file is **skipped and reported**, never substituted. A position
+still open at expiry closes at the contract's last candle (`expiry`). Coverage gaps: 15-Sep and 22-Sep expiries failed to
+download (5-minute); the local 1-minute files hold only 4–5 strikes per side, so 1-minute option variants price few signals.
+
+**Expiry type (`expiry_types = WEEKLY,MONTHLY`).** Option variants run once per expiry type × `strike_choices` entry; results
+are keyed `W-<strike>` / `M-<strike>` and the dashboard has Expiry and Strike selectors (default `W-ATR2`). Weekly = nearest
+weekly expiry; monthly = nearest month-end expiry (28 Jul, 25 Aug, 29 Sep here), both at least `expiry_min_days` away. In the
+last week of a month they are the same contract. Monthly 29-Sep uses the full Kite chain, so 1-minute monthly results cover
+the in-sample period fully.
+
+Strike choices: default `ATR2` = spot ± 2×ATR(14) of the timeframe, OTM, rounded to 50; also `ATM`, `ITMn`, `OTMn`. Spot from `tools/kite_spot.py`. Slippage per side is `slippage_pts` (futures 5, options 0.5).
+Charges: `ZERODHA_NFO_FUT` / `ZERODHA_NFO_OPT` in `charge_schedule`.
 
 Fills: entry at the SETUP candle close; stop at the worse of candle open and stop, or the session's first candle close.
 Look-ahead check: `python tests/test_truncation.py`.
