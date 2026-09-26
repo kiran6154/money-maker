@@ -85,6 +85,7 @@ def run(bars, p):
                 bos_used.add(id(lastL)); events.append(dict(i=i, kind="BOS", dir="down"))
             if P and ((trend == 1 and below(i, P["p"])) or (trend == -1 and above(i, P["p"]))):
                 flip = (trend == 1 and below(i, v)) or (trend == -1 and above(i, v))
+                flip = flip and (lastH if trend == 1 else lastL) is not None   # need a swing to re-anchor at
                 events.append(dict(i=i, kind="CHoCH", dir="down" if trend == 1 else "up", flip=flip,
                                    lvl=P["p"], sw=P, av=v, tr=trend, hi=lastH, lo=lastL))
                 if flip:
@@ -146,7 +147,10 @@ def run(bars, p):
                 hit = below(k, sl) if up else above(k, sl)
                 if gap or hit:                   # stop checked before the CHoCH exit on the same candle
                     xi, reason = k, "stop_loss"
-                    px = o[k] if gap and touch else (sl if touch else c[k])
+                    if t[k][:10] != t[k - 1][:10]:
+                        px = c[k]                # first candle of a session: no fill on the opening print
+                    else:                        # worse of the candle open and the stop
+                        px = o[k] if gap and touch else (sl if touch else c[k])
                     break
         trades.append(dict(entry=k0, exit=xi, exit_px=px, dir=x["dir"], choch=ci, sl=sl, pts=sg * (px - c[k0]),
                            open=reason == "open", exit_reason=reason))

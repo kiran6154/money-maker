@@ -4,3 +4,4 @@ strategy_lab.db.bak
 dashboard.html
 __pycache__/
 *.pyc
+web/
