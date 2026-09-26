@@ -1,0 +1,60 @@
+{
+  "strategy": [
+    {
+      "id": 1,
+      "code": "S5M",
+      "name": "Foundation · 5 min",
+      "description": "Swings -> protected level -> CHoCH -> AVWAP pair (prev SH/SL) -> SETUP; exit next CHoCH",
+      "instrument": "NIFTY FUT (SEP)",
+      "timeframe": "5minute",
+      "data_file": "D:/nifty/niftyfut_5minute_2026-07-01_to_2026-09-25.csv",
+      "date_from": "2026-08-26",
+      "date_to": "2026-09-25",
+      "warmup_days": 5,
+      "break_mode": "touch",
+      "avwap_weight": "volume",
+      "entry_rule": "setup_v1",
+      "exit_rule": "next_choch",
+      "lot_size": 65,
+      "enabled": 1,
+      "sl_rule": "choch_candle",
+      "charge_code": "ZERODHA_NFO_FUT"
+    },
+    {
+      "id": 2,
+      "code": "S1M",
+      "name": "Foundation · 1 min",
+      "description": "Same foundation rules on 1-minute candles",
+      "instrument": "NIFTY FUT (SEP)",
+      "timeframe": "minute",
+      "data_file": "D:/nifty/niftyfut_minute_2026-07-01_to_2026-09-25.csv",
+      "date_from": "2026-08-26",
+      "date_to": "2026-09-25",
+      "warmup_days": 2,
+      "break_mode": "touch",
+      "avwap_weight": "volume",
+      "entry_rule": "setup_v1",
+      "exit_rule": "next_choch",
+      "lot_size": 65,
+      "enabled": 1,
+      "sl_rule": "prev_swing",
+      "charge_code": "ZERODHA_NFO_FUT"
+    }
+  ],
+  "charge_schedule": [
+    {
+      "code": "ZERODHA_NFO_FUT",
+      "segment": "NSE F&O futures",
+      "brokerage_pct": 0.03,
+      "brokerage_cap": 20.0,
+      "stt_buy_pct": 0.0,
+      "stt_sell_pct": 0.02,
+      "exchange_pct": 0.00173,
+      "sebi_pct": 0.0001,
+      "stamp_buy_pct": 0.002,
+      "gst_pct": 18.0,
+      "effective_from": "2024-10-01",
+      "notes": "brokerage 0.03% or Rs20/order (lower); STT 0.02% sell; NSE txn 0.00173%; SEBI Rs10/crore; stamp 0.002% buy; GST 18% on brokerage+txn+SEBI. Verify current rates."
+    }
+  ]
+}

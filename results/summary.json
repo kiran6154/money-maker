@@ -1,0 +1,42 @@
+[
+  {
+    "code": "S5M",
+    "name": "Foundation · 5 min",
+    "timeframe": "5minute",
+    "date_from": "2026-08-26",
+    "date_to": "2026-09-25",
+    "break_mode": "touch",
+    "avwap_weight": "volume",
+    "entry_rule": "setup_v1",
+    "exit_rule": "next_choch",
+    "sl_rule": "choch_candle",
+    "charge_code": "ZERODHA_NFO_FUT",
+    "trades": 26,
+    "wins": 7,
+    "net_pts": 252.1,
+    "gross_inr": 16386.5,
+    "charges_inr": 11915.19,
+    "net_inr": 4471.31,
+    "max_dd": -431.4
+  },
+  {
+    "code": "S1M",
+    "name": "Foundation · 1 min",
+    "timeframe": "minute",
+    "date_from": "2026-08-26",
+    "date_to": "2026-09-25",
+    "break_mode": "touch",
+    "avwap_weight": "volume",
+    "entry_rule": "setup_v1",
+    "exit_rule": "next_choch",
+    "sl_rule": "prev_swing",
+    "charge_code": "ZERODHA_NFO_FUT",
+    "trades": 55,
+    "wins": 19,
+    "net_pts": 728.6,
+    "gross_inr": 47359.0,
+    "charges_inr": 25367.13,
+    "net_inr": 21991.87,
+    "max_dd": -231.8
+  }
+]
