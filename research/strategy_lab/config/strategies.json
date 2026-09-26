@@ -3,7 +3,7 @@
     {
       "id": 1,
       "code": "S5M",
-      "name": "Foundation · 5 min",
+      "name": "Foundation · 5 min · Futures",
       "description": "Swings -> protected level -> CHoCH -> AVWAP pair (prev SH/SL) -> SETUP; exit next CHoCH",
       "instrument": "NIFTY FUT (SEP)",
       "timeframe": "5minute",
@@ -35,12 +35,14 @@
       "expiry_min_days": 1,
       "positions": "BOTH",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": "FUTURE"
+      "signal_source": "FUTURE",
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 2,
       "code": "S1M",
-      "name": "Foundation · 1 min",
+      "name": "Foundation · 1 min · Futures",
       "description": "Same foundation rules on 1-minute candles",
       "instrument": "NIFTY FUT (SEP)",
       "timeframe": "minute",
@@ -72,7 +74,9 @@
       "expiry_min_days": 1,
       "positions": "BOTH",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": "FUTURE"
+      "signal_source": "FUTURE",
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 3,
@@ -109,7 +113,9 @@
       "expiry_min_days": 1,
       "positions": "BOTH",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": null
+      "signal_source": null,
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 4,
@@ -146,7 +152,9 @@
       "expiry_min_days": 1,
       "positions": "BOTH",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": null
+      "signal_source": null,
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 5,
@@ -183,7 +191,9 @@
       "expiry_min_days": 1,
       "positions": "BOTH",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": null
+      "signal_source": null,
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 6,
@@ -220,7 +230,9 @@
       "expiry_min_days": 1,
       "positions": "BOTH",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": null
+      "signal_source": null,
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 7,
@@ -257,7 +269,9 @@
       "expiry_min_days": 1,
       "positions": "LONG",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": null
+      "signal_source": null,
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 8,
@@ -294,7 +308,9 @@
       "expiry_min_days": 1,
       "positions": "SHORT",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": null
+      "signal_source": null,
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 9,
@@ -331,7 +347,9 @@
       "expiry_min_days": 1,
       "positions": "LONG",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": null
+      "signal_source": null,
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 10,
@@ -368,7 +386,9 @@
       "expiry_min_days": 1,
       "positions": "SHORT",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": null
+      "signal_source": null,
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 11,
@@ -386,7 +406,7 @@
       "entry_rule": "setup_v1",
       "exit_rule": "next_choch",
       "lot_size": 65,
-      "enabled": 1,
+      "enabled": 0,
       "sl_rule": "choch_candle",
       "charge_code": "ZERODHA_NFO_OPT",
       "family": "S5M",
@@ -405,7 +425,9 @@
       "expiry_min_days": 1,
       "positions": "LONG",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": "FUTURE"
+      "signal_source": "FUTURE",
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 12,
@@ -423,7 +445,7 @@
       "entry_rule": "setup_v1",
       "exit_rule": "next_choch",
       "lot_size": 65,
-      "enabled": 1,
+      "enabled": 0,
       "sl_rule": "choch_candle",
       "charge_code": "ZERODHA_NFO_OPT",
       "family": "S5M",
@@ -442,12 +464,14 @@
       "expiry_min_days": 1,
       "positions": "SHORT",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": "FUTURE"
+      "signal_source": "FUTURE",
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 13,
       "code": "S5M_FB",
-      "name": "Foundation · 5 min · future signal · Options long + short",
+      "name": "Foundation · 5 min · Options (via futures)",
       "description": "Swings -> protected level -> CHoCH -> AVWAP pair -> SETUP; exit SL or next CHoCH",
       "instrument": "NIFTY OPT",
       "timeframe": "5minute",
@@ -479,7 +503,9 @@
       "expiry_min_days": 1,
       "positions": "BOTH",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": "FUTURE"
+      "signal_source": "FUTURE",
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 14,
@@ -497,7 +523,7 @@
       "entry_rule": "setup_v1",
       "exit_rule": "next_choch",
       "lot_size": 65,
-      "enabled": 1,
+      "enabled": 0,
       "sl_rule": "choch_candle",
       "charge_code": "ZERODHA_NFO_OPT",
       "family": "S5M",
@@ -516,7 +542,9 @@
       "expiry_min_days": 1,
       "positions": "LONG",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": "OPTION_NATIVE"
+      "signal_source": "OPTION_NATIVE",
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 15,
@@ -534,7 +562,7 @@
       "entry_rule": "setup_v1",
       "exit_rule": "next_choch",
       "lot_size": 65,
-      "enabled": 1,
+      "enabled": 0,
       "sl_rule": "choch_candle",
       "charge_code": "ZERODHA_NFO_OPT",
       "family": "S5M",
@@ -553,12 +581,14 @@
       "expiry_min_days": 1,
       "positions": "SHORT",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": "OPTION_NATIVE"
+      "signal_source": "OPTION_NATIVE",
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 16,
       "code": "S5M_NB",
-      "name": "Foundation · 5 min · option native signal · Options long + short",
+      "name": "Foundation · 5 min · Options (standalone)",
       "description": "Swings -> protected level -> CHoCH -> AVWAP pair -> SETUP; exit SL or next CHoCH",
       "instrument": "NIFTY OPT",
       "timeframe": "5minute",
@@ -590,7 +620,9 @@
       "expiry_min_days": 1,
       "positions": "BOTH",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": "OPTION_NATIVE"
+      "signal_source": "OPTION_NATIVE",
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 17,
@@ -608,7 +640,7 @@
       "entry_rule": "setup_v1",
       "exit_rule": "next_choch",
       "lot_size": 65,
-      "enabled": 1,
+      "enabled": 0,
       "sl_rule": "prev_swing",
       "charge_code": "ZERODHA_NFO_OPT",
       "family": "S1M",
@@ -627,7 +659,9 @@
       "expiry_min_days": 1,
       "positions": "LONG",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": "FUTURE"
+      "signal_source": "FUTURE",
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 18,
@@ -645,7 +679,7 @@
       "entry_rule": "setup_v1",
       "exit_rule": "next_choch",
       "lot_size": 65,
-      "enabled": 1,
+      "enabled": 0,
       "sl_rule": "prev_swing",
       "charge_code": "ZERODHA_NFO_OPT",
       "family": "S1M",
@@ -664,12 +698,14 @@
       "expiry_min_days": 1,
       "positions": "SHORT",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": "FUTURE"
+      "signal_source": "FUTURE",
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 19,
       "code": "S1M_FB",
-      "name": "Foundation · 1 min · future signal · Options long + short",
+      "name": "Foundation · 1 min · Options (via futures)",
       "description": "Swings -> protected level -> CHoCH -> AVWAP pair -> SETUP; exit SL or next CHoCH",
       "instrument": "NIFTY OPT",
       "timeframe": "minute",
@@ -701,7 +737,9 @@
       "expiry_min_days": 1,
       "positions": "BOTH",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": "FUTURE"
+      "signal_source": "FUTURE",
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 20,
@@ -719,7 +757,7 @@
       "entry_rule": "setup_v1",
       "exit_rule": "next_choch",
       "lot_size": 65,
-      "enabled": 1,
+      "enabled": 0,
       "sl_rule": "prev_swing",
       "charge_code": "ZERODHA_NFO_OPT",
       "family": "S1M",
@@ -738,7 +776,9 @@
       "expiry_min_days": 1,
       "positions": "LONG",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": "OPTION_NATIVE"
+      "signal_source": "OPTION_NATIVE",
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 21,
@@ -756,7 +796,7 @@
       "entry_rule": "setup_v1",
       "exit_rule": "next_choch",
       "lot_size": 65,
-      "enabled": 1,
+      "enabled": 0,
       "sl_rule": "prev_swing",
       "charge_code": "ZERODHA_NFO_OPT",
       "family": "S1M",
@@ -775,12 +815,14 @@
       "expiry_min_days": 1,
       "positions": "SHORT",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": "OPTION_NATIVE"
+      "signal_source": "OPTION_NATIVE",
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     },
     {
       "id": 22,
       "code": "S1M_NB",
-      "name": "Foundation · 1 min · option native signal · Options long + short",
+      "name": "Foundation · 1 min · Options (standalone)",
       "description": "Swings -> protected level -> CHoCH -> AVWAP pair -> SETUP; exit SL or next CHoCH",
       "instrument": "NIFTY OPT",
       "timeframe": "minute",
@@ -812,7 +854,9 @@
       "expiry_min_days": 1,
       "positions": "BOTH",
       "expiry_types": "WEEKLY,MONTHLY",
-      "signal_source": "OPTION_NATIVE"
+      "signal_source": "OPTION_NATIVE",
+      "capital_fut": 120000.0,
+      "capital_opt_short": 150000.0
     }
   ],
   "charge_schedule": [
@@ -847,24 +891,149 @@
       "brokerage_flat": 20.0
     }
   ],
-  "test_period": [
+  "strategy_backtest": [
     {
-      "code": "IS",
-      "label": "In-sample · 26 Aug – 25 Sep",
-      "date_from": "2026-08-26",
-      "date_to": "2026-09-25",
-      "sort": 1,
+      "id": 1,
+      "family": "S5M",
+      "label": "All data",
+      "kind": "all",
+      "preset": null,
+      "date_from": null,
+      "date_to": null,
+      "timeframe": null,
+      "is_default": 1,
       "enabled": 1,
-      "notes": "Rules were designed on this window. SEP FUT is the front month."
+      "notes": "every session with data, after the warm-up"
     },
     {
-      "code": "OOS",
-      "label": "Out-of-sample · 8 Jul – 25 Aug",
+      "id": 2,
+      "family": "S5M",
+      "label": "Design period",
+      "kind": "named",
+      "preset": null,
+      "date_from": "2026-08-26",
+      "date_to": "2026-09-25",
+      "timeframe": null,
+      "is_default": 0,
+      "enabled": 1,
+      "notes": "the rules were built on this window"
+    },
+    {
+      "id": 3,
+      "family": "S5M",
+      "label": "Unseen test",
+      "kind": "named",
+      "preset": null,
       "date_from": "2026-07-08",
       "date_to": "2026-08-25",
-      "sort": 2,
+      "timeframe": null,
+      "is_default": 0,
       "enabled": 1,
-      "notes": "Untouched by rule design. SEP FUT is the next-month contract (thinner volume); 29-Sep options have 5-12 weeks to expiry."
+      "notes": "the rules never saw this window while being built"
+    },
+    {
+      "id": 4,
+      "family": "S5M",
+      "label": "1M",
+      "kind": "preset",
+      "preset": "1M",
+      "date_from": null,
+      "date_to": null,
+      "timeframe": null,
+      "is_default": 0,
+      "enabled": 1,
+      "notes": null
+    },
+    {
+      "id": 5,
+      "family": "S5M",
+      "label": "3M",
+      "kind": "preset",
+      "preset": "3M",
+      "date_from": null,
+      "date_to": null,
+      "timeframe": null,
+      "is_default": 0,
+      "enabled": 1,
+      "notes": null
+    },
+    {
+      "id": 6,
+      "family": "S1M",
+      "label": "All data",
+      "kind": "all",
+      "preset": null,
+      "date_from": null,
+      "date_to": null,
+      "timeframe": null,
+      "is_default": 1,
+      "enabled": 1,
+      "notes": "every session with data, after the warm-up"
+    },
+    {
+      "id": 7,
+      "family": "S1M",
+      "label": "Design period",
+      "kind": "named",
+      "preset": null,
+      "date_from": "2026-08-26",
+      "date_to": "2026-09-25",
+      "timeframe": null,
+      "is_default": 0,
+      "enabled": 1,
+      "notes": "the rules were built on this window"
+    },
+    {
+      "id": 8,
+      "family": "S1M",
+      "label": "Unseen test",
+      "kind": "named",
+      "preset": null,
+      "date_from": "2026-07-08",
+      "date_to": "2026-08-25",
+      "timeframe": null,
+      "is_default": 0,
+      "enabled": 1,
+      "notes": "the rules never saw this window while being built"
+    },
+    {
+      "id": 9,
+      "family": "S1M",
+      "label": "1M",
+      "kind": "preset",
+      "preset": "1M",
+      "date_from": null,
+      "date_to": null,
+      "timeframe": null,
+      "is_default": 0,
+      "enabled": 1,
+      "notes": null
+    },
+    {
+      "id": 10,
+      "family": "S1M",
+      "label": "3M",
+      "kind": "preset",
+      "preset": "3M",
+      "date_from": null,
+      "date_to": null,
+      "timeframe": null,
+      "is_default": 0,
+      "enabled": 1,
+      "notes": null
+    },
+    {
+      "id": 11,
+      "family": "S1M",
+      "label": "All data",
+      "kind": "all",
+      "preset": null,
+      "date_from": null,
+      "date_to": null,
+      "timeframe": "5minute",
+      "is_default": 0,
+      "enabled": 1,
+      "notes": "Foundation · 1 min rules on 5-minute candles"
     }
   ]
 }

@@ -18,29 +18,24 @@ swings (Pine port) → protected level → CHoCH / BOS → AVWAP pair from previ
 - **Exit:** stop loss (per `sl_rule`), else close of the next CHoCH candle.
 - Breaks are by touch or close (`break_mode`).
 
-## Strategy → signal groups → variants
-**Terminology.** *Position* is long or short; *instrument* is FUT, CE or PE; *signal* is bullish or bearish (for the future
-signal group: future long / future short). Long and short positions can exist in futures and in both CE and PE. Short option
-P&L is sell-at-entry, buy-at-exit; margin is not modelled.
-
-**Strategy level** (one card per `family`, e.g. Foundation · 5 min): timeframe, engine rules, SL rule, and the option settings
-**expiry** (Weekly / Monthly) and **strike** — chosen on the card and applied to every option row and to the chart.
-
-| Group (`signal_source`) | Row (code) | Positions |
+## Strategy → type → scheme
+| Level | Values | Where it is set / seen |
 |---|---|---|
-| **Future signal** | Futures (`S5M`) | long future on future long, short future on future short |
-| | Options long only (`S5M_FL`) | long CE on future long, long PE on future short |
-| | Options short only (`S5M_FS`) | short PE on future long, short CE on future short |
-| | Options long + short (`S5M_FB`) | both of the above |
-| **Option native signal** | Options long only (`S5M_NL`) | long on bullish setups on the option's own chart (CE and PE) |
-| | Options short only (`S5M_NS`) | short on bearish setups |
-| | Options long + short (`S5M_NB`) | both |
+| **Strategy** (`family`) | Foundation · 5 min, Foundation · 1 min | one card each: rules, timeframe, SL; the card's **options bar** holds option **expiry** (Weekly / Monthly) and **strike**, shared by both option types |
+| **Type** (one `strategy` row each) | Futures (`S5M`) · Options (via futures) (`S5M_FB`) · Options (standalone) (`S5M_NB`) | a row on the card |
+| **Scheme** | Long + short (default) · Long only · Short only | the Total / Long / Short columns on the card, and the scheme switch above the chart |
+| Position (per trade) | long / short | trades table |
+| Instrument (per trade) | FUT / CE / PE | trades table and one breakdown table — never a separate group |
 
-Each option group is computed once per period with both sides; the long-only and short-only rows are the matching side of that
-run (same signals, same fills). **Group total** = every distinct position in the group (Futures + Options long + short for the
-future signal group; Options long + short for option native) — long only / short only are not added again. Clicking a group
-heading opens its cumulative P&L. The dashboard's All · Long · Short (Future long · Future short) switch filters by signal.
-Rows `S*M_OF / _OB / _OS / _ON` from earlier versions are kept disabled.
+- **Futures:** long future on a future-long signal, short future on a future-short signal.
+- **Options (via futures):** the futures' signals traded in options — long CE and short PE on future long, long PE and short CE on future short.
+- **Options (standalone):** the engine on the option's own chart, independent of the futures — long on bullish setups, short on bearish setups.
+
+Every type runs long + short once; long only and short only are its long and short halves (same signals, same fills), stored as
+`stats_long` / `stats_short` next to `stats`. Below the chart: KPIs (with long and short cards in the long + short scheme) and tabs —
+Trades, Cumulative P&L (total / long / short lines), Daily P&L, Breakdown (position, signal, instrument, exit reason, entry time,
+holding), Expiry & strike, Signals, Config, Rules. Short option P&L is sell-at-entry, buy-at-exit; margin is not modelled.
+Earlier rows (`*_OF/_OB/_OS/_ON/_FL/_FS/_NL/_NS`) are kept disabled.
 
 **Option data (`option_source = WEEKLY_LOCAL`).** Weekly contracts: the nearest expiry at least `expiry_min_days` (1) calendar
 days away, so expiry day rolls to the next week. Prices come from the local ICICI weekly files under `weekly_dir`
@@ -79,11 +74,30 @@ Look-ahead check: `python tests/test_truncation.py`.
 `strategy` (definition + rules), `charge_schedule` (brokerage/STT/exchange/SEBI/stamp/GST rates),
 `strategy_run`, `trade`, `choch_signal` (results per run).
 
+## Backtests, timeframes, statistics
+- **Backtests are per strategy** (`strategy_backtest`): each row is one independent run over its own dates (plus warm-up) —
+  `all` (every session after warm-up), presets `1M 3M 6M YTD 1Y 5Y` counted back from the latest data date, or named/custom
+  ranges such as **Design period** (26 Aug – 25 Sep: the rules were built here) and **Unseen test** (8 Jul – 25 Aug). A backtest
+  the data cannot cover is **refused with the reason** (e.g. 3M needs data before 1 Jul). Add one:
+  `python lab.py backtest S5M 1Y` · `python lab.py backtest S5M 2026-07-10 2026-08-10 --label "July"`.
+- **Timeframe** defaults to the strategy's design timeframe; the same rules can run on other candles
+  (`--tf minute|3minute|5minute|15minute|30minute`), built from 1-minute futures/spot (`cache/`) and 1-/5-minute options.
+  Non-design runs show an amber badge.
+- **Open at the end:** a position still open when a backtest ends is valued at its last candle and flagged `*`.
+- **Capital per lot** (`capital_fut`, `capital_opt_short` on the strategy row; long options use the premium paid) feeds return on
+  capital, Calmar and risk of ruin.
+- **Dashboard tabs:** Trades · Performance (returns, Sharpe / Sortino / Calmar, expectancy in ₹ and R, payoff, streaks, time in
+  market, % profitable days / weeks / months) · Cumulative P&L with drawdown curve · Drawdowns (top 5) · Distribution (P&L and
+  R histograms, max-profit vs max-loss scatter, holding time) · Monte Carlo (2,000 runs, fixed seed: trade-order shuffle fan and
+  drawdown / streak percentiles, bootstrap P(loss) and expectancy range, stress tests, risk of ruin) · Robustness (slippage and
+  charges sensitivity, month by month, other timeframes, expiry × strike) · Breakdown · Daily P&L · Signals · Config · Rules.
+
 ## Workflow
 ```
 python lab.py                 # reuse stored results, recompute only what changed, rebuild dashboard + exports
 python lab.py --full          # recompute everything
 python lab.py S1M             # one strategy / family
+python lab.py backtest S5M 1Y # add a backtest to a strategy and run it
 python -m http.server 8766    # then open http://localhost:8766/dashboard.html
 ```
 **Stored results:** each (strategy, period, strike choice) is written to `web/<code>/<period>/<choice>/` as `summary.json`

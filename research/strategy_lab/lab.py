@@ -43,6 +43,11 @@ create table if not exists charge_schedule(
 create table if not exists test_period(
   code text primary key, label text not null, date_from text not null, date_to text not null,
   sort integer not null default 0, enabled integer not null default 1, notes text);
+create table if not exists strategy_backtest(
+  id integer primary key, family text not null, label text not null,
+  kind text not null check(kind in ('all','preset','named','custom')), preset text,
+  date_from text, date_to text, timeframe text, is_default integer not null default 0,
+  enabled integer not null default 1, notes text);
 create table if not exists choch_signal(
   id integer primary key, run_id integer not null references strategy_run(id),
   strategy_id integer not null references strategy(id), time text, direction text, flipped integer,
@@ -66,16 +71,14 @@ _fam = dict(S5M=dict(timeframe="5minute", data_file=FUT5, spot_file=SPOT5, warmu
             S1M=dict(timeframe="minute", data_file=FUT1, spot_file=SPOT1, warmup_days=2, sl_rule="prev_swing"))
 # (variant, code suffix, label, charge schedule, slippage per side, positions)
 #   futures: long on a future-long signal, short on a future-short signal
-#   options on future signal, buy version:  future long -> long CE,  future short -> long PE
-#   options on future signal, sell version: future long -> short PE, future short -> short CE
 # One row per TYPE. Every type runs long + short; the long-only and short-only schemes are its long and short halves.
 #   Futures                   long future on future long, short future on future short
-#   Options on future signal  long CE / short PE on future long, long PE / short CE on future short
-#   Options on native signal  the engine on the option's own chart: long on bullish setups, short on bearish setups
+#   Options (via futures)     the futures' signals in options: long CE / short PE on future long, long PE / short CE on future short
+#   Options (standalone)      the engine on the option's own chart: long on bullish setups, short on bearish setups
 # (variant, code suffix, type label, charge schedule, slippage per side, signal source)
 _var = [("FUT", "", "Futures", "ZERODHA_NFO_FUT", 5.0, "FUTURE"),
-        ("OPT_FUT_SIGNAL", "_FB", "Options · future signal", "ZERODHA_NFO_OPT", 0.5, "FUTURE"),
-        ("OPT_NATIVE", "_NB", "Options · native signal", "ZERODHA_NFO_OPT", 0.5, "OPTION_NATIVE")]
+        ("OPT_FUT_SIGNAL", "_FB", "Options (via futures)", "ZERODHA_NFO_OPT", 0.5, "FUTURE"),
+        ("OPT_NATIVE", "_NB", "Options (standalone)", "ZERODHA_NFO_OPT", 0.5, "OPTION_NATIVE")]
 SEED = []
 for fam, f in _fam.items():
     for var, suffix, label, charge, slip, source in _var:
@@ -100,6 +103,7 @@ def connect():
                 db.execute(f"insert or replace into {table}({','.join(s)}) values({','.join('?' * len(s))})", list(s.values()))
         db.commit()
     seed_missing(db)
+    seed_backtests(db)
     return db
 
 
@@ -128,6 +132,8 @@ def migrate(db):
     add("charge_schedule", "brokerage_flat", "real not null default 0")
     add("strategy_run", "period", "text")
     add("trade", "period", "text")
+    add("strategy", "capital_fut", "real not null default 120000")          # margin per futures lot
+    add("strategy", "capital_opt_short", "real not null default 150000")    # margin per short option lot
     add("trade", "mfe_pts", "real")
     for c in ("position", "signal", "opt_type", "expiry"): add("trade", c, "text")
     add("trade", "mae_pts", "real")
@@ -152,6 +158,28 @@ def migrate(db):
     db.commit()
 
 
+BACKTEST_SEED = [   # (label, kind, preset, date_from, date_to, timeframe, is_default, notes)
+    ("All data", "all", None, None, None, None, 1, "every session with data, after the warm-up"),
+    ("Design period", "named", None, "2026-08-26", "2026-09-25", None, 0, "the rules were built on this window"),
+    ("Unseen test", "named", None, "2026-07-08", "2026-08-25", None, 0, "the rules never saw this window while being built"),
+    ("1M", "preset", "1M", None, None, None, 0, None),
+    ("3M", "preset", "3M", None, None, None, 0, None)]
+
+
+def seed_backtests(db):
+    if db.execute("select count(*) from strategy_backtest").fetchone()[0]:
+        return
+    fams = [r[0] for r in db.execute("select distinct family from strategy where enabled=1")]
+    for f in fams:
+        for row in BACKTEST_SEED:
+            db.execute("insert into strategy_backtest(family,label,kind,preset,date_from,date_to,timeframe,is_default,notes)"
+                       " values(?,?,?,?,?,?,?,?,?)", (f, *row))
+    # example of the same rule set on another timeframe (shown only when selected)
+    db.execute("insert into strategy_backtest(family,label,kind,timeframe,notes) values('S1M','All data','all','5minute',"
+               "'Foundation · 1 min rules on 5-minute candles')")
+    db.commit()
+
+
 def seed_missing(db):
     """Fill new columns on existing rows and add any SEED strategy that is not in the table yet."""
     db.executemany("update strategy set enabled=0 where code=?", [(c,) for c in RETIRED])
@@ -168,6 +196,80 @@ def seed_missing(db):
             if have[s["code"]]["variant"] == "FUT" and not have[s["code"]]["slippage_pts"]:
                 db.execute("update strategy set slippage_pts=? where code=?", (s["slippage_pts"], s["code"]))
     db.commit()
+
+
+# ---------------------------------------------------------------- timeframes
+TF_MIN = {"minute": 1, "3minute": 3, "5minute": 5, "15minute": 15, "30minute": 30}
+TF_LABEL = {"minute": "1m", "3minute": "3m", "5minute": "5m", "15minute": "15m", "30minute": "30m"}
+CACHE = os.path.join(HERE, "cache")          # resampled candles (generated, not versioned)
+
+
+def resample_rows(rows, minutes):
+    """1-minute (or 5-minute) candle dicts -> `minutes` candles aligned to 09:15 (volume summed, OI = last)."""
+    out, cur, key = [], None, None
+    for r in rows:
+        dt = r["datetime"]; m = int(dt[11:13]) * 60 + int(dt[14:16]); b = 555 + (m - 555) // minutes * minutes
+        k = f"{dt[:11]}{b // 60:02d}:{b % 60:02d}:00"
+        o, h, l, c = (float(r[x]) for x in ("open", "high", "low", "close"))
+        v = float(r.get("volume") or 0)
+        if k != key:
+            if cur: out.append(cur)
+            key, cur = k, dict(datetime=k, open=o, high=h, low=l, close=c, volume=v, oi=r.get("oi", ""))
+        else:
+            cur["high"] = max(cur["high"], h); cur["low"] = min(cur["low"], l); cur["close"] = c
+            cur["volume"] += v; cur["oi"] = r.get("oi", "")
+    if cur: out.append(cur)
+    return out
+
+
+def tf_file(kind, tf):
+    """Candle file for futures ('fut') or spot ('spot') at timeframe tf; other timeframes are built from 1-minute data."""
+    base1, base5 = (FUT1, FUT5) if kind == "fut" else (SPOT1, SPOT5)
+    if tf == "minute": return base1
+    if tf == "5minute": return base5
+    os.makedirs(CACHE, exist_ok=True)
+    out = os.path.join(CACHE, f"{kind}_{tf}.csv")
+    if not os.path.exists(out) or os.path.getmtime(out) < os.path.getmtime(base1):
+        rows = [r for r in csv.DictReader(open(base1)) if r["datetime"][11:16] <= "15:29"]
+        with open(out, "w", newline="") as f:
+            w = csv.writer(f); w.writerow(["datetime", "open", "high", "low", "close", "volume", "oi"])
+            for r in resample_rows(rows, TF_MIN[tf]):
+                w.writerow([r["datetime"], r["open"], r["high"], r["low"], r["close"], r["volume"], r["oi"]])
+    return out
+
+
+_SESS = {}
+def sessions():
+    """Trading sessions available in the futures data."""
+    if not _SESS:
+        _SESS["d"] = sorted({r["datetime"][:10] for r in csv.DictReader(open(FUT1))})
+    return _SESS["d"]
+
+
+def resolve_backtest(bt, warmup):
+    """(date_from, date_to, status, reason). A backtest is refused when the data does not cover it plus its warm-up."""
+    ss = sessions(); last = ss[-1]
+    if bt["kind"] == "all":
+        if len(ss) <= warmup: return None, None, "refused", "not enough data for the warm-up"
+        return ss[warmup], last, "ok", None
+    if bt["kind"] == "preset":
+        p, to = bt["preset"], D.date.fromisoformat(last)
+        if p == "YTD":
+            frm = D.date(to.year, 1, 1)
+        else:
+            months = {"1M": 1, "3M": 3, "6M": 6, "1Y": 12, "5Y": 60}[p]
+            y, m = to.year, to.month - months
+            while m <= 0: y, m = y - 1, m + 12
+            frm = D.date(y, m, min(to.day, 28)) + D.timedelta(days=1)
+        frm, to = frm.isoformat(), last
+    else:
+        frm, to = bt["date_from"], min(bt["date_to"], last)
+    before = [d for d in ss if d < frm]
+    if len(before) < warmup:
+        return frm, to, "refused", f"needs data from before {frm} (plus {warmup} sessions of warm-up); futures data starts {ss[0]}"
+    frm = next((d for d in ss if d >= frm), None)
+    if not frm or frm > to: return frm, to, "refused", "no sessions in this range"
+    return frm, to, "ok", None
 
 
 # ---------------------------------------------------------------- helpers
@@ -309,7 +411,8 @@ class OptionChain:
     def __init__(self, st):
         self.tf, self.local, self.kite = st["timeframe"], st["weekly_dir"], st["option_dir"]
         self.kite_exp, self.pre = st["option_expiry"], st["option_prefix"]
-        sub = "nifty_options" if self.tf == "5minute" else "nifty_options_1minute"
+        self.base = "minute" if self.tf in ("minute", "3minute") else "5minute"   # source data the timeframe is built from
+        sub = "nifty_options" if self.base == "5minute" else "nifty_options_1minute"
         self.root = os.path.join(self.local, sub)
         cal = set([self.kite_exp])
         for y in os.listdir(self.root) if os.path.isdir(self.root) else []:
@@ -333,8 +436,8 @@ class OptionChain:
         if key in self._rights: return self._rights[key]
         base = os.path.join(self.root, expiry[:4], expiry)
         by = {}
-        files = [os.path.join(base, f"NIFTY_{expiry}_{right}_{'5minute' if self.tf == '5minute' else '1minute'}.csv")]
-        if self.tf != "5minute":
+        files = [os.path.join(base, f"NIFTY_{expiry}_{right}_{'5minute' if self.base == '5minute' else '1minute'}.csv")]
+        if self.base != "5minute":
             files += sorted(glob.glob(os.path.join(base, ".chunks", "options", right, "*", "*.csv")))
         for f in files:
             if not os.path.exists(f): continue
@@ -349,11 +452,13 @@ class OptionChain:
         if key in self._cache: return self._cache[key]
         s = None
         if expiry == self.kite_exp:
-            p = os.path.join(self.kite, "minute" if self.tf == "minute" else "5minute", f"{self.pre}{int(strike)}{right}.csv")
-            if os.path.exists(p) and os.path.getsize(p) > 100: s = Series(p)
+            p = os.path.join(self.kite, self.base, f"{self.pre}{int(strike)}{right}.csv")
+            rows = list(csv.DictReader(open(p))) if os.path.exists(p) and os.path.getsize(p) > 100 else None
         else:
             rows = self._local_right(expiry, right).get(int(strike))
-            if rows: s = Series.from_rows(rows)
+        if rows:
+            if TF_MIN[self.tf] != TF_MIN[self.base]: rows = resample_rows(rows, TF_MIN[self.tf])
+            s = Series.from_rows(rows)
         self._cache[key] = s if s and s.t else None
         return self._cache[key]
 
@@ -412,9 +517,10 @@ def run_variant(st, cs):
 
     Terminology: `position` is LONG/SHORT, `opt_type` the instrument (FUT/CE/PE), `signal` BULLISH/BEARISH.
     Long and short positions exist in futures and in both CE and PE. Futures: long on bullish, short on bearish.
-    Option on future signal: bullish -> long CE and short PE, bearish -> long PE and short CE, each leg a separate trade.
-    Option native: bullish setup on the option's chart -> long that option, bearish setup -> short it.
-    `positions` (BOTH / LONG / SHORT) limits option variants to one side."""
+    Options (via futures): bullish -> long CE and short PE, bearish -> long PE and short CE, each a separate 1-lot trade;
+    the dashboard's schemes are slices of these (long, short, long + short within CE, long + short within PE).
+    Options (standalone): bullish setup on the option's own chart -> long that option, bearish setup -> short it.
+    `positions` (BOTH / LONG / SHORT) limits option types to one side."""
     fut, s0 = engine.load(st["data_file"], st["date_from"], st["date_to"], st["warmup_days"])
     p = dict(break_mode=st["break_mode"], avwap_weight=st["avwap_weight"], sl_rule=st["sl_rule"])
     spot = Series.get(st["spot_file"]); atr = atr_series(spot, st["atr_period"])
@@ -620,6 +726,8 @@ def write_result(folder, st, ch, res, s, cs, key):
     json.dump(dict(code=st["code"], choice=ch, period=st["period"], key=key, stats=s, charges=cs, trades=trades,
                    stats_long=stats([x for x in res["trades"] if x["position"] == "LONG"]),
                    stats_short=stats([x for x in res["trades"] if x["position"] == "SHORT"]),
+                   stats_ce=stats([x for x in res["trades"] if x["opt_type"] == "CE"]),
+                   stats_pe=stats([x for x in res["trades"] if x["opt_type"] == "PE"]),
                    skipped=res["skipped"], signals=res["signals"], charts=charts),
               open(os.path.join(folder, "summary.json"), "w", encoding="utf-8"), separators=(",", ":"))
 
@@ -634,33 +742,68 @@ def cache_key(st, pr):
     files = [st["data_file"], st["spot_file"], os.path.join(st["option_dir"] or "", "manifest.csv")]
     if st["variant"] != "FUT" and st.get("weekly_dir"):
         files += sorted(glob.glob(os.path.join(st["weekly_dir"], "nifty_options*", "*", "*", "manifest.json")))
+        # the option candle files themselves, so a refreshed data set is picked up even if a manifest did not change
+        files += sorted(glob.glob(os.path.join(st["weekly_dir"], "nifty_options*", "*", "*", "NIFTY_*_[CP]E_*.csv")))
     for f in files:
         if f and os.path.exists(f): h.update(f"{f}:{os.path.getsize(f)}:{int(os.path.getmtime(f))}".encode())
     return h.hexdigest()[:16]
 
 
+def add_backtest(db, argv):
+    """python lab.py backtest <FAMILY> <1M|3M|6M|YTD|1Y|5Y|all|FROM> [TO] [--tf 15minute] [--label "..."]"""
+    args, opts, i = [], {}, 0
+    while i < len(argv):
+        if argv[i].startswith("--"): opts[argv[i][2:]] = argv[i + 1]; i += 2
+        else: args.append(argv[i]); i += 1
+    fam, what = args[0], args[1]
+    tf = opts.get("tf")
+    if tf and tf not in TF_MIN: sys.exit(f"--tf must be one of {', '.join(TF_MIN)}")
+    if what in ("1M", "3M", "6M", "YTD", "1Y", "5Y"):
+        row = (fam, opts.get("label", what), "preset", what, None, None)
+    elif what == "all":
+        row = (fam, opts.get("label", "All data"), "all", None, None, None)
+    else:
+        row = (fam, opts.get("label", f"{what} to {args[2]}"), "custom", None, what, args[2])
+    db.execute("insert into strategy_backtest(family,label,kind,preset,date_from,date_to,timeframe) values(?,?,?,?,?,?,?)", (*row, tf))
+    db.commit()
+    print("added backtest:", row, "timeframe", tf or "design")
+    return [fam]
+
+
 def main():
     db = connect()
     full = "--full" in sys.argv                     # recompute everything, ignoring stored results
-    only = [a for a in sys.argv[1:] if not a.startswith("--")]
+    argv = [a for a in sys.argv[1:] if a != "--full"]
+    only = add_backtest(db, argv[1:]) if argv[:1] == ["backtest"] else [a for a in argv if not a.startswith("--")]
     sts = [dict(x) for x in db.execute("select * from strategy where enabled=1 order by family, id")]
+    bts = [dict(x) for x in db.execute("select * from strategy_backtest where enabled=1 order by family, is_default desc, id")]
     os.makedirs(WEB, exist_ok=True)
-    periods = [dict(r) for r in db.execute("select * from test_period where enabled=1 order by sort")]
     index, summary, all_trades, group_runs = [], [], [], {}
     for st in sts:
         if only and st["code"] not in only and st["family"] not in only: continue
         cs = dict(db.execute("select * from charge_schedule where code=?", (st["charge_code"],)).fetchone())
         meta = {k: st[k] for k in ("code", "family", "variant", "positions", "signal_source", "name", "description",
-                                   "instrument", "timeframe",
+                                   "instrument", "timeframe", "warmup_days",
                                    "break_mode", "avwap_weight", "entry_rule", "exit_rule", "sl_rule", "lot_size",
                                    "charge_code", "slippage_pts", "strike_choices", "strike_default", "atr_period",
-                                   "expiry_types")}
-        meta["periods"] = {}
-        for pr in periods:
-            stp = dict(st, date_from=pr["date_from"], date_to=pr["date_to"], period=pr["code"])
-            key = cache_key(st, pr)
-            choices = choice_keys(st)
-            folders = {ch: os.path.join(WEB, st["code"], pr["code"], ch) for ch in choices}
+                                   "expiry_types", "capital_fut", "capital_opt_short")}
+        meta["runs"] = {}
+        for bt in [b for b in bts if b["family"] == st["family"]]:
+            tf = bt["timeframe"] or st["timeframe"]
+            rk = f"bt{bt['id']}_{TF_LABEL[tf]}"
+            frm, to, status, reason = resolve_backtest(bt, st["warmup_days"])
+            info = dict(id=bt["id"], label=bt["label"], kind=bt["kind"], preset=bt["preset"], notes=bt["notes"],
+                        date_from=frm, date_to=to, timeframe=tf, design=tf == st["timeframe"], is_default=bt["is_default"],
+                        status=status, reason=reason, choices={})
+            meta["runs"][rk] = info
+            if status != "ok":
+                print(f"refused {rk:<12} {st['code']:<8} {bt['label']}: {reason}"); continue
+            stp = dict(st, timeframe=tf, data_file=tf_file("fut", tf), spot_file=tf_file("spot", tf),
+                       date_from=frm, date_to=to, period=rk)
+            pr = dict(date_from=frm, date_to=to)
+            key = cache_key(stp, pr)
+            choices = choice_keys(stp)
+            folders = {ch: os.path.join(WEB, st["code"], rk, ch) for ch in choices}
             stored = {}
             if not full:
                 for ch, fo in folders.items():
@@ -670,11 +813,10 @@ def main():
                         if d.get("key") == key: stored[ch] = d
             fresh = len(stored) < len(choices)
             if fresh:
-                gk = (st["family"], st["variant"], pr["code"])
+                gk = (st["family"], st["variant"], rk)
                 if gk not in group_runs:
                     group_runs[gk] = run_variant(dict(stp, positions="BOTH"), cs)
                 res = {ch: side_of(rr, st["positions"]) for ch, rr in group_runs[gk].items()}
-            meta["periods"][pr["code"]] = {}
             for ch in choices:
                 if fresh:
                     rr = res[ch]
@@ -684,40 +826,40 @@ def main():
                              round(x["pts"], 2), round(x["gross"], 2), round(x["chg"]["total"], 2), round(x["net"], 2), int(x["open"])]
                             for x in rr["trades"]]
                     n_skip = len(rr["skipped"])
-                    s_long = stats([x for x in rr["trades"] if x["position"] == "LONG"])
-                    s_short = stats([x for x in rr["trades"] if x["position"] == "SHORT"])
+                    part = lambda f: stats([x for x in rr["trades"] if f(x)])
+                    s_long, s_short = part(lambda x: x["position"] == "LONG"), part(lambda x: x["position"] == "SHORT")
+                    s_ce, s_pe = part(lambda x: x["opt_type"] == "CE"), part(lambda x: x["opt_type"] == "PE")
                 else:
                     d = stored[ch]; s = d["stats"]; run_id = None; n_skip = len(d["skipped"])
-                    s_long, s_short = d.get("stats_long"), d.get("stats_short")
+                    s_long, s_short, s_ce, s_pe = (d.get(k) for k in ("stats_long", "stats_short", "stats_ce", "stats_pe"))
                     rows = [[x[21] if len(x) > 21 else x[0], x[1], x[4], x[5], x[7], x[8], x[9], x[10], x[11], x[12], x[13], int(x[14])] for x in d["trades"]]
                 rel = os.path.relpath(folders[ch], HERE).replace(os.sep, "/")
                 brief = lambda z: z and {k: z[k] for k in ("trades", "wins", "pts", "net_inr", "pf")}
-                meta["periods"][pr["code"]][ch] = dict(file=f"{rel}/summary.json", run_id=run_id, skipped=n_skip, **s,
-                                                       long=brief(s_long), short=brief(s_short))
-                summary.append(dict(period=pr["code"], code=st["code"], variant=st["variant"], choice=ch, **s))
-                all_trades += [[pr["code"], st["code"], ch, *row] for row in rows]
-                print(f'{"run   " if fresh else "stored"} {pr["code"]:<3} {st["code"]:<8} {ch:<7} trades {s["trades"]:>3}  '
-                      f'skipped {n_skip:>2}  pts {s["pts"]:>+8.1f}  gross {s["gross_inr"]:>+10,.0f}  '
-                      f'charges {s["charges_inr"]:>8,.0f}  net {s["net_inr"]:>+10,.0f}  PF {s["pf"]}  t {s["t_stat"]}')
+                info["choices"][ch] = dict(file=f"{rel}/summary.json", run_id=run_id, skipped=n_skip, **s,
+                                           long=brief(s_long), short=brief(s_short), ce=brief(s_ce), pe=brief(s_pe))
+                summary.append(dict(run=rk, backtest=bt["label"], timeframe=tf, code=st["code"], variant=st["variant"], choice=ch, **s))
+                all_trades += [[rk, st["code"], ch, *row] for row in rows]
+                print(f'{"run   " if fresh else "stored"} {rk:<12} {st["code"]:<8} {ch:<7} trades {s["trades"]:>3}  '
+                      f'skipped {n_skip:>3}  net {s["net_inr"]:>+10,.0f}  PF {s["pf"]}  t {s["t_stat"]}')
         index.append(meta)
     db.commit()
     page = open(os.path.join(HERE, "dashboard.tpl"), encoding="utf-8").read()
-    page = page.replace("/*DATA*/", "const INDEX=" + json.dumps(index, separators=(",", ":")) + ";const PERIODS="
-                        + json.dumps(periods, separators=(",", ":")) + ";")
+    page = page.replace("/*DATA*/", "const INDEX=" + json.dumps(index, separators=(",", ":")) + ";const TFS="
+                        + json.dumps(TF_LABEL) + ";const DATA_RANGE=" + json.dumps([sessions()[0], sessions()[-1]]) + ";")
     open(os.path.join(HERE, "dashboard.html"), "w", encoding="utf-8").write(page)
     # versioned text snapshots
-    cfg = {t: [dict(r) for r in db.execute(f"select * from {t} order by 1")] for t in ("strategy", "charge_schedule", "test_period")}
-    for s in cfg["strategy"]: s.pop("created_at", None)
+    cfg = {t: [dict(r) for r in db.execute(f"select * from {t} order by 1")] for t in ("strategy", "charge_schedule", "strategy_backtest")}
+    for x in cfg["strategy"]: x.pop("created_at", None)
     os.makedirs(os.path.dirname(CONFIG), exist_ok=True)
     json.dump(cfg, open(CONFIG, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
     os.makedirs(os.path.join(HERE, "results"), exist_ok=True)
     json.dump(summary, open(os.path.join(HERE, "results", "summary.json"), "w", encoding="utf-8"), indent=1, ensure_ascii=False)
     with open(os.path.join(HERE, "results", "trades.csv"), "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["period", "strategy", "strike_choice", "position", "instrument", "entry_time", "entry_px", "exit_time", "exit_px",
+        w.writerow(["run", "strategy", "choice", "position", "instrument", "entry_time", "entry_px", "exit_time", "exit_px",
                     "exit_reason", "pts", "gross_inr", "charges_inr", "net_inr", "is_open"])
         w.writerows(all_trades)
-    print("wrote dashboard.html, web/*.json, config/strategies.json, results/summary.json, results/trades.csv")
+    print("wrote dashboard.html, web/*, config/strategies.json, results/summary.json, results/trades.csv")
 
 
 if __name__ == "__main__":
