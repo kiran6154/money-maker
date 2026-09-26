@@ -438,7 +438,7 @@ def cache_key(st, pr):
     row = {k: v for k, v in st.items() if k not in ("id", "created_at", "enabled", "name", "description")}
     h.update(json.dumps([row, pr["date_from"], pr["date_to"]], sort_keys=True, default=str).encode())
     for f in (os.path.join(HERE, "engine.py"), os.path.join(HERE, "lab.py")):
-        h.update(open(f, "rb").read())
+        h.update(open(f, "rb").read().replace(b"\r\n", b"\n"))   # line endings differ across checkouts
     for f in (st["data_file"], st["spot_file"], os.path.join(st["option_dir"] or "", "manifest.csv")):
         if f and os.path.exists(f): h.update(f"{f}:{os.path.getsize(f)}:{int(os.path.getmtime(f))}".encode())
     return h.hexdigest()[:16]

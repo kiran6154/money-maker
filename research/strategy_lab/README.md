@@ -3,6 +3,12 @@
 Prototype bench for NIFTY futures strategies before they are coded into money-maker.
 Every strategy is the same **foundation engine** run with a different row in the `strategy` table.
 
+> **Where it sits:** `research/strategy_lab/` inside money-maker. It is standalone Python (3.10, `requests`, `pymysql` for
+> `tools/kitecreds.py`) and is **not** part of the Spring Boot build, its schema (SQLite `strategy_lab.db`, not Liquibase)
+> or its `Strategy` beans. Nothing here places orders. Candle data is read from `D:/nifty/…` (see *Data*); the Kite
+> download tools reuse the app's Zerodha session from `broker_session` and `application.properties`.
+> Commit history before the move lives on as the first two commits of this folder (`foundation-v1`, `variants-v1`).
+
 ## Foundation (engine.py)
 swings (Pine port) → protected level → CHoCH / BOS → AVWAP pair from previous SH & SL at each CHoCH → SETUP → trade
 
