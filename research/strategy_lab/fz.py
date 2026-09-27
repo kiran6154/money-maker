@@ -17,6 +17,19 @@ price bands: time for it is "bars since the last CHoCH". FZ adds that memory wit
            far-side run: a close back inside (or on the other side) breaks the run and the next far-side close re-arms the
            watch (R1 again), so the ledger carries armed_bars from the first arming and rearmed_bars from the latest
 
+Two memory models (room_model), the rest of the module shared:
+  bands    the base (Strategies 5, 6): zones as above; drift births while a sit lasts (drift_birth); never retired
+  rooms    FZ v2 (Strategies 7, 8): a room is born only on the transition into a sit (birth_a_source 'none'), centred on
+           the sit, visit 1 = the sit; a sit overlapping a live room by merge_overlap is a visit of that room (the live
+           visit follows it); a sit overlapping a room already visited this session is a visit of that older room
+           (same_session_overlap 'keep_older'); live rooms never overlap (room_overlap: 'supersede' retires the rooms a new sit partly
+           overlaps, 'clip' stops the new room at their edges); a room with no inside close in room_max_age_sessions
+           sessions is retired on a session's first bar (never the ref band again, absorbs nothing, contains no price);
+           ids '<letter> <mm-dd hh:mm>' (birth order in the session, birth bar)
+  In either model a stay with fewer than visit_min_bars inside closes that ends by the leave rule is a touch: counted on
+  the zone and the card (touches), not a visit (visit_n does not advance); and the close-form HUNT is 1..hunt_max_bars
+  closes outside on one side, then a close back inside.
+
 One live visit at a time wins over a return (the D01 tie-break): a close back inside the band just left ends its LEAVE
 and sets the band's leave_failed flag (the card shows it as last_leave_failed while that band is the ref band), but it
 re-opens a visit on that band only when no other band holds the live visit; otherwise the neighbour keeps the visit and
@@ -39,17 +52,28 @@ EPS = 1e-6       # float tolerance on inclusive band edges (prices sit on a 0.05
 READS = ("FIRST_PRINT", "ACCEPTED", "RECYCLE", "THIN", "HUNT", "REJECT", "LEAVE", "PENDING", "NEW")
 BLOCK_READS = ("RECYCLE", "THIN", "HUNT", "REJECT")     # spec s3's BLOCK list, applied to the entered band (block_list)
 
-CHOICES = dict(birth_a_source=("protected_level", "every_swing"), birth_b=("band", "flag"), hunt_form=("close", "wick"),
-               leave_far_side=("any", "block_list", "no_band"), fade_scope=("ref_band", "any_band"),
-               edge_watch=("ref_band", "containing_band"), volume_base=("first", "previous"), reenter_fill=("confirm_bar",))
+CHOICES = dict(birth_a_source=("protected_level", "every_swing", "none"), birth_b=("band", "flag"),
+               hunt_form=("close", "wick"), leave_far_side=("any", "block_list", "no_band"),
+               fade_scope=("ref_band", "any_band"), edge_watch=("ref_band", "containing_band"),
+               volume_base=("first", "previous"), reenter_fill=("confirm_bar",), room_model=("bands", "rooms"),
+               room_overlap=("supersede", "clip"), same_session_overlap=("keep_older", "supersede"))
 BAR_COUNTS = ("cluster_bars", "accept_bars", "first_print_min_bars", "hunt_max_bars", "leave_closes", "leave_ttl_bars",
               "fade_block_bars", "defend_window_bars", "open_bars", "open_quiet_bars", "open_sit_closes",
-              "cancel_inside_bars", "control_draws")
+              "cancel_inside_bars", "control_draws", "visit_min_bars")
 NUMBERS = ("band_half_width", "cluster_width", "merge_overlap", "accept_vol_ratio", "thin_ratio", "hunt_burst", "reject_tol")
-OPTIONAL = ("zone_max_age_sessions", "hunt_min_depth_atr")        # null allowed
+OPTIONAL = ("zone_max_age_sessions", "hunt_min_depth_atr", "room_max_age_sessions")        # null allowed
 CLOCKS = ("open_window_until", "no_entry_from")
 TEXT = ("control_seed",)
-KEYS = set(CHOICES) | set(BAR_COUNTS) | set(NUMBERS) | set(OPTIONAL) | set(CLOCKS) | set(TEXT)
+BOOLS = ("drift_birth",)
+KEYS = set(CHOICES) | set(BAR_COUNTS) | set(NUMBERS) | set(OPTIONAL) | set(CLOCKS) | set(TEXT) | set(BOOLS)
+
+
+def room_letters(k):
+    """Birth order within a session as letters: 0 -> A, 25 -> Z, 26 -> AA, 27 -> AB ..."""
+    s, k = "", k + 1
+    while k:
+        k, r = divmod(k - 1, 26); s = chr(65 + r) + s
+    return s
 
 
 def check(cfg):
@@ -67,6 +91,10 @@ def check(cfg):
         if not num(cfg[k]) or cfg[k] < 0: raise ValueError(f"fz {k} = {cfg[k]!r}: must be a number >= 0")
     for k in OPTIONAL:
         if cfg[k] is not None and not num(cfg[k]): raise ValueError(f"fz {k} = {cfg[k]!r}: must be a number or null")
+    for k in BOOLS:
+        if not isinstance(cfg[k], bool): raise ValueError(f"fz {k} = {cfg[k]!r}: must be true or false")
+    if cfg["room_max_age_sessions"] is not None and cfg["room_max_age_sessions"] < 0:
+        raise ValueError("fz room_max_age_sessions: must be >= 0 or null")
     for k in CLOCKS:
         if not (isinstance(cfg[k], str) and re.fullmatch(r"\d\d:\d\d", cfg[k])): raise ValueError(f"fz {k}: must be 'HH:MM'")
     if not isinstance(cfg["control_seed"], str): raise ValueError("fz control_seed: must be text")
@@ -118,12 +146,15 @@ def run(bars, view, cfg, tf_min, s0, open_position):
     stats = {}
     def inc(k, by=1): stats[k] = stats.get(k, 0) + by
 
-    zones, byid = [], {}
+    ROOMS, VMIN, AGE = g["room_model"] == "rooms", g["visit_min_bars"], g["room_max_age_sessions"]
+    zones, byid, alive = [], {}, []      # every zone ever born; by id; the ones not retired (all of them under bands)
+    born_in = {}                         # rooms: births per session (the room letter)
     ref, orun, oside = None, 0, None     # band with the live visit; consecutive closes outside it and their side
     leave = None                         # the LEAVE of the band most recently left, while it lives
     watch, pos = None, None
     card, rows, decisions, reasons, watches = [], {}, [], {}, []
     stash = {}                           # REENTER decided in the watch step on a SETUP bar, for that bar's gate
+    absorbed = [None]                    # the zone that absorbed the last candidate birth() refused
 
     # ---------------------------------------------------------------- helpers
     def inside(z, x): return z["lo"] - EPS <= x <= z["hi"] + EPS
@@ -133,32 +164,98 @@ def run(bars, view, cfg, tf_min, s0, open_position):
     def nearest(zs, x): return min(zs, key=lambda z: (abs(z["mid"] - x), z["seq"])) if zs else None
 
     def visit(z, j):
-        V = dict(n=len(z["visits"]) + 1, start=j, end=None, ended_by=None, bars=0, vol=0.0, vol_na=False, entry_dir=edir(j))
+        """A new stay; its number counts the earlier stays that were not touches (as-of: it is a visit while it lasts)."""
+        V = dict(n=1 + sum(1 for W in z["visits"] if not W.get("touch")), start=j, end=None, ended_by=None, bars=0,
+                 vol=0.0, vol_na=False, entry_dir=edir(j))
         z["visits"].append(V); add(V, j)
         return V
+
+    def end_stay(z, V, j, how):
+        """End stay V of zone z at bar j. A stay ended by the leave rule with fewer than visit_min_bars inside closes is a
+        touch: it keeps its record (flag `touch`) but does not advance the zone's visit count."""
+        V.update(end=j, ended_by=how)
+        if how == "left" and V["bars"] < VMIN:
+            V["touch"] = True; z["touches"] += 1; j >= s0 and inc("touches")
+
+    def first_of(z):
+        """The zone's first visit (its first stay that is not a touch)."""
+        return next((W for W in z["visits"] if not W.get("touch")), None)
+
+    def prev_of(z, V):
+        """The visit before V (number V.n - 1, not a touch), or None."""
+        return next((W for W in reversed(z["visits"]) if W["n"] == V["n"] - 1 and not W.get("touch") and W is not V), None)
+
+    def room_fit(mid, i):
+        """Rooms: (lo, hi, None, overlapped) for a new room centred at `mid` at bar i, or (None, None, room, []) when a
+        live room absorbs it (overlap >= merge_overlap of the width; largest overlap, then nearest mid, then the older
+        room). With same_session_overlap = keep_older, a sit overlapping (by any amount) a live room that already had an
+        inside close this session (before bar i) is absorbed by it too: the older room keeps its edges and the sit is a
+        visit of it. Any other overlap is removed by room_overlap: supersede returns the overlapped rooms to be retired
+        (the new sit replaces them; the new room keeps its full width), clip stops the new room's edges at theirs."""
+        lo, hi = mid - HW, mid + HW
+        need, best = g["merge_overlap"] * 2 * HW - EPS, None
+        for z in alive:
+            ov = round(min(hi, z["hi"]) - max(lo, z["lo"]), 6)
+            if ov >= need and (best is None or (ov, -abs(z["mid"] - mid), -z["seq"]) > best[0]):
+                best = ((ov, -abs(z["mid"] - mid), -z["seq"]), z)
+        if best: return None, None, best[1], []
+        over = [z for z in alive if min(hi, z["hi"]) - max(lo, z["lo"]) > EPS]
+        if g["same_session_overlap"] == "keep_older":
+            today = [z for z in over if z["last_in"] == sess[i]]
+            if today:
+                key = lambda z: (round(min(hi, z["hi"]) - max(lo, z["lo"]), 6), -abs(z["mid"] - mid), -z["seq"])
+                i >= s0 and inc("sits_kept_by_older")
+                return None, None, max(today, key=key), []
+        if g["room_overlap"] == "clip":
+            for z in over:
+                if z["mid"] < mid: lo = z["hi"]
+                else: hi = z["lo"]
+            over = []
+        return lo, hi, None, over
+
+    def retire(z, i, why):
+        """Retire zone z at bar i (room_max_age_sessions: 'retired'; a superseding sit: 'superseded'): never the ref band
+        again, absorbs nothing, contains no price. A LEAVE still live on it ends."""
+        nonlocal leave
+        z["retired_bar"] = i; z["retired_by"] = why; alive.remove(z); i >= s0 and inc(f"rooms_{why}")
+        if leave is not None and leave["zone"] is z: leave = None; inc("leave_end_retired")
 
     def target(mid):
         """Zone a candidate centred at `mid` is absorbed into: overlap >= merge_overlap of the width, largest overlap
         first (equal widths: nearest mid), then the older zone."""
         need, best = g["merge_overlap"] * 2 * HW - EPS, None
-        for z in zones:
+        for z in alive:
             ov = round(2 * HW - abs(z["mid"] - mid), 6)
             if ov >= need and (best is None or (ov, -z["seq"]) > best[0]): best = ((ov, -z["seq"]), z)
         return best and best[1]
 
     def birth(kind, mid, origin, i, zid, back, count_merge=True):
-        """New zone (or None when absorbed). Its visit history is replayed with the zone-local visit rule over the closes
-        before bar i: from the start of the run of inside closes containing `origin` when `back` and that close is
-        inside, else from `origin`. Returns (zone, the replayed visit if still open, its outside run, its side)."""
-        z0 = target(mid)
+        """New zone (or None when absorbed; absorbed[0] is then the absorbing zone). Its visit history is replayed with
+        the zone-local visit rule over the closes before bar i: from the start of the run of inside closes containing
+        `origin` when `back` and that close is inside, else from `origin`. Returns (zone, the replayed visit if still
+        open, its outside run, its side). Rooms: named '<letter> <mm-dd hh:mm>' (the letter = birth order within the
+        session, the time = the birth bar); the live rooms it overlaps are superseded or it is clipped (room_overlap)."""
+        if ROOMS: lo_, hi_, z0, over = room_fit(mid, i)
+        else: z0 = target(mid)
+        absorbed[0] = z0
         if z0 is not None:
             if count_merge: z0["merges"] += 1; inc(f"merges_{kind}")
             return None
-        mid = round(mid, 4)                                # edges frozen at birth (float noise trimmed; EPS covers it)
-        z = dict(id=zid, kind=kind, lo=round(mid - HW, 4), hi=round(mid + HW, 4), mid=mid, origin_bar=origin, birth_bar=i,
+        if ROOMS:
+            k = born_in.get(sess[i], 0); born_in[sess[i]] = k + 1
+            zid = f"{room_letters(k)} {t[i][5:10]} {t[i][11:16]}"
+            lo, hi = round(lo_, 4), round(hi_, 4)
+            mid = round((lo + hi) / 2, 4)
+            if hi - lo < 2 * HW - EPS: i >= s0 and inc("rooms_clipped")
+            for z_ in over: retire(z_, i, "superseded")
+        else:
+            mid = round(mid, 4)                            # edges frozen at birth (float noise trimmed; EPS covers it)
+            lo, hi = round(mid - HW, 4), round(mid + HW, 4)
+        z = dict(id=zid, kind=kind, lo=lo, hi=hi, mid=mid, origin_bar=origin, birth_bar=i,
                  born_ts=t[i], merges=0, visits=[], seq=len(zones), hunt_at=None, hunt_dir=None, reject_at=None,
-                 reject_dir=None, leave_failed=False, today=-1, today_in=0)
-        zones.append(z); byid[zid] = z
+                 reject_dir=None, leave_failed=False, today=-1, today_in=0, touches=0, retired_bar=None, retired_by=None,
+                 last_in=sess[i])
+        zones.append(z); byid[zid] = z; alive.append(z)
         inc(f"births_{kind}"); i >= s0 and inc(f"births_{kind}_shown")
         j0 = origin
         if back and inside(z, c[origin]):
@@ -172,13 +269,13 @@ def run(bars, view, cfg, tf_min, s0, open_position):
             elif V is not None:
                 s_ = "up" if c[j] > z["hi"] else "down"
                 run, sd = (run + 1, sd) if s_ == sd else (1, s_)
-                if run >= LC: V.update(end=j, ended_by="left"); V, run, sd = None, 0, None
+                if run >= LC: end_stay(z, V, j, "left"); V, run, sd = None, 0, None
         return z, V, run, sd
 
     def base_of(z, V):
         """Visit the volume ratio compares against: the first visit, or the previous one (volume_base)."""
-        if g["volume_base"] == "first": return z["visits"][0]
-        return z["visits"][V["n"] - 2] if V["n"] >= 2 else None
+        if g["volume_base"] == "first": return first_of(z)
+        return prev_of(z, V) if V["n"] >= 2 else None
 
     def inside_read(z, V):
         """FIRST_PRINT / ACCEPTED / THIN / RECYCLE of visit V of zone z. Volume NA (either side) makes ACCEPTED time-only
@@ -210,9 +307,10 @@ def run(bars, view, cfg, tf_min, s0, open_position):
 
     def open_pierce(k):
         """First open_bars of the session (and before open_window_until): the bar's range crosses an edge of a band
-        whose last visit ended in an earlier session and that has fewer than open_sit_closes closes inside today."""
+        whose last visit ended in an earlier session and that has fewer than open_sit_closes closes inside today
+        (retired rooms have no edges)."""
         if not (sbar[k] < g["open_bars"] and hm[k] < g["open_window_until"]): return False
-        for z in zones:
+        for z in alive:
             if not z["visits"] or z["visits"][-1].get("end") is None: continue
             if sess[z["visits"][-1].get("end")] >= sess[k]: continue
             if z["today"] == sess[k] and z["today_in"] >= g["open_sit_closes"]: continue
@@ -222,7 +320,7 @@ def run(bars, view, cfg, tf_min, s0, open_position):
     def fade(k, S):
         """S would chase a HUNT: a HUNT in S's direction completed within fade_block_bars, same session, on the ref band
         or the band just left (fade_scope ref_band) or on any band (any_band)."""
-        zs = zones if g["fade_scope"] == "any_band" else [z for z in (ref, leave and leave["zone"]) if z is not None]
+        zs = alive if g["fade_scope"] == "any_band" else [z for z in (ref, leave and leave["zone"]) if z is not None]
         return any(z["hunt_at"] is not None and z["hunt_dir"] == S and 0 <= k - z["hunt_at"] <= g["fade_block_bars"]
                    and sess[z["hunt_at"]] == sess[k] for z in zs)
 
@@ -371,6 +469,11 @@ def run(bars, view, cfg, tf_min, s0, open_position):
     born, latest, sp, cond_prev = set(), {}, 0, False
     for i in range(n):
         x = c[i]
+        # -- retirement (room_max_age_sessions): on a session's first bar, a zone with no inside close in the last that
+        #    many sessions is retired: never the ref band again, absorbs nothing, contains no price. The zone holding the
+        #    live visit is kept.
+        if AGE is not None and i > 0 and sbar[i] == 0:
+            for z in [z for z in alive if z is not ref and sess[i] - z["last_in"] > AGE]: retire(z, i, "retired")
         # -- births: A (protected level, or every swing as a diagnostic) before B (cluster sit)
         new_sw = []
         while sp < len(swings) and swings[sp][3] <= i:
@@ -378,7 +481,7 @@ def run(bars, view, cfg, tf_min, s0, open_position):
         cands = []                                         # (kind, mid, origin, id, scan back, count a merge)
         if g["birth_a_source"] == "every_swing":
             cands = [("A", s[2], s[1], "A" + t[s[3]], True, True) for s in new_sw]
-        elif prot[i] is not None and (i == 0 or prot[i] != prot[i - 1]):
+        elif g["birth_a_source"] == "protected_level" and prot[i] is not None and (i == 0 or prot[i] != prot[i - 1]):
             s = latest.get(prot[i])
             if s is not None and s not in born:            # a revert to an already-born swing is not a birth
                 born.add(s); cands = [("A", s[2], s[1], "A" + t[s[3]], True, True)]
@@ -388,23 +491,38 @@ def run(bars, view, cfg, tf_min, s0, open_position):
             cond = hi_ - lo_ <= CW + EPS
         if cond and g["birth_b"] == "band":
             # a candidate on the transition into the sit; while the sit lasts, only a drift the memory cannot absorb
+            # (drift_birth), which the room model does not use
             if not cond_prev: cands.append(("B", (hi_ + lo_) / 2, i - N + 1, "B" + t[i], False, True))
-            elif target((hi_ + lo_) / 2) is None: cands.append(("B", (hi_ + lo_) / 2, i - N + 1, "B" + t[i], False, False))
+            elif g["drift_birth"] and (room_fit((hi_ + lo_) / 2, i)[2] if ROOMS else target((hi_ + lo_) / 2)) is None:
+                cands.append(("B", (hi_ + lo_) / 2, i - N + 1, "B" + t[i], False, False))
         drift = cond and cond_prev
         cond_prev = cond
+        prefer = None                                      # rooms: the live room a sit was absorbed into (it takes the visit)
         for kind, mid, origin, zid, back, count in cands:
             got = birth(kind, mid, origin, i, zid, back, count_merge=count)
             if got is not None and kind == "B" and drift: inc("births_B_drift")
+            if got is None and ROOMS and kind == "B" and count:
+                Z = absorbed[0]                            # a sit inside a live room is a visit of that room
+                if Z is not ref and inside(Z, x):
+                    if ref is not None:
+                        end_stay(ref, ref["visits"][-1], i - 1, "sit_moved"); i >= s0 and inc("visit_ends_sit_moved")
+                        ref, orun, oside = None, 0, None
+                    prefer = Z
             if got is None or got[1] is None: continue
             z, V, run, sd = got
             if ref is None: ref, orun, oside = z, run, sd    # open ground: the replayed visit is the live one
+            elif ROOMS:                                    # the room the market sits in now holds the live visit
+                end_stay(ref, ref["visits"][-1], i - 1, "sit_moved"); i >= s0 and inc("visit_ends_sit_moved")
+                ref, orun, oside = z, run, sd
             else: V.update(end=i - 1, ended_by="ref_live"); inc("backfill_cut_ref_live")   # one live visit at a time
+        if ref is not None and ref["retired_bar"] is not None:  # superseded with no room taking the visit over
+            end_stay(ref, ref["visits"][-1], i - 1, "superseded"); ref, orun, oside = None, 0, None
 
-        # -- bands containing this close; today's inside counts (open guard)
+        # -- bands containing this close; today's inside counts (open guard); the session of the last inside close
         inz = []
-        for z in zones:
+        for z in alive:
             if inside(z, x):
-                inz.append(z)
+                inz.append(z); z["last_in"] = sess[i]
                 if z["today"] != sess[i]: z["today"], z["today_in"] = sess[i], 0
                 z["today_in"] += 1
 
@@ -419,7 +537,7 @@ def run(bars, view, cfg, tf_min, s0, open_position):
                 sd = "up" if x > ref["hi"] else "down"
                 orun, oside = (orun + 1, sd) if sd == oside else (1, sd)
                 if orun >= LC:
-                    V.update(end=i, ended_by="left"); r1 = i - orun + 1
+                    end_stay(ref, V, i, "left"); r1 = i - orun + 1
                     ref["leave_failed"] = False                   # this leave has not failed (yet)
                     if leave is not None: inc("leave_end_replaced")
                     leave = dict(zone=ref, bar=i, side=sd, r1=r1, far_vol=sum(v[r1:i + 1]), far_n=orun,
@@ -441,7 +559,7 @@ def run(bars, view, cfg, tf_min, s0, open_position):
                 if sbar[i] == 0: leave["kind"] = "gap"
         # -- no live visit: the band containing the close opens one (a return into the band just left takes it back)
         if ref is None:
-            z = returned if returned is not None else nearest(inz, x)
+            z = returned if returned is not None else prefer if prefer is not None else nearest(inz, x)
             if z is not None:
                 visit(z, i); ref, orun, oside = z, 0, None
                 i >= s0 and inc("visits_opened")
@@ -455,15 +573,15 @@ def run(bars, view, cfg, tf_min, s0, open_position):
             up_d, dn_d = h[i] - z["hi"], z["lo"] - l[i]
             wick = round(max(up_d, dn_d, 0.0), 2)
             pierce = None
-            if g["hunt_form"] == "close":
-                if prev_ref is z and prev_orun == 1: pierce = (prev_oside, i - 1)        # one close out, back in
+            if g["hunt_form"] == "close":                  # 1..hunt_max_bars closes out on one side, then back in
+                if prev_ref is z and 1 <= prev_orun <= g["hunt_max_bars"]: pierce = (prev_oside, i - prev_orun)
             elif i > 0 and inside(z, c[i - 1]) and max(up_d, dn_d) > EPS \
                     and max(up_d, dn_d) >= g["hunt_min_depth_atr"] * atr[i] - EPS:
                 pierce = ("up" if up_d >= dn_d else "down", i)                           # wick pierce, closes inside
             if pierce is not None and i - pierce[1] <= g["hunt_max_bars"]:
-                pb = pierce[1]
+                pb = range(pierce[1], i) if g["hunt_form"] == "close" else (i,)         # the outside bars (the poke)
                 m = pre[1] / pre[0] if (prev_ref is z and pre and pre[0] and not pre[2]) else None
-                if m is None or na[pb] or v[pb] >= g["hunt_burst"] * m:                  # burst, skipped when NA
+                if m is None or any(na[b] for b in pb) or max(v[b] for b in pb) >= g["hunt_burst"] * m:   # burst; NA skips
                     ev_h = pierce[0]; z["hunt_at"], z["hunt_dir"] = i, ev_h
                 else:
                     i >= s0 and inc("hunt_no_burst")
@@ -483,8 +601,8 @@ def run(bars, view, cfg, tf_min, s0, open_position):
         elif V is not None: read = "PENDING"
         else: read = "NEW"
         zin = ref if (ref is not None and orun == 0) else nearest(inz, x)
-        F = ref["visits"][0] if ref is not None else None
-        P = ref["visits"][-2] if ref is not None and len(ref["visits"]) > 1 else None
+        F = first_of(ref) if ref is not None else None
+        P = prev_of(ref, V) if ref is not None else None
         lv_ok = None
         if leave is not None and not leave["far_na"] and leave["sit"] is not None:
             lv_ok = leave["far_vol"] / leave["far_n"] >= leave["sit"]
@@ -499,7 +617,8 @@ def run(bars, view, cfg, tf_min, s0, open_position):
                   last_leave_failed=ref["leave_failed"] if ref is not None else None,
                   in_id=zin and zin["id"], leave_side=leave and leave["side"], leave_vol_ok=lv_ok,
                   leave_kind=leave and leave["kind"],
-                  first_clock_lived=(V["bars"] >= g["accept_bars"]) if read == "FIRST_PRINT" else None)
+                  first_clock_lived=(V["bars"] >= g["accept_bars"]) if read == "FIRST_PRINT" else None,
+                  touches=ref["touches"] if ref is not None else None)
         card.append(cd)
 
         # -- the watch (before the gate), then the gate on a Foundation SETUP at this bar
@@ -549,7 +668,8 @@ def run(bars, view, cfg, tf_min, s0, open_position):
         if e >= s0: inc(f"positions_{kind}")
     stats.update(tf_min=tf_min, zones=len(zones), s0=s0)
     zout = [dict(id=z["id"], kind=z["kind"], lo=z["lo"], hi=z["hi"], mid=z["mid"], origin_bar=z["origin_bar"],
-                 birth_bar=z["birth_bar"], born_ts=z["born_ts"], merges=z["merges"], visits=[dict(V) for V in z["visits"]])
+                 birth_bar=z["birth_bar"], born_ts=z["born_ts"], merges=z["merges"], visits=[dict(V) for V in z["visits"]],
+                 touches=z["touches"], retired_bar=z["retired_bar"], retired_by=z["retired_by"])
             for z in zones]
     wout = [dict(opened_at=w["opened_at"], band_id=w["band"]["id"], dir=w["dir"], kind=w["kind"],
                  opened_by_read=w["opened_by"], setup_i=w["setup_i"], outcome=w["outcome"], outcome_bar=w["outcome_bar"],

@@ -26,8 +26,12 @@ swings (Pine port) → protected level → CHoCH / BOS → AVWAP pair from previ
 | `ST2` | Strategy 2 | 5 min | touch | CHoCH candle | the foundation rules on 5-minute candles |
 | `ST3` | Strategy 3 | 1 min | **close** | previous swing | Strategy 1, CHoCH needs a close beyond the level |
 | `ST4` | Strategy 4 | 5 min | **close** | CHoCH candle | Strategy 2, CHoCH needs a close beyond the level |
-| `ST5` | Strategy 5 | 1 min | touch | previous swing | Strategy 1 SETUPs through the **Foundation-Zone gate** (`entry_rule: fz_v1`, see *FZ* below) |
-| `ST6` | Strategy 6 | 5 min | touch | CHoCH candle | Strategy 2 SETUPs through the Foundation-Zone gate |
+| `ST5` | Strategy 5 (FZ base) | 1 min | touch | previous swing | **FZ base**, band model: Strategy 1 SETUPs through the **Foundation-Zone gate** (`entry_rule: fz_v1`, see *FZ* below). Kept as the base; not to be traded (S39, S42) |
+| `ST6` | Strategy 6 (FZ base) | 5 min | touch | CHoCH candle | **FZ base**, band model: Strategy 2 SETUPs through the Foundation-Zone gate |
+| `ST7` | Strategy 7 | 1 min | touch | previous swing | **FZ v2, the living indicator on rooms** (`entry_rule: fz_v2`, `room_model: rooms`): a room is a band the market sat in, retired after 2 sessions without a visit; Strategy 1 SETUPs gated by the room card ([`FZ.md` §19](FZ.md#19-v2-rooms-strategies-7-8)) |
+| `ST8` | Strategy 8 | 5 min | touch | CHoCH candle | FZ v2 on rooms with Strategy 2 SETUPs (20-minute sit, rooms retired after 3 sessions) |
+| `ST9` | Strategy 9 | 1 min | touch | **managed** | Strategy 1's entries with **managed exits** (`position.exit: position`): 3 lots, stop 50 pts / 5% of premium = 1R, lot 1 out at 1R, lot 2 at 2R, last lot trails from 3R (1R ladder); no CHoCH exit (S43) |
+| `ST10` | Strategy 10 | 5 min | touch | **managed** | the same managed exits on Strategy 2's entries |
 
 Each file holds one strategy: `code`, `name`, `description`, design `timeframe`, `warmup_days`, `rules`
 (`break_mode`, `choch_mode`, `avwap_weight`, `sl_rule`, `entry_rule`, `exit_rule`), `lot_size`, `capital`, per-type charges and
@@ -55,12 +59,26 @@ removed are disabled in the database, never deleted.
   opening print); a target reached only on the candle where the stop is hit counts as not reached (stop first). A tranche
   whose target is never reached exits with the rest. Each tranche is a trade row (`lots`, `tranche` = `T1 +10` / `rest`)
   and is charged as its own round trip (so a scale-out pays one extra brokerage on entry — conservative).
+- **Managed exits** (`"exit": "position"`, Strategies 9–10): the strategy's own exit (next CHoCH, `rules.sl_rule`) is not used;
+  each position is run on its own candles (futures, or the option's premium) from the entry fill:
+  ```json
+  "position": { "lots": 3, "lock": "strike", "exit": "position",
+                "stop": { "futures_pts": 50, "option_pct": 5 },
+                "scale_out": [ { "lots": 1, "target_r": 1 }, { "lots": 1, "target_r": 2 } ],
+                "trail": { "start_r": 3, "lag_r": 1 } }
+  ```
+  R = `stop.futures_pts` for futures, `stop.option_pct` % of the entry premium for options; the stop starts 1R against the
+  entry. Per candle: the stop first (all open lots), then targets (`target_r` × R, or `target_pts`), then the trail — once
+  `start_r` full R have been reached (best price so far) the stop moves to (R reached − `lag_r`) × R and steps up by whole R,
+  applying from the next candle. Lots still open at the backtest end are valued there (`open`, *), option lots at their
+  contract's last candle (`expiry`). Exit reasons: `stop_loss`, `target 1R`, `target 2R`, `trail_stop`. Set `rules.sl_rule`
+  to `none` with it (a rule-based stop would make the engine refuse SETUPs whose swing sits on the wrong side).
 Changing any of these is a strategy change: its results get a new version in `results/history` (below).
 
 ## Strategy → type → scheme
 | Level | Values | Where it is set / seen |
 |---|---|---|
-| **Strategy** (`family`) | Strategy 1 … Strategy 6 | one card each: rules, timeframe, SL; the card's **options bar** holds option **expiry** (Weekly / Monthly) and **strike**, shared by both option types |
+| **Strategy** (`family`) | Strategy 1 … Strategy 8 | one card each: rules, timeframe, SL; the card's **options bar** holds option **expiry** (Weekly / Monthly) and **strike**, shared by both option types |
 | **Type** (one `strategy` row each) | Futures (`ST2`) · Options (via futures) (`ST2_FB`) · Options (standalone) (`ST2_NB`) | a row on the card |
 | **Scheme** | Long + short (default) · Long only · Short only | the Total / Long / Short columns on the card, and the scheme switch above the chart |
 | Position (per trade) | long / short | trades table |
@@ -83,6 +101,14 @@ days away, so expiry day rolls to the next week. Prices come from the local ICIC
 supply prices only: a strike picked from spot that is not in the file is **skipped and reported**, never substituted. A position
 still open at expiry closes at the contract's last candle (`expiry`). Coverage gaps: 15-Sep and 22-Sep expiries failed to
 download (5-minute); the local 1-minute files hold only 4–5 strikes per side, so 1-minute option variants price few signals.
+**Filling the missing strikes (`tools/breeze_options.py`, STRATEGY_ANALYSIS_TODO S41):** ICICI Breeze serves expired
+contracts, so the gap is closed with data, not a rule change. For each expiry it works out every strike any strategy's strike
+choice can pick from spot on the sessions that use that expiry (weekly and monthly, 1- and 5-minute candles) and fetches
+those not already in the files into the same `.chunks/options/<CE|PE>/<strike>/` layout (both intervals are read from there),
+then marks the expiry's `manifest.json` so stored results re-run. `--plan` shows the request count without logging in
+(2026-07-28 + 2026-08-25: 694 requests; every weekly and monthly expiry from July to 22 September: 1,374; Breeze allows
+5,000 a day). The login is yours: set `BREEZE_API_KEY`, `BREEZE_API_SECRET` and the day's `BREEZE_SESSION_TOKEN` in the
+environment (never stored) and `pip install breeze-connect` once.
 
 **Expiry type (`expiry_types = WEEKLY,MONTHLY`).** Option variants run once per expiry type × `strike_choices` entry; results
 are keyed `W-<strike>` / `M-<strike>` and the dashboard has Expiry and Strike selectors (default `W-ATR2`). Weekly = nearest
@@ -98,6 +124,9 @@ Look-ahead check: `python tests/test_truncation.py`.
 
 ## FZ: the Foundation-Zone gate (Strategies 5 and 6)
 > Builder's reference with every rule as coded, the lab wiring, the tests and the open decisions: [`FZ.md`](FZ.md).
+> **v2 (Strategies 7 and 8)** replaces the band memory below with rooms (born only from sits, never overlapping, retired after
+> `room_max_age_sessions` without a visit, named `<letter> <mm-dd hh:mm>`); the card, reads, gate and watch are the same code.
+> See [`FZ.md` §19](FZ.md#19-v2-rooms-strategies-7-8). Strategies 5 and 6 are the base (`room_model: bands`), bit for bit.
 
 `ST5` (Strategy 1 rules, 1 min) and `ST6` (Strategy 2 rules, 5 min) run the Foundation engine unchanged and then gate every
 Foundation SETUP against a memory of price bands (`rules.entry_rule = "fz_v1"`). `engine.py` is not modified: `fz.py` reads a
@@ -220,9 +249,10 @@ which moved two 1m positions; the permutation now splits by the SETUPs FZ traded
 | `config/data.json`, `config/charges.json` | **versioned** — input candle files, charge schedules |
 | `results/summary.json`, `results/trades.csv` | **versioned** latest headline numbers and trades — diff them across commits |
 | `results/history/<CODE>.json` | **versioned** — every version of a strategy (definition + result code) with its headline numbers per backtest and choice; the baseline each new version is read against |
-| `serve.py` | the dashboard server with the backtest queue (`python serve.py`) |
+| `serve.py`, `start_lab.cmd` | the dashboard server with the backtest queue (`python serve.py`, or double-click `start_lab.cmd`); binds its port exclusively and says so if it is taken |
+| `tests/test_position.py` | position handling on hand-made candles: managed exits, R targets, the ladder trail, first-candle fills, scale-out, the strike lock |
 | `results/fz_setups.csv`, `results/fz_ledger.csv` | **versioned** FZ gate ledger (one row per SETUP) and its per-run tables; written only by a full build |
-| `tools/` | Kite downloads: `kitefut.py` / `kite1m.py` futures, `kite_spot.py` index, `kite_options.py` option chain; credentials read at runtime from money-maker |
+| `tools/` | Kite downloads: `kitefut.py` / `kite1m.py` futures, `kite_spot.py` index, `kite_options.py` option chain (credentials read at runtime from money-maker); `breeze_options.py` fills expired option strikes from ICICI Breeze (credentials from the environment) |
 | `web/` | per-variant, per-strike detail JSON the dashboard loads (generated, not versioned) |
 | `tests/test_truncation.py` | look-ahead test (Foundation and FZ) |
 | `tests/test_fz_parity.py` | FZ: `simulate()` reproduces every Foundation trade, no trade fields in `fz.py`, the card does not depend on positions, every `fz` key has a source |
@@ -263,6 +293,7 @@ python lab.py --full          # recompute everything
 python lab.py ST1             # one strategy (partial run: stores it, does not rebuild dashboard.html or results/*)
 python lab.py backtest ST2 1Y # add a backtest to strategies/strategy_2.json and run it
 python serve.py               # then open http://localhost:8766/dashboard.html (python serve.py 8770 for another port)
+start_lab.cmd                 # the same, by double-click (keeps the window open)
 ```
 **Running backtests from the page (no terminal, no assistant):** open the dashboard through `python serve.py`. *+ backtest*
 then lists the presets (1M 3M 6M YTD 1Y 5Y, All data — ✓ = already a backtest of this strategy; dashed = the data does not

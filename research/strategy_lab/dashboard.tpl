@@ -2,11 +2,8 @@
 <title>Strategy dashboard</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--ink:#16181d;--muted:#6b7280;--line:#e6e8ec;--up:#089981;--dn:#f23645;--acc:#2962ff;--pur:#7b1fa2;--amb:#b45309;--rad:10px}
-/* page colour tokens: Classic values here, palettes below override them. --up --dn --acc --pur stay the chart's own colours */
-:root{--pnl-up:#089981;--pnl-dn:#f23645;--sel:#2962ff;--sel-bg:#e8eeff;--hover:#f3f6ff;--cur-bg:#f8faff;--link:#2962ff;--subtle:#fafbfc;--long-bg:#e6f6f2;--long-fg:#067a66;--short-bg:#fdecee;--short-fg:#c0272f;--warn-fg:#b45309;--warn-star:#d97706;--warn-bg:#fff4e0;--warn-line:#f5d9a8;--warn-ink:#8a5a00;--h0:#ebedf0;--hp1:#c6e9dc;--hp2:#8fd3bb;--hp3:#4db894;--hp4:#089981;--hn1:#fbd3d6;--hn2:#f5a3aa;--hn3:#ee6f7a;--hn4:#e03444}
-:root[data-palette="clear"]{--pnl-up:#0a7d62;--pnl-dn:#c0392b;--sel:#2954d9;--sel-bg:#eef2ff;--hover:#f5f7fb;--cur-bg:#f8f9fc;--link:#2954d9;--long-bg:#eef1f5;--long-fg:#1f2937;--short-bg:#f3f4f6;--short-fg:#4b5563;--warn-fg:#a16207;--warn-star:#a16207;--warn-bg:#fef7e6;--warn-line:#f1d9a6;--warn-ink:#7a4f05;--h0:#eceef1;--hp1:#d5eee4;--hp2:#9dd4bf;--hp3:#4fae8d;--hp4:#0a7d62;--hn1:#f6dad7;--hn2:#eba7a0;--hn3:#d9695e;--hn4:#c0392b}
-:root[data-palette="cb"]{--pnl-up:#1f5fa8;--pnl-dn:#c2410c;--sel:#4338ca;--sel-bg:#eef0ff;--hover:#f5f6fb;--cur-bg:#f8f8fc;--link:#4338ca;--long-bg:#eef1f5;--long-fg:#1f2937;--short-bg:#f3f4f6;--short-fg:#4b5563;--warn-fg:#92400e;--warn-star:#92400e;--warn-bg:#fdf6e7;--warn-line:#ecd5a4;--warn-ink:#6b3a0a;--h0:#eceef1;--hp1:#dbe8f5;--hp2:#a9c7e6;--hp3:#5b90c9;--hp4:#1f5fa8;--hn1:#fbe3d4;--hn2:#f3b894;--hn3:#e07b43;--hn4:#c2410c}
-.sw3{display:inline-flex;gap:2px;margin-right:8px;vertical-align:-1px}.sw3 i{width:10px;height:10px;border-radius:2px;display:inline-block}
+/* page colour tokens (money, selection, pills, warnings, heatmap). --up --dn --acc --pur stay the chart's own colours */
+:root{--pnl-up:#0a7d62;--pnl-dn:#c0392b;--sel:#2954d9;--sel-bg:#eef2ff;--hover:#f5f7fb;--cur-bg:#f8f9fc;--link:#2954d9;--subtle:#fafbfc;--long-bg:#eef1f5;--long-fg:#1f2937;--short-bg:#f3f4f6;--short-fg:#4b5563;--warn-fg:#a16207;--warn-star:#a16207;--warn-bg:#fef7e6;--warn-line:#f1d9a6;--warn-ink:#7a4f05;--h0:#eceef1;--hp1:#d5eee4;--hp2:#9dd4bf;--hp3:#4fae8d;--hp4:#0a7d62;--hn1:#f6dad7;--hn2:#eba7a0;--hn3:#d9695e;--hn4:#c0392b}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .wrap{max-width:1600px;margin:0 auto;padding:12px 16px 40px}
@@ -119,7 +116,6 @@ svg text{font:10px system-ui;fill:#6b7280}
 .hmstats b{font-size:14px}.hmstats small{display:block;color:var(--muted);font-size:11px}
 .hmmon{position:relative;display:block;height:14px}.hmmon span{position:absolute;top:0}
 </style>
-<script>(()=>{const ok=['clear','cb','classic'],q=new URLSearchParams(location.search).get('palette');let p='clear';try{p=JSON.parse(localStorage.getItem('palette')||'"clear"')||'clear';}catch(e){}if(ok.includes(q)){p=q;try{localStorage.setItem('palette',JSON.stringify(q));}catch(e){}}document.documentElement.dataset.palette=ok.includes(p)?p:'clear';})();</script>
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 </head><body><div class="wrap">
 <div id="head" class="card head"></div>
@@ -233,10 +229,6 @@ const rng=r=>r&&r.date_from?`${fmtD(r.date_from)} – ${fmtD(r.date_to)} ${r.dat
 const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 const SNAME=m=>m.strategy_name||m.name.split(' · ').slice(0,2).join(' · ');
 const SABOUT=m=>m.strategy_description||m.description||'';
-const PALETTES=[{k:'clear',name:'Clear',note:'default · darker green and red that stay readable at small sizes; long and short pills neutral',sw:['#0a7d62','#c0392b','#2954d9','#a16207']},
-  {k:'cb',name:'Colour-blind safe',note:'blue for profit, orange for loss, violet for selection',sw:['#1f5fa8','#c2410c','#4338ca','#92400e']},
-  {k:'classic',name:'Classic',note:'the previous colours',sw:['#089981','#f23645','#2962ff','#d97706']}];
-const curPal=()=>document.documentElement.dataset.palette||'clear';
 const pctw=x=>x&&x.trades?Math.round(100*x.wins/x.trades)+'%':'—';
 function renderHeader(){
   const f=ST.fam,rs=rowsOf(f),m0=rs[0],runs=runsOf(f),r=runs[S().run],dtf=designTf(f);
@@ -252,7 +244,7 @@ function renderHeader(){
   const alts=Object.entries(runs).filter(([k,x])=>x.label===r.label&&x.kind===r.kind&&x.status==='ok').sort((a,b)=>b[1].design-a[1].design);
   const tfCtl=alts.length>1?`<span class="lbl">Candles</span><span class="seg sm" id="tfSeg">${alts.map(([k,x])=>`<button data-k="${k}" class="${k===S().run?'on':''}">${TFS[x.timeframe]}${x.design?' · design':''}</button>`).join('')}</span>`:'';
   const addCmds=`<small class="sub">Run in research/strategy_lab, then reload:</small><code>python lab.py backtest ${f} 1Y\npython lab.py backtest ${f} YTD\npython lab.py backtest ${f} 2026-07-10 2026-08-10 --label "July"\n${['minute','3minute','5minute','15minute','30minute'].filter(t=>!alts.some(([k,x])=>x.timeframe===t)).map(t=>`python lab.py backtest ${f} ${r.kind==='all'?'all':r.kind==='preset'?r.preset:r.date_from+' '+r.date_to} --tf ${t} --label "${r.label}"`).join('\n')}</code><small class="sub">Data covers ${fmtD(DATA_RANGE[0])} ${DATA_RANGE[0].slice(0,4)} – ${fmtD(DATA_RANGE[1])} ${DATA_RANGE[1].slice(0,4)}; a backtest the data cannot cover is refused.</small>`;
-  const rules=`<div style="margin-bottom:4px">${esc(SABOUT(m0))}</div><b>Rules</b> — swings (Pine port) → protected level (unbroken swing beyond the trend AVWAP) → CHoCH by ${m0.choch_mode??m0.break_mode}, BOS by ${m0.break_mode} → AVWAP pair from the previous SH and SL at each CHoCH → SETUP (both AVWAPs sloping with the CHoCH and a close beyond the CHoCH candle) → exit on stop loss (${m0.sl_rule.replace('_',' ')}) or the next CHoCH.
+  const rules=`<div style="margin-bottom:4px">${esc(SABOUT(m0))}</div><b>Rules</b> — swings (Pine port) → protected level (unbroken swing beyond the trend AVWAP) → CHoCH by ${m0.choch_mode??m0.break_mode}, BOS by ${m0.break_mode} → AVWAP pair from the previous SH and SL at each CHoCH → SETUP (both AVWAPs sloping with the CHoCH and a close beyond the CHoCH candle) → ${m0.position&&m0.position.exit==='position'?`managed exit: ${m0.position.lots} lots, stop ${m0.position.stop.futures_pts} pts (futures) / ${m0.position.stop.option_pct}% of premium (options) = 1R`+(m0.position.scale_out||[]).map((x,i)=>`, lot ${i+1} out at ${x.target_r!=null?x.target_r+'R':'+'+x.target_pts}`).join('')+(m0.position.trail?`, the rest trails from ${m0.position.trail.start_r}R (${m0.position.trail.lag_r}R behind the best R reached)`:'')+'; no CHoCH exit.':`exit on stop loss (${m0.sl_rule.replace('_',' ')}) or the next CHoCH.`}
     <span class="sub"> · designed on ${TFS[dtf]} candles · warm-up ${m0.warmup_days} sessions · AVWAP ${m0.avwap_weight}-weighted · slippage futures 5 / options 0.5 pt per side</span>`;
   // option settings: once, across the option columns
   const opts=rs.filter(m=>m.variant!=='FUT'),nf=rs.length-opts.length,o=opts[0];
@@ -264,13 +256,13 @@ function renderHeader(){
        <span>${S().strike.startsWith('ATR')?`spot ± ${S().strike.slice(3)}×ATR(${o.atr_period}), OTM`:'from spot'}</span><span class="sp" style="flex:1"></span><span>applies to both option types</span></div>`;}
   const col=m=>{const on=m.code===cur.code,sch=schemeOf(m),all=statOf(m,'BOTH');
     const cv=m.variant==='FUT'?`<div class="cov">exchange futures · every signal priced</div>`
-      :`<div class="cov ${all&&all.skipped?'thin':''}">${!all?'not run':all.skipped?`${all.trades} of ${all.trades+all.skipped} positions priced · ${all.skipped} without option data`:`all ${all.trades} positions priced`}</div>`;
+      :`<div class="cov ${all&&all.skipped?'thin':''}">${!all?'not run':all.skipped?`${all.trades} of ${all.trades+all.skipped} positions priced · ${all.skipped} without option data`:`all ${all.trades} ${LOTS(m)>1?'lot exits':'positions'} priced`}</div>`;
     const row=x=>{const st=statOf(m,x);return `<div class="srow ${on&&sch===x?'on':''}" data-c="${m.code}" data-s="${x}" title="${esc(SDESC(m,x))}${st?` · PF ${st.pf??'—'}`:''}"><span>${SCH[x]}</span><span class="n ${st?cl(st.net_inr):''}">${st?inr(st.net_inr):'—'}</span><span class="m">${st?`${st.trades} trades · ${pctw(st)}`:''}</span></div>`;};
     const sides=m.variant==='FUT'?'':`<div class="sides">${['CE','PE'].map(x=>{const st=statOf(m,x);return `<span class="sd ${on&&sch===x?'on':''}" data-c="${m.code}" data-s="${x}" title="${esc(SDESC(m,x))}">${x} side <b class="${st?cl(st.net_inr):''}">${st?inr(st.net_inr):'—'}</b></span>`;}).join(' · ')}</div>`;
     return `<div class="col ${on?'cur':''}"><h4 data-c="${m.code}">${TYPE[m.variant]}</h4>${cv}${['BOTH','LONG','SHORT'].map(row).join('')}${sides}</div>`;};
   $('head').innerHTML=`<div class="hbar"><span class="brand">Strategy lab</span>${stratCtl}<span class="pipe">|</span>${btCtl}<span class="dates">${r.status==='ok'?rng(r):''}</span>${tfCtl}
       ${r.timeframe!==dtf?`<span class="badge">rules built for ${TFS[dtf]}</span>`:''}<span class="sp"></span>
-      <span id="jobBadge"></span><span class="menu"><span class="link" id="addL">+ backtest</span><div class="pop" id="addP" style="left:auto;right:0;padding:8px 10px">${backtestPanel(f,r,runs,addCmds)}</div></span><span class="menu"><span class="link" id="palL">Colours ▾</span><div class="pop" id="palP" style="left:auto;right:0;min-width:300px">${PALETTES.map(p=>`<div class="it ${curPal()===p.k?'on':''}" data-p="${p.k}"><span class="sw3">${p.sw.map(c=>`<i style="background:${c}"></i>`).join('')}</span>${p.name}<small>${p.note}</small></div>`).join('')}</div></span><span class="link" id="rulesL">Rules ${ST.rules?'▴':'▾'}</span></div>
+      <span id="jobBadge"></span><span class="menu"><span class="link" id="addL">+ backtest</span><div class="pop" id="addP" style="left:auto;right:0;padding:8px 10px">${backtestPanel(f,r,runs,addCmds)}</div></span><span class="link" id="rulesL">Rules ${ST.rules?'▴':'▾'}</span></div>
     <div id="rules" class="${ST.rules?'on':''}">${rules}</div>
     <div class="cols" style="grid-template-columns:repeat(${rs.length},minmax(0,1fr))">${optRow}${rs.map(col).join('')}</div>`;
   const go=()=>{saveAll();openType(true);};
@@ -293,8 +285,6 @@ function renderHeader(){
   $('addL').onclick=e=>{e.stopPropagation();$('addP').classList.toggle('on');};
   $('addP').onclick=e=>e.stopPropagation();
   wireBacktestPanel(f,r);
-  $('palL').onclick=e=>{e.stopPropagation();document.querySelectorAll('.pop').forEach(x=>x!==$('palP')&&x.classList.remove('on'));$('palP').classList.toggle('on');};
-  document.querySelectorAll('#palP .it').forEach(it=>it.onclick=e=>{e.stopPropagation();document.documentElement.dataset.palette=it.dataset.p;save_('palette',it.dataset.p);renderHeader();});
   $('rulesL').onclick=()=>{ST.rules=!ST.rules;saveAll();$('rules').classList.toggle('on',ST.rules);$('rulesL').textContent='Rules '+(ST.rules?'▴':'▾');};
 }
 document.addEventListener('click',()=>document.querySelectorAll('.pop').forEach(x=>x.classList.remove('on')));
@@ -469,7 +459,7 @@ function drawChart(CH_,single,range){
   const byT=new Map(C.map(r=>[r[0],r]));
   // FZ card of the hovered bar, from its as-of Z row: band and edges · visit n · this / first visit bars · volume ratio · read
   const byZ=new Map(Z.map(z=>[z[0],z])),ZI=new Map(ZONES.map(z=>[z[0],z])),RD=D&&D.fz?D.fz.legend.read:[];
-  const zn=id=>id[0]+id.slice(6,17);                                          // 'B2026-07-01 11:41:00' -> 'B07-01 11:41'
+  const zn=id=>/^[AB]\d{4}-/.test(id)?id[0]+id.slice(6,17):id;               // 'B2026-07-01 11:41:00' -> 'B07-01 11:41'; a room id ('E 09-03 12:20') prints whole
   // the ratio is NA when this visit or the band's first visit is volume-NA (as the gate reads it); fvna is absent in older chunks
   const zcard=z=>{if(!z)return '';const [,id,vn,tb,tv,fb,fv,rc,left,,vna,,,,,fvna]=z,b=id&&ZI.get(id),rd=RD[rc]||'';
     const band=id?`Z ${zn(id)}${b?` ${b[2]}–${b[3]}`:''} · visit ${vn} · ${tb}/${fb??'—'} bars · vol ${!vna&&!fvna&&tv!=null&&fv?(tv/fv).toFixed(2):'NA'}`:'no band';
@@ -500,7 +490,7 @@ const allTrades=()=>D.trades.map(([otype,instr,strike,cht,et,ep,sl,xt,xp,why,pts
 const sel=()=>allTrades().filter(t=>inSch(t,schemeOf(cur)));
 const sessionsOf=()=>[...new Set(D.charts.map(c=>c.day).filter(Boolean))].sort();
 const sigName=t=>!t.sig?'—':cur.variant==='OPT_NATIVE'?(t.sig==='BULLISH'?'Bullish (option chart)':'Bearish (option chart)'):(t.sig==='BULLISH'?'Future long':'Future short');
-const WHY={stop_loss:'SL',next_choch:'CHoCH',expiry:'Expiry',open:'open*',band_reclaim:'Band'};
+const WHY={stop_loss:'SL',next_choch:'CHoCH',expiry:'Expiry',open:'open*',band_reclaim:'Band',trail_stop:'Trail'};
 function statsOf(T){const net=T.map(t=>t.net);let eq=0,pk=0,dd=0;for(const v of net){eq+=v;pk=Math.max(pk,eq);dd=Math.min(dd,eq-pk);}
   const n=net.length,m=n?net.reduce((a,b)=>a+b,0)/n:0,sd=n>1?Math.sqrt(net.reduce((a,v)=>a+(v-m)**2,0)/(n-1)):0;
   const wins=net.filter(v=>v>0),loss=net.filter(v=>v<=0),sl=loss.reduce((a,b)=>a+b,0);
@@ -508,10 +498,14 @@ function statsOf(T){const net=T.map(t=>t.net);let eq=0,pk=0,dd=0;for(const v of 
     pf:loss.length&&sl?+(wins.reduce((a,b)=>a+b,0)/-sl).toFixed(2):null,t_stat:sd?+(m/(sd/Math.sqrt(n))).toFixed(2):null,mean:m,sd};}
 const tradeMin=(t,sess)=>{const hm=s=>+s.slice(11,13)*60+ +s.slice(14,16);const d0=t.et.slice(0,10),d1=t.xt.slice(0,10);if(d0===d1)return hm(t.xt)-hm(t.et);
   const between=sess.filter(d=>d>d0&&d<d1).length;return (930-hm(t.et))+375*between+(hm(t.xt)-555);};
-const capitalFor=T=>{const m=cur;if(m.variant==='FUT')return {cap:m.capital_fut,how:`futures margin ₹${(m.capital_fut/1e5).toFixed(1)}L per lot`};
-  if(T.some(t=>t.pos==='SHORT'))return {cap:m.capital_opt_short,how:`short-option margin ₹${(m.capital_opt_short/1e5).toFixed(1)}L per lot`};
-  const prem=T.length?sum(T,t=>t.ep*m.lot_size)/T.length:0;return {cap:prem,how:`average premium paid ${inr(prem)} per trade`};};
-const riskPts=t=>(cur.variant==='OPT_FUT_SIGNAL'||t.sl==null)?null:Math.abs(t.ep-t.sl);   // R needs the stop in the traded instrument
+// capital scales with the lots a position is opened with (position.lots)
+const LOTS=m=>(m.position&&m.position.lots)||1,MANAGED=m=>!!(m.position&&m.position.exit==='position');
+const capitalFor=T=>{const m=cur,L=LOTS(m),per=L>1?` × ${L} lots`:' per lot';
+  if(m.variant==='FUT')return {cap:m.capital_fut*L,how:`futures margin ₹${(m.capital_fut/1e5).toFixed(1)}L${per}`};
+  if(T.some(t=>t.pos==='SHORT'))return {cap:m.capital_opt_short*L,how:`short-option margin ₹${(m.capital_opt_short/1e5).toFixed(1)}L${per}`};
+  const prem=T.length?sum(T,t=>t.ep*m.lot_size)/T.length*L:0;return {cap:prem,how:`average premium paid ${inr(prem)} per position${L>1?` (${L} lots)`:''}`};};
+// R needs the stop in the traded instrument: options via futures carry the futures stop, except under managed exits
+const riskPts=t=>((cur.variant==='OPT_FUT_SIGNAL'&&!MANAGED(cur))||t.sl==null)?null:Math.abs(t.ep-t.sl);
 
 // ================= below the chart
 // the previous version of this strategy (results/history), same backtest and choice, long + short (the history keeps totals)
@@ -525,15 +519,18 @@ function baselineTile(){
     `<div class="v ${d!=null?cl(d):''}">${d!=null?(d>=0?'+':'')+inr(d):'—'}</div><div class="s">was ${inr(o.net_inr)} · ${o.trades} trades · PF ${o.pf??'—'} → now ${n?n.trades:'—'} trades · PF ${n&&n.pf!=null?n.pf:'—'}</div></div>`;}
 function renderBelow(){
   const m=cur,LOT=m.lot_size,T=sel(),sch=schemeOf(m),s=statsOf(T);
-  const skipped=D.skipped.filter(x=>sch==='BOTH'||(sch==='LONG'||sch==='SHORT'?(!x.position||x.position===sch):(!x.opt_type||x.opt_type===sch))).length;
+  // incomplete = positions without option data; signals refused by the strike lock are a rule, not missing data
+  const skipped=D.skipped.filter(x=>!String(x.why||'').startsWith('strike locked')).filter(x=>sch==='BOTH'||(sch==='LONG'||sch==='SHORT'?(!x.position||x.position===sch):(!x.opt_type||x.opt_type===sch))).length;
+  const npos=new Set(T.map(t=>t.et+'|'+t.instr+'|'+t.pos)).size,split=T.some(t=>t.tranche);
   const cv=skipped?{text:`Incomplete: ${s.trades} of ${s.trades+skipped} positions priced.`}:null;
   const exR=T.map(t=>{const rp=riskPts(t);return rp?t.pts/rp:null;}).filter(v=>v!=null);
   // FZ: the random-control percentile sits beside net wherever FZ net is shown (its net is mostly avoided costs); the control
   // is over the whole book, so a one-side scheme says so instead
   const fc=D.fz&&D.fz.control,fzs=!fc?null:sch==='BOTH'&&fc.fz_pct!=null?`random control ${fc.fz_pct.toFixed(1)}th pct · kept-vs-refused p ${D.fz.permutation.p??'—'}`:'gross − charges · FZ control: long + short only';
   $('kpis').innerHTML=[['Net P&L',inr(s.net_inr)+star(cv),cv?`<span style="color:var(--warn-ink)">incomplete · ${s.trades} of ${s.trades+skipped} priced</span>${fzs?' · '+fzs:''}`:(fzs||'gross − charges'),cl(s.net_inr)],
-    ['Trades',s.trades+(skipped?` of ${s.trades+skipped}`:''),`${T.filter(t=>t.pos==='LONG').length} long · ${T.filter(t=>t.pos==='SHORT').length} short`,''],
-    ['Win rate',s.trades?Math.round(100*s.wins/s.trades)+'%':'—',`${s.wins} wins`,''],
+    split?['Positions',npos+(skipped?` of ${npos+skipped}`:''),`${s.trades} lot exits · ${new Set(T.filter(t=>t.pos==='LONG').map(t=>t.et+t.instr)).size} long · ${new Set(T.filter(t=>t.pos==='SHORT').map(t=>t.et+t.instr)).size} short`,'']
+      :['Trades',s.trades+(skipped?` of ${s.trades+skipped}`:''),`${T.filter(t=>t.pos==='LONG').length} long · ${T.filter(t=>t.pos==='SHORT').length} short`,''],
+    ['Win rate',s.trades?Math.round(100*s.wins/s.trades)+'%':'—',`${s.wins} wins${split?' of '+s.trades+' lot exits':''}`,''],
     ['Profit factor',s.pf??'—','net wins ÷ net losses',''],
     ['Max drawdown',inr(s.max_dd_inr),'peak to trough, by trade',s.max_dd_inr<0?'neg':''],
     ['Expectancy',inr(s.mean),exR.length?`${fmt(exR.reduce((a,b)=>a+b,0)/exR.length,2)} R per trade`:'per trade',cl(s.mean)]]
@@ -602,7 +599,7 @@ function renderBreakdown(T){
   const grp=(title,keyOf)=>{const g={};T.forEach(t=>(g[keyOf(t)]??=[]).push(t));
     return `<div class="card mt"><h3>${title}</h3><table><thead><tr><th></th><th class="num">Trades</th><th class="num">Win %</th><th class="num">Net ₹</th><th class="num">Avg ₹</th><th class="num">Avg max profit</th><th class="num">Avg max loss</th></tr></thead><tbody>`+
     Object.keys(g).sort().map(k=>{const a=g[k],n=sum(a,t=>t.net);return `<tr><td>${k}</td><td class="num">${a.length}</td><td class="num">${Math.round(100*a.filter(t=>t.net>0).length/a.length)}%</td><td class="num ${cl(n)}">${inr(n)}</td><td class="num ${cl(n)}">${inr(n/a.length)}</td><td class="num pos">${fmt(sum(a,t=>t.mfe)/a.length)}</td><td class="num neg">${fmt(sum(a,t=>t.mae)/a.length)}</td></tr>`;}).join('')+'</tbody></table></div>';};
-  $('p-bdown').innerHTML=`<div class="grid2">${grp('By position',t=>t.pos==='LONG'?'Long':'Short')}${grp('By signal',sigName)}${grp('By instrument',t=>t.otype)}${grp('By exit reason',t=>({stop_loss:'Stop loss',next_choch:'Next CHoCH',expiry:'Expiry',open:'Open at end',band_reclaim:'Band reclaim'})[t.why])}${grp('By entry time',t=>{const hm=t.et.slice(11,16);return hm<'10:30'?'09:15–10:30':hm<'12:00'?'10:30–12:00':hm<'13:30'?'12:00–13:30':'13:30–15:30';})}${grp('By holding',t=>t.et.slice(0,10)===t.xt.slice(0,10)?'Intraday':'Overnight')}</div>`;}
+  $('p-bdown').innerHTML=`<div class="grid2">${grp('By position',t=>t.pos==='LONG'?'Long':'Short')}${grp('By signal',sigName)}${grp('By instrument',t=>t.otype)}${grp('By exit reason',t=>({stop_loss:'Stop loss',next_choch:'Next CHoCH',expiry:'Expiry',open:'Open at end',band_reclaim:'Band reclaim',trail_stop:'Trail stop'})[t.why]||t.why)}${grp('By entry time',t=>{const hm=t.et.slice(11,16);return hm<'10:30'?'09:15–10:30':hm<'12:00'?'10:30–12:00':hm<'13:30'?'12:00–13:30':'13:30–15:30';})}${grp('By holding',t=>t.et.slice(0,10)===t.xt.slice(0,10)?'Intraday':'Overnight')}</div>`;}
 function renderSignals(){
   const F=D.fz,fr=new Map(),GP={TAKE:'long',REENTER:'long',WATCH:'grey',BLOCK:'short'};   // FZ: the card's read and the gate, joined on the SETUP time
   if(F){const {cols,rows}=F.ledger,[iT,iR,iG,iOG]=['time','read','gate','outcome_gate'].map(k=>cols.indexOf(k));rows.forEach(x=>fr.set(x[iT],[x[iR],x[iG],iOG>=0?x[iOG]:x[iG]]));}
@@ -680,7 +677,7 @@ function renderFZ(){
       ['Closes back inside the band just left while another band holds the visit (no new visit on it)',cd.leave_return_no_visit??'—']],
       `Reads by bar (%): ${F.legend.read.filter(x=>(cd.reads||{})[x]!=null).map(x=>`${x} ${cd.reads[x]}`).join(' · ')}. Reads at SETUP: ${kv(s.reads_at_setup)}.`)];
   // the ledger: one row per Foundation SETUP; a click opens the chart at it
-  const L=F.ledger,ix=Object.fromEntries(L.cols.map((k,i)=>[k,i])),g=(rw,k)=>rw[ix[k]],tsOf=x=>Date.parse(x.replace(' ','T')+'Z')/1000,zn=id=>id?id[0]+id.slice(6,17):'—';
+  const L=F.ledger,ix=Object.fromEntries(L.cols.map((k,i)=>[k,i])),g=(rw,k)=>rw[ix[k]],tsOf=x=>Date.parse(x.replace(' ','T')+'Z')/1000,zn=id=>!id?'—':/^[AB]\d{4}-/.test(id)?id[0]+id.slice(6,17):id;
   const ratio=rw=>!g(rw,'vol_na')&&!g(rw,'first_vol_na')&&g(rw,'this_vol')!=null&&g(rw,'first_vol')?(g(rw,'this_vol')/g(rw,'first_vol')).toFixed(2):'NA';
   // og = the gate the SETUP ended with (ledgers built before outcome_gate existed fall back to the gate at the SETUP bar)
   const og=rw=>ix.outcome_gate!=null?g(rw,'outcome_gate'):g(rw,'gate');

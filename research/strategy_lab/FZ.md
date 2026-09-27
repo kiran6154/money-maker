@@ -1,5 +1,9 @@
 # How the Foundation-Zone gate (Strategies 5 and 6) is built
 
+> **v2 (Strategies 7 and 8): rooms instead of bands.** Sections 1–18 describe the first build, now tagged *FZ base*
+> (`room_model = "bands"`, Strategies 5 and 6, unchanged bit for bit). Section 19 describes the room model that Strategies 7 and 8
+> run through the same card, gate and watch code.
+
 This is the builder's view of FZ: what each module does, the exact rules as coded, how the lab runs and stores it, what the dashboard shows, what the tests guarantee, and what is still a user decision. The user-level summary is the *FZ* section of [`README.md`](README.md); the evaluation that produced the design is `FZ_reevaluation_2026-09-27.md` (session scratchpad; its decision ids M01–M47, C01–C08, D01–D11 are what the `source` tags in the strategy files point at).
 
 Everything below describes the code on disk on 2026-09-27: `fz.py`, `fz_exec.py`, `fz_report.py`, `strategies/strategy_5.json`, `strategies/strategy_6.json`, the FZ parts of `lab.py` and `dashboard.tpl`, `tests/test_fz_parity.py` and the FZ cases in `tests/test_truncation.py`. `engine.py` was not changed.
@@ -310,3 +314,74 @@ Recorded in `docs/STRATEGY_ANALYSIS_TODO.md`; no seeded value changes without co
 - `hunt_max_bars` cannot bind under either seeded HUNT form; it is kept as the spec's number and documented as reserved.
 - The pricing loop enforces one open position per option instrument (strike, expiry, right), processing exits before entries; a skipped leg goes to `skipped` with a `strike locked` reason and is never priced. FZ never holds two futures positions at once, so the lock can only touch an option leg entered on the exact bar another leg on the same strike exits.
 - The 1M preset resolves to the same dates as the Design period on this tape; both rows are published and their control percentiles differ only through the run label in the seed.
+
+---
+
+## 19. v2: rooms (Strategies 7, 8)
+
+**Why.** The user's verdict on the base (2026-09-27): the card named tiles, not rooms. Zones were born at every protected level and every cluster sit, absorbed into a permanent 20-point mesh and never retired, so on 3 Sep the card said `B07-23 14:52 visit 7` (and `B07-02 10:31 visit 51` elsewhere) where the user saw one afternoon box; every LEAVE was a step from tile A into tile B; the first clock was a July sit, so the volume ratio was NA on the only window with volume; REENTER fired on tile edges. Median visit_n at a 1m SETUP was 19, FIRST_PRINT at SETUP 0, and the gate sat at the 6th percentile of its random control (S39). v2 changes identity only: what a room is, when it is born, when it dies, what it is called. Reads, precedence, PENDING, LEAVE liveness, REJECT, the gate's order and branches, `leave_far_side`, the watch machine, `fz_exec` and `fz_report` are the same code. Recorded as S42 in `docs/STRATEGY_ANALYSIS_TODO.md`.
+
+**Room model** (`room_model = "rooms"`, in `fz.py` next to the band model; `bands` is the base):
+
+1. **Birth only from sits.** A room is born on the transition into a sit (the last `cluster_bars` closes of one session within `cluster_width`), centred on the sit's `(max + min) / 2`, ± `band_half_width`, origin = the sit's first bar; visit 1 is that sit, replayed over the window only. No drift births (`drift_birth = false`) and no swing births (`birth_a_source = "none"`; `protected_level` / `every_swing` still work in either model, as diagnostics).
+2. **No mesh.** A sit overlapping a live room by at least `merge_overlap` of the width (with 0.5: its mid is inside the room) is a visit of that room, never a birth; it takes the live visit when its close is inside that room (below). Two live rooms never overlap (a shared edge is allowed). A sit that overlaps live rooms by less than `merge_overlap` is a new room, and `room_overlap` says how the overlap is removed: **`supersede`** (seeded): the new room keeps its full width and the rooms it overlaps are retired on its birth bar (`retired_by = superseded`); `clip`: the new room's edges stop at the neighbours' edges. Retired rooms absorb nothing and contain no price.
+3. **Rooms retire.** On a session's first bar, a room with no inside close in the last `room_max_age_sessions` sessions (`session - last session with an inside close > room_max_age_sessions`) is retired (`retired_by = retired`), unless it holds the live visit. A new sit at a retired room's price is a new room with a new name and its own first clock. A LEAVE still live on a room that retires ends (`leave_end_retired`).
+4. **Names.** `zone_id = "<letter> <mm-dd hh:mm>"`: the letter is the room's birth order within its birth session (A … Z, then AA, AB …), the time its birth bar. Rooms keep `kind = "B"` (sit-born; `A` only under a swing `birth_a_source`), so the Zone-gate tab's zone-kind table and the chart colours work unchanged.
+5. **Visits and touches.** A stay with fewer than `visit_min_bars` inside closes that ends by the leave rule is a *touch*: it keeps its record (`touch: true`), does not advance `visit_n`, and is counted on the room and on the card (`touches`). Visit numbers are as-of: the current stay counts as a visit while it lasts. The first visit (`first_bars`, `first_vol`) and the previous visit (`volume_base = previous`, `prev_bars`) are the first / previous stay that is not a touch. With `visit_min_bars = 1` no stay can be a touch (a stay opens on an inside close), which is how the base stays unchanged.
+6. **The live visit follows the sit.** When a room is born, or a sit is absorbed by a live room, while another room holds the live visit and the sit's close is inside the new (or absorbing) room, the old visit ends at the previous bar (`ended_by = sit_moved`, no LEAVE is recorded) and the room the market sits in takes the visit (the base instead cuts the newborn zone's replayed visit, `ref_live`). A room retired by supersession while it holds the visit with no room taking over ends its visit with `ended_by = superseded`.
+7. **Leave and hunt.** `leave_closes` 1m 3, 5m 2 (so HUNT and LEAVE do not overlap on 1m). The close-form HUNT is `1 ≤ outside run ≤ hunt_max_bars` closes on one side, then a close back inside (the base only ever had a run of 1); the burst test takes the loudest of those outside bars and is skipped when any of them is volume-NA (identical to the base for a run of 1). The 5m wick form is unchanged.
+8. **First clock and volume** come from visit 1 of this room, born in the memory horizon, so on the Design window they are live; NA handling is unchanged.
+
+**Keys** (all four files carry all of them; the base values keep Strategies 5 and 6 unchanged, source `evaluation:v2 (base model, no behaviour change)`):
+
+| key | ST5 / ST6 (base) | ST7 (1m) | ST8 (5m) | source |
+|---|---|---|---|---|
+| `room_model` | bands | rooms | rooms | evaluation:v2 (user brief) |
+| `room_overlap` | supersede (not read) | supersede | supersede | evaluation:v2 (build: "two live rooms never overlap"); kept by user decision 2026-09-27 call 2; see below |
+| `same_session_overlap` | keep_older (not read) | keep_older | keep_older | user decision 2026-09-27 call 2 |
+| `drift_birth` | true | false | false | evaluation:v2 |
+| `room_max_age_sessions` | null | 2 | 3 | evaluation:v2 ("yesterday's shelf, not a two-month hash") |
+| `visit_min_bars` | 1 | 2 | 1 | evaluation:v2 |
+| `birth_a_source` | protected_level | none | none | evaluation:v2 |
+| `leave_closes` | 2 | 3 | 2 | user brief |
+| `hunt_max_bars` | 3 / 1 | 2 | 1 | user brief |
+| `cluster_bars` | 10 / 6 | 10 | 4 (the 20-minute sit) | user brief |
+
+`fz.check()` refuses a missing key, `room_model` / `room_overlap` outside their choices, a non-boolean `drift_birth`, a negative `room_max_age_sessions`, and `visit_min_bars` below 1. Every other key of Strategies 7 and 8 is copied from Strategies 5 and 6.
+
+**`room_overlap` is a build choice, not in the plan.** The plan says both "a sit overlapping a live room by less than `merge_overlap` is a new room" and "two live rooms never overlap", which contradict each other for a partial overlap. The first build clipped (`clip`): on 1m it clipped 131 of 226 rooms and left slivers (on 2 Sep `D 09-02 12:45` was 0.65 points wide, `F 09-02 14:38` 10.25), and on 3 Sep the afternoon box was split between two 2 Sep fragments with a 13-visit neighbour: the 10-point stagger the verdict rejects. `supersede` keeps every room the width and mid of a real sit. The cost is memory: a room superseded by a partly overlapping sit is gone even if price later returns to it. Both options stay in code; `clip` is the named alternative and is never seeded.
+
+**User decisions 2026-09-27 (after the first acceptance run).** (1) Room E (`E 09-03 12:20 · 24029.5–24049.5`) is the 3 Sep noon room; F must not exist; E is not widened toward 24000 (23985 is the poke under the room, not the room); existing rooms' edges are never touched. (2) `same_session_overlap` (`keep_older` | `supersede`, seeded `keep_older` in Strategies 7 and 8, inert under bands): a sit whose band overlaps, by any amount, a live room that already had an inside close this session (before the sit's bar) is not a birth; the older room keeps its edges and the sit is a visit of it (absorbed as `merge_overlap` absorbs, taking the live visit when the close is inside it). `room_overlap = supersede` still applies to overlaps with live rooms not visited this session. (3) The dashboard's `zn()` prints room ids whole (base ids `A/B<yyyy-mm-dd hh:mm:ss>` are still shortened), and `lab.fz_chart()` leaves a room retired at or before a chunk's first bar out of the ZONES fill unless a Z row of the chunk names it (on ST7 this drops 367 of 751 drawn zones over all sessions).
+
+**Result of call 2 on the acceptance window: the test fails, and E is not born.** Price crossed the 2 Sep room `D 09-02 14:38 · 24028.4–24048.4` from 11:09 on 3 Sep (18 closes inside it before 12:20), so every 3 Sep sit around it (11:13, 11:17, 12:10, 12:20, 12:25, 12:34) overlaps a room visited this session and is kept by that older room: the 12:20 sit that was E is a visit of D 09-02. The 13:48 sit (mid 24018) that was F is kept by `B 09-02 10:30 · 23999.3–24019.3`, also crossed that session. The window then reads `D 09-02 14:38` visits 4–9 and `B 09-02 10:30` visits 13–14 (two-digit), no room born on 3 Sep after 09:48, and the 13:11 up / 13:23 down SETUPs still gate TAKE on branch defend (on D 09-02 visit 5). Note also that the 13:48 sit's band (24008–24028) does not overlap E's (24029.5–24049.5) at all, so call 2 alone could not have removed F even if E had been born. Card statistics under call 2 (ST7 / ST8, All data): 2.0 / 1.8 rooms born per session, 61.5% / 55.4% of bars inside a room, NEW 6.2% / 9.8%, LEAVE 42.4% / 32.8%, visit_n at SETUP median 9.5 (max 27) / 5 (max 17). The lab was not run under call 2 (the acceptance window failed); the "First numbers" and "Priced" tables below are from the build before call 2 (`same_session_overlap` absent, i.e. `supersede`).
+
+**Outputs.** The card gains `touches` (None without a ref room); the zones output gains `touches`, `retired_bar` and `retired_by`; the visit records of a touch carry `touch: true`. Stats: `rooms_retired`, `rooms_superseded`, `rooms_clipped`, `sits_kept_by_older`, `touches`, `visit_ends_sit_moved`, `leave_end_retired`. `lab.py` changed in two places: `ENTRY_RULES` gains `fz_v2` (`fz_rule()` already matches any `fz*`), and `fz_chart()` leaves out rooms retired at or before the chunk's first bar (unless a Z row names them). `dashboard.tpl`'s two `zn()` shorteners shorten base ids only and print room ids whole (user decision 2026-09-27 call 3).
+
+**Tests.** `tests/test_fz_parity.py` runs all four strategies (the engine parity, the token scan, the card-without-positions check, the REENTER rules) and adds check 6 for the room model: no two live rooms overlap at any bar, and no room is the ref band (`zone_id`) or the containing band (`in_id`) on or after its retirement. `tests/test_truncation.py` adds ST7 and ST8 to the FZ cases (12 uniform + targeted cuts each). Strategies 5 and 6 were checked against the stored `web/ST5|ST6/all-data_*/-/summary.json` ledgers (207 and 73 rows on every gate column fz.py writes) and trades (51 and 26): identical.
+
+**Acceptance test (the picture the user agreed on).** On ST7, 3 Sep 2026 12:00–15:30 must show one room for the afternoon box around 24025–24045, born that day, with a visit count you can count on one hand, `first_bars` from that day's own sit, live volume ratios, the 13:02 CHoCH reading as inside the room (RECYCLE / ACCEPTED, gated WATCH, not REENTER), the 15:07 print reading HUNT or PENDING under the box (not LEAVE), and a LEAVE only when three closes have held outside. A July id or a two-digit visit count in that window fails the test. The script is `fz_v2_accept.py` (session scratchpad). Result of the seeded build:
+- **Met:** the box is `E 09-03 12:20 · 24029.5–24049.5`, born that day from the 12:11–12:20 sit; its visits in the window run 1 to 6; `first_bars` 11 from that sit; the volume ratio is live on every row (0.03 to 3.52); no July id and no two-digit visit count appear (the ids in the window are `C 09-03 10:44`, `D 09-03 11:13`, `E 09-03 12:20`, `F 09-03 13:48`, `H 09-02 15:09`); every LEAVE follows three closes outside. The 13:02 SETUP is gated WATCH (WATCH_EDGE on E, armed, expired `back_inside`), not REENTER.
+- **Not met:** (a) the 13:02 bar reads PENDING (its close is one close under E's low edge of 24029.5), not RECYCLE / ACCEPTED; (b) a second room `F 09-03 13:48 · 24008–24028` is born under E from the 13:39–13:48 sit, so from 14:41 the card steps between E and F (E visits 5–6, F visits 2–4); (c) the 15:07 SETUP reads LEAVE (E was left at 14:56 after three closes under it; the card's ref is F visit 3), gated BLOCK `hunt_fade`, not HUNT or PENDING. With the box's edges where the sit put them, every close from 14:54 to 15:07 was under E, so under the leave rule this is a leave; the user's "hunt under D" reading implies a lower edge nearer 24000 than the sit's 24029.5.
+- ST5 on the same window, for contrast: ids `B2026-07-23 12:51`, `B2026-07-23 13:10`, `B2026-07-23 14:52`, `B2026-07-24 12:52` … with visits 6 to 17, volume NA on every row.
+
+**First numbers, before call 2 (dry run, same inputs as the parity test; futures positions, before pricing).**
+
+| | ST7 (1m) All · Design · Unseen | ST8 (5m) All · Design · Unseen | ST5 / ST6 base, All data |
+|---|---|---|---|
+| rooms born per session | 6.7 · 7.3 · 6.3 | 4.2 · 4.9 · 3.7 | 1.8 / 1.4 zones |
+| bars inside a room | 61.6% · 62.5% · 61.2% | 56.1% · 56.7% · 55.7% | 94.7% / 83.5% |
+| NEW share of bars | 4.5% · 2.1% · 6.0% | 8.7% · 6.2% · 10.2% | 0.4% / 5.7% |
+| LEAVE share of bars | 35.7% · 36.4% · 35.8% | 29.6% · 31.5% · 28.4% | 43.7% / 38.4% |
+| visit_n at SETUP, median (max) | 3 (16) · 3 (9) · 3 (16) | 3 (8) · 2 (6) · 3 (8) | 19 (68) / 7 (31) |
+| FIRST_PRINT at SETUP | 10 · 1 · 9 | 6 · 1 · 5 | 0 / 0 |
+| SETUPs TAKE / WATCH / BLOCK / REENTER (by outcome) | 43/84/79/1 of 207 · 11/26/18/0 of 55 · 32/58/61/1 of 152 | 21/23/23/6 of 73 · 4/10/8/4 of 26 · 17/13/15/2 of 47 | 29/114/42/22 · 14/32/15/12 |
+
+**Priced, before call 2 (futures, filtered `python lab.py ST7 ST8`, 2026-09-27; superseded by the call-2 seeds, not published):**
+
+| Window | ST7 positions (TAKE + REENTER) · net vs Foundation · control pct · perm p | ST8 positions · net vs Foundation · control pct · perm p |
+|---|---|---|
+| All data | 43 + 1 · −57,181 vs −216,468 · 29.1th · 0.77 | 21 + 6 · −19,444 vs −73,753 · 67.3th · 0.82 |
+| Design period | 11 + 0 · −15,566 vs −16,985 · 22.9th · 0.58 | 4 + 4 · +7,937 vs −15,560 · 59.5th · 0.54 |
+| Unseen test | 32 + 1 · −39,419 vs −197,287 · 46.5th · 0.86 | 17 + 2 · −25,971 vs −56,783 · 67.0th · 0.84 |
+
+The base on All data was 6.2th · 0.44 (ST5) and 49.8th · 0.18 (ST6). No v2 percentile or p is evidence of selection skill; the net gain over Foundation is still mostly cost avoidance. The room model's product is the card, which is what S42 asks the user to review. Nothing here is out of sample: the room rules were written against 3 Sep, and the Unseen window is still volume-blind.

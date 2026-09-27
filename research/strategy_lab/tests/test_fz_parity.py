@@ -16,6 +16,9 @@
 5. REENTER rows keep their rule: no REENTER fills on a close inside its band (R1-R3, or a LEAVE, put the fill beyond the
    edge), a TAKE is turned into a REENTER only on TAKE branch 1 (a LEAVE of the watched band, evaluation M22), and every
    REENTER position's SETUP row ends with outcome_gate REENTER (so REENTER rows and positions agree).
+6. Room model (room_model = rooms, Strategies 7 and 8): no two live rooms overlap at any bar (a positive-length overlap;
+   rooms may share an edge), and no room is the ref band (card zone_id) or the containing band (card in_id) on or after
+   the bar it was retired.
 """
 import copy, csv, glob, json, os, re, sys, types
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -23,7 +26,8 @@ sys.path.insert(0, HERE)
 import engine, fz, fz_exec, lab
 
 # (timeframe, strategy file, lab warm-up = sessions before the first shown one)
-CASES = [("minute", "strategy_5.json", 2), ("5minute", "strategy_6.json", 5)]
+CASES = [("minute", "strategy_5.json", 2), ("5minute", "strategy_6.json", 5),
+         ("minute", "strategy_7.json", 2), ("5minute", "strategy_8.json", 5)]
 CARD_COLS = ("zone_id", "zone_kind", "band_lo", "band_hi", "visit_n", "this_bars", "this_vol", "first_bars", "first_vol",
              "vol_na", "first_vol_na", "read", "left_id", "session_bar", "in_id", "level_in_band", "entered_zone_id",
              "entered_visit_n", "entered_read", "leave_vol_ok", "leave_kind")
@@ -100,6 +104,25 @@ def reenter_rules(bars, z, trades):
     return bad
 
 
+def rooms(z):
+    """Problems with the room model's invariants in one fz.run (empty list = fine), see 6 above."""
+    zs, bad = z["zones"], []
+    end = len(z["card"])
+    life = [(r["birth_bar"], r["retired_bar"] if r["retired_bar"] is not None else end, r) for r in zs]
+    life.sort(key=lambda x: x[0])
+    for a in range(len(life)):
+        b0, e0, r0 = life[a]
+        for b1, e1, r1 in life[a + 1:]:
+            if b1 >= e0: break                           # sorted by birth: no later room is alive together with r0
+            if max(b0, b1) < min(e0, e1) and min(r0["hi"], r1["hi"]) - max(r0["lo"], r1["lo"]) > fz.EPS:
+                bad.append(f"live rooms overlap: {r0['id']} [{r0['lo']}, {r0['hi']}] and {r1['id']} [{r1['lo']}, {r1['hi']}]")
+    gone = {r["id"]: r["retired_bar"] for r in zs if r["retired_bar"] is not None}
+    for k, cd in enumerate(z["card"]):
+        for col in ("zone_id", "in_id"):
+            if cd[col] in gone and k >= gone[cd[col]]: bad.append(f"bar {k}: {col} {cd[col]} after its retirement")
+    return bad
+
+
 def main():
     fails = 0
     bad = keys()
@@ -108,6 +131,7 @@ def main():
     print("fz.py tokens:", "OK" if not bad else bad); fails += bool(bad)
     for tf, fname, warm in CASES:
         spec = json.load(open(os.path.join(HERE, "strategies", fname), encoding="utf-8"))
+        print(f"-- {spec['code']} ({fname})")
         rules, touch = spec["rules"], spec["rules"]["break_mode"] == "touch"
         bars, s0 = inputs(tf, warm, spec["options"]["atr_period"])
         r = engine.run(bars, dict(break_mode=rules["break_mode"], choch_mode=rules.get("choch_mode", rules["break_mode"]),
@@ -138,6 +162,12 @@ def main():
         print(f"{tf}: REENTER rows ({n_re} positions): fills beyond the band, conversions only on a LEAVE, outcome_gate "
               f"on every REENTER SETUP", "OK" if not bad else f"FAIL {bad[:5]}")
         fails += bool(bad)
+        if cfg["room_model"] == "rooms":
+            bad = rooms(real)
+            nr = sum(1 for x in real["zones"] if x["retired_bar"] is not None)
+            print(f"{tf} {spec['code']}: rooms ({len(real['zones'])} born, {nr} retired): no two live rooms overlap, no "
+                  f"retired room is the ref or containing band", "OK" if not bad else f"FAIL {bad[:5]}")
+            fails += bool(bad)
     print("OK - FZ parity" if not fails else f"{fails} failing checks")
     sys.exit(1 if fails else 0)
 

@@ -3,8 +3,8 @@
     python tests/test_truncation.py
 
 Engine cases: swings, events, SETUPs, closed trades and the protected level before each cut.
-FZ cases (strategies 5 and 6, both futures files, CHoCH by touch, memory from the file's first session and the lab's
-warm-ups 2 / 5 as the shown start): the zone card before the cut, the ledger's zone_id / read / gate / block_reason for
+FZ cases (strategies 5 and 6, the band model, and 7 and 8, the room model; both futures files, CHoCH by touch, memory
+from the file's first session and the lab's warm-ups 2 / 5 as the shown start): the zone card before the cut, the ledger's zone_id / read / gate / block_reason for
 SETUPs before the cut, the watch log (opening, arming and outcome before the last bar) and the closed FZ positions.
 Uniform cuts land mostly where nothing is live (Foundation 1m is dormant after 4 Sep), so FZ adds targeted cuts one to
 five bars after SETUPs and inside WATCH / ARMED windows, and prints how many cuts had FZ state live across the cut.
@@ -20,7 +20,8 @@ CASES = [("D:/nifty/niftyfut_5minute_2026-07-01_to_2026-09-25.csv", "choch_candl
          ("D:/nifty/niftyfut_minute_2026-07-01_to_2026-09-25.csv", "prev_swing"),
          ("D:/nifty/options/NIFTY_2026-09-29/5minute/NIFTY26SEP24000PE.csv", "choch_candle")]
 P = dict(break_mode="touch", avwap_weight="volume")
-FZ_CASES = [("minute", "strategy_5.json", 2), ("5minute", "strategy_6.json", 5)]   # (timeframe, strategy file, warm-up)
+FZ_CASES = [("minute", "strategy_5.json", 2), ("5minute", "strategy_6.json", 5),    # (timeframe, strategy file, warm-up)
+            ("minute", "strategy_7.json", 2), ("5minute", "strategy_8.json", 5)]   # 7, 8: the room model (FZ v2)
 FZ_UNIFORM, FZ_TARGETED = 12, 24                                                    # cuts per FZ case
 
 

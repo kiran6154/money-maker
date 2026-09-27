@@ -1,7 +1,7 @@
 {
   "code": "ST6",
-  "name": "Strategy 6",
-  "description": "Foundation-Zone gate on Strategy 2 rules (5-minute): every Foundation SETUP is carded against a memory of price bands (protected levels and cluster sits) and gated TAKE / WATCH / BLOCK; re-entry only after a confirmed leave of the band. Fills, stop and exits as Strategy 2; REENTER adds a band-reclaim exit.",
+  "name": "Strategy 6 (FZ base)",
+  "description": "FZ base, band model: Foundation-Zone gate on Strategy 2 rules (5-minute): every Foundation SETUP is carded against a memory of price bands (protected levels and cluster sits) and gated TAKE / WATCH / BLOCK; re-entry only after a confirmed leave of the band. Fills, stop and exits as Strategy 2; REENTER adds a band-reclaim exit.",
   "timeframe": "5minute",
   "warmup_days": 5,
   "rules": {
@@ -44,6 +44,12 @@
       "cluster_width": { "value": 20, "source": "decision:1", "statistic": "" },
       "merge_overlap": { "value": 0.5, "source": "decision:1", "statistic": "" },
       "zone_max_age_sessions": { "value": null, "source": "evaluation:D06", "statistic": "age-out does not buy reproducibility: age 2 still leaves 4/26 design cards start-dependent, never-delete 15/26 (5m, standalone Design run vs All-data slice)" },
+      "room_model": { "value": "bands", "source": "evaluation:v2 (base model, no behaviour change)", "statistic": "", "note": "'rooms' is the v2 living indicator (Strategies 7, 8)" },
+      "drift_birth": { "value": true, "source": "evaluation:v2 (base model, no behaviour change)", "statistic": "" },
+      "room_overlap": { "value": "supersede", "source": "evaluation:v2 (base model, no behaviour change)", "statistic": "", "note": "rooms only; not read by the band model" },
+      "same_session_overlap": { "value": "keep_older", "source": "user decision 2026-09-27 call 2 (base model, no behaviour change)", "statistic": "", "note": "rooms only; not read by the band model" },
+      "room_max_age_sessions": { "value": null, "source": "evaluation:v2 (base model, no behaviour change)", "statistic": "", "note": "null: zones are never retired" },
+      "visit_min_bars": { "value": 1, "source": "evaluation:v2 (base model, no behaviour change)", "statistic": "", "note": "1: every stay is a visit (no touches)" },
       "accept_bars": { "value": 2, "source": "spec:s2", "statistic": "" },
       "accept_vol_ratio": { "value": 0.8, "source": "spec:s2", "statistic": "" },
       "thin_ratio": { "value": 0.5, "source": "spec:s2", "statistic": "" },
