@@ -21,8 +21,17 @@ date slices of one run; OPT_NATIVE is refused for FZ (its thresholds are futures
     python lab.py --full                   recompute everything
     python lab.py ST1                      one strategy (a partial run: dashboard.html and results/ are not rebuilt)
     python lab.py backtest ST1 1Y [--tf 15minute] [--label "..."]   add a backtest to strategies/strategy_1.json and run it
+
+A strategy file's optional `position` block sets how each signal is held (defaults: POSITION_DEFAULT): `lots` per position,
+`lock` ("strike": one open position per traded instrument - strike + expiry + right, or the futures contract - so a new
+entry on a locked instrument is skipped until the open one exits; "none"), and `scale_out` tranches that exit part of
+the lots at a fixed target in traded-instrument points while the rest ride the strategy's exit.
+
+Every full run also appends to results/history/<CODE>.json: one version per change of the strategy's definition or of
+the code its results come from, with the headline numbers per backtest and choice, so a modified strategy is always read
+against its previous version (the dashboard shows the difference; the run prints it).
 """
-import sqlite3, json, csv, calendar, datetime as D, os, sys, math, bisect, hashlib, glob, re, types
+import sqlite3, json, csv, calendar, datetime as D, os, sys, math, bisect, hashlib, glob, re, types, ast
 import engine, fz, fz_exec, fz_report
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -31,6 +40,7 @@ WEB = os.path.join(HERE, "web")                              # per-run result fi
 STRATDIR = os.path.join(HERE, "strategies")
 DATACFG = os.path.join(HERE, "config", "data.json")
 CHARGECFG = os.path.join(HERE, "config", "charges.json")
+HISTORY = os.path.join(HERE, "results", "history")           # per-strategy result versions (versioned)
 
 SCHEMA = """
 create table if not exists strategy(
@@ -76,6 +86,8 @@ TYPES = [("FUT", "", "Futures", "FUTURE"),
          ("OPT_NATIVE", "_NB", "Options (standalone)", "OPTION_NATIVE")]
 TIMEFRAMES = ("minute", "3minute", "5minute", "15minute", "30minute")
 ENTRY_RULES = ("setup_v1", "fz_v1")
+POSITION_DEFAULT = {"lots": 1, "lock": "strike", "scale_out": []}          # a file without a `position` block
+POSITION_LOCKS = ("strike", "none")
 FZ_MODULES = ("fz.py", "fz_exec.py", "fz_report.py")
 FZ_NATIVE_WHY = "FZ thresholds are futures points; no native-option unit rule in v1"
 FZ_TRADE_KEYS = ("gate", "reenter_reason", "zone_id", "fill_used")          # trade fields 25..28 of an FZ row
@@ -125,12 +137,29 @@ def load_strategies():
                 except ValueError as e: sys.exit(f"{where}: fz[{tf}]: {e}")
         elif "fz" in spec:
             sys.exit(f"{where}: an 'fz' block needs entry_rule fz_v1 (it would be stored but never applied)")
+        try: position_of(spec)
+        except ValueError as e: sys.exit(f"{where}: position: {e}")
         if spec["code"] in codes: sys.exit(f"{where}: duplicate strategy code {spec['code']}")
         if sum(1 for b in spec["backtests"] if b.get("default")) != 1: sys.exit(f"{where}: exactly one backtest needs \"default\": true")
         codes.add(spec["code"])
         out.append((path, spec))
     if not out: sys.exit(f"no strategy files in {STRATDIR}")
     return out
+
+
+def position_of(spec):
+    """The file's `position` block over POSITION_DEFAULT, validated: {lots, lock, scale_out: [{lots, target_pts}]}."""
+    p = dict(POSITION_DEFAULT, **(spec.get("position") or {}))
+    unknown = set(p) - set(POSITION_DEFAULT)
+    if unknown: raise ValueError(f"unknown key(s) {sorted(unknown)}")
+    if not isinstance(p["lots"], int) or p["lots"] < 1: raise ValueError("lots must be a whole number >= 1")
+    if p["lock"] not in POSITION_LOCKS: raise ValueError(f"lock must be one of {POSITION_LOCKS}")
+    for so in p["scale_out"]:
+        if set(so) != {"lots", "target_pts"}: raise ValueError("each scale_out entry is {\"lots\": n, \"target_pts\": pts}")
+        if not isinstance(so["lots"], int) or so["lots"] < 1: raise ValueError("scale_out lots must be a whole number >= 1")
+        if not isinstance(so["target_pts"], (int, float)) or so["target_pts"] <= 0: raise ValueError("target_pts must be > 0")
+    if sum(so["lots"] for so in p["scale_out"]) > p["lots"]: raise ValueError("scale_out lots add up to more than lots")
+    return p
 
 
 def type_rows(spec):
@@ -152,7 +181,8 @@ def type_rows(spec):
             strike_step=o["strike_step"], strike_choices=",".join(o["strike_choices"]), strike_default=o["strike_default"],
             atr_period=o["atr_period"], expiry_types=",".join(o["expiry_types"]), expiry_min_days=o["expiry_min_days"],
             positions="BOTH", capital_fut=cap["futures_margin"], capital_opt_short=cap["short_option_margin"],
-            fz_json=json.dumps(spec["fz"], ensure_ascii=False) if "fz" in spec else None))   # verbatim, with provenance
+            fz_json=json.dumps(spec["fz"], ensure_ascii=False) if "fz" in spec else None,   # verbatim, with provenance
+            position_json=json.dumps(position_of(spec), sort_keys=True)))
     return rows
 
 
@@ -203,13 +233,14 @@ def migrate(db):
                    ("expiry_min_days", "integer not null default 1"), ("positions", "text not null default 'BOTH'"),
                    ("expiry_types", "text not null default 'WEEKLY,MONTHLY'"), ("signal_source", "text"),
                    ("capital_fut", "real not null default 120000"), ("capital_opt_short", "real not null default 150000"),
-                   ("choch_mode", "text"), ("fz_json", "text")):
+                   ("choch_mode", "text"), ("fz_json", "text"), ("position_json", "text")):
         add("strategy", c, ddl)
     for c, ddl in (("sl_px", "real"), ("gross_inr", "real"), ("charges_inr", "real"), ("instrument", "text"),
                    ("strike", "real"), ("strike_choice", "text"), ("und_entry_px", "real"), ("und_exit_px", "real"),
                    ("slippage_pts", "real"), ("period", "text"), ("mfe_pts", "real"), ("mae_pts", "real"),
                    ("position", "text"), ("signal", "text"), ("opt_type", "text"), ("expiry", "text"),
-                   ("gate", "text"), ("reenter_reason", "text"), ("zone_id", "text"), ("fill_used", "text")):
+                   ("gate", "text"), ("reenter_reason", "text"), ("zone_id", "text"), ("fill_used", "text"),
+                   ("lots", "integer"), ("tranche", "text")):
         add("trade", c, ddl)
     for c, ddl in (("gross_inr", "real"), ("charges_inr", "real"), ("strike_choice", "text"), ("period", "text")):
         add("strategy_run", c, ddl)
@@ -573,8 +604,9 @@ def excursion(tl, hl, ll, rec, long):
 
 
 def price_trade(st, cs, rec):
-    """Slippage, gross, charges, net for a trade record with entry_px / exit_px in traded-instrument units."""
-    lot, slip = st["lot_size"], st["slippage_pts"]
+    """Slippage, gross, charges, net for a trade record with entry_px / exit_px in traded-instrument units, for its `lots`
+    (a scale-out tranche is charged as its own round trip)."""
+    lot, slip = st["lot_size"] * rec.setdefault("lots", 1), st["slippage_pts"]
     if rec["position"] == "SHORT":                             # short: sell entry, buy exit
         sell, buy = rec["entry_px"] - slip, rec["exit_px"] + slip
     else:                                                      # long future or long option
@@ -583,6 +615,53 @@ def price_trade(st, cs, rec):
     rec.update(pts=pts, gross=pts * lot, chg=trade_charges(cs, buy, sell, lot))
     rec["net"] = rec["gross"] - rec["chg"]["total"]
     return rec
+
+
+def position_cfg(st):
+    return json.loads(st["position_json"]) if st.get("position_json") else dict(POSITION_DEFAULT)
+
+
+class StrikeLock:
+    """lock "strike": one open position per traded instrument (strike + expiry + right, or the futures contract). A new
+    entry while that instrument's position is open is skipped; an exit and a new entry on the same candle count as
+    exit first, so the new position is taken."""
+
+    def __init__(self, st):
+        self.on, self.until = position_cfg(st)["lock"] == "strike", {}
+
+    def held(self, inst, entry_time):
+        """The open position's exit time if `inst` is locked at `entry_time`, else None."""
+        u = self.until.get(inst)
+        return u if self.on and u is not None and entry_time < u else None
+
+    def hold(self, inst, exit_time):
+        self.until[inst] = max(exit_time, self.until.get(inst, ""))
+
+
+def tranches(st, rec, tl, ol, hl, ll, cl):
+    """One position as its lots (position_cfg): each scale_out tranche exits at entry +/- target_pts (traded-instrument
+    points) on the first candle after the entry candle that reaches it - at the candle open when it opens beyond the
+    target, else at the target; on a session's first candle at its close (no fill on the opening print). A target
+    reached only on the candle where the stop is hit counts as not reached (the stop is assumed first). A tranche whose
+    target is never reached, and the remaining lots, keep the strategy's exit. Default config: the position unchanged."""
+    P = position_cfg(st)
+    if not P["scale_out"]: return [dict(rec, lots=P["lots"], tranche="")]
+    long, e = rec["position"] == "LONG", rec["entry_px"]
+    i0 = bisect.bisect_right(tl, rec["entry_time"]); i1 = bisect.bisect_right(tl, rec["exit_time"]) - 1
+    out, left = [], P["lots"]
+    for n, so in enumerate(P["scale_out"], 1):
+        tgt, hit = (e + so["target_pts"] if long else e - so["target_pts"]), None
+        for k in range(i0, i1 + 1):
+            if k == i1 and rec["exit_reason"] == "stop_loss": break
+            gap = ol[k] >= tgt if long else ol[k] <= tgt
+            if gap or (hl[k] >= tgt if long else ll[k] <= tgt):
+                first = k > 0 and tl[k][:10] != tl[k - 1][:10]
+                hit = (k, cl[k] if first else (ol[k] if gap else tgt)); break
+        t = dict(rec, lots=so["lots"], tranche=f"T{n} +{so['target_pts']:g}")
+        if hit: t.update(exit_time=tl[hit[0]], exit_px=hit[1], exit_reason=f"target {so['target_pts']:g}", open=False)
+        out.append(t); left -= so["lots"]
+    if left: out.append(dict(rec, lots=left, tranche="rest"))
+    return out
 
 
 # ---------------------------------------------------------------- FZ (Foundation-Zone gate)
@@ -753,8 +832,8 @@ def run_variant(st, cs):
                 if st["variant"] == "FUT":
                     rec = dict(base, kind="FUT", position="LONG" if bull else "SHORT", opt_type="FUT",
                                instrument="NIFTY SEP FUT", strike=None, entry_px=fut["c"][x["entry"]], exit_px=x["exit_px"])
-                    excursion(t, fut["h"], fut["l"], rec, bull)
-                    legs = [(price_trade(st, cs, rec), "LONG" if bull else "SHORT", None)]
+                    legs = [(price_trade(st, cs, excursion(t, fut["h"], fut["l"], tr, bull)), "LONG" if bull else "SHORT", None)
+                            for tr in tranches(st, rec, t, fut["o"], fut["h"], fut["l"], fut["c"])]
                 else:
                     # bullish -> long CE and short PE; bearish -> long PE and short CE (separate positions)
                     legs = []
@@ -779,15 +858,28 @@ def run_variant(st, cs):
                             if ex is None:
                                 skipped.append(dict(base, position=pos, opt_type=right, why=f"{nm} has no candle at exit")); continue
                             rec.update(exit_px=ex, stale=st1 or st2)
-                        excursion(os_.t, os_.h, os_.l, rec, pos == "LONG")
-                        legs.append((price_trade(st, cs, rec), f"{pos} {right}", os_))
+                        for tr in tranches(st, rec, os_.t, os_.o, os_.h, os_.l, os_.c):
+                            excursion(os_.t, os_.h, os_.l, tr, pos == "LONG")
+                            legs.append((price_trade(st, cs, tr), f"{pos} {right}", os_))
                 if fzr:                               # which position a leg belongs to, for fz_report.units()
                     for rec, _, _ in legs: rec.update(_entry=x["entry"], _setup=x.get("setup_i", x["entry"]),
                                                       _gate=x.get("gate") or "RAW")
                 return legs
 
+            lock = StrikeLock(st)
             for x in sig:
                 legs = legs_of(x, skipped)
+                for inst in dict.fromkeys(rec["instrument"] for rec, _, _ in legs):     # the strike lock, per instrument
+                    mine = [lg for lg in legs if lg[0]["instrument"] == inst]
+                    u = lock.held(inst, mine[0][0]["entry_time"])
+                    if u:
+                        r0 = mine[0][0]
+                        skipped.append(dict({k: r0.get(k) for k in ("dir", "signal", "choch_time", "entry_time", "position",
+                                                                     "opt_type", "instrument", "expiry")},
+                                            why=f"strike locked: {inst} open until {u}"))
+                        legs = [lg for lg in legs if lg[0]["instrument"] != inst]
+                    else:
+                        lock.hold(inst, max(lg[0]["exit_time"] for lg in mine))
                 for rec, lbl, os_ in legs:
                     trs.append(rec)
                     fm = mark(x, fut, lbl); fm[5] = round(rec["pts"], 2); fm.append(x["dir"])
@@ -826,6 +918,7 @@ def run_variant(st, cs):
     for ch in choice_keys(st):
         ekind, sc = split_choice(ch)
         trs, skipped, charts = [], [], []
+        lock = StrikeLock(st)
         for d in days:
             first = bisect.bisect_left(spot.t, f"{d} 00:00:00")
             if first >= len(spot.t) or spot.t[first][:10] != d: continue
@@ -862,10 +955,18 @@ def run_variant(st, cs):
                                exit_px=x["exit_px"], und_entry=None, und_exit=None)
                     if x["open"] and t[x["exit"]][:10] == exp:
                         rec.update(exit_reason="expiry", open=False)     # the contract's data ends at its expiry
-                    excursion(t, ob["h"], ob["l"], rec, lng)
-                    trs.append(price_trade(st, cs, rec))
-                    m = mark(x, ob, f"{rec['position']} {right}"); m[5] = round(rec["pts"], 2); m[8] = rec["exit_reason"]
-                    m.append(x["dir"]); marks.append(m)
+                    u = lock.held(nm, rec["entry_time"])
+                    if u:
+                        skipped.append(dict(signal=rec["signal"], position=rec["position"], opt_type=right, instrument=nm,
+                                            expiry=exp, entry_time=rec["entry_time"], why=f"strike locked: {nm} open until {u}"))
+                        continue
+                    parts = tranches(st, rec, t, ob["o"], ob["h"], ob["l"], ob["c"])
+                    lock.hold(nm, max(p_["exit_time"] for p_ in parts))
+                    for tr in parts:
+                        excursion(t, ob["h"], ob["l"], tr, lng)
+                        trs.append(price_trade(st, cs, tr))
+                    m = mark(x, ob, f"{rec['position']} {right}"); m[5] = round(sum(p_["pts"] * p_["lots"] for p_ in parts), 2)
+                    m[8] = rec["exit_reason"]; m.append(x["dir"]); marks.append(m)
                 i1 = max([day_idx[-1]] + [x["exit"] for x in picks])
                 charts.append(dict(label=f"{d} · {nm}" + (f" · {len(picks)} trade{'s' * (len(picks) > 1)}" if picks else ""),
                                    day=d, kind="option", **chart(ob, r, day_idx[0], i1, marks)))
@@ -908,13 +1009,13 @@ def save_run(db, st, ch, res, cs):
     for j, x in enumerate(res["trades"], 1):
         db.execute("insert into trade(run_id,strategy_id,seq,side,choch_time,entry_time,entry_px,exit_time,exit_px,exit_reason,sl_px,"
                    "pts,gross_inr,charges_inr,inr,is_open,instrument,strike,strike_choice,und_entry_px,und_exit_px,slippage_pts,period,"
-                   "mfe_pts,mae_pts,position,signal,opt_type,expiry,gate,reenter_reason,zone_id,fill_used)"
-                   " values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                   "mfe_pts,mae_pts,position,signal,opt_type,expiry,gate,reenter_reason,zone_id,fill_used,lots,tranche)"
+                   " values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                    (run_id, st["id"], j, x["position"], x["choch_time"], x["entry_time"], x["entry_px"], x["exit_time"], x["exit_px"],
                     x["exit_reason"], x["sl"], round(x["pts"], 2), round(x["gross"], 2), round(x["chg"]["total"], 2),
                     round(x["net"], 2), int(x["open"]), x["instrument"], x["strike"], ch, x["und_entry"], x["und_exit"],
                     st["slippage_pts"], st["period"], x["mfe"], x["mae"], x["position"], x["signal"], x["opt_type"], x["expiry"],
-                    *(x.get(k) for k in FZ_TRADE_KEYS)))
+                    *(x.get(k) for k in FZ_TRADE_KEYS), x.get("lots", 1), x.get("tranche", "")))
     if res.get("fz"):                                  # the SETUP ledger of an FZ run
         L = res["fz"]["ledger"]
         cols = ",".join(f'"{c}"' for c in L["cols"][1:])
@@ -931,11 +1032,12 @@ def save_run(db, st, ch, res, cs):
 def write_result(folder, st, ch, res, s, cs, key):
     """Result folder: summary.json (KPIs, trades, signals, chart index) + one c<k>.json per chart chunk (a session / contract).
     The dashboard reads the summary first and fetches chart chunks only when they are shown.
-    FZ rows: each trade gains gate, reenter_reason, zone_id, fill_used (indices 25-28), summary.json gains 'fz'
-    (fz_payload: ledger, cross-tabs, bridge, control, legend ...) and fz_hash next to key."""
+    FZ rows: each trade's gate, reenter_reason, zone_id, fill_used (indices 25-28; None on other rows), summary.json gains
+    'fz' (fz_payload: ledger, cross-tabs, bridge, control, legend ...) and fz_hash next to key.
+    Every row: lots (29) and tranche (30: "" for a whole position, "T1 +5" / "rest" for scale-out parts)."""
     os.makedirs(folder, exist_ok=True)
     for f in os.listdir(folder): os.remove(os.path.join(folder, f))
-    extra = (lambda x: [x.get(k) for k in FZ_TRADE_KEYS]) if fz_rule(st) else (lambda x: [])
+    extra = lambda x: [x.get(k) for k in FZ_TRADE_KEYS] + [x.get("lots", 1), x.get("tranche", "")]
     trades = [[x["opt_type"], x["instrument"], x["strike"], x["choch_time"], x["entry_time"], x["entry_px"], x["sl"], x["exit_time"],
                x["exit_px"], x["exit_reason"], round(x["pts"], 2), round(x["gross"], 2), round(x["chg"]["total"], 2),
                round(x["net"], 2), x["open"], {k: round(v, 2) for k, v in x["chg"].items()}, x.get("und_entry"), x.get("und_exit"),
@@ -956,15 +1058,32 @@ def write_result(folder, st, ch, res, s, cs, key):
     json.dump(body, open(os.path.join(folder, "summary.json"), "w", encoding="utf-8"), separators=(",", ":"))
 
 
+# lab.py functions that cannot change a result (definitions sync, CLI, output bookkeeping): an edit to them keeps stored
+# results; any other lab.py edit, engine.py, and (FZ rows) the FZ modules re-run
+CACHE_EXEMPT = {"main", "add_backtest", "load_strategies", "type_rows", "sync", "connect", "migrate", "save_run",
+                "cache_key", "code_hash", "record_history", "def_view", "flat", "fz_flat", "slug"}
+_CODE_HASH = {}
+def code_hash(fzr=False):
+    """sha1[:16] of the code a result comes from: lab.py without CACHE_EXEMPT functions, engine.py, FZ modules for FZ."""
+    if fzr not in _CODE_HASH:
+        src = open(os.path.join(HERE, "lab.py"), encoding="utf-8").read().replace("\r\n", "\n")
+        drop = [(n.lineno, n.end_lineno) for n in ast.parse(src).body
+                if isinstance(n, (ast.FunctionDef, ast.ClassDef)) and n.name in CACHE_EXEMPT]
+        keep = [ln for i, ln in enumerate(src.split("\n"), 1) if not any(a <= i <= b for a, b in drop)]
+        h = hashlib.sha1("\n".join(keep).encode())
+        for f in ("engine.py",) + (FZ_MODULES if fzr else ()):
+            h.update(open(os.path.join(HERE, f), "rb").read().replace(b"\r\n", b"\n"))   # line endings differ across checkouts
+        _CODE_HASH[fzr] = h.hexdigest()[:16]
+    return _CODE_HASH[fzr]
+
+
 def cache_key(st, pr):
     """Everything a result depends on: the strategy row (an FZ row's fz_json included), the period, the code (the three FZ
     modules only for FZ rows, so an fz.py edit re-runs FZ rows and nothing else), and the input data files."""
     h = hashlib.sha1()
     row = {k: v for k, v in st.items() if k not in ("id", "created_at", "enabled", "name", "description")}
     h.update(json.dumps([row, pr["date_from"], pr["date_to"]], sort_keys=True, default=str).encode())
-    code = ("engine.py", "lab.py") + (FZ_MODULES if fz_rule(st) else ())
-    for f in code:
-        h.update(open(os.path.join(HERE, f), "rb").read().replace(b"\r\n", b"\n"))   # line endings differ across checkouts
+    h.update(code_hash(fz_rule(st)).encode())
     files = [st["data_file"], st["spot_file"], os.path.join(st["option_dir"] or "", "manifest.csv")]
     if fz_rule(st): files.append(FUT1)                  # front_month per session comes from the 1-minute file
     if st["variant"] != "FUT" and st.get("weekly_dir"):
@@ -974,6 +1093,56 @@ def cache_key(st, pr):
     for f in files:
         if f and os.path.exists(f): h.update(f"{f}:{os.path.getsize(f)}:{int(os.path.getmtime(f))}".encode())
     return h.hexdigest()[:16]
+
+
+BRIEF = ("trades", "wins", "pts", "net_inr", "pf", "max_dd_inr", "t_stat")
+
+
+def def_view(spec):
+    """What defines a strategy's results: the file without its name, description and backtest list."""
+    out = {k: v for k, v in spec.items() if k not in ("name", "description", "backtests")}
+    out["position"] = position_of(spec)              # an explicit default block is not a change
+    return out
+
+
+def flat(d, pre=""):
+    out = {}
+    for k, v in (d.items() if isinstance(d, dict) else []):
+        if isinstance(v, dict): out.update(flat(v, f"{pre}{k}."))
+        else: out[f"{pre}{k}"] = v
+    return out
+
+
+def record_history(specs, index):
+    """results/history/<CODE>.json: a new version whenever the strategy's definition (def_view) or the code its results
+    come from changes; the results of the current version are refreshed on every full run. Returns {family: (current,
+    previous)} - previous is the version this one is read against (None for a strategy's first version)."""
+    os.makedirs(HISTORY, exist_ok=True)
+    out = {}
+    for path, spec in specs:
+        fam = spec["code"]; metas = [m for m in index if m["family"] == fam]
+        if not metas: continue
+        dv, ch = def_view(spec), code_hash(str(spec["rules"].get("entry_rule", "")).startswith("fz"))
+        vid = hashlib.sha1(json.dumps([dv, ch], sort_keys=True).encode()).hexdigest()[:12]
+        res = {m["code"]: {rk: {c: {k: v.get(k) for k in BRIEF} for c, v in info["choices"].items()}
+                           for rk, info in m["runs"].items() if info["choices"]} for m in metas}
+        f = os.path.join(HISTORY, f"{fam}.json")
+        H = json.load(open(f, encoding="utf-8")) if os.path.exists(f) else {"code": fam, "versions": []}
+        V = H["versions"]
+        now = D.datetime.now().isoformat(timespec="seconds")
+        if V and V[-1]["vid"] == vid:
+            V[-1].update(updated=now, results=res)
+        else:
+            changes = []
+            if V:
+                a, b = flat(V[-1]["def"]), flat(dv)
+                changes = [f"{k}: {json.dumps(a.get(k))} -> {json.dumps(b.get(k))}" for k in sorted(set(a) | set(b)) if a.get(k) != b.get(k)]
+                if V[-1]["code_hash"] != ch: changes.append("code (engine.py / lab.py pricing / FZ modules) changed")
+            V.append({"version": len(V) + 1, "vid": vid, "at": now, "updated": now, "code_hash": ch, "def": dv,
+                      "changes": changes, "results": res})
+        json.dump(H, open(f, "w", encoding="utf-8"), indent=1, ensure_ascii=False)
+        out[fam] = (V[-1], V[-2] if len(V) > 1 else None)
+    return out
 
 
 def add_backtest(argv):
@@ -992,6 +1161,10 @@ def add_backtest(argv):
     else: b = dict(label=opts.get("label", f"{what} to {args[2]}"), kind="custom", **{"from": what, "to": args[2]})
     if opts.get("tf"): b["timeframe"] = opts["tf"]
     spec = json.load(open(path, encoding="utf-8"))
+    same = lambda x: (x["label"], x.get("timeframe") or spec["timeframe"]) == (b["label"], b.get("timeframe") or spec["timeframe"])
+    if any(same(x) for x in spec["backtests"]):
+        print(f"{os.path.basename(path)} already has backtest {b['label']!r} on {b.get('timeframe') or spec['timeframe']}; running it")
+        return [code]
     spec["backtests"].append(b)
     json.dump(spec, open(path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
     print(f"added to {os.path.basename(path)}:", b)
@@ -1017,6 +1190,26 @@ def fz_flat(fzp):
 
 
 def main():
+    def run_lock():
+        """One lab.py run at a time (a dashboard job and a terminal run would write the same web/ folders and database):
+        an OS lock on cache/lab.lock, released when the process ends; a second run waits for it."""
+        os.makedirs(CACHE, exist_ok=True)
+        fh = open(os.path.join(CACHE, "lab.lock"), "a+")
+        if os.name == "nt":
+            import msvcrt
+            take = lambda: msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            take = lambda: fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        said = False
+        while True:
+            try:
+                fh.seek(0); take(); return fh
+            except OSError:
+                if not said: print("another lab.py run is in progress; waiting for it to finish"); said = True
+                __import__('time').sleep(5)
+
+    _lock = run_lock()
     full = "--full" in sys.argv                     # recompute everything, ignoring stored results
     argv = [a for a in sys.argv[1:] if a != "--full"]
     if argv[:1] == ["backtest"]:
@@ -1039,6 +1232,7 @@ def main():
                                    "break_mode", "avwap_weight", "entry_rule", "exit_rule", "sl_rule", "lot_size",
                                    "charge_code", "slippage_pts", "strike_choices", "strike_default", "atr_period",
                                    "expiry_types", "capital_fut", "capital_opt_short", "fz_json")}
+        meta["position"] = position_cfg(st)
         meta.update(strategy_name=st["name"].split(" · ")[0], strategy_description=st["description"],
                     choch_mode=st.get("choch_mode") or st["break_mode"])
         if fzr: meta["fz_hash"] = fz_hash()
@@ -1128,6 +1322,21 @@ def main():
     if only:                                           # never publish a dashboard or results/ that lack the other strategies
         print(f"partial run ({' '.join(only)}): dashboard and results not rebuilt")
         return
+    hist = record_history(load_strategies(), index)
+    for m in index:                                    # the previous version of the same strategy, to read this one against
+        cur, prev = hist.get(m["family"], (None, None))
+        m["version"] = cur and dict(version=cur["version"], at=cur["at"], changes=cur["changes"])
+        m["baseline"] = prev and dict(version=prev["version"], at=prev["at"], results=prev["results"].get(m["code"], {}))
+    for fam, (cur, prev) in hist.items():
+        if not prev: continue
+        print(f"{fam}: version {cur['version']} vs {prev['version']}" + (f" ({'; '.join(cur['changes'])})" if cur["changes"] else ""))
+        for code, runs in cur["results"].items():
+            for rk, chs in runs.items():
+                for c, v in chs.items():
+                    o = prev["results"].get(code, {}).get(rk, {}).get(c)
+                    if o and (c == "-" or c.endswith("-ATR2")) and o.get("net_inr") != v.get("net_inr"):
+                        print(f"   {code:<7} {rk:<18} {c:<7} net {o['net_inr']:>+10,.0f} -> {v['net_inr']:>+10,.0f}   "
+                              f"trades {o['trades']} -> {v['trades']}")
     page = open(os.path.join(HERE, "dashboard.tpl"), encoding="utf-8").read()
     page = page.replace("/*DATA*/", "const INDEX=" + json.dumps(index, separators=(",", ":")) + ";const TFS="
                         + json.dumps(TF_LABEL) + ";const DATA_RANGE=" + json.dumps([sessions()[0], sessions()[-1]]) + ";")

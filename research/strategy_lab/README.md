@@ -31,10 +31,31 @@ swings (Pine port) → protected level → CHoCH / BOS → AVWAP pair from previ
 
 Each file holds one strategy: `code`, `name`, `description`, design `timeframe`, `warmup_days`, `rules`
 (`break_mode`, `choch_mode`, `avwap_weight`, `sl_rule`, `entry_rule`, `exit_rule`), `lot_size`, `capital`, per-type charges and
-slippage (`types`), option settings (`options`: expiry types, strike choices / default, ATR period) and its `backtests`.
+slippage (`types`), option settings (`options`: expiry types, strike choices / default, ATR period), how positions are held
+(`position`, below) and its `backtests`.
 **Add a strategy:** copy a file to `strategy_<n+1>.json`, give it a new `code` and `name`, change the rules, run `python lab.py`.
 Shared inputs live in `config/data.json` (candle files) and `config/charges.json` (charge schedules). Old rows whose file was
 removed are disabled in the database, never deleted.
+
+### Position (`position` in the strategy file)
+```json
+"position": { "lots": 1, "lock": "strike", "scale_out": [] }
+```
+- **`lock: "strike"`** (default, the fundamental rule): one open position per traded instrument — strike + expiry + CE/PE
+  for options, the contract for futures. A signal that would open a second position on a strike that is still open is not
+  taken; it is listed with `why = "strike locked: <instrument> open until <time>"` (Trades tab, under the table) and does not
+  lock anything. An exit and a new entry on the same candle count as exit first, so the new position is taken. Foundation
+  exits every position at the next CHoCH before the next SETUP, so on Strategies 1–6 today the lock never binds (0 of the
+  All-data positions); it matters as soon as a design can re-enter while a position is open. `"none"` switches it off.
+- **`lots`**: lots per position (charges, gross and net scale with it; points stay per lot).
+- **`scale_out`**: part of the lots exit at a fixed target, the rest ride the strategy's exit, e.g. 2 lots, one out at +10:
+  `{"lots": 2, "scale_out": [{"lots": 1, "target_pts": 10}]}`. The target is in the traded instrument's points (option
+  premium for options, futures points for futures), from the entry fill; it fills on the first candle after the entry
+  candle that reaches it (at the open if the candle opens beyond it, on a session's first candle at the close — no fill on the
+  opening print); a target reached only on the candle where the stop is hit counts as not reached (stop first). A tranche
+  whose target is never reached exits with the rest. Each tranche is a trade row (`lots`, `tranche` = `T1 +10` / `rest`)
+  and is charged as its own round trip (so a scale-out pays one extra brokerage on entry — conservative).
+Changing any of these is a strategy change: its results get a new version in `results/history` (below).
 
 ## Strategy → type → scheme
 | Level | Values | Where it is set / seen |
@@ -76,6 +97,8 @@ Fills: entry at the SETUP candle close; stop at the worse of candle open and sto
 Look-ahead check: `python tests/test_truncation.py`.
 
 ## FZ: the Foundation-Zone gate (Strategies 5 and 6)
+> Builder's reference with every rule as coded, the lab wiring, the tests and the open decisions: [`FZ.md`](FZ.md).
+
 `ST5` (Strategy 1 rules, 1 min) and `ST6` (Strategy 2 rules, 5 min) run the Foundation engine unchanged and then gate every
 Foundation SETUP against a memory of price bands (`rules.entry_rule = "fz_v1"`). `engine.py` is not modified: `fz.py` reads a
 frozen view of its output (swings, SETUPs, CHoCHs, the protected level) and the bars, never its trades, exits or final-state fields.
@@ -196,6 +219,8 @@ which moved two 1m positions; the permutation now splits by the SETUPs FZ traded
 | `strategies/strategy_<n>.json` | **versioned** — one file per strategy: the source of truth for its rules and backtests |
 | `config/data.json`, `config/charges.json` | **versioned** — input candle files, charge schedules |
 | `results/summary.json`, `results/trades.csv` | **versioned** latest headline numbers and trades — diff them across commits |
+| `results/history/<CODE>.json` | **versioned** — every version of a strategy (definition + result code) with its headline numbers per backtest and choice; the baseline each new version is read against |
+| `serve.py` | the dashboard server with the backtest queue (`python serve.py`) |
 | `results/fz_setups.csv`, `results/fz_ledger.csv` | **versioned** FZ gate ledger (one row per SETUP) and its per-run tables; written only by a full build |
 | `tools/` | Kite downloads: `kitefut.py` / `kite1m.py` futures, `kite_spot.py` index, `kite_options.py` option chain; credentials read at runtime from money-maker |
 | `web/` | per-variant, per-strike detail JSON the dashboard loads (generated, not versioned) |
@@ -221,6 +246,9 @@ which moved two 1m positions; the permutation now splits by the SETUPs FZ traded
 - **Open at the end:** a position still open when a backtest ends is valued at its last candle and flagged `*`.
 - **Capital per lot** (`capital_fut`, `capital_opt_short` on the strategy row; long options use the premium paid) feeds return on
   capital, Calmar and risk of ruin.
+- **Trades table:** options show Expiry, Strike and CE/PE as their own columns, the option entry and exit (time @ premium),
+  and for Options (via futures) the futures price in → out; a Lots column appears when a strategy scales out. Positions not
+  taken are listed under the table with the reason (no option data / strike locked).
 - **Dashboard tabs:** Trades · Performance (returns, Sharpe / Sortino / Calmar, expectancy in ₹ and R, payoff, streaks, time in
   market, % profitable days / weeks / months) · Cumulative P&L with drawdown curve · Drawdowns (top 5) · Distribution (P&L and
   R histograms, max-profit vs max-loss scatter, holding time) · Monte Carlo (2,000 runs, fixed seed: trade-order shuffle fan and
@@ -234,11 +262,30 @@ python lab.py                 # reuse stored results, recompute only what change
 python lab.py --full          # recompute everything
 python lab.py ST1             # one strategy (partial run: stores it, does not rebuild dashboard.html or results/*)
 python lab.py backtest ST2 1Y # add a backtest to strategies/strategy_2.json and run it
-python -m http.server 8766    # then open http://localhost:8766/dashboard.html
+python serve.py               # then open http://localhost:8766/dashboard.html (python serve.py 8770 for another port)
 ```
+**Running backtests from the page (no terminal, no assistant):** open the dashboard through `python serve.py`. *+ backtest*
+then lists the presets (1M 3M 6M YTD 1Y 5Y, All data — ✓ = already a backtest of this strategy; dashed = the data does not
+reach back that far yet, so it will be listed as not available until older data is added), a custom range, "run this backtest
+on other candles", and *Recompute what is missing*. A click queues a job: it adds the backtest to the strategy's file and runs
+`lab.py` (only missing or changed results are computed), the header shows the job, and the page reloads when it finishes.
+Jobs run one at a time; a terminal `lab.py` run waits for a running job and the other way round (`cache/lab.lock`). Logs:
+`cache/jobs/<id>.log`. The server listens on 127.0.0.1 only and refuses cross-origin POSTs; it never touches a broker.
+Opened any other way (a plain static server), the panel shows the equivalent terminal commands instead.
+
+**Versions (before / after a change):** every full run writes `results/history/<CODE>.json`. A new version starts whenever the
+strategy's definition (the file without its name, description and backtest list) or the code its results come from changes;
+the current version's numbers are refreshed on every run. The run prints each changed headline (net and trades per backtest,
+futures and the ATR2 option choices) against the previous version, and the dashboard's KPI row carries a *vs version N* tile
+(long + short, same backtest and choice; the tooltip lists what changed). Version 1 of Strategies 1–6 is the result set
+stored before the position config (lab.py of commit `7a8b10e`).
+
+**Saving a chart:** *PNG* / *JPG* in the chart toolbar save the chart as it is shown (zoom, layers, the breadcrumb and session
+as a title line). JPG is the smaller file.
 **Stored results:** each (strategy, period, strike choice) is written to `web/<code>/<backtest>_<tf>/<choice>/` (e.g. `web/ST2/all-data_5m/W-ATR2/`) as `summary.json`
 (KPIs, trades, signals, chart index) plus one `c<k>.json` chart chunk per session (per day-contract for option · native).
-`summary.json` carries a cache key over the strategy row, the period, `engine.py` + `lab.py`, and the input data files
+`summary.json` carries a cache key over the strategy row, the period, `engine.py` + `lab.py` (without the functions listed in
+`CACHE_EXEMPT` — definitions sync, CLI, history and output bookkeeping — so editing those keeps stored results), and the input data files
 (for FZ rows also `fz.py`, `fz_exec.py`, `fz_report.py` and the 1-minute file); a run is reused while the key matches.
 
 **Dashboard loading:** it reads the summary, then only the session on screen; ‹ › and the session list fetch more on demand,

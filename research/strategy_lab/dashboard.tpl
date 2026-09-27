@@ -58,6 +58,13 @@ h1{font-size:16px;font-weight:600;margin:0}.sub{color:var(--muted);font-size:12p
 .chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:2px 9px;font-size:11px;color:var(--muted);cursor:pointer;user-select:none}
 .chip.on{color:var(--ink);border-color:#c9ced6}.chip i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px}
 .loading{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(255,255,255,.7);z-index:5;color:var(--muted)}
+.bq{min-width:360px;max-width:440px;font-size:12px}.bq h5{margin:8px 0 4px;font-size:12px}.bq h5:first-child{margin-top:0}
+.bq .row{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:3px 0}.bq input{font:inherit;padding:2px 4px;border:1px solid var(--line);border-radius:4px}
+.bq .qb{font:inherit;padding:2px 8px;border:1px solid var(--line);border-radius:4px;background:transparent;cursor:pointer;color:inherit}
+.bq .qb:hover{border-color:var(--link);color:var(--link)}.bq .qb[disabled]{opacity:.45;cursor:default}.bq .qb.warn{border-style:dashed}
+.bq pre{white-space:pre-wrap;max-height:140px;overflow:auto;margin:4px 0 0;font-size:11px;background:var(--sel);padding:4px;border-radius:4px}
+.apiOnly{display:none}body.api .apiOnly{display:block}body.api .noApi{display:none}
+#jobBadge{font-size:12px;color:var(--link)}#jobBadge.failed{color:var(--warn-fg)}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0}
 .kpi{padding:10px 12px}.kpi .l{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
 .kpi .v{font-size:20px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}.kpi .s{color:var(--muted);font-size:11px}
@@ -122,7 +129,7 @@ svg text{font:10px system-ui;fill:#6b7280}
   <div class="ctop">
     <span class="crumb" id="crumb"></span>
     <span class="seg" id="viewSeg" title="which chart"></span>
-    <div class="nav" id="dayNav"><button id="prev" title="previous">‹</button><select id="series" title="session / contract"></select><button id="next" title="next">›</button><button id="all" title="load every session of this backtest into one chart">Full period</button></div>
+    <div class="nav" id="dayNav"><button id="prev" title="previous">‹</button><select id="series" title="session / contract"></select><button id="next" title="next">›</button><button id="all" title="load every session of this backtest into one chart">Full period</button><button id="snapPng" title="save the chart as it is shown, as a PNG image">PNG</button><button id="snapJpg" title="save the chart as it is shown, as a JPEG image (smaller file)">JPG</button></div>
     <div class="ohlc" id="ohlc"></div>
     <div class="layers" id="layers"></div>
   </div>
@@ -263,7 +270,7 @@ function renderHeader(){
     return `<div class="col ${on?'cur':''}"><h4 data-c="${m.code}">${TYPE[m.variant]}</h4>${cv}${['BOTH','LONG','SHORT'].map(row).join('')}${sides}</div>`;};
   $('head').innerHTML=`<div class="hbar"><span class="brand">Strategy lab</span>${stratCtl}<span class="pipe">|</span>${btCtl}<span class="dates">${r.status==='ok'?rng(r):''}</span>${tfCtl}
       ${r.timeframe!==dtf?`<span class="badge">rules built for ${TFS[dtf]}</span>`:''}<span class="sp"></span>
-      <span class="menu"><span class="link" id="addL">+ backtest</span><div class="pop" id="addP" style="left:auto;right:0;padding:8px 10px">${addCmds}</div></span><span class="menu"><span class="link" id="palL">Colours ▾</span><div class="pop" id="palP" style="left:auto;right:0;min-width:300px">${PALETTES.map(p=>`<div class="it ${curPal()===p.k?'on':''}" data-p="${p.k}"><span class="sw3">${p.sw.map(c=>`<i style="background:${c}"></i>`).join('')}</span>${p.name}<small>${p.note}</small></div>`).join('')}</div></span><span class="link" id="rulesL">Rules ${ST.rules?'▴':'▾'}</span></div>
+      <span id="jobBadge"></span><span class="menu"><span class="link" id="addL">+ backtest</span><div class="pop" id="addP" style="left:auto;right:0;padding:8px 10px">${backtestPanel(f,r,runs,addCmds)}</div></span><span class="menu"><span class="link" id="palL">Colours ▾</span><div class="pop" id="palP" style="left:auto;right:0;min-width:300px">${PALETTES.map(p=>`<div class="it ${curPal()===p.k?'on':''}" data-p="${p.k}"><span class="sw3">${p.sw.map(c=>`<i style="background:${c}"></i>`).join('')}</span>${p.name}<small>${p.note}</small></div>`).join('')}</div></span><span class="link" id="rulesL">Rules ${ST.rules?'▴':'▾'}</span></div>
     <div id="rules" class="${ST.rules?'on':''}">${rules}</div>
     <div class="cols" style="grid-template-columns:repeat(${rs.length},minmax(0,1fr))">${optRow}${rs.map(col).join('')}</div>`;
   const go=()=>{saveAll();openType(true);};
@@ -285,11 +292,72 @@ function renderHeader(){
   if($('stkSel'))$('stkSel').onchange=e=>{S().strike=e.target.value;go();};
   $('addL').onclick=e=>{e.stopPropagation();$('addP').classList.toggle('on');};
   $('addP').onclick=e=>e.stopPropagation();
+  wireBacktestPanel(f,r);
   $('palL').onclick=e=>{e.stopPropagation();document.querySelectorAll('.pop').forEach(x=>x!==$('palP')&&x.classList.remove('on'));$('palP').classList.toggle('on');};
   document.querySelectorAll('#palP .it').forEach(it=>it.onclick=e=>{e.stopPropagation();document.documentElement.dataset.palette=it.dataset.p;save_('palette',it.dataset.p);renderHeader();});
   $('rulesL').onclick=()=>{ST.rules=!ST.rules;saveAll();$('rules').classList.toggle('on',ST.rules);$('rulesL').textContent='Rules '+(ST.rules?'▴':'▾');};
 }
 document.addEventListener('click',()=>document.querySelectorAll('.pop').forEach(x=>x.classList.remove('on')));
+
+// ================= backtest queue (serve.py): add a period / timeframe and run it from the page
+const PRESET_MONTHS={'1M':1,'3M':3,'6M':6,'1Y':12,'5Y':60};
+function presetFrom(p){const e=new Date(DATA_RANGE[1]+'T00:00:00Z');if(p==='YTD')return DATA_RANGE[1].slice(0,4)+'-01-01';
+  e.setUTCMonth(e.getUTCMonth()-PRESET_MONTHS[p]);return e.toISOString().slice(0,10);}
+function backtestPanel(f,r,runs,cmds){
+  const dtf=designTf(f),have=new Set(Object.values(runs).filter(x=>x.timeframe===dtf).map(x=>x.label));
+  const pre=[...Object.keys(PRESET_MONTHS),'YTD'].sort((a,b)=>presetFrom(b).localeCompare(presetFrom(a)));
+  const chip=p=>{const lbl=p,short=presetFrom(p)<DATA_RANGE[0];
+    return `<button class="qb ${short?'warn':''}" data-what="${p}" ${have.has(lbl)?'disabled title="already a backtest of this strategy"':short?`title="needs data from ${presetFrom(p)}; the data starts ${DATA_RANGE[0]}, so it will be listed as not available until older data is added"`:`title="${presetFrom(p)} → ${DATA_RANGE[1]}"`}>${lbl}${have.has(lbl)?' ✓':''}</button>`;};
+  const tfs=Object.keys(TFS).filter(t=>!Object.values(runs).some(x=>x.label===r.label&&x.timeframe===t));
+  return `<div class="bq"><div class="apiOnly">
+    <h5>Add a backtest period to ${esc(SNAME(rowsOf(f)[0]))}</h5><div class="row">${pre.map(chip).join('')}${have.has('All data')?'':'<button class="qb" data-what="all">All data</button>'}</div>
+    <h5>Custom range</h5><div class="row"><input type="date" id="bqFrom" min="${DATA_RANGE[0]}" max="${DATA_RANGE[1]}" value="${DATA_RANGE[0]}"> → <input type="date" id="bqTo" min="${DATA_RANGE[0]}" max="${DATA_RANGE[1]}" value="${DATA_RANGE[1]}">
+      <input id="bqLabel" placeholder="name, e.g. July" size="10" maxlength="40"><button class="qb" id="bqCustom">Run</button></div>
+    ${tfs.length?`<h5>Run “${esc(r.label)}” on other candles</h5><div class="row">${tfs.map(t=>`<button class="qb" data-tf="${t}">${TFS[t]}</button>`).join('')}</div>`:''}
+    <h5>Results missing or out of date</h5><div class="row"><button class="qb" id="bqAll">Recompute what is missing</button><span class="sub">only what changed is computed</span></div>
+    <div id="bqMsg" class="sub"></div><pre id="bqLog" style="display:none"></pre>
+    <small class="sub">A job adds the backtest to the strategy's file and runs lab.py; the page reloads when it is done. 1-minute option runs can take a while.</small></div>
+    <div class="noApi"><small class="sub">Start the page with <code>python serve.py</code> (in research/strategy_lab) to run backtests from here. Or run in a terminal, then reload:</small>${cmds.replace(/^<small class="sub">[^<]*<\/small>/,'')}</div></div>`;}
+async function queueJob(path,body){
+  $('bqMsg').textContent='sending…';
+  try{const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const j=await r.json();
+    if(!r.ok){$('bqMsg').textContent=j.error||('refused: '+r.status);return;}
+    $('bqMsg').textContent=`queued: ${j.job.title}`;pollJobs(true);}catch(e){$('bqMsg').textContent='the job server is not reachable: '+e.message;}}
+function wireBacktestPanel(f,r){
+  document.querySelectorAll('#addP [data-what]').forEach(b=>b.onclick=()=>queueJob('api/backtest',{code:f,what:b.dataset.what}));
+  document.querySelectorAll('#addP [data-tf]').forEach(b=>b.onclick=()=>queueJob('api/backtest',r.kind==='custom'||r.kind==='named'
+    ?{code:f,what:'custom',from:r.date_from,to:r.date_to,tf:b.dataset.tf,label:r.label}
+    :{code:f,what:r.kind==='all'?'all':r.preset,tf:b.dataset.tf,label:r.label}));
+  if($('bqCustom'))$('bqCustom').onclick=()=>queueJob('api/backtest',{code:f,what:'custom',from:$('bqFrom').value,to:$('bqTo').value,label:$('bqLabel').value.trim()});
+  if($('bqAll'))$('bqAll').onclick=()=>queueJob('api/run',{});
+  pollJobs(false);}
+let JOBT=null,JOBSEEN=null;
+async function pollJobs(expect){
+  clearTimeout(JOBT);let st;
+  try{const r=await fetch('api/status',{cache:'no-store'});if(!r.ok)throw 0;st=await r.json();}catch(e){document.body.classList.remove('api');return;}
+  document.body.classList.add('api');
+  const j=st.jobs[0],badge=$('jobBadge');if(!badge)return;
+  if(j&&(j.state==='queued'||j.state==='running')){
+    badge.className='';badge.textContent=`⟳ ${j.state==='running'?'running':'queued'}: ${j.title}`+(st.jobs.filter(x=>x.state==='queued').length>1?` (+${st.jobs.filter(x=>x.state==='queued').length-1} queued)`:'');
+    if($('bqLog')){$('bqLog').style.display='block';$('bqLog').textContent=j.log.join('\n');}
+    JOBSEEN=j.id;JOBT=setTimeout(()=>pollJobs(true),3000);return;}
+  if(j&&j.id===JOBSEEN){            // the job this page was waiting for has ended
+    if(j.state==='done'){badge.textContent='✓ done: '+j.title+' · reloading';setTimeout(()=>location.reload(),800);}
+    else{badge.className='failed';badge.textContent='✗ failed: '+j.title;if($('bqLog')){$('bqLog').style.display='block';$('bqLog').textContent=j.log.join('\n');}}
+    JOBSEEN=null;return;}
+  badge.textContent='';if(expect)JOBT=setTimeout(()=>pollJobs(true),3000);}
+
+// ================= save the chart as shown (PNG, or a smaller JPEG), with the breadcrumb as a title line
+function saveChart(fmt){
+  if(typeof ch==='undefined'||!ch||!ch.takeScreenshot)return;
+  const shot=ch.takeScreenshot(),title=($('crumb').innerText||'').replace(/\s+/g,' ').trim(),day=($('series').selectedOptions[0]||{}).text||'';
+  const H=26,c=document.createElement('canvas');c.width=shot.width;c.height=shot.height+H;
+  const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);
+  g.fillStyle='#111';g.font='13px system-ui, sans-serif';g.fillText((title+(day?'  ·  '+day:'')).slice(0,220),8,17);g.drawImage(shot,0,H);
+  const name=(title+' '+day).replace(/[^\w.-]+/g,'_').replace(/_+/g,'_').slice(0,120)+(fmt==='jpeg'?'.jpg':'.png');
+  c.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();
+    setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);},fmt==='jpeg'?'image/jpeg':'image/png',fmt==='jpeg'?0.85:undefined);}
+$('snapPng').onclick=()=>saveChart('png');$('snapJpg').onclick=()=>saveChart('jpeg');
 
 // ================= data + chart chunks
 const getJSON=async f=>{if(!cache[f])cache[f]=fetch(f).then(r=>{if(!r.ok)throw new Error(f+' '+r.status);return r.json();});return cache[f];};
@@ -427,7 +495,7 @@ async function openAt(t0,t1){const d=iso(t0).slice(0,10),k=D.charts.findIndex(c=
   if(VIEW!=='signal')await setView('signal',k);const c=await showChunk(k);if(c)c.zoom(t0,t1);document.querySelector('.chartcard').scrollIntoView({behavior:'smooth',block:'start'});}
 
 // ================= trades of the current selection
-const allTrades=()=>D.trades.map(([otype,instr,strike,cht,et,ep,sl,xt,xp,why,pts,gross,chg,net,open,cb,ue,ux,stale,mfe,mae,pos,ot,sig,exp])=>({otype:ot||otype,pos:pos||'LONG',sig:sig||'',exp,instr,strike,cht,et,ep,sl,xt,xp,why,pts,gross,chg,net,open,cb,ue,ux,stale,mfe:mfe??0,mae:mae??0,
+const allTrades=()=>D.trades.map(([otype,instr,strike,cht,et,ep,sl,xt,xp,why,pts,gross,chg,net,open,cb,ue,ux,stale,mfe,mae,pos,ot,sig,exp,g_,rr_,z_,f_,lots,tranche])=>({otype:ot||otype,pos:pos||'LONG',sig:sig||'',exp,instr,strike,cht,et,ep,sl,xt,xp,why,pts,gross,chg,net,open,cb,ue,ux,stale,mfe:mfe??0,mae:mae??0,lots:lots||1,tranche:tranche||'',
     ets:Date.parse(et.replace(' ','T')+'Z')/1000,xts:Date.parse(xt.replace(' ','T')+'Z')/1000}));
 const sel=()=>allTrades().filter(t=>inSch(t,schemeOf(cur)));
 const sessionsOf=()=>[...new Set(D.charts.map(c=>c.day).filter(Boolean))].sort();
@@ -446,6 +514,15 @@ const capitalFor=T=>{const m=cur;if(m.variant==='FUT')return {cap:m.capital_fut,
 const riskPts=t=>(cur.variant==='OPT_FUT_SIGNAL'||t.sl==null)?null:Math.abs(t.ep-t.sl);   // R needs the stop in the traded instrument
 
 // ================= below the chart
+// the previous version of this strategy (results/history), same backtest and choice, long + short (the history keeps totals)
+function baselineTile(){
+  const m=cur,b=m.baseline,v=m.version;if(!b||!v)return '';
+  const o=((b.results||{})[S().run]||{})[curChoice],n=statOf(m,'BOTH');
+  const why=(v.changes&&v.changes.length?v.changes.join('\n'):'no definition change recorded');
+  if(!o)return `<div class="card kpi" title="${esc(why)}"><div class="l">vs version ${b.version}</div><div class="v">—</div><div class="s">not run in version ${b.version}</div></div>`;
+  const d=n?n.net_inr-o.net_inr:null;
+  return `<div class="card kpi" title="Version ${v.version} (${v.at.slice(0,16).replace('T',' ')}) against version ${b.version} (${b.at.slice(0,16).replace('T',' ')}):\n${esc(why)}"><div class="l">vs version ${b.version} · long + short</div>`+
+    `<div class="v ${d!=null?cl(d):''}">${d!=null?(d>=0?'+':'')+inr(d):'—'}</div><div class="s">was ${inr(o.net_inr)} · ${o.trades} trades · PF ${o.pf??'—'} → now ${n?n.trades:'—'} trades · PF ${n&&n.pf!=null?n.pf:'—'}</div></div>`;}
 function renderBelow(){
   const m=cur,LOT=m.lot_size,T=sel(),sch=schemeOf(m),s=statsOf(T);
   const skipped=D.skipped.filter(x=>sch==='BOTH'||(sch==='LONG'||sch==='SHORT'?(!x.position||x.position===sch):(!x.opt_type||x.opt_type===sch))).length;
@@ -460,7 +537,7 @@ function renderBelow(){
     ['Profit factor',s.pf??'—','net wins ÷ net losses',''],
     ['Max drawdown',inr(s.max_dd_inr),'peak to trough, by trade',s.max_dd_inr<0?'neg':''],
     ['Expectancy',inr(s.mean),exR.length?`${fmt(exR.reduce((a,b)=>a+b,0)/exR.length,2)} R per trade`:'per trade',cl(s.mean)]]
-    .map(([l,v,sub,c])=>`<div class="card kpi"><div class="l">${l}</div><div class="v ${c}">${v}</div><div class="s">${sub}</div></div>`).join('');
+    .map(([l,v,sub,c])=>`<div class="card kpi"><div class="l">${l}</div><div class="v ${c}">${v}</div><div class="s">${sub}</div></div>`).join('')+baselineTile();
   renderCalendar(T);renderTrades(T,LOT);renderDaily(T);renderBreakdown(T);renderSignals();renderConfig();
   renderTab(document.querySelector('.tab.on').dataset.p);
 }
@@ -505,12 +582,15 @@ function renderCalendar(T){
 // ---- trades, daily, breakdown, signals, config
 function renderTrades(T,LOT){
   const cbTip=cb=>['Brokerage '+inr(cb.brokerage),'STT '+inr(cb.stt),'Exchange '+inr(cb.exchange),'SEBI '+inr(cb.sebi),'Stamp '+inr(cb.stamp),'GST '+inr(cb.gst)].join('&#10;');
-  const und=cur.variant==='OPT_FUT_SIGNAL';let cum=0;
-  $('ttrades').innerHTML=`<thead><tr><th>#</th><th>Position</th><th>Instrument</th><th>Signal</th><th>Entry</th><th class="num">SL${und?' (fut)':''}</th><th>Exit</th><th>Reason</th>${und?'<th class="num">Fut in → out</th>':''}<th class="num">Max profit</th><th class="num">Max loss</th><th class="num">Points</th><th class="num">Gross ₹</th><th class="num">Charges ₹</th><th class="num">Net ₹</th><th class="num">Cum. net ₹</th></tr></thead><tbody>`+
-    T.map((t,i)=>{cum+=t.net;return `<tr class="z" data-a="${t.ets}" data-b="${t.xts}"><td>${i+1}</td><td><span class="pill ${t.pos==='LONG'?'long':'short'}">${t.pos}</span></td><td>${t.instr}${t.stale?' <span class="pill open" title="price from an earlier candle the same day">stale</span>':''}</td><td>${sigName(t)}</td><td>${t.et.slice(5,16)} @ ${t.ep}</td><td class="num">${t.sl??'—'}</td><td>${t.xt.slice(5,16)} @ ${t.xp}</td><td><span class="pill ${t.why==='stop_loss'?'short':t.open?'open':'grey'}">${WHY[t.why]}</span></td>${und?`<td class="num">${t.ue} → ${t.ux}</td>`:''}<td class="num pos" title="${inr(t.mfe*LOT)} per lot">${fmt(t.mfe)}</td><td class="num neg" title="${inr(t.mae*LOT)} per lot">${fmt(t.mae)}</td><td class="num ${cl(t.pts)}">${fmt(t.pts)}</td><td class="num ${cl(t.pts)}">${inr(t.gross)}</td><td class="num neg" title="${cbTip(t.cb)}">${inr(-t.chg)}</td><td class="num ${cl(t.net)}">${inr(t.net)}${t.open?'<span class="warn" title="open at the backtest end, valued at its last candle">*</span>':''}</td><td class="num ${cl(cum)}">${inr(cum)}</td></tr>`;}).join('')+'</tbody>';
+  const und=cur.variant==='OPT_FUT_SIGNAL',opt=cur.variant!=='FUT',lotc=T.some(t=>t.lots>1||t.tranche);let cum=0;
+  const expD=e=>e?new Date(e+'T00:00:00Z').toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit',timeZone:'UTC'}):'—';
+  const inst=t=>opt?`<td>${expD(t.exp)}</td><td class="num" title="${esc(t.instr)}">${t.strike!=null?Math.round(t.strike):'—'}</td><td>${t.otype}</td>`:`<td>${t.instr}</td>`;
+  $('ttrades').innerHTML=`<thead><tr><th>#</th><th>Position</th>${opt?'<th>Expiry</th><th class="num">Strike</th><th>CE/PE</th>':'<th>Instrument</th>'}<th>Signal</th><th>${opt?'Option entry':'Entry'}</th><th class="num">SL${und?' (fut)':opt?' (option)':''}</th><th>${opt?'Option exit':'Exit'}</th><th>Reason</th>${und?'<th class="num">Fut in → out</th>':''}${lotc?'<th class="num">Lots</th>':''}<th class="num">Max profit</th><th class="num">Max loss</th><th class="num">Points</th><th class="num">Gross ₹</th><th class="num">Charges ₹</th><th class="num">Net ₹</th><th class="num">Cum. net ₹</th></tr></thead><tbody>`+
+    T.map((t,i)=>{cum+=t.net;return `<tr class="z" data-a="${t.ets}" data-b="${t.xts}"><td>${i+1}</td><td><span class="pill ${t.pos==='LONG'?'long':'short'}">${t.pos}</span></td>${inst(t).replace(/<\/td>$/,(t.stale?' <span class="pill open" title="price from an earlier candle the same day">stale</span>':'')+'</td>')}<td>${sigName(t)}</td><td>${t.et.slice(5,16)} @ ${t.ep}</td><td class="num">${t.sl??'—'}</td><td>${t.xt.slice(5,16)} @ ${t.xp}</td><td><span class="pill ${t.why==='stop_loss'?'short':t.open?'open':'grey'}">${WHY[t.why]||t.why}</span></td>${und?`<td class="num">${t.ue} → ${t.ux}</td>`:''}${lotc?`<td class="num" title="${esc(t.tranche)}">${t.lots}${t.tranche?' · '+esc(t.tranche):''}</td>`:''}<td class="num pos" title="${inr(t.mfe*LOT)} per lot">${fmt(t.mfe)}</td><td class="num neg" title="${inr(t.mae*LOT)} per lot">${fmt(t.mae)}</td><td class="num ${cl(t.pts)}">${fmt(t.pts)}</td><td class="num ${cl(t.pts)}">${inr(t.gross)}</td><td class="num neg" title="${cbTip(t.cb)}">${inr(-t.chg)}</td><td class="num ${cl(t.net)}">${inr(t.net)}${t.open?'<span class="warn" title="open at the backtest end, valued at its last candle">*</span>':''}</td><td class="num ${cl(cum)}">${inr(cum)}</td></tr>`;}).join('')+'</tbody>';
   const op=T.filter(t=>t.open);
   $('opennote').innerHTML=op.length?`<div class="note"><b>*</b> ${op.length} position${op.length>1?'s':''} still open at the backtest end, valued at the last available candle: `+op.map(t=>`${t.pos.toLowerCase()} ${t.instr} from ${t.et.slice(5,16)} → ${t.xt.slice(5,16)} ${inr(t.net)}`).join(' · ')+'</div>':'';
-  $('skipped').innerHTML=D.skipped.length?`${D.skipped.length} signal(s) skipped for missing option data: `+D.skipped.slice(0,8).map(x=>`${(x.entry_time||'').slice(5,16)} — ${x.why}`).join(' · ')+(D.skipped.length>8?' …':''):'';
+  const nLock=D.skipped.filter(x=>String(x.why||'').startsWith('strike locked')).length,nData=D.skipped.length-nLock;
+  $('skipped').innerHTML=D.skipped.length?`${D.skipped.length} position(s) not taken`+(nData?` · ${nData} without option data`:'')+(nLock?` · ${nLock} because the strike already had an open position (strike lock)`:'')+': '+D.skipped.slice(0,8).map(x=>`${(x.entry_time||'').slice(5,16)} — ${x.why}`).join(' · ')+(D.skipped.length>8?' …':''):'';
   document.querySelectorAll('#ttrades tr.z').forEach(r=>r.onclick=()=>openTrade(+r.dataset.a,+r.dataset.b));
 }
 function renderDaily(T){const byDay={};T.forEach(t=>(byDay[t.xt.slice(0,10)]??=[]).push(t));let dc=0;

@@ -111,6 +111,7 @@ When changing anything in these areas, **read the relevant doc first**:
 | Observation journal + CHoCH/BOS | [`docs/OBSERVATION_JOURNAL.md`](docs/OBSERVATION_JOURNAL.md) | Platform-level capture of candidates/entries/exits **and the during-position timeline** (`MONITOR` / `EVENT`), the `FeatureContributor` SPI, and market-structure detection (`confirmableAt` matters) |
 | Cross-workflow system map | [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md) | Every workflow end-to-end (trigger → steps → reads/writes), plus which workflows feed each other's data — the view none of the per-feature docs above gives on its own |
 | Strategy lab (research) | [`research/strategy_lab/README.md`](research/strategy_lab/README.md) | Standalone Python prototype bench (not part of the Spring Boot build): swing / CHoCH / AVWAP engine, one file per strategy in `strategies/` (Strategy 1-6; Strategies 5–6 = Foundation-Zone gate (`fz.py`)), futures + option types, per-strategy backtests, dashboard. Ideas are proven here before becoming a `Strategy` bean |
+| FZ build notes (research) | [`research/strategy_lab/FZ.md`](research/strategy_lab/FZ.md) | How Strategies 5–6 (the Foundation-Zone gate) are built: module boundaries and the information rule, the `fz` block keys, zones / visits / reads / gate / watch machine as coded, execution parity, lab integration, reporting, dashboard, tests, first results, pending decisions |
 
 If you add a doc, link it here. If you change behaviour described in a doc, update the doc in the same PR — see the next section.
 

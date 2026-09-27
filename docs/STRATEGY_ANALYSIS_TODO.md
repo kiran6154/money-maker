@@ -444,6 +444,17 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 
 ---
 
+### S41. Lab Strategy 1 "Options (via futures) · Monthly" was green on both windows and is now red on the Unseen test: the contract changed, not the rules
+
+| | |
+|---|---|
+| Where | [`research/strategy_lab/lab.py`](../research/strategy_lab/lab.py) (`OptionChain.expiry_for`, `legs_of`); `options.expiry_types` / `expiry_min_days` in `research/strategy_lab/strategies/strategy_1.json`. Filed 2026-09-27. |
+| Why | The earlier green numbers (commits `fd43167` / `03a4fa5`, then row `S1M_OF`) priced **every** trade on the 29-Sep monthly contract, the only chain downloaded then. In the Unseen window (8 Jul – 25 Aug) that meant a contract 5–12 weeks from expiry, with every strike available. They were also long-only (long CE on bullish, long PE on bearish). Today "Monthly" means the nearest month-end expiry at least `expiry_min_days` (1) away: 28-Jul, 25-Aug, then 29-Sep. The July and August contracts come from the local ICICI weekly files, which only hold strikes near the ATM of the day before expiry, so ATR2 strikes are often missing and those legs are skipped. That is never back-filled with another strike (hindsight rule). The Design window (26 Aug – 25 Sep) is on 29-Sep under both definitions, so it has not moved. |
+| Impact | **Measured** (`ST1_FB`, strike ATR2, 1 lot per leg, All-data build 2026-09-27). Design: then 55 long trades, +₹24,126; now long 55, +₹24,126; short 55, +₹11,570; total +₹35,696 (unchanged). Unseen: then 138 long trades on 29-Sep, +₹29,697; now long 59, −₹24,128; short 64, −₹11,536; total −₹35,664, with **169 legs skipped** for missing strike data (e.g. 23 × 25AUG26 24350 CE). Contract use in Unseen: 28-Jul 51, 25-Aug 54, 29-Sep 18. So today's Unseen number prices fewer than half the legs, and the skipped set is not random (strikes far from where expiry settled are the missing ones); it is not a trustworthy verdict either way. The old number answers a different question ("trade the far-month contract"), with far less theta. Neither has been checked on a full chain for 28-Jul / 25-Aug. |
+| Fix sketch | The user decides what "Monthly" should mean (Rule 0(c)). Options, each a value in the strategy file, run on the same windows before and after: (a) keep nearest month-end and get full-chain history for 28-Jul / 25-Aug (Kite does not serve expired contracts; another source is needed) so no leg is skipped; (b) add an expiry type such as `MONTHLY_NEXT` / a fixed `expiry_min_days` (e.g. 21), which picks the far contract, like the old runs; (c) report Monthly only where coverage is complete (the orange * already flags skipped legs). |
+| Effort | **S** for (b) or (c); (a) depends on the data source. |
+| Priority | _Open — filed 2026-09-27. Read the Unseen option numbers as incomplete until one of the fixes lands._ |
+
 ### S32. Look-ahead audit of the Strategy 8 replay: clean — but the fill model is stale-by-one-tick and stops fill with zero slippage
 
 | | |
