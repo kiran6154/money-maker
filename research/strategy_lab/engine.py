@@ -29,7 +29,7 @@ def window(bars, date_from, date_to, warmup_days, name="series"):
 
 
 def run(bars, p):
-    """p: dict with break_mode ('touch'|'close'), avwap_weight ('volume'|'equal'),
+    """p: dict with break_mode ('touch'|'close'), optional choch_mode (defaults to break_mode), avwap_weight ('volume'|'equal'),
     entry_rule ('setup_v1'), exit_rule ('next_choch')."""
     t, o, h, l, c, vol = (bars[k] for k in "tohlcv")
     n = len(t)
@@ -38,6 +38,10 @@ def run(bars, p):
     # price that "breaks" a level: touch uses the wick, close uses the close
     def below(i, lvl): return (l[i] <= lvl) if touch else (c[i] < lvl)
     def above(i, lvl): return (h[i] >= lvl) if touch else (c[i] > lvl)
+    # the CHoCH (break of the protected level, and the AVWAP check for a trend flip) can use its own rule
+    ch_touch = p.get("choch_mode", p["break_mode"]) == "touch"
+    def ch_below(i, lvl): return (l[i] <= lvl) if ch_touch else (c[i] < lvl)
+    def ch_above(i, lvl): return (h[i] >= lvl) if ch_touch else (c[i] > lvl)
 
     # ---- swing detector (Pine port; confirmation by break_mode) ----
     mode = 0; ch = chb = cl = clb = None; sw = []; cand = []
@@ -88,8 +92,8 @@ def run(bars, p):
                 bos_used.add(id(lastH)); events.append(dict(i=i, kind="BOS", dir="up"))
             if trend == -1 and lastL and id(lastL) not in bos_used and below(i, lastL["p"]):
                 bos_used.add(id(lastL)); events.append(dict(i=i, kind="BOS", dir="down"))
-            if P and ((trend == 1 and below(i, P["p"])) or (trend == -1 and above(i, P["p"]))):
-                flip = (trend == 1 and below(i, v)) or (trend == -1 and above(i, v))
+            if P and ((trend == 1 and ch_below(i, P["p"])) or (trend == -1 and ch_above(i, P["p"]))):
+                flip = (trend == 1 and ch_below(i, v)) or (trend == -1 and ch_above(i, v))
                 flip = flip and (lastH if trend == 1 else lastL) is not None   # need a swing to re-anchor at
                 events.append(dict(i=i, kind="CHoCH", dir="down" if trend == 1 else "up", flip=flip,
                                    lvl=P["p"], sw=P, av=v, tr=trend, hi=lastH, lo=lastL))

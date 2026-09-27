@@ -2,6 +2,11 @@
 <title>Strategy dashboard</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--ink:#16181d;--muted:#6b7280;--line:#e6e8ec;--up:#089981;--dn:#f23645;--acc:#2962ff;--pur:#7b1fa2;--amb:#b45309;--rad:10px}
+/* page colour tokens: Classic values here, palettes below override them. --up --dn --acc --pur stay the chart's own colours */
+:root{--pnl-up:#089981;--pnl-dn:#f23645;--sel:#2962ff;--sel-bg:#e8eeff;--hover:#f3f6ff;--cur-bg:#f8faff;--link:#2962ff;--subtle:#fafbfc;--long-bg:#e6f6f2;--long-fg:#067a66;--short-bg:#fdecee;--short-fg:#c0272f;--warn-fg:#b45309;--warn-star:#d97706;--warn-bg:#fff4e0;--warn-line:#f5d9a8;--warn-ink:#8a5a00;--h0:#ebedf0;--hp1:#c6e9dc;--hp2:#8fd3bb;--hp3:#4db894;--hp4:#089981;--hn1:#fbd3d6;--hn2:#f5a3aa;--hn3:#ee6f7a;--hn4:#e03444}
+:root[data-palette="clear"]{--pnl-up:#0a7d62;--pnl-dn:#c0392b;--sel:#2954d9;--sel-bg:#eef2ff;--hover:#f5f7fb;--cur-bg:#f8f9fc;--link:#2954d9;--long-bg:#eef1f5;--long-fg:#1f2937;--short-bg:#f3f4f6;--short-fg:#4b5563;--warn-fg:#a16207;--warn-star:#a16207;--warn-bg:#fef7e6;--warn-line:#f1d9a6;--warn-ink:#7a4f05;--h0:#eceef1;--hp1:#d5eee4;--hp2:#9dd4bf;--hp3:#4fae8d;--hp4:#0a7d62;--hn1:#f6dad7;--hn2:#eba7a0;--hn3:#d9695e;--hn4:#c0392b}
+:root[data-palette="cb"]{--pnl-up:#1f5fa8;--pnl-dn:#c2410c;--sel:#4338ca;--sel-bg:#eef0ff;--hover:#f5f6fb;--cur-bg:#f8f8fc;--link:#4338ca;--long-bg:#eef1f5;--long-fg:#1f2937;--short-bg:#f3f4f6;--short-fg:#4b5563;--warn-fg:#92400e;--warn-star:#92400e;--warn-bg:#fdf6e7;--warn-line:#ecd5a4;--warn-ink:#6b3a0a;--h0:#eceef1;--hp1:#dbe8f5;--hp2:#a9c7e6;--hp3:#5b90c9;--hp4:#1f5fa8;--hn1:#fbe3d4;--hn2:#f3b894;--hn3:#e07b43;--hn4:#c2410c}
+.sw3{display:inline-flex;gap:2px;margin-right:8px;vertical-align:-1px}.sw3 i{width:10px;height:10px;border-radius:2px;display:inline-block}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .wrap{max-width:1600px;margin:0 auto;padding:12px 16px 40px}
@@ -17,11 +22,11 @@ h1{font-size:16px;font-weight:600;margin:0}.sub{color:var(--muted);font-size:12p
 .bhead{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line)}
 .bhead input{font:12px system-ui;border:1px solid var(--line);border-radius:6px;padding:3px 8px;width:220px}
 .sline{display:flex;align-items:center;flex-wrap:wrap;padding:8px 12px}
-.link{color:var(--acc);cursor:pointer;white-space:nowrap}.link:hover{text-decoration:underline}
-.badge{background:#fff4e0;color:var(--amb);border-radius:999px;padding:1px 9px;font-size:11px;font-weight:600;margin-left:8px}
+.link{color:var(--link);cursor:pointer;white-space:nowrap}.link:hover{text-decoration:underline}
+.badge{background:var(--warn-bg);color:var(--warn-fg);border-radius:999px;padding:1px 9px;font-size:11px;font-weight:600;margin-left:8px}
 .menu{position:relative;display:inline-block}
 .pop{position:absolute;top:22px;left:0;z-index:20;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:320px;padding:4px;display:none}
-.pop.on{display:block}.pop .it{padding:6px 10px;border-radius:6px;cursor:pointer}.pop .it:hover{background:#f3f6ff}.pop .it.on{background:#eef2ff}
+.pop.on{display:block}.pop .it{padding:6px 10px;border-radius:6px;cursor:pointer}.pop .it:hover{background:var(--hover)}.pop .it.on{background:var(--sel-bg)}
 .pop .it.off{color:#a0a4ab;cursor:not-allowed}.pop .it small{display:block;color:var(--muted);font-size:11px;white-space:normal}.pop .sep{border-top:1px solid var(--line);margin:4px 0}
 .pop code{display:block;background:#f6f7f9;border-radius:6px;padding:6px 8px;margin:4px 0;font-size:11px;white-space:pre-wrap}
 #rules{display:none;padding:8px 12px 10px;border-top:1px solid var(--line);font-size:12px}#rules.on{display:block}
@@ -36,12 +41,12 @@ h1{font-size:16px;font-weight:600;margin:0}.sub{color:var(--muted);font-size:12p
 .hmgrid{display:grid;grid-auto-flow:column;grid-template-rows:repeat(5,12px);grid-auto-columns:12px;gap:3px}
 .hmmon{display:grid;grid-auto-flow:column;grid-auto-columns:12px;gap:3px;font-size:10px;color:var(--muted);height:13px}
 .hmmon span{overflow:visible;white-space:nowrap}
-.hc{width:12px;height:12px;border-radius:2px;background:#ebedf0;cursor:pointer}.hc.x{background:transparent;cursor:default}.hc.z{background:#ebedf0}
-.hc:hover{outline:1.5px solid #16181d}.hc.sel{outline:1.5px solid var(--acc)}
+.hc{width:12px;height:12px;border-radius:2px;background:var(--h0);cursor:pointer}.hc.x{background:transparent;cursor:default}.hc.z{background:var(--h0)}
+.hc:hover{outline:1.5px solid #16181d}.hc.sel{outline:1.5px solid var(--sel)}
 .hmlegend{display:flex;align-items:center;gap:3px;font-size:10px;color:var(--muted);margin-top:4px}.hmlegend i{width:10px;height:10px;border-radius:2px;display:inline-block}
 .hmstats{display:grid;grid-template-columns:repeat(3,auto);gap:4px 18px;font-size:12px;font-variant-numeric:tabular-nums;align-content:start}
 .hmstats div{color:var(--muted)}.hmstats b{display:block;color:var(--ink);font-size:13px}
-.warn{color:#d97706;font-weight:700;cursor:help;margin-left:1px}
+.warn{color:var(--warn-star);font-weight:700;cursor:help;margin-left:1px}
 .chartcard{display:flex;flex-direction:column;height:max(460px,calc(100vh - 60px));overflow:hidden}
 .ctop{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 10px;border-bottom:1px solid var(--line)}
 .crumb{font-size:13px;font-weight:600}.crumb span{color:var(--muted);font-weight:400;margin:0 4px}
@@ -58,32 +63,59 @@ h1{font-size:16px;font-weight:600;margin:0}.sub{color:var(--muted);font-size:12p
 .kpi .v{font-size:20px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}.kpi .s{color:var(--muted);font-size:11px}
 .tabs{position:sticky;top:0;z-index:4;display:flex;gap:2px;background:var(--bg);padding-top:4px;border-bottom:1px solid var(--line);overflow-x:auto}
 .tab{border:0;background:transparent;padding:8px 12px;font:13px system-ui;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
-.tab.on{color:var(--ink);border-bottom-color:var(--acc);font-weight:600}
+.tab.on{color:var(--ink);border-bottom-color:var(--sel);font-weight:600}
 .panel{display:none;padding:12px 0}.panel.on{display:block}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
-th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);background:#fafbfc;position:sticky;top:0}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--subtle);position:sticky;top:0}
 td{padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
-tbody tr.z{cursor:pointer}tbody tr.z:hover{background:#f3f6ff}
-.num{text-align:right}.pos{color:var(--up)}.neg{color:var(--dn)}
+tbody tr.z{cursor:pointer}tbody tr.z:hover{background:var(--hover)}
+.num{text-align:right}.pos{color:var(--pnl-up)}.neg{color:var(--pnl-dn)}
 .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600}
-.pill.long{background:#e6f6f2;color:#067a66}.pill.short{background:#fdecee;color:#c0272f}.pill.open{background:#fff4e0;color:#9a5b00}.pill.grey{background:#eef0f3;color:#555}
+.pill.long{background:var(--long-bg);color:var(--long-fg)}.pill.short{background:var(--short-bg);color:var(--short-fg)}.pill.open{background:var(--warn-bg);color:var(--warn-ink)}.pill.grey{background:#eef0f3;color:#555}
 .scroll{max-height:70vh;overflow:auto}.hint{color:var(--muted);font-size:12px;margin:0 0 8px}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:12px}
 .mt{padding:10px 12px}.mt h3{margin:0 0 6px;font-size:13px}.mt table td{padding:5px 8px}.mt table td:first-child{color:var(--muted)}
-.note{background:#fff8eb;border:1px solid #f5d9a8;color:#8a5a00;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px}
+.note{background:var(--warn-bg);border:1px solid var(--warn-line);color:var(--warn-ink);border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px}
 .chartbox{position:relative;height:320px}.chartbox>div{position:absolute;inset:0}
 .rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
 .rules .card{padding:12px 14px}.rules h3{margin:0 0 6px;font-size:13px}.rules ul{margin:0;padding-left:18px}.rules li{margin:3px 0}
 .sw{display:inline-block;width:18px;text-align:center;font-weight:700}
 dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;margin:0}dt{color:var(--muted)}dd{margin:0}
 svg text{font:10px system-ui;fill:#6b7280}
+/* header: one control bar, then one column per type */
+.head{margin:10px 0 8px}
+.hbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line)}
+.hbar .brand{font-weight:600;font-size:14px;margin-right:2px}
+.hbar .lbl,.hbar .dates{color:var(--muted);font-size:12px}
+.hbar .sp{flex:1}
+.seg button small{color:var(--muted);margin-left:5px;font-size:10.5px}.seg button.on small{color:var(--muted)}
+.seg button.off{color:#c3c7cf;cursor:not-allowed}
+.optrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);padding:6px 12px;border-bottom:1px solid var(--line);border-left:1px solid var(--line);background:var(--subtle)}
+.optrow b{color:var(--ink);font-weight:600}.optrow select{font:12px system-ui;border:1px solid var(--line);border-radius:6px;padding:2px 6px}
+.optpad{border-bottom:1px solid var(--line)}
+.cols{display:grid}
+.col{padding:10px 12px 10px;border-left:1px solid var(--line);min-width:0}.col:first-of-type{border-left:0}
+.cols>.col:nth-child(1),.cols>.optpad+.optrow+.col,.cols>.optrow+.col{border-left:0}
+.col.cur{background:var(--cur-bg)}
+.col h4{margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);cursor:pointer;display:inline-block}
+.col.cur h4{color:var(--ink)}.col h4:hover{color:var(--sel)}
+.cov{font-size:11px;color:var(--muted);margin:1px 0 6px;min-height:16px}.cov.thin{color:var(--warn-fg)}
+.srow{display:grid;grid-template-columns:1fr auto 92px;gap:10px;align-items:baseline;padding:4px 8px;margin:0 -8px;border-radius:6px;cursor:pointer;font-variant-numeric:tabular-nums}
+.srow:hover{background:var(--hover)}.srow.on{background:var(--sel-bg);box-shadow:inset 3px 0 0 var(--sel)}
+.srow .n{font-weight:600;font-size:14px;text-align:right}.srow .m{color:var(--muted);font-size:11px;text-align:right}
+.sides{font-size:11.5px;color:var(--muted);padding:5px 0 0}.sides .sd{cursor:pointer;padding-bottom:1px}.sides .sd:hover{color:var(--ink)}
+.sides .sd.on{color:var(--ink);border-bottom:2px solid var(--sel)}.sides b{font-weight:600}
+#rules{border-top:0;border-bottom:1px solid var(--line)}
+/* daily P&L: heatmap left, one aligned row of day stats right */
+.cal{align-items:center;gap:28px}
+.hmstats{grid-template-columns:repeat(5,auto);gap:4px 28px;align-content:center}
+.hmstats b{font-size:14px}.hmstats small{display:block;color:var(--muted);font-size:11px}
+.hmmon{position:relative;display:block;height:14px}.hmmon span{position:absolute;top:0}
 </style>
+<script>(()=>{const ok=['clear','cb','classic'],q=new URLSearchParams(location.search).get('palette');let p='clear';try{p=JSON.parse(localStorage.getItem('palette')||'"clear"')||'clear';}catch(e){}if(ok.includes(q)){p=q;try{localStorage.setItem('palette',JSON.stringify(q));}catch(e){}}document.documentElement.dataset.palette=ok.includes(p)?p:'clear';})();</script>
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 </head><body><div class="wrap">
-<h1>Strategy dashboard</h1>
-<div class="sub">Strategy → backtest period and timeframe → type (futures · options via futures · options standalone) → scheme</div>
-<div id="board" class="card"></div>
-<div class="typebar"><span class="seg" id="typeSeg"></span><span class="pipe">|</span><div class="schemes" id="tiles"></div><div class="optset" id="optset"></div></div>
+<div id="head" class="card head"></div>
 <div class="card cal" id="cal"></div>
 
 <div class="card chartcard">
@@ -103,7 +135,7 @@ svg text{font:10px system-ui;fill:#6b7280}
   <button class="tab" data-p="equity">Cumulative P&amp;L</button><button class="tab" data-p="dd">Drawdowns</button>
   <button class="tab" data-p="dist">Distribution</button><button class="tab" data-p="mc">Monte Carlo</button>
   <button class="tab" data-p="robust">Robustness</button><button class="tab" data-p="bdown">Breakdown</button>
-  <button class="tab" data-p="daily">Daily P&amp;L</button><button class="tab" data-p="signals">Signals</button>
+  <button class="tab" data-p="daily">Daily P&amp;L</button><button class="tab" data-p="signals">Signals</button><button class="tab" data-p="fz">Zone gate</button>
   <button class="tab" data-p="config">Config</button><button class="tab" data-p="rules">Rules</button>
 </div>
 <div class="panel on" id="p-trades"><p class="hint">Click a trade to open it on the chart. Hover a charges cell for the breakdown.</p><div id="opennote"></div><div class="card scroll"><table id="ttrades"></table></div><div id="skipped" class="hint" style="margin-top:8px"></div></div>
@@ -116,6 +148,7 @@ svg text{font:10px system-ui;fill:#6b7280}
 <div class="panel" id="p-bdown"></div>
 <div class="panel" id="p-daily"><p class="hint">By exit day. Click a day to open it on the chart.</p><div class="card scroll"><table id="tdaily"></table></div></div>
 <div class="panel" id="p-signals"><p class="hint" id="sighint"></p><div class="card scroll"><table id="tsignals"></table></div></div>
+<div class="panel" id="p-fz"></div>
 <div class="panel" id="p-config"><div class="card" style="padding:12px 14px"><dl id="cfg"></dl></div></div>
 <div class="panel" id="p-rules"><div class="rules">
   <div class="card"><h3>Strategy, backtest, timeframe</h3><ul>
@@ -136,6 +169,13 @@ svg text{font:10px system-ui;fill:#6b7280}
     <li>Slippage per side: futures 5 pts, options 0.5 pt. Charges per the charge schedule. Short option = sell at entry, buy at exit.</li>
     <li>Capital per lot (for returns, Calmar, risk of ruin): futures and short options use the margins in Config; long-only options use the average premium paid.</li>
     <li>Monte Carlo: 2,000 simulations with a fixed seed. * = incomplete data (positions skipped for missing option candles).</li></ul></div>
+  <div class="card"><h3>Foundation-Zone (Strategy 5, 6)</h3><ul>
+    <li><b>Bands</b> — <span class="sw" style="color:var(--pur)">▮</span>A: born when a swing becomes the protected level · <span style="color:var(--acc)">▮</span> B: born when the last <code>cluster_bars</code> closes sit within <code>cluster_width</code>. ± <code>band_half_width</code> around the mid; a new band overlapping one enough merges into it; none is ever deleted. Memory starts at the file's first session, so every window is a slice of one run.</li>
+    <li><b>Card</b> (per bar, as-of, on the crosshair) — the ref band whose visit is live, visit n, this and first visit bars and volume, and the read. A visit ends only on <code>leave_closes</code> closes in a row outside on one side. Reads in order: LEAVE of the band just left (for <code>leave_ttl_bars</code>) → HUNT (out and back in: one close on 1m, a deep wick on 5m) → REJECT (wick at an edge, close back toward the mid) → FIRST_PRINT (visit 1) / ACCEPTED (lived <code>accept_bars</code>, volume held) / THIN / RECYCLE → PENDING (first close outside) → NEW.</li>
+    <li><b>Gate</b> at each Foundation SETUP, first match: <span class="sw" style="color:var(--dn)">B</span>BLOCK (in a position, open time from <code>no_entry_from</code>, an opening bar piercing a band last visited on an earlier day, a SETUP in the pierce direction of a HUNT within <code>fade_block_bars</code>, NEW ground) · <span class="sw" style="color:var(--acc)">T</span>TAKE (a LEAVE its way, a FIRST_PRINT in the entry direction, an ACCEPTED defend after a HUNT or REJECT at the opposite edge) · <span class="sw" style="color:#9e9e9e">W</span>WATCH on the band holding the close (on the band just left when the SETUP is its first close outside).</li>
+    <li><span class="sw" style="color:var(--pur)">R</span><b>REENTER</b> — a watch arms on a close beyond its band and re-enters on the bar where <code>leave_closes</code> closes are out, none came back inside or across the mid, far-side volume is at least the sit's (skipped when NA) and a Foundation SETUP points the same way on that bar or the one before; fill at that bar's close. A close back inside breaks the run and the next close beyond arms the watch again. A LEAVE TAKE of the band a watch waits on, in its direction, is that watch's REENTER; a FIRST_PRINT or defend TAKE stays a TAKE. Cancelled at the next session, by an opposite TAKE or LEAVE, or after <code>cancel_inside_bars</code> closes back inside.</li>
+    <li><b>Exits</b> — TAKE is Foundation's own position. REENTER takes Foundation's stop at the fill bar and exits on the stop, then <b>band reclaim</b> (a close back past the band's mid, BAND on the chart), then the next CHoCH.</li>
+    <li>Volume NA = not the front month or zero volume: R4, the HUNT burst and THIN are skipped and ACCEPTED is time-only. Clocks use the bar's open time; durations are bars; a visit carries across the overnight gap. Values and sources: Config tab; what the gate did: Zone gate tab.</li></ul></div>
 </div></div>
 </div>
 <script>
@@ -152,12 +192,12 @@ const EXP={W:'Weekly',M:'Monthly'},ck=k=>k.split('-');
 const TYPE={FUT:'Futures',OPT_FUT_SIGNAL:'Options (via futures)',OPT_NATIVE:'Options (standalone)'};
 const ORDER=['FUT','OPT_FUT_SIGNAL','OPT_NATIVE'];
 const SCH={BOTH:'Long + short',LONG:'Long',SHORT:'Short',CE:'Long + short · CE',PE:'Long + short · PE'};
-const SCHEMES=m=>m.variant==='FUT'?['BOTH','LONG','SHORT']:['LONG','SHORT','CE','PE'];
+const SCHEMES=m=>m.variant==='FUT'?['BOTH','LONG','SHORT']:['BOTH','LONG','SHORT','CE','PE'];
 const SDESC=(m,s)=>m.variant==='FUT'?{BOTH:'long and short futures (total)',LONG:'long futures',SHORT:'short futures'}[s]
-  :m.variant==='OPT_FUT_SIGNAL'?{LONG:'CE on future long, PE on future short',SHORT:'PE on future long, CE on future short',CE:'CE: long on future long, short on future short',PE:'PE: short on future long, long on future short'}[s]
-  :{LONG:'bullish setups, CE and PE charts',SHORT:'bearish setups, CE and PE charts',CE:'CE chart, both directions',PE:'PE chart, both directions'}[s];
+  :m.variant==='OPT_FUT_SIGNAL'?{BOTH:'both legs of every signal: long one option, short the other',LONG:'CE on future long, PE on future short',SHORT:'PE on future long, CE on future short',CE:'CE: long on future long, short on future short',PE:'PE: short on future long, long on future short'}[s]
+  :{BOTH:'bullish and bearish setups on the CE and PE charts',LONG:'bullish setups, CE and PE charts',SHORT:'bearish setups, CE and PE charts',CE:'CE chart, both directions',PE:'PE chart, both directions'}[s];
 const inSch=(t,s)=>s==='BOTH'||(s==='LONG'||s==='SHORT'?t.pos===s:t.otype===s);
-const on={trades:true,avwap:true,prot:true,struct:true,swings:true,vol:true};
+const on={trades:true,avwap:true,prot:true,struct:true,swings:true,vol:true,zones:true};
 const cache={};let ch=null,eqch=null,uwch=null,mcch=null,D=null,cur=null,curChoice=null;
 const load_=k=>{try{return JSON.parse(localStorage.getItem(k)||'null');}catch(e){return null;}};
 const save_=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}};
@@ -178,72 +218,86 @@ const choiceOf=m=>m.variant==='FUT'?'-':`${SEL[m.family].exp}-${SEL[m.family].st
 const statOf=(m,sch)=>{const r=runOf(m);const s=r&&r.choices[choiceOf(m)];if(!s)return null;return sch==='BOTH'?s:({LONG:s.long,SHORT:s.short,CE:s.ce,PE:s.pe})[sch]||null;};
 const cov=m=>{const r=runOf(m),s=r&&r.choices[choiceOf(m)];if(!s||!s.skipped)return null;return {text:`Incomplete: ${s.trades} of ${s.trades+s.skipped} positions priced; ${s.skipped} skipped for missing option data.`};};
 const star=c=>c?`<span class="warn" title="${c.text}">*</span>`:'';
-const schemeOf=m=>{const s=SEL[m.family].scheme[m.code];return s&&SCHEMES(m).includes(s)?s:(m.variant==='FUT'?'BOTH':'CE');};
+const schemeOf=m=>{const s=SEL[m.family].scheme[m.code];return s&&SCHEMES(m).includes(s)?s:'BOTH';};
 const fmtD=d=>d?new Date(d+'T00:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'}):'';
 const rng=r=>r&&r.date_from?`${fmtD(r.date_from)} – ${fmtD(r.date_to)} ${r.date_to.slice(0,4)}`:'';
 
-// ================= strategy board (expanded) / strategy line (collapsed)
-function renderBoard(){
-  const b=$('board');
-  if(ST.board){
-    b.innerHTML=`<div class="bhead"><b>Strategies</b><span class="sub">${fams.length} · click one to open</span><input id="bfilter" placeholder="Filter strategies" style="margin-left:auto"></div>`+
-      fams.map(f=>{const rs=rowsOf(f),r=runsOf(f)[SEL[f].run];
-        const cell=m=>{const s=statOf(m,schemeOf(m)),c=cov(m);return `${TYPE[m.variant]} <b class="${s?cl(s.net_inr):''}">${s?inrk(s.net_inr):'—'}</b>${star(c)}`;};
-        return `<div class="brow" data-f="${f}"><b>${rs[0].name.split(' · ').slice(0,2).join(' · ')}</b><span class="pipe">|</span>${TFS[designTf(f)]} design<span class="pipe">|</span>${r?r.label+' · '+rng(r):'—'}`+
-          rs.map(m=>`<span class="pipe">|</span>${cell(m)}`).join('')+`</div>`;}).join('');
-    $('bfilter').oninput=e=>{const q=e.target.value.toLowerCase();b.querySelectorAll('.brow').forEach(x=>x.style.display=x.innerText.toLowerCase().includes(q)?'':'none');};
-    b.querySelectorAll('.brow').forEach(x=>x.onclick=()=>{ST.fam=x.dataset.f;ST.board=false;saveAll();openStrategy();});
-    return;
-  }
-  const f=ST.fam,m0=rowsOf(f)[0],rs=runsOf(f),r=rs[S().run],tf=r.timeframe,dtf=designTf(f);
-  const designRuns=Object.entries(rs).filter(([k,x])=>x.design);
-  const sameLabel=Object.entries(rs).filter(([k,x])=>x.label===r.label&&x.kind===r.kind);
-  b.innerHTML=`<div class="sline"><b>${m0.name.split(' · ').slice(0,2).join(' · ')}</b><span class="pipe">|</span><span>${TFS[dtf]} design · SL ${m0.sl_rule.replace('_',' ')}</span><span class="pipe">|</span>
-    <span class="menu">Backtest: <span class="link" id="btL">${r.label} · ${rng(r)} ▾</span><div class="pop" id="btP"></div></span><span class="pipe">|</span>
-    <span class="menu">Timeframe: <span class="link" id="tfL">${TFS[tf]}${tf===dtf?' (design)':''} ▾</span><div class="pop" id="tfP"></div></span>
-    ${tf!==dtf?`<span class="badge">Running on ${TFS[tf]} · designed for ${TFS[dtf]}</span>`:''}<span class="pipe">|</span><span class="link" id="rulesL">rules ▾</span>
-    <span class="link" style="margin-left:auto" id="allL">▾ all strategies (${fams.length})</span></div><div id="rules"></div>`;
-  $('btP').innerHTML=designRuns.map(([k,x])=>`<div class="it ${x.status!=='ok'?'off':''} ${k===S().run?'on':''}" data-k="${k}">${x.label} · ${x.status==='ok'?rng(x):'not available'}${x.is_default?' · default':''}<small>${x.status==='ok'?(x.notes||''):x.reason}</small></div>`).join('')+
-    `<div class="sep"></div><div class="it" id="addBt">+ Add backtest</div><div id="addBtBox" style="display:none;padding:4px 8px"><small class="sub">Run one of these in research/strategy_lab, then reload:</small>
-    <code>python lab.py backtest ${f} 1Y\npython lab.py backtest ${f} 5Y\npython lab.py backtest ${f} YTD\npython lab.py backtest ${f} 2026-07-10 2026-08-10 --label "July"</code><small class="sub">Data covers ${fmtD(DATA_RANGE[0])} ${DATA_RANGE[0].slice(0,4)} – ${fmtD(DATA_RANGE[1])} ${DATA_RANGE[1].slice(0,4)}; longer backtests are refused until more data is added.</small></div>`;
-  $('tfP').innerHTML=sameLabel.sort((a,b)=>(b[1].design-a[1].design)).map(([k,x])=>`<div class="it ${k===S().run?'on':''}" data-k="${k}">${TFS[x.timeframe]}${x.design?' · design':''}<small>${x.design?'the timeframe the rules were built for':'same rules on '+TFS[x.timeframe]+' candles'}</small></div>`).join('')+
-    `<div class="sep"></div><div class="it" id="addTf">+ Test on another timeframe</div><div id="addTfBox" style="display:none;padding:4px 8px"><small class="sub">Run in research/strategy_lab, then reload:</small><code>${['minute','3minute','5minute','15minute','30minute'].filter(t=>!sameLabel.some(([k,x])=>x.timeframe===t)).map(t=>`python lab.py backtest ${f} ${r.kind==='all'?'all':r.kind==='preset'?r.preset:r.date_from+' '+r.date_to} --tf ${t} --label "${r.label}"`).join('\n')}</code></div>`;
-  const toggle=(l,p)=>{$(l).onclick=e=>{e.stopPropagation();document.querySelectorAll('.pop').forEach(x=>x!==$(p)&&x.classList.remove('on'));$(p).classList.toggle('on');};};
-  toggle('btL','btP');toggle('tfL','tfP');
-  document.querySelectorAll('.pop').forEach(p=>p.onclick=e=>e.stopPropagation());
-  document.querySelectorAll('#btP .it[data-k], #tfP .it[data-k]').forEach(it=>it.onclick=()=>{if(it.classList.contains('off'))return;S().run=it.dataset.k;saveAll();document.querySelectorAll('.pop').forEach(x=>x.classList.remove('on'));openStrategy();});
-  $('addBt').onclick=()=>{$('addBtBox').style.display='block';};
-  $('addTf').onclick=()=>{$('addTfBox').style.display='block';};
-  $('rulesL').onclick=()=>$('rules').classList.toggle('on');
-  $('rules').innerHTML=`<b>Rules</b> — swings (Pine port) → protected level (unbroken swing beyond the trend AVWAP) → CHoCH / BOS by ${m0.break_mode} → AVWAP pair from the previous SH and SL at each CHoCH → SETUP (both AVWAPs sloping with the CHoCH and a close beyond the CHoCH candle) → exit on stop loss (${m0.sl_rule.replace('_',' ')}) or the next CHoCH.
-    <span class="sub"> · warm-up ${m0.warmup_days} sessions · AVWAP ${m0.avwap_weight}-weighted · slippage futures 5 / options 0.5 pt per side</span>`;
-  $('allL').onclick=()=>{ST.board=true;saveAll();renderBoard();};
+// ================= header: one control bar (strategy · backtest · candles), then one column per type
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+const SNAME=m=>m.strategy_name||m.name.split(' · ').slice(0,2).join(' · ');
+const SABOUT=m=>m.strategy_description||m.description||'';
+const PALETTES=[{k:'clear',name:'Clear',note:'default · darker green and red that stay readable at small sizes; long and short pills neutral',sw:['#0a7d62','#c0392b','#2954d9','#a16207']},
+  {k:'cb',name:'Colour-blind safe',note:'blue for profit, orange for loss, violet for selection',sw:['#1f5fa8','#c2410c','#4338ca','#92400e']},
+  {k:'classic',name:'Classic',note:'the previous colours',sw:['#089981','#f23645','#2962ff','#d97706']}];
+const curPal=()=>document.documentElement.dataset.palette||'clear';
+const pctw=x=>x&&x.trades?Math.round(100*x.wins/x.trades)+'%':'—';
+function renderHeader(){
+  const f=ST.fam,rs=rowsOf(f),m0=rs[0],runs=runsOf(f),r=runs[S().run],dtf=designTf(f);
+  // strategy: buttons while they fit, a list beyond that
+  const stratCtl=fams.length>6
+    ?`<select id="stratSel">${fams.map(x=>`<option value="${x}" ${x===f?'selected':''}>${esc(SNAME(rowsOf(x)[0]))} · ${TFS[designTf(x)]}</option>`).join('')}</select>`
+    :`<span class="seg" id="stratSeg">${fams.map(x=>`<button data-f="${x}" class="${x===f?'on':''}" title="${esc(SABOUT(rowsOf(x)[0]))}">${esc(SNAME(rowsOf(x)[0]))}<small>${TFS[designTf(x)]}</small></button>`).join('')}</span>`;
+  // backtest: one tab per label on the design timeframe; refused ones stay visible, disabled, with the reason
+  const tabs=[],seen=new Set();
+  for(const [k,x] of Object.entries(runs)){if(!x.design||seen.has(x.label))continue;seen.add(x.label);tabs.push([k,x]);}
+  const btCtl=`<span class="seg" id="btSeg">${tabs.map(([k,x])=>`<button data-l="${esc(x.label)}" class="${x.label===r.label?'on':''} ${x.status!=='ok'?'off':''}" title="${esc(x.status==='ok'?rng(x)+(x.notes?' · '+x.notes:''):'not available: '+x.reason)}">${esc(x.label)}</button>`).join('')}</span>`;
+  // candles: only when this backtest also exists on another timeframe
+  const alts=Object.entries(runs).filter(([k,x])=>x.label===r.label&&x.kind===r.kind&&x.status==='ok').sort((a,b)=>b[1].design-a[1].design);
+  const tfCtl=alts.length>1?`<span class="lbl">Candles</span><span class="seg sm" id="tfSeg">${alts.map(([k,x])=>`<button data-k="${k}" class="${k===S().run?'on':''}">${TFS[x.timeframe]}${x.design?' · design':''}</button>`).join('')}</span>`:'';
+  const addCmds=`<small class="sub">Run in research/strategy_lab, then reload:</small><code>python lab.py backtest ${f} 1Y\npython lab.py backtest ${f} YTD\npython lab.py backtest ${f} 2026-07-10 2026-08-10 --label "July"\n${['minute','3minute','5minute','15minute','30minute'].filter(t=>!alts.some(([k,x])=>x.timeframe===t)).map(t=>`python lab.py backtest ${f} ${r.kind==='all'?'all':r.kind==='preset'?r.preset:r.date_from+' '+r.date_to} --tf ${t} --label "${r.label}"`).join('\n')}</code><small class="sub">Data covers ${fmtD(DATA_RANGE[0])} ${DATA_RANGE[0].slice(0,4)} – ${fmtD(DATA_RANGE[1])} ${DATA_RANGE[1].slice(0,4)}; a backtest the data cannot cover is refused.</small>`;
+  const rules=`<div style="margin-bottom:4px">${esc(SABOUT(m0))}</div><b>Rules</b> — swings (Pine port) → protected level (unbroken swing beyond the trend AVWAP) → CHoCH by ${m0.choch_mode??m0.break_mode}, BOS by ${m0.break_mode} → AVWAP pair from the previous SH and SL at each CHoCH → SETUP (both AVWAPs sloping with the CHoCH and a close beyond the CHoCH candle) → exit on stop loss (${m0.sl_rule.replace('_',' ')}) or the next CHoCH.
+    <span class="sub"> · designed on ${TFS[dtf]} candles · warm-up ${m0.warmup_days} sessions · AVWAP ${m0.avwap_weight}-weighted · slippage futures 5 / options 0.5 pt per side</span>`;
+  // option settings: once, across the option columns
+  const opts=rs.filter(m=>m.variant!=='FUT'),nf=rs.length-opts.length,o=opts[0];
+  let optRow='';
+  if(o){const rr=runOf(o),keys=rr?Object.keys(rr.choices):[],exps=[...new Set(keys.map(k=>ck(k)[0]))],strikes=[...new Set(keys.map(k=>ck(k)[1]))];
+    optRow=(nf?`<div class="optpad" style="grid-column:1/${nf+1}"></div>`:'')+
+      `<div class="optrow" style="grid-column:${nf+1}/${rs.length+1}"><b>Options</b> expiry <span class="seg sm" id="expSeg">${exps.map(e=>`<button data-v="${e}" class="${S().exp===e?'on':''}">${EXP[e]}</button>`).join('')}</span>
+       strike <select id="stkSel">${strikes.map(x=>`<option ${S().strike===x?'selected':''}>${x}</option>`).join('')}</select>
+       <span>${S().strike.startsWith('ATR')?`spot ± ${S().strike.slice(3)}×ATR(${o.atr_period}), OTM`:'from spot'}</span><span class="sp" style="flex:1"></span><span>applies to both option types</span></div>`;}
+  const col=m=>{const on=m.code===cur.code,sch=schemeOf(m),all=statOf(m,'BOTH');
+    const cv=m.variant==='FUT'?`<div class="cov">exchange futures · every signal priced</div>`
+      :`<div class="cov ${all&&all.skipped?'thin':''}">${!all?'not run':all.skipped?`${all.trades} of ${all.trades+all.skipped} positions priced · ${all.skipped} without option data`:`all ${all.trades} positions priced`}</div>`;
+    const row=x=>{const st=statOf(m,x);return `<div class="srow ${on&&sch===x?'on':''}" data-c="${m.code}" data-s="${x}" title="${esc(SDESC(m,x))}${st?` · PF ${st.pf??'—'}`:''}"><span>${SCH[x]}</span><span class="n ${st?cl(st.net_inr):''}">${st?inr(st.net_inr):'—'}</span><span class="m">${st?`${st.trades} trades · ${pctw(st)}`:''}</span></div>`;};
+    const sides=m.variant==='FUT'?'':`<div class="sides">${['CE','PE'].map(x=>{const st=statOf(m,x);return `<span class="sd ${on&&sch===x?'on':''}" data-c="${m.code}" data-s="${x}" title="${esc(SDESC(m,x))}">${x} side <b class="${st?cl(st.net_inr):''}">${st?inr(st.net_inr):'—'}</b></span>`;}).join(' · ')}</div>`;
+    return `<div class="col ${on?'cur':''}"><h4 data-c="${m.code}">${TYPE[m.variant]}</h4>${cv}${['BOTH','LONG','SHORT'].map(row).join('')}${sides}</div>`;};
+  $('head').innerHTML=`<div class="hbar"><span class="brand">Strategy lab</span>${stratCtl}<span class="pipe">|</span>${btCtl}<span class="dates">${r.status==='ok'?rng(r):''}</span>${tfCtl}
+      ${r.timeframe!==dtf?`<span class="badge">rules built for ${TFS[dtf]}</span>`:''}<span class="sp"></span>
+      <span class="menu"><span class="link" id="addL">+ backtest</span><div class="pop" id="addP" style="left:auto;right:0;padding:8px 10px">${addCmds}</div></span><span class="menu"><span class="link" id="palL">Colours ▾</span><div class="pop" id="palP" style="left:auto;right:0;min-width:300px">${PALETTES.map(p=>`<div class="it ${curPal()===p.k?'on':''}" data-p="${p.k}"><span class="sw3">${p.sw.map(c=>`<i style="background:${c}"></i>`).join('')}</span>${p.name}<small>${p.note}</small></div>`).join('')}</div></span><span class="link" id="rulesL">Rules ${ST.rules?'▴':'▾'}</span></div>
+    <div id="rules" class="${ST.rules?'on':''}">${rules}</div>
+    <div class="cols" style="grid-template-columns:repeat(${rs.length},minmax(0,1fr))">${optRow}${rs.map(col).join('')}</div>`;
+  const go=()=>{saveAll();openType(true);};
+  // switching strategy carries the current type, scheme, backtest and option settings across
+  const switchStrat=nf=>{if(nf===f)return;const T=SEL[nf],m2=rowsOf(nf).find(x=>x.variant===cur.variant);
+    if(m2){T.type=m2.code;T.scheme[m2.code]=schemeOf(cur);}
+    const e=Object.entries(runsOf(nf)).filter(([k,x])=>x.label===r.label&&x.status==='ok'),pick=e.find(([k,x])=>x.design)||e[0];if(pick)T.run=pick[0];
+    T.exp=S().exp;T.strike=S().strike;ST.fam=nf;go();};
+  document.querySelectorAll('#stratSeg button').forEach(b=>b.onclick=()=>switchStrat(b.dataset.f));
+  if($('stratSel'))$('stratSel').onchange=e=>switchStrat(e.target.value);
+  document.querySelectorAll('#btSeg button').forEach(b=>b.onclick=()=>{if(b.classList.contains('off')||b.dataset.l===r.label)return;
+    const e=Object.entries(runs).filter(([k,x])=>x.label===b.dataset.l&&x.status==='ok'),pick=e.find(([k,x])=>x.timeframe===r.timeframe)||e.find(([k,x])=>x.design)||e[0];
+    if(pick){S().run=pick[0];go();}});
+  document.querySelectorAll('#tfSeg button').forEach(b=>b.onclick=()=>{if(b.dataset.k===S().run)return;S().run=b.dataset.k;go();});
+  document.querySelectorAll('#head .srow, #head .sd').forEach(el=>el.onclick=()=>{const c=el.dataset.c;S().scheme[c]=el.dataset.s;
+    if(c===cur.code){saveAll();schemeChanged();}else{S().type=c;go();}});
+  document.querySelectorAll('#head .col h4').forEach(h=>h.onclick=()=>{if(h.dataset.c===cur.code)return;S().type=h.dataset.c;go();});
+  document.querySelectorAll('#expSeg button').forEach(b=>b.onclick=()=>{if(S().exp===b.dataset.v)return;S().exp=b.dataset.v;go();});
+  if($('stkSel'))$('stkSel').onchange=e=>{S().strike=e.target.value;go();};
+  $('addL').onclick=e=>{e.stopPropagation();$('addP').classList.toggle('on');};
+  $('addP').onclick=e=>e.stopPropagation();
+  $('palL').onclick=e=>{e.stopPropagation();document.querySelectorAll('.pop').forEach(x=>x!==$('palP')&&x.classList.remove('on'));$('palP').classList.toggle('on');};
+  document.querySelectorAll('#palP .it').forEach(it=>it.onclick=e=>{e.stopPropagation();document.documentElement.dataset.palette=it.dataset.p;save_('palette',it.dataset.p);renderHeader();});
+  $('rulesL').onclick=()=>{ST.rules=!ST.rules;saveAll();$('rules').classList.toggle('on',ST.rules);$('rulesL').textContent='Rules '+(ST.rules?'▴':'▾');};
 }
 document.addEventListener('click',()=>document.querySelectorAll('.pop').forEach(x=>x.classList.remove('on')));
-
-// ================= type tabs, option settings, scheme tiles
-function renderTypes(){
-  const f=ST.fam,rs=rowsOf(f),o=rs.find(m=>m.variant!=='FUT'),m=cur;
-  $('typeSeg').innerHTML=rs.map(x=>`<button data-c="${x.code}" class="${x.code===m.code?'on':''}">${TYPE[x.variant]}</button>`).join('');
-  $('typeSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{S().type=b.dataset.c;saveAll();openType();});
-  if(m.variant!=='FUT'&&o){const r=runOf(o),keys=r?Object.keys(r.choices):[],exps=[...new Set(keys.map(k=>ck(k)[0]))],strikes=[...new Set(keys.map(k=>ck(k)[1]))];
-    $('optset').innerHTML=`Options <span class="seg sm" id="expSeg">${exps.map(e=>`<button data-v="${e}" class="${S().exp===e?'on':''}">${EXP[e]}</button>`).join('')}</span> strike <select id="stkSel">${strikes.map(s=>`<option ${S().strike===s?'selected':''}>${s}</option>`).join('')}</select><span>${S().strike.startsWith('ATR')?`spot ± ${S().strike.slice(3)}×ATR(${o.atr_period}), OTM`:'from spot'}</span>`;
-    $('expSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{S().exp=b.dataset.v;saveAll();openType();});
-    $('stkSel').onchange=e=>{S().strike=e.target.value;saveAll();openType();};
-  }else $('optset').innerHTML='';
-  const c=cov(m);
-  $('tiles').innerHTML=SCHEMES(m).map(s=>{const x=statOf(m,s),on_=s===schemeOf(m);
-    const tip=`${SCH[s]}: ${SDESC(m,s)}${x?` · ${x.trades} trades · ${x.trades?Math.round(100*x.wins/x.trades):0}% win · PF ${x.pf??'—'}`:''}${c?' · '+c.text:''}`;
-    return `<span class="pillb ${on_?'on':''}" data-s="${s}" title="${tip}">${SCH[s]} <b class="${x?cl(x.net_inr):''}">${x?inr(x.net_inr):'—'}</b>${star(c)}</span>`;}).join('');
-  $('tiles').querySelectorAll('.pillb').forEach(t=>t.onclick=()=>{S().scheme[m.code]=t.dataset.s;saveAll();schemeChanged();});
-}
 
 // ================= data + chart chunks
 const getJSON=async f=>{if(!cache[f])cache[f]=fetch(f).then(r=>{if(!r.ok)throw new Error(f+' '+r.status);return r.json();});return cache[f];};
 const busy=(v,txt)=>{$('loading').style.display=v?'flex':'none';if(txt)$('loading').textContent=txt;};
 let WIN=null,extending=false,VIEW='signal';
 const merge=parts=>{const seen=new Set(),M=[];for(const c of parts)for(const m of c.M)if(!seen.has(m[0]+'|'+m[9])){seen.add(m[0]+'|'+m[9]);M.push(m);}
-  const cat=k=>parts.flatMap(c=>c[k]);return {C:cat('C'),S:cat('S'),E:cat('E'),PR:cat('PR'),PAIR:cat('PAIR'),M};};
+  const cat=k=>parts.flatMap(c=>c[k]||[]),ZN=new Map();for(const c of parts)for(const z of c.ZONES||[])if(!ZN.has(z[0]))ZN.set(z[0],z);   // FZ: Z rows per bar, ZONES by id (option chunks have neither)
+  return {C:cat('C'),S:cat('S'),E:cat('E'),PR:cat('PR'),PAIR:cat('PAIR'),M,Z:cat('Z'),ZONES:[...ZN.values()]};};
 async function renderWin(range){const parts=[];for(let k=WIN.lo;k<=WIN.hi;k++)parts.push(await getJSON(D.base+D.charts[k].file));const c=merge(parts);drawChart(c,!range,range);return c;}
 const inView=()=>D.charts.map((c,i)=>i).filter(i=>(D.charts[i].kind||'signal')===VIEW);
 async function showChunk(k){if(k==null||isNaN(k))return;$('series').value=k;busy(true,'Loading chart…');try{WIN={lo:k,hi:k};return await renderWin();}finally{busy(false);}}
@@ -262,47 +316,59 @@ $('all').onclick=async()=>{const ix=inView(),n=ix.length;for(let j=0;j<n;j++){bu
 
 // ================= open strategy / type / scheme
 async function openStrategy(){await openType();}
-async function openType(){
+async function openType(keepDay){
+  const keep=keepDay&&D&&$('series').value!==''?(D.charts[+$('series').value]||{}).day:null;
   const f=ST.fam;cur=rowsOf(f).find(m=>m.code===S().type)||rowsOf(f)[0];S().type=cur.code;curChoice=choiceOf(cur);
   const r=runOf(cur);if(!r.choices[curChoice])curChoice=Object.keys(r.choices)[0];
-  renderBoard();renderTypes();
+  renderHeader();
   const file=r.choices[curChoice].file;busy(true,'Loading…');
   try{D=await getJSON(file);D.base=file.slice(0,file.lastIndexOf('/')+1);}finally{busy(false);}
   const kinds=[...new Set(D.charts.map(c=>c.kind||'signal'))];VIEW=kinds.includes('option')?'option':'signal';
   $('viewSeg').style.display=kinds.length>1?'':'none';
   $('viewSeg').innerHTML=kinds.map(k=>`<button data-v="${k}">${k==='option'?'Option chart':'Signal chart (futures)'}</button>`).join('');
   $('viewSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
-  CALM=null;schemeChanged(true);await setView(VIEW);
+  CALM=null;schemeChanged(true);let k0;
+  if(keep){const ix=D.charts.map((c,i)=>i).filter(i=>(D.charts[i].kind||'signal')===VIEW&&D.charts[i].day);   // same day, else the nearest one
+    const dist=i=>Math.abs(Date.parse(D.charts[i].day)-Date.parse(keep));if(ix.length)k0=ix.reduce((a,b)=>dist(b)<dist(a)?b:a);}
+  await setView(VIEW,k0);
 }
 function schemeChanged(noChart){
-  renderTypes();renderBoard();
+  renderHeader();
   const r=runOf(cur),dtf=designTf(ST.fam);
-  $('crumb').innerHTML=`${cur.name.split(' · ').slice(0,2).join(' · ')}<span>›</span>${r.label}${r.timeframe!==dtf?` · ${TFS[r.timeframe]}`:''}<span>›</span>${TYPE[cur.variant]}<span>›</span>${SCH[schemeOf(cur)]}${cur.variant!=='FUT'?`<span>·</span><span style="margin:0">${EXP[ck(curChoice)[0]]} ${ck(curChoice)[1]}</span>`:''}${star(cov(cur))}`;
+  $('crumb').innerHTML=`${SNAME(cur)}<span>›</span>${r.label}${r.timeframe!==dtf?` · ${TFS[r.timeframe]}`:''}<span>›</span>${TYPE[cur.variant]}<span>›</span>${SCH[schemeOf(cur)]}${cur.variant!=='FUT'?`<span>·</span><span style="margin:0">${EXP[ck(curChoice)[0]]} ${ck(curChoice)[1]}</span>`:''}${star(cov(cur))}`;
   renderBelow();if(!noChart)showChunk(+$('series').value);
 }
 const inScheme=lbl=>{const [pos,ot]=(lbl||'').split(' ');return inSch({pos,otype:ot||'FUT'},schemeOf(cur));};
 
 // ================= chart
 function drawChart(CH_,single,range){
-  const {C,S:SW,E,PR,PAIR,M}=CH_;
+  const {C,S:SW,E,PR,PAIR,M,Z=[],ZONES=[]}=CH_;
   if(ch){ch.remove();ch=null;}
   ch=LightweightCharts.createChart($('chart'),{autoSize:true,layout:{background:{color:'#fff'},textColor:'#4b5563',fontFamily:'system-ui'},
     grid:{vertLines:{color:'#f3f4f6'},horzLines:{color:'#f3f4f6'}},rightPriceScale:{borderColor:'#e6e8ec'},
     timeScale:{timeVisible:true,secondsVisible:false,rightOffset:4,borderColor:'#e6e8ec'},crosshair:{mode:0},
     handleScroll:{mouseWheel:false,pressedMouseMove:true,horzTouchDrag:true,vertTouchDrag:false},
     handleScale:{mouseWheel:false,pinch:true,axisPressedMouseMove:true},localization:{timeFormatter:t=>iso(t).slice(5,16).replace('T',' ')}});
+  // FZ bands (Strategies 5-6): one translucent lo-hi box per remembered band from its birth (or the first bar) to the last bar,
+  // added before the candles so it sits under them; A = protected-level band (chart purple), B = cluster-sit band (chart blue)
+  const tint=(h,a)=>`rgba(${parseInt(h.slice(1,3),16)},${parseInt(h.slice(3,5),16)},${parseInt(h.slice(5,7),16)},${a})`;
+  const ZS=[],t0=C[0][0],t1=C[C.length-1][0];
+  for(const [,kind,lo,hi,born] of ZONES){const a=Math.max(born,t0);if(a>=t1)continue;const col=tint(kind==='A'?'#7b1fa2':'#2962ff',.07);
+    const s=ch.addBaselineSeries({lastValueVisible:false,priceLineVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null,visible:on.zones,
+      baseValue:{type:'price',price:lo},lineVisible:false,topLineColor:col,topFillColor1:col,topFillColor2:col,bottomLineColor:col,bottomFillColor1:col,bottomFillColor2:col});
+    s.setData([{time:a,value:hi},{time:t1,value:hi}]);ZS.push(s);}
   const cs=ch.addCandlestickSeries({upColor:'#089981',downColor:'#f23645',wickUpColor:'#089981',wickDownColor:'#f23645',borderVisible:false});
   cs.priceScale().applyOptions({scaleMargins:{top:0.06,bottom:0.2}});
   cs.setData(C.map(r=>({time:r[0],open:r[1],high:r[2],low:r[3],close:r[4]})));
   const base={lastValueVisible:false,priceLineVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null};
-  const L={vol:[],swings:[],avwap:[],prot:[],trades:[]};
+  const L={vol:[],swings:[],avwap:[],prot:[],trades:[],zones:ZS};
   const line=(layer,opt,data)=>{const s=ch.addLineSeries({...base,...opt,visible:on[layer]});s.setData(data);L[layer].push(s);};
   const vs=ch.addHistogramSeries({priceScaleId:'vol',priceFormat:{type:'volume'},lastValueVisible:false,priceLineVisible:false,visible:on.vol});
   ch.priceScale('vol').applyOptions({scaleMargins:{top:0.84,bottom:0}});
   vs.setData(C.map(r=>({time:r[0],value:r[7],color:r[4]>=r[1]?'rgba(8,153,129,.35)':'rgba(242,54,69,.35)'})));L.vol.push(vs);
   for(const [idx,col] of [[5,'rgba(8,153,129,.4)'],[6,'rgba(242,54,69,.4)']])
     line('swings',{color:col,lineVisible:false,pointMarkersVisible:true,pointMarkersRadius:1.5},C.map(r=>r[idx]==null?{time:r[0]}:{time:r[0],value:r[idx]}));
-  const MK={swings:[],struct:[],trades:[]};
+  const MK={swings:[],struct:[],trades:[],fz:[]};
   for(const [k,t,p,ct] of SW){const hi=k==='H',col=hi?'#089981':'#f23645';
     MK.swings.push({time:t,position:hi?'aboveBar':'belowBar',color:col,shape:'square',size:0.1});
     MK.swings.push({time:ct,position:hi?'aboveBar':'belowBar',color:col,shape:hi?'arrowDown':'arrowUp',size:0.5});
@@ -316,17 +382,31 @@ function drawChart(CH_,single,range){
   for(const [et0,ep,xt,xp,d,pts,open,sl,why,label] of M){const lbl=label||(d==='up'?'LONG':'SHORT');if(!inScheme(lbl))continue;
     const up=d==='up',win=pts>0,xe=Math.min(xt,tmax),et=Math.max(et0,tmin);
     if(et0>=tmin)MK.trades.push({time:et0,position:up?'belowBar':'aboveBar',color:'#111',shape:up?'arrowUp':'arrowDown',size:1.5,text:lbl});
-    if(xt<=tmax)MK.trades.push({time:xt,position:up?'aboveBar':'belowBar',color:win?'#089981':'#f23645',shape:'circle',size:0.9,text:(why==='stop_loss'?'SL ':why==='expiry'?'EXPIRY ':open?'OPEN* ':'')+fmt(pts)});
+    if(xt<=tmax)MK.trades.push({time:xt,position:up?'aboveBar':'belowBar',color:win?'#089981':'#f23645',shape:'circle',size:0.9,text:(why==='stop_loss'?'SL ':why==='expiry'?'EXPIRY ':why==='band_reclaim'?'BAND ':open?'OPEN* ':'')+fmt(pts)});
     line('trades',{color:win?'#089981':'#f23645',lineWidth:2,lineStyle:2},et===xe?[{time:et,value:ep}]:[{time:et,value:ep},{time:xe,value:xp}]);
     if(sl!=null)line('trades',{color:'#d32f2f',lineWidth:1,lineStyle:1},et===xe?[{time:et,value:sl}]:[{time:et,value:sl},{time:xe,value:sl}]);}
-  const markers=()=>{const m=[];if(on.swings)m.push(...MK.swings);if(on.struct)m.push(...MK.struct);if(on.trades)m.push(...MK.trades);m.sort((a,b)=>a.time-b.time);cs.setMarkers(m);};
+  // FZ gate at each Foundation SETUP (T TAKE · W WATCH · B BLOCK · R REENTER), plus R where a watch re-entered on a later bar;
+  // below the bar for up, above for down; futures chunks only (they carry Z); toggled with the trades layer
+  if(D&&D.fz&&Z.length){const {cols,rows}=D.fz.ledger,[iT,iD,iG,iO,iF,iOG]=['time','dir','gate','watch_outcome','fill_time','outcome_gate'].map(k=>cols.indexOf(k));
+    const G={TAKE:['T','#2962ff'],WATCH:['W','#9e9e9e'],BLOCK:['B','#f23645'],REENTER:['R','#7b1fa2']},has=new Set(C.map(r=>r[0]));
+    const put=(s,d,[txt,col])=>{const x=Date.parse(s.replace(' ','T')+'Z')/1000;if(has.has(x))MK.fz.push({time:x,position:d==='up'?'belowBar':'aboveBar',color:col,shape:'circle',size:0.3,text:txt});};
+    const later=r=>(iOG>=0?r[iOG]==='REENTER':r[iO]==='reenter')&&r[iF]&&r[iF]!==r[iT];   // the SETUP's REENTER filled on a later bar
+    for(const r of rows){if(G[r[iG]])put(r[iT],r[iD],G[r[iG]]);if(later(r))put(r[iF],r[iD],G.REENTER);}}
+  const markers=()=>{const m=[];if(on.swings)m.push(...MK.swings);if(on.struct)m.push(...MK.struct);if(on.trades)m.push(...MK.trades,...MK.fz);m.sort((a,b)=>a.time-b.time);cs.setMarkers(m);};
   markers();
-  const chips=[['trades','Trades','#111'],['avwap','AVWAP','#ff6d00'],['prot','Protected','#7b1fa2'],['struct','CHoCH/BOS','#9e9e9e'],['swings','Swings','#089981'],['vol','Volume','#c3c7cf']];
+  const chips=[['trades','Trades','#111'],['avwap','AVWAP','#ff6d00'],['prot','Protected','#7b1fa2'],['struct','CHoCH/BOS','#9e9e9e'],['swings','Swings','#089981'],['vol','Volume','#c3c7cf']].concat(ZONES.length?[['zones','Zones','#2962ff']]:[]);
   $('layers').innerHTML='';
   for(const [k,lbl,col] of chips){const b=document.createElement('span');b.className='chip'+(on[k]?' on':'');b.innerHTML=`<i style="background:${col}"></i>${lbl}`;
     b.onclick=()=>{on[k]=!on[k];b.classList.toggle('on',on[k]);(L[k]||[]).forEach(s=>s.applyOptions({visible:on[k]}));markers();};$('layers').appendChild(b);}
   const byT=new Map(C.map(r=>[r[0],r]));
-  const showBar=r=>{if(!r)return;$('ohlc').innerHTML=`${iso(r[0]).slice(5,16).replace('T',' ')} O <b>${r[1]}</b> H <b>${r[2]}</b> L <b>${r[3]}</b> C <b class="${r[4]>=r[1]?'pos':'neg'}">${r[4]}</b> V <b>${r[7].toLocaleString('en-IN')}</b>`;};
+  // FZ card of the hovered bar, from its as-of Z row: band and edges · visit n · this / first visit bars · volume ratio · read
+  const byZ=new Map(Z.map(z=>[z[0],z])),ZI=new Map(ZONES.map(z=>[z[0],z])),RD=D&&D.fz?D.fz.legend.read:[];
+  const zn=id=>id[0]+id.slice(6,17);                                          // 'B2026-07-01 11:41:00' -> 'B07-01 11:41'
+  // the ratio is NA when this visit or the band's first visit is volume-NA (as the gate reads it); fvna is absent in older chunks
+  const zcard=z=>{if(!z)return '';const [,id,vn,tb,tv,fb,fv,rc,left,,vna,,,,,fvna]=z,b=id&&ZI.get(id),rd=RD[rc]||'';
+    const band=id?`Z ${zn(id)}${b?` ${b[2]}–${b[3]}`:''} · visit ${vn} · ${tb}/${fb??'—'} bars · vol ${!vna&&!fvna&&tv!=null&&fv?(tv/fv).toFixed(2):'NA'}`:'no band';
+    return `<span class="pipe">|</span>${band} · <b>${rd}</b>${rd==='LEAVE'&&left?` from ${zn(left)}`:''}`;};
+  const showBar=r=>{if(!r)return;$('ohlc').innerHTML=`${iso(r[0]).slice(5,16).replace('T',' ')} O <b>${r[1]}</b> H <b>${r[2]}</b> L <b>${r[3]}</b> C <b class="${r[4]>=r[1]?'pos':'neg'}">${r[4]}</b> V <b>${r[7].toLocaleString('en-IN')}</b>${zcard(byZ.get(r[0]))}`;};
   showBar(C[C.length-1]);ch.subscribeCrosshairMove(p=>showBar(p.time?byT.get(p.time):C[C.length-1]));
   $('chart').onwheel=e=>{if(!e.ctrlKey)return;e.preventDefault();const ts=ch.timeScale(),r=ts.getVisibleLogicalRange();if(!r)return;
     const x=ts.coordinateToLogical(e.offsetX)??(r.from+r.to)/2,k=e.deltaY>0?1.15:1/1.15;ts.setVisibleLogicalRange({from:x-(x-r.from)*k,to:x+(r.to-x)*k});};
@@ -342,6 +422,9 @@ async function openTrade(et,xt){
   const c=await showChunk(k);if(c)c.zoom(et,xt);document.querySelector('.chartcard').scrollIntoView({behavior:'smooth',block:'start'});
 }
 async function openDay(d){const k=inView().find(i=>D.charts[i].day===d);if(k!=null){await showChunk(k);document.querySelector('.chartcard').scrollIntoView({behavior:'smooth',block:'start'});}}
+// the futures chart of t0's session, zoomed to t0..t1 (epoch s): a Zone gate ledger row is a SETUP, not necessarily a trade entry
+async function openAt(t0,t1){const d=iso(t0).slice(0,10),k=D.charts.findIndex(c=>(c.kind||'signal')==='signal'&&c.day===d);if(k<0)return;
+  if(VIEW!=='signal')await setView('signal',k);const c=await showChunk(k);if(c)c.zoom(t0,t1);document.querySelector('.chartcard').scrollIntoView({behavior:'smooth',block:'start'});}
 
 // ================= trades of the current selection
 const allTrades=()=>D.trades.map(([otype,instr,strike,cht,et,ep,sl,xt,xp,why,pts,gross,chg,net,open,cb,ue,ux,stale,mfe,mae,pos,ot,sig,exp])=>({otype:ot||otype,pos:pos||'LONG',sig:sig||'',exp,instr,strike,cht,et,ep,sl,xt,xp,why,pts,gross,chg,net,open,cb,ue,ux,stale,mfe:mfe??0,mae:mae??0,
@@ -349,7 +432,7 @@ const allTrades=()=>D.trades.map(([otype,instr,strike,cht,et,ep,sl,xt,xp,why,pts
 const sel=()=>allTrades().filter(t=>inSch(t,schemeOf(cur)));
 const sessionsOf=()=>[...new Set(D.charts.map(c=>c.day).filter(Boolean))].sort();
 const sigName=t=>!t.sig?'—':cur.variant==='OPT_NATIVE'?(t.sig==='BULLISH'?'Bullish (option chart)':'Bearish (option chart)'):(t.sig==='BULLISH'?'Future long':'Future short');
-const WHY={stop_loss:'SL',next_choch:'CHoCH',expiry:'Expiry',open:'open*'};
+const WHY={stop_loss:'SL',next_choch:'CHoCH',expiry:'Expiry',open:'open*',band_reclaim:'Band'};
 function statsOf(T){const net=T.map(t=>t.net);let eq=0,pk=0,dd=0;for(const v of net){eq+=v;pk=Math.max(pk,eq);dd=Math.min(dd,eq-pk);}
   const n=net.length,m=n?net.reduce((a,b)=>a+b,0)/n:0,sd=n>1?Math.sqrt(net.reduce((a,v)=>a+(v-m)**2,0)/(n-1)):0;
   const wins=net.filter(v=>v>0),loss=net.filter(v=>v<=0),sl=loss.reduce((a,b)=>a+b,0);
@@ -368,7 +451,10 @@ function renderBelow(){
   const skipped=D.skipped.filter(x=>sch==='BOTH'||(sch==='LONG'||sch==='SHORT'?(!x.position||x.position===sch):(!x.opt_type||x.opt_type===sch))).length;
   const cv=skipped?{text:`Incomplete: ${s.trades} of ${s.trades+skipped} positions priced.`}:null;
   const exR=T.map(t=>{const rp=riskPts(t);return rp?t.pts/rp:null;}).filter(v=>v!=null);
-  $('kpis').innerHTML=[['Net P&L',inr(s.net_inr)+star(cv),cv?`<span style="color:#9a5b00">incomplete · ${s.trades} of ${s.trades+skipped} priced</span>`:'gross − charges',cl(s.net_inr)],
+  // FZ: the random-control percentile sits beside net wherever FZ net is shown (its net is mostly avoided costs); the control
+  // is over the whole book, so a one-side scheme says so instead
+  const fc=D.fz&&D.fz.control,fzs=!fc?null:sch==='BOTH'&&fc.fz_pct!=null?`random control ${fc.fz_pct.toFixed(1)}th pct · kept-vs-refused p ${D.fz.permutation.p??'—'}`:'gross − charges · FZ control: long + short only';
+  $('kpis').innerHTML=[['Net P&L',inr(s.net_inr)+star(cv),cv?`<span style="color:var(--warn-ink)">incomplete · ${s.trades} of ${s.trades+skipped} priced</span>${fzs?' · '+fzs:''}`:(fzs||'gross − charges'),cl(s.net_inr)],
     ['Trades',s.trades+(skipped?` of ${s.trades+skipped}`:''),`${T.filter(t=>t.pos==='LONG').length} long · ${T.filter(t=>t.pos==='SHORT').length} short`,''],
     ['Win rate',s.trades?Math.round(100*s.wins/s.trades)+'%':'—',`${s.wins} wins`,''],
     ['Profit factor',s.pf??'—','net wins ÷ net losses',''],
@@ -378,7 +464,7 @@ function renderBelow(){
   renderCalendar(T);renderTrades(T,LOT);renderDaily(T);renderBreakdown(T);renderSignals();renderConfig();
   renderTab(document.querySelector('.tab.on').dataset.p);
 }
-function renderTab(p){const T=sel();({perf:()=>renderPerf(T),equity:()=>renderEquity(T),dd:()=>renderDD(T),dist:()=>renderDist(T),mc:()=>renderMC(T),robust:()=>renderRobust(T)}[p]||(()=>{}))();}
+function renderTab(p){const T=sel();({perf:()=>renderPerf(T),equity:()=>renderEquity(T),dd:()=>renderDD(T),dist:()=>renderDist(T),mc:()=>renderMC(T),robust:()=>renderRobust(T),fz:()=>renderFZ()}[p]||(()=>{}))();}
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b));
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('on',p.id==='p-'+b.dataset.p));renderTab(b.dataset.p);});
 
@@ -389,23 +475,30 @@ function renderCalendar(T){
   const sess=sessionsOf();if(!sess.length){$('cal').innerHTML='';return;}
   const net=d=>by[d]?sum(by[d],t=>t.net):null,vals=sess.map(net).filter(v=>v!=null),mx=Math.max(1,...vals.map(Math.abs));
   const color=v=>{if(v==null)return '';const k=Math.min(4,Math.ceil(Math.abs(v)/mx*4));
-    return v>=0?['#c6e9dc','#8fd3bb','#4db894','#089981'][k-1]:['#fbd3d6','#f5a3aa','#ee6f7a','#e03444'][k-1];};
+    return v>=0?['var(--hp1)','var(--hp2)','var(--hp3)','var(--hp4)'][k-1]:['var(--hn1)','var(--hn2)','var(--hn3)','var(--hn4)'][k-1];};
   const D0=new Date(sess[0]+'T00:00:00Z'),start=new Date(D0);start.setUTCDate(D0.getUTCDate()-((D0.getUTCDay()+6)%7));
-  const end=new Date(sess.at(-1)+'T00:00:00Z'),set=new Set(sess),cells=[],mons=[];let col=0,lastMon='';
-  for(const d=new Date(start);d<=end;d.setUTCDate(d.getUTCDate()+1)){const wd=(d.getUTCDay()+6)%7;if(wd>4)continue;
-    const k=d.toISOString().slice(0,10);if(wd===0){const mk=k.slice(0,7);mons.push(mk!==lastMon?new Date(k+'T00:00:00Z').toLocaleDateString('en-GB',{month:'short',timeZone:'UTC'}):'');if(mk!==lastMon)lastMon=mk;col++;}
+  const end=new Date(sess.at(-1)+'T00:00:00Z'),set=new Set(sess),weeks=[];
+  for(const d=new Date(start);d<=end;d.setUTCDate(d.getUTCDate()+7))weeks.push([0,1,2,3,4].map(i=>{const x=new Date(d);x.setUTCDate(d.getUTCDate()+i);return x.toISOString().slice(0,10);}));
+  // a week is labelled with the month of its first session; labels closer than 3 columns are dropped
+  const mon=k=>new Date(k+'T00:00:00Z').toLocaleDateString('en-GB',{month:'short',timeZone:'UTC'});
+  let lastM='',lastI=-9;const labels=[];
+  weeks.forEach((w,i)=>{const f0=w.find(k=>set.has(k));if(!f0)return;const mk=f0.slice(0,7);if(mk===lastM)return;lastM=mk;if(i-lastI<3)return;lastI=i;labels.push([i,mon(f0)]);});
+  const cells=[];
+  for(const w of weeks)for(const k of w){
     if(!set.has(k)){cells.push(`<div class="hc x"></div>`);continue;}
     const v=net(k),n=by[k]?by[k].length:0;
     cells.push(`<div class="hc ${v==null?'z':''} ${k===HMSEL?'sel':''}" data-d="${k}" style="${v!=null?'background:'+color(v):''}" title="${new Date(k+'T00:00:00Z').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric',timeZone:'UTC'})} · ${v==null?'no trades':inr(v)+' · '+n+' trade'+(n>1?'s':'')}"></div>`);}
-  // day stats
   const days=sess.map(d=>[d,net(d)]).filter(x=>x[1]!=null),pos=days.filter(x=>x[1]>0),best=days.reduce((a,b)=>!a||b[1]>a[1]?b:a,null),worst=days.reduce((a,b)=>!a||b[1]<a[1]?b:a,null);
   let g=0,r=0,mg=0,mr=0;for(const [,v] of days){if(v>0){g++;r=0;}else{r++;g=0;}mg=Math.max(mg,g);mr=Math.max(mr,r);}
-  const tot=sum(days,x=>x[1]),fd=d=>new Date(d+'T00:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
-  $('cal').innerHTML=`<div class="hm"><div class="hmhead"><b>Daily P&amp;L</b><span class="sub">by exit day · hover for details, click to open the day</span></div>
-      <div class="hmmon">${mons.map(m=>`<span>${m}</span>`).join('')}</div><div class="hmgrid">${cells.join('')}</div>
-      <div class="hmlegend">loss <i style="background:#e03444"></i><i style="background:#f5a3aa"></i><i style="background:#ebedf0"></i><i style="background:#8fd3bb"></i><i style="background:#089981"></i> profit · grey = session without trades</div></div>
-    <div class="hmstats"><div>Net<b class="${cl(tot)}">${inr(tot)}</b></div><div>Profitable days<b>${pos.length} of ${days.length}</b></div><div>Average day<b class="${cl(days.length?tot/days.length:0)}">${inr(days.length?tot/days.length:0)}</b></div>
-      <div>Best day<b class="pos">${best?inr(best[1]):'—'}</b>${best?fd(best[0]):''}</div><div>Worst day<b class="neg">${worst?inr(worst[1]):'—'}</b>${worst?fd(worst[0]):''}</div><div>Longest run<b><span class="pos">${mg}</span> green · <span class="neg">${mr}</span> red</b>days in a row</div></div>`;
+  const tot=sum(days,x=>x[1]),avg=days.length?tot/days.length:0,fd=d=>new Date(d+'T00:00:00Z').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'});
+  $('cal').innerHTML=`<div class="hm"><div class="hmhead"><b>Daily P&amp;L</b><span class="sub">by exit day · click a day to open it</span></div>
+      <div class="hmmon" style="width:${weeks.length*15}px">${labels.map(([i,m])=>`<span style="left:${i*15}px">${m}</span>`).join('')}</div><div class="hmgrid">${cells.join('')}</div>
+      <div class="hmlegend">loss <i style="background:var(--hn4)"></i><i style="background:var(--hn2)"></i><i style="background:var(--h0)"></i><i style="background:var(--hp2)"></i><i style="background:var(--hp4)"></i> profit · grey = session without trades</div></div>
+    <div class="hmstats"><div>Profitable days<b>${pos.length} of ${days.length}</b><small>${days.length?Math.round(100*pos.length/days.length):0}% of days with trades</small></div>
+      <div>Average day<b class="${cl(avg)}">${inr(avg)}</b><small>net per day with trades</small></div>
+      <div>Best day<b class="pos">${best?inr(best[1]):'—'}</b><small>${best?fd(best[0]):''}</small></div>
+      <div>Worst day<b class="neg">${worst?inr(worst[1]):'—'}</b><small>${worst?fd(worst[0]):''}</small></div>
+      <div>Longest streak<b><span class="pos">${mg} up</span> · <span class="neg">${mr} down</span></b><small>days in a row</small></div></div>`;
   $('cal').querySelectorAll('.hc[data-d]').forEach(c=>c.onclick=()=>{HMSEL=c.dataset.d;$('cal').querySelectorAll('.hc.sel').forEach(x=>x.classList.remove('sel'));c.classList.add('sel');openDay(c.dataset.d);});
 }
 
@@ -429,15 +522,109 @@ function renderBreakdown(T){
   const grp=(title,keyOf)=>{const g={};T.forEach(t=>(g[keyOf(t)]??=[]).push(t));
     return `<div class="card mt"><h3>${title}</h3><table><thead><tr><th></th><th class="num">Trades</th><th class="num">Win %</th><th class="num">Net ₹</th><th class="num">Avg ₹</th><th class="num">Avg max profit</th><th class="num">Avg max loss</th></tr></thead><tbody>`+
     Object.keys(g).sort().map(k=>{const a=g[k],n=sum(a,t=>t.net);return `<tr><td>${k}</td><td class="num">${a.length}</td><td class="num">${Math.round(100*a.filter(t=>t.net>0).length/a.length)}%</td><td class="num ${cl(n)}">${inr(n)}</td><td class="num ${cl(n)}">${inr(n/a.length)}</td><td class="num pos">${fmt(sum(a,t=>t.mfe)/a.length)}</td><td class="num neg">${fmt(sum(a,t=>t.mae)/a.length)}</td></tr>`;}).join('')+'</tbody></table></div>';};
-  $('p-bdown').innerHTML=`<div class="grid2">${grp('By position',t=>t.pos==='LONG'?'Long':'Short')}${grp('By signal',sigName)}${grp('By instrument',t=>t.otype)}${grp('By exit reason',t=>({stop_loss:'Stop loss',next_choch:'Next CHoCH',expiry:'Expiry',open:'Open at end'})[t.why])}${grp('By entry time',t=>{const hm=t.et.slice(11,16);return hm<'10:30'?'09:15–10:30':hm<'12:00'?'10:30–12:00':hm<'13:30'?'12:00–13:30':'13:30–15:30';})}${grp('By holding',t=>t.et.slice(0,10)===t.xt.slice(0,10)?'Intraday':'Overnight')}</div>`;}
+  $('p-bdown').innerHTML=`<div class="grid2">${grp('By position',t=>t.pos==='LONG'?'Long':'Short')}${grp('By signal',sigName)}${grp('By instrument',t=>t.otype)}${grp('By exit reason',t=>({stop_loss:'Stop loss',next_choch:'Next CHoCH',expiry:'Expiry',open:'Open at end',band_reclaim:'Band reclaim'})[t.why])}${grp('By entry time',t=>{const hm=t.et.slice(11,16);return hm<'10:30'?'09:15–10:30':hm<'12:00'?'10:30–12:00':hm<'13:30'?'12:00–13:30':'13:30–15:30';})}${grp('By holding',t=>t.et.slice(0,10)===t.xt.slice(0,10)?'Intraday':'Overnight')}</div>`;}
 function renderSignals(){
-  $('sighint').textContent=D.signals.length?'Every CHoCH on the futures chart, the AVWAP pair it started, and the SETUP that followed.':'Options (standalone): the signals are on each day\'s option chart — pick it in the session list above the chart.';
-  $('tsignals').innerHTML=D.signals.length?'<thead><tr><th>CHoCH</th><th>Direction</th><th class="num">Protected</th><th>AVWAP from SH</th><th>AVWAP from SL</th><th>SETUP</th></tr></thead><tbody>'+
-    D.signals.map(g=>`<tr><td>${g.time.slice(5,16)}</td><td><span class="pill ${g.dir==='up'?'long':'short'}">${g.dir==='up'?'future long':'future short'}</span></td><td class="num">${g.lvl}</td><td>${g.hi?g.hi[0].slice(5,16)+' @ '+g.hi[1]:'—'}</td><td>${g.lo?g.lo[0].slice(5,16)+' @ '+g.lo[1]:'—'}</td><td>${g.setup?g.setup.slice(5,16):'<span class="pill grey">none</span>'}</td></tr>`).join('')+'</tbody>':'';}
-function renderConfig(){const m=cur,r=runOf(m),sch=D.charges,labs={code:'Code',break_mode:'Break mode',avwap_weight:'AVWAP weight',sl_rule:'Stop-loss rule',warmup_days:'Warm-up (sessions)',slippage_pts:'Slippage (pts/side)',lot_size:'Lot size',capital_fut:'Futures margin / lot (₹)',capital_opt_short:'Short option margin / lot (₹)',charge_code:'Charge schedule'};
+  const F=D.fz,fr=new Map(),GP={TAKE:'long',REENTER:'long',WATCH:'grey',BLOCK:'short'};   // FZ: the card's read and the gate, joined on the SETUP time
+  if(F){const {cols,rows}=F.ledger,[iT,iR,iG,iOG]=['time','read','gate','outcome_gate'].map(k=>cols.indexOf(k));rows.forEach(x=>fr.set(x[iT],[x[iR],x[iG],iOG>=0?x[iOG]:x[iG]]));}
+  // the gate the SETUP ended with (a WATCH whose watch later re-entered on it reads REENTER), the gate at its bar in the title
+  const fzc=g=>{if(!F)return '';const z=g.setup&&fr.get(g.setup);return z?`<td>${z[0]}</td><td title="gate at the SETUP bar: ${z[1]}"><span class="pill ${GP[z[2]]||'grey'}">${z[2]}</span></td>`:'<td></td><td></td>';};
+  $('sighint').textContent=D.signals.length?'Every CHoCH on the futures chart, the AVWAP pair it started, and the SETUP that followed.'+(F?' Read and Gate: the FZ card at that SETUP and what the gate did (details in the Zone gate tab).':''):'Options (standalone): the signals are on each day\'s option chart — pick it in the session list above the chart.';
+  $('tsignals').innerHTML=D.signals.length?`<thead><tr><th>CHoCH</th><th>Direction</th><th class="num">Protected</th><th>AVWAP from SH</th><th>AVWAP from SL</th><th>SETUP</th>${F?'<th>Read</th><th>Gate</th>':''}</tr></thead><tbody>`+
+    D.signals.map(g=>`<tr><td>${g.time.slice(5,16)}</td><td><span class="pill ${g.dir==='up'?'long':'short'}">${g.dir==='up'?'future long':'future short'}</span></td><td class="num">${g.lvl}</td><td>${g.hi?g.hi[0].slice(5,16)+' @ '+g.hi[1]:'—'}</td><td>${g.lo?g.lo[0].slice(5,16)+' @ '+g.lo[1]:'—'}</td><td>${g.setup?g.setup.slice(5,16):'<span class="pill grey">none</span>'}</td>${fzc(g)}</tr>`).join('')+'</tbody>':'';}
+function renderConfig(){const m=cur,r=runOf(m),sch=D.charges,labs={code:'Code',break_mode:'Break mode (swings, BOS)',choch_mode:'CHoCH mode',avwap_weight:'AVWAP weight',sl_rule:'Stop-loss rule',warmup_days:'Warm-up (sessions)',slippage_pts:'Slippage (pts/side)',lot_size:'Lot size',capital_fut:'Futures margin / lot (₹)',capital_opt_short:'Short option margin / lot (₹)',charge_code:'Charge schedule'};
   $('cfg').innerHTML=`<dt>Showing</dt><dd>${m.name} · ${SCH[schemeOf(m)]}${m.variant!=='FUT'?` · ${EXP[ck(curChoice)[0]]} · strike ${ck(curChoice)[1]}`:''}</dd><dt>Backtest</dt><dd>${r.label} · ${r.date_from} → ${r.date_to} · ${TFS[r.timeframe]}${r.design?' (design timeframe)':''}</dd>`+
     Object.entries(labs).map(([k,v])=>`<dt>${v}</dt><dd>${m[k]??'—'}</dd>`).join('')+
-    `<dt>Brokerage</dt><dd>${sch.brokerage_flat?'₹'+sch.brokerage_flat+' flat per order':sch.brokerage_pct+'% or ₹'+sch.brokerage_cap+' per order'}</dd><dt>STT</dt><dd>${sch.stt_buy_pct}% buy · ${sch.stt_sell_pct}% sell</dd><dt>Exchange</dt><dd>${sch.exchange_pct}%</dd><dt>Stamp</dt><dd>${sch.stamp_buy_pct}% buy</dd><dt>GST</dt><dd>${sch.gst_pct}%</dd><dt>Note</dt><dd>${sch.notes}</dd>`;}
+    `<dt>Brokerage</dt><dd>${sch.brokerage_flat?'₹'+sch.brokerage_flat+' flat per order':sch.brokerage_pct+'% or ₹'+sch.brokerage_cap+' per order'}</dd><dt>STT</dt><dd>${sch.stt_buy_pct}% buy · ${sch.stt_sell_pct}% sell</dd><dt>Exchange</dt><dd>${sch.exchange_pct}%</dd><dt>Stamp</dt><dd>${sch.stamp_buy_pct}% buy</dd><dt>GST</dt><dd>${sch.gst_pct}%</dd><dt>Note</dt><dd>${sch.notes}</dd>`+fzConfig(m,r);}
+// FZ rows: every threshold of this timeframe's fz block as the strategy file states it, with its provenance
+function fzConfig(m,r){let b=null;try{b=m.fz_json?JSON.parse(m.fz_json)[r.timeframe]:null;}catch(e){}if(!b)return '';
+  return `<dt style="margin-top:10px"><b>Foundation-Zone</b></dt><dd style="margin-top:10px">entry rule ${esc(m.entry_rule)} · fz_hash ${esc(m.fz_hash||'—')} · band memory from ${esc(r.memory_start||'—')} (${esc(r.same_sample||'')}: every window is a date slice of one run from the file start) · thresholds for ${TFS[r.timeframe]} candles</dd>`+
+    Object.entries(b).map(([k,x])=>`<dt>${esc(k)}</dt><dd>${x.value===null?'null':esc(x.value)} <span class="sub">· ${esc(x.source)}${x.statistic?' · '+esc(x.statistic):''}${x.note?' · '+esc(x.note):''}</span></dd>`).join('');}
+
+// ---- Zone gate (Strategies 5-6): the gate ledger and its reports, all precomputed by lab.py into summary.json['fz']
+let FZG='ALL';   // ledger filter: ALL or one gate
+function renderFZ(){
+  const F=D&&D.fz,el=$('p-fz');
+  if(!F){el.innerHTML='<p class="hint">Not an FZ strategy. The Zone gate belongs to Strategies 5 and 6, which card every Foundation SETUP against a memory of price bands and gate it TAKE / WATCH / BLOCK, with REENTER after a confirmed leave of the band.</p>';return;}
+  const s=F.stats,c=F.control,pm=F.permutation,fl=F.flags,w=s.watches||{},p=s.positions||{},r=runOf(cur),GT=['TAKE','REENTER','WATCH','BLOCK'];
+  const kv=o=>Object.entries(o||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k} ${v}`).join(' · ')||'—';
+  const ord=(o,ks)=>ks.filter(k=>o&&o[k]!=null).map(k=>`${k} ${o[k]}`).join(' · ')||'—';
+  const money=v=>[inr(v),cl(v)];
+  const td=(x,i)=>Array.isArray(x)?`<td class="${i?'num ':''}${x[1]||''}"${x[2]?` title="${esc(x[2])}"`:''}>${x[0]??'—'}</td>`:`<td${i?' class="num"':''}>${x??'—'}</td>`;
+  const card=(title,head,rows,hint)=>`<div class="card mt"><h3>${title}</h3>${hint?`<p class="hint">${hint}</p>`:''}<div class="scroll"><table>${head?`<thead><tr>${head.map((x,i)=>`<th${i?' class="num"':''}>${x}</th>`).join('')}</tr></thead>`:''}<tbody>${rows.map(rw=>`<tr>${rw.map(td).join('')}</tr>`).join('')}</tbody></table></div></div>`;
+  const by=(title,o,keys)=>card(title,['',...GT,'All'],(keys||Object.keys(o||{})).filter(k=>o&&o[k]).map(k=>[esc(k),...GT.map(g=>o[k][g]||''),Object.values(o[k]).reduce((a,b)=>a+b,0)]));
+  // headline tiles: the control percentile always sits beside net (cost avoidance is not edge)
+  const B=F.books||{},bf=B.fz||{},bw=B.raw||{},h=F.headline||{};
+  // SETUPs by how they ended (a WATCH whose watch later re-entered on it counts REENTER); at_setup = the gate at the SETUP bar
+  const ats=h.at_setup;
+  const tiles=[['Foundation SETUPs',s.setups,`ended TAKE ${h.take} · WATCH ${h.watch} · BLOCK ${h.block} · REENTER ${h.reenter}${ats?` (${ats.REENTER} of them at the SETUP bar)`:''}`,''],
+    ['FZ positions',`${h.take_trades} + ${h.reenter_trades}`,`TAKE + REENTER · ${h.priced} priced`,''],
+    ['FZ net',inr(bf.net),`Foundation ${inr(bw.net)} in the same run`,cl(bf.net)],
+    ['Random control',c.fz_pct!=null?c.fz_pct.toFixed(1)+'th pct':'—',`session-matched · ${c.draws} draws`,''],
+    ['Kept vs refused',pm.p!=null?'p '+pm.p:'—',`mean <span class="${cl(pm.kept_mean)}">${inr(pm.kept_mean)}</span> vs <span class="${cl(pm.blocked_mean)}">${inr(pm.blocked_mean)}</span>`,''],
+    ['Sample',fl.pf_t,`n ${fl.n}${fl.ci_inr!=null?` · 95% CI ±${inr(fl.ci_inr)}`:''}`,'']]
+    .map(([l,v,sub,k])=>`<div class="card kpi"><div class="l">${l}</div><div class="v ${k}">${v}</div><div class="s">${sub}</div></div>`).join('');
+  // gate x read: rows are SETUPs; BLOCK split by reason
+  const reads=F.legend.read.filter(x=>GT.some(g=>(s.gate_read[g]||{})[x])),grow=(lbl,o,n)=>[lbl,...reads.map(x=>(o||{})[x]||''),n];
+  const gr=[...['TAKE','REENTER','WATCH'].map(g=>grow(g,s.gate_read[g],s.gates[g]||0)),
+    ...Object.entries(s.block_read||{}).map(([k,o])=>grow('BLOCK · '+k,o,Object.values(o).reduce((a,b)=>a+b,0))),grow('<b>All SETUPs</b>',s.reads_at_setup,s.setups)];
+  const sb=p.reenter_sl_bar||{},ls=(s.r4||{}).leave_setups||{},r4=s.r4||{},na=F.all_na||{},lf=s.leave_far_side||{},b1=s.branch1||{},br=F.bridge||{lines:[]},cd=s.card||{},sm=cd.since_memory_start||{};
+  const cells=[
+    card('Watches',['Outcome','Watches'],Object.entries(w.outcomes||{}).sort((a,b)=>b[1]-a[1]),
+      `${w.opened??0} opened (${kv(w.kinds)}); ${w.armed??0} armed${w.rearmed!=null?`, ${w.rearmed} re-armed (a close back inside breaks the far-side run; the next far close arms again)`:''}. Armed watches that expired: median ${w.armed_bars_median??'—'} bars from the first arming${w.rearmed_bars_median!=null?`, ${w.rearmed_bars_median} from the latest`:''}. Ended armed with R1–R4 met but no same-direction SETUP: ${w.no_same_dir_setup??0}. REENTER held by the ${F.thresholds.no_entry_from} clock: ${w.clock_1520??0}. Refused at the fill: ${w.reenter_refused??0}.`),
+    card('Positions',null,[["TAKE (Foundation's own position)",p.TAKE],['REENTER',p.REENTER],...Object.entries(p.reenter_exits||{}).map(([k,v])=>['REENTER exit · '+k,v]),
+      ...Object.entries(p.reenter_fill||{}).map(([k,v])=>['REENTER fill · '+k,v]),['REENTER stop from the SETUP / fill bar',`${sb.setup||0} / ${sb.fill||0}`],['REENTER stop inside the band',p.reenter_sl_in_band],
+      ['LEAVE TAKE turned REENTER (a watch waited on the band left, same way)',p.reenter_converted_take],['TAKE refused (stop)',p.take_refused]]),
+    card('LEAVE into another band (TAKE branch 1)',['leave_far_side','Branch-1 TAKEs'],['any','block_list','no_band'].map(k=>[k===lf.seeded?`<b>${k}</b> (seeded)`:k,lf[k]]),
+      `What each reading of a leave whose far side is another remembered band would TAKE on these rows (counted from the ledger's entered read; only the seeded one gated). Seeded branch-1 TAKEs ${b1.n??0}: far side in no band ${b1.far_side_no_band??0}, inside a band ${b1.far_side_in_band??0} (entered visit_n median ${b1.in_band_visit_n_median??'—'}; by visit ${kv(b1.in_band_visit_n)}; entered read ${kv(b1.in_band_entered_read)}).`),
+    card('Volume NA and R4',null,[['SETUPs whose visit volume is NA',`${s.vol_na} of ${s.setups}`],["SETUPs whose band's first visit is NA",s.first_vol_na],['ACCEPTED on time alone (volume NA)',s.accepted_time_only],
+      ['R4 far-side bars evaluated / failed / NA',`${r4.bars_evaluated??0} / ${r4.bars_fail??0} / ${r4.bars_na??0}`],['LEAVE SETUPs by R4: NA / pass / fail',`${ls.none||0} / ${ls.true||0} / ${ls.false||0}`]],
+      `A bar is volume-NA when the file is not on the front month or its volume is 0; a visit is NA if any of its bars is. NA skips R4, the HUNT burst and THIN, and makes ACCEPTED time-only. All-NA comparator (volume NA on every bar, the like-for-like read across volume regimes): SETUPs by the gate they ended with ${ord(na.gates,GT)}; positions ${ord(na.positions,['TAKE','REENTER'])}.`),
+    card('Bridge: Foundation to FZ net',['','n','₹'],br.lines.map(l=>[['raw_net','fz_net'].includes(l.key)?`<b>${l.label}</b>`:l.label,l.n,money(l.value)]),
+      `Foundation's net in this same run, plus what FZ avoided by not holding its other positions (their price move, then their charges and slippage), plus the REENTER exit difference, equals FZ net. Price lines <span class="${cl(br.selection)}">${inr(br.selection)}</span>, cost avoidance <span class="${cl(br.costs)}">${inr(br.costs)}</span>: with a losing Foundation book any gate that drops trades gains the costs, so judge the selection by the random control.`),
+    card('Random control and kept vs refused',null,[['Random books (session-matched)',`${c.draws} × ${c.k} positions`],['Random net · 5th percentile',money(c.p5)],['Random net · median',money(c.p50)],['Random net · 95th percentile',money(c.p95)],
+      ['FZ net',money(c.fz_net)],['FZ percentile among the random books',c.fz_pct!=null?c.fz_pct.toFixed(1)+'th':'—'],['Random books that beat FZ',c.p_beat!=null?pct(c.p_beat):'—'],
+      ['Kept: Foundation trades on the SETUPs FZ traded (TAKE, or a REENTER on that SETUP)',pm.kept_n],['Kept · mean',money(pm.kept_mean)],['Refused: Foundation trades on the SETUPs FZ never traded',pm.blocked_n],['Refused · mean',money(pm.blocked_mean)],['Difference of means',money(pm.diff)],['Permutation p (two-sided)',pm.p??'—']],
+      `${esc(c.scheme)}; seed ${esc(c.seed)}${c.capped?`; ${c.capped} positions capped`:''}. The permutation shuffles the kept / refused labels ${pm.draws} times.`),
+    card('Books and sample size',['','FZ','Foundation'],[['Positions',bf.n,bw.n],['Net',money(bf.net),money(bw.net)],['Net without positions open at the end',money(bf.net_ex_open),money(bw.net_ex_open)],
+      ['Mean per position',money(bf.mean),money(bw.mean)],['SD per position',inr(bf.sd),inr(bw.sd)],['Wins',bf.wins,bw.wins],
+      ...[['Profit factor','pf'],['t per position','t_trade'],['t per active session','t_session']].map(([l,k])=>[l,fl.pf_t==='not reported'?'not reported':bf[k],bw[k]]),
+      ['Sessions / weeks with a position',`${bf.sessions} / ${bf.weeks}`,`${bw.sessions} / ${bw.weeks}`],['Open at the end',bf.open,bw.open],
+      ['95% CI on the mean (₹ · pts)',bf.ci_inr!=null?`±${inr(bf.ci_inr)} · ±${bf.ci_pts}`:'—',bw.ci_inr!=null?`±${inr(bw.ci_inr)} · ±${bw.ci_pts}`:'—']],
+      `Sample flags for the FZ book: PF / t ${fl.pf_t}, week stats ${fl.weeks}, Sharpe / Calmar ${fl.sharpe}. ${esc(fl.rule)}.`),
+    card('Active sessions and dormant stretches',['No Foundation SETUP','Sessions'],(s.dormant||[]).map(([a,b,n])=>[a===b?a:`${a} → ${b}`,n]),
+      `Sessions with at least one Foundation SETUP: ${s.active_sessions} of ${s.sessions}. A dormant stretch is Foundation's silence, not FZ's selectivity.`),
+    by('Gate by hour (bar open time)',s.by_hour,F.legend.hour_bins),by('Gate by visit_n',s.by_visit,['1','2','3','4+','none']),by('Gate by direction',s.by_dir,['up','down']),
+    by('Gate by zone kind (A protected level · B cluster sit)',s.by_zone_kind,['A','B','none']),
+    card('The card on every shown bar',null,[['Bars',cd.bars],['Closing inside a band',cd.inside_pct+'%'],['With a live visit',cd.ref_live_pct+'%'],['Bands since the memory start',cd.zones_since_memory_start],
+      ['Born A / B (B by drift)',`${sm.births_A} / ${sm.births_B} (${sm.births_B_drift})`],['Born in this window A / B',`${(cd.births_in_window||{}).A??0} / ${(cd.births_in_window||{}).B??0}`],['Merged candidates A / B',`${sm.merges_A} / ${sm.merges_B}`],['visit_n at SETUP, median',s.visit_n_median],
+      ['Closes back inside the band just left while another band holds the visit (no new visit on it)',cd.leave_return_no_visit??'—']],
+      `Reads by bar (%): ${F.legend.read.filter(x=>(cd.reads||{})[x]!=null).map(x=>`${x} ${cd.reads[x]}`).join(' · ')}. Reads at SETUP: ${kv(s.reads_at_setup)}.`)];
+  // the ledger: one row per Foundation SETUP; a click opens the chart at it
+  const L=F.ledger,ix=Object.fromEntries(L.cols.map((k,i)=>[k,i])),g=(rw,k)=>rw[ix[k]],tsOf=x=>Date.parse(x.replace(' ','T')+'Z')/1000,zn=id=>id?id[0]+id.slice(6,17):'—';
+  const ratio=rw=>!g(rw,'vol_na')&&!g(rw,'first_vol_na')&&g(rw,'this_vol')!=null&&g(rw,'first_vol')?(g(rw,'this_vol')/g(rw,'first_vol')).toFixed(2):'NA';
+  // og = the gate the SETUP ended with (ledgers built before outcome_gate existed fall back to the gate at the SETUP bar)
+  const og=rw=>ix.outcome_gate!=null?g(rw,'outcome_gate'):g(rw,'gate');
+  const GP={TAKE:'long',REENTER:'long',WATCH:'grey',BLOCK:'short'},rows=L.rows.filter(rw=>FZG==='ALL'||og(rw)===FZG);
+  const seg=`<span class="seg sm" id="fzSeg">${['ALL',...GT].map(k=>`<button data-g="${k}" class="${FZG===k?'on':''}">${k==='ALL'?'All':k}<small>${k==='ALL'?L.rows.length:(s.gates[k]||0)}</small></button>`).join('')}</span>`;
+  const lrow=(rw,i)=>{const t=g(rw,'time'),fp=g(rw,'fnd_pts'),zp=g(rw,'fz_pts'),x=g(rw,'fz_exit_time')||g(rw,'fnd_exit_time')||t,wk=g(rw,'watch_kind');
+    return `<tr class="z" data-a="${tsOf(t)}" data-b="${tsOf(x)}"><td>${i+1}</td><td>${t.slice(5,16)}</td><td><span class="pill ${g(rw,'dir')==='up'?'long':'short'}">${g(rw,'dir')}</span></td>`+
+      `<td title="${esc(g(rw,'zone_id')||'')}${g(rw,'band_lo')!=null?` · ${g(rw,'band_lo')}–${g(rw,'band_hi')}`:''}">${zn(g(rw,'zone_id'))}</td><td>${g(rw,'zone_kind')||'—'}</td><td class="num">${g(rw,'visit_n')??'—'}</td>`+
+      `<td class="num">${g(rw,'this_bars')??'—'} / ${g(rw,'first_bars')??'—'}</td><td class="num">${ratio(rw)}</td><td>${g(rw,'read')||'—'}</td><td><span class="pill ${GP[og(rw)]||'grey'}">${og(rw)}</span>${og(rw)!==g(rw,'gate')?` <small class="sub">${g(rw,'gate')} at the SETUP bar</small>`:''}</td>`+
+      `<td>${g(rw,'block_reason')||g(rw,'take_why')||''}${g(rw,'refused')?' · refused '+g(rw,'refused'):''}</td><td>${g(rw,'branch')||''}</td>`+
+      `<td title="${esc(g(rw,'entered_zone_id')||'')}">${g(rw,'entered_read')?`${g(rw,'entered_read')} (v${g(rw,'entered_visit_n')})`:''}</td>`+
+      `<td>${wk?`${wk==='WATCH_EDGE'?'edge':'watch'} → ${g(rw,'watch_outcome')||'active'}`:''}</td>`+
+      `<td title="${g(rw,'fill_time')?esc(`fill ${g(rw,'fill_time')} · ${g(rw,'edge_dist_pts')??'—'} pts beyond the edge · armed ${g(rw,'armed_bars')??'—'} bars${g(rw,'rearmed_bars')!=null&&g(rw,'rearmed_bars')!==g(rw,'armed_bars')?` (${g(rw,'rearmed_bars')} since it re-armed)`:''} · stop from the ${g(rw,'sl_bar')||'—'} bar`):''}">${g(rw,'fill_used')?`${g(rw,'fill_used')}${g(rw,'fill_delay_bars')?' +'+g(rw,'fill_delay_bars'):''}`:''}</td>`+
+      `<td class="num ${cl(fp)}" title="${esc(fp==null?'':`${g(rw,'fnd_exit_reason')} ${g(rw,'fnd_exit_time')} · ${inr(g(rw,'fnd_net'))}`)}">${fp==null?'—':fmt(fp)}</td>`+
+      `<td class="num ${cl(zp)}" title="${esc(g(rw,'fz_kind')?`${g(rw,'fz_kind')} · ${g(rw,'fz_exit_reason')} ${g(rw,'fz_exit_time')} · ${inr(g(rw,'fz_net'))}`:'')}">${zp==null?'—':fmt(zp)}</td></tr>`;};
+  el.innerHTML=`<p class="hint">Every Foundation SETUP of this backtest, carded against the band memory from ${F.memory_start} (the file's first session; the window starts ${F.window_start}) and gated. ${r.notes?'Backtest: '+esc(r.notes)+'. ':''}${esc(F.legend.units)}.</p>`+
+    `<div class="kpis">${tiles}</div>`+
+    card('Gate × read',['',...reads,'SETUPs'],gr,`Rows are Foundation SETUPs by the gate they ended with and the card's read at the SETUP bar; BLOCK is split by reason. A WATCH whose watch later re-entered on this SETUP counts as REENTER${s.gates_at_setup?` (gate at the SETUP bar: ${ord(s.gates_at_setup,GT)})`:''}. WATCH at the SETUP bar after a LEAVE into a RECYCLE / THIN / HUNT / REJECT band: ${kv(s.watch_reason)}. Not a TAKE because: ${kv(s.take_why)}. Branches: TAKE ${kv((s.branches||{}).TAKE)}; REENTER ${kv((s.branches||{}).REENTER)}.`)+
+    `<div class="grid2">${cells.join('')}</div>`+
+    `<div class="card mt" style="margin-top:12px"><h3>Gate ledger ${seg}</h3><p class="hint">One row per Foundation SETUP (skipped ones included). Hover the zone, entered read, fill and points for detail; click a row to open it on the chart. Foundation pts = what Foundation's own position on this SETUP did; FZ pts = the FZ position this SETUP opened (TAKE, or REENTER after its watch).</p>`+
+    `<div class="scroll"><table><thead><tr><th>#</th><th>SETUP</th><th>Dir</th><th>Zone</th><th>Kind</th><th class="num">Visit</th><th class="num">This / first bars</th><th class="num">Vol ratio</th><th>Read</th><th>Gate</th><th>Reason</th><th>Branch</th><th>Entered</th><th>Watch</th><th>Fill</th><th class="num">Foundation pts</th><th class="num">FZ pts</th></tr></thead><tbody>${rows.map(lrow).join('')}</tbody></table></div></div>`;
+  el.querySelectorAll('#fzSeg button').forEach(b=>b.onclick=()=>{FZG=b.dataset.g;renderFZ();});
+  el.querySelectorAll('tr.z').forEach(tr=>tr.onclick=()=>openAt(+tr.dataset.a,+tr.dataset.b));
+}
 
 // ---- performance scorecard
 function dailySeries(T){const sess=sessionsOf(),by={};T.forEach(t=>{const d=t.xt.slice(0,10);by[d]=(by[d]||0)+t.net;});return sess.map(d=>by[d]||0);}
@@ -549,7 +736,7 @@ function renderRobust(T){
     `<div class="card mt"><h3>Month by month</h3><table><thead><tr><th>Month</th><th class="num">Trades</th><th class="num">Net ₹</th><th class="num">Win %</th></tr></thead><tbody>${Object.keys(byM).sort().map(k=>{const a=byM[k],v=sum(a,t=>t.net);return `<tr><td>${k}</td><td class="num">${a.length}</td><td class="num ${cl(v)}">${inr(v)}</td><td class="num">${Math.round(100*a.filter(t=>t.net>0).length/a.length)}%</td></tr>`;}).join('')}</tbody></table></div>`+
     `<div class="card mt"><h3>Same rules on other timeframes</h3><p class="hint">This backtest, ${SCH[sch]}${opt?`, ${EXP[S().exp]} ${S().strike}`:''}.</p><table>${other.map(([k,x])=>{const c=x.choices[choiceOf(m)];const v=c?(sch==='BOTH'?c:({LONG:c.long,SHORT:c.short,CE:c.ce,PE:c.pe})[sch]):null;return `<tr><td>${TFS[x.timeframe]}${x.design?' (design)':''}</td><td class="num ${v?cl(v.net_inr):''}">${v?inr(v.net_inr):'—'}${c&&c.skipped?'<span class="warn">*</span>':''}</td><td class="num">${v?v.trades+' trades':''}</td></tr>`;}).join('')}${other.length<2?'<tr><td colspan="3" class="hint">Only the design timeframe has been run for this backtest — use Timeframe ▾ above to add one.</td></tr>':''}</table></div>`+
     `</div>`+(opt?`<div class="card mt" style="margin-top:12px"><h3>Expiry × strike</h3><p class="hint">Every expiry and strike choice for this type and backtest. Click a row to apply it.</p><div class="scroll"><table><thead><tr><th>Expiry</th><th>Strike</th><th class="num">Trades</th><th class="num">Long ₹</th><th class="num">Short ₹</th><th class="num">L+S · CE ₹</th><th class="num">L+S · PE ₹</th><th class="num">PF</th></tr></thead><tbody>`+
-      Object.entries(r.choices).map(([c,x])=>`<tr class="z" data-c="${c}" style="${c===curChoice?'background:#eef2ff':''}"><td>${EXP[ck(c)[0]]}</td><td>${ck(c)[1]}</td><td class="num">${x.trades}${x.skipped?`<span class="warn" title="${x.skipped} skipped">*</span>`:''}</td><td class="num ${cl(x.long?.net_inr)}">${inr(x.long?.net_inr)}</td><td class="num ${cl(x.short?.net_inr)}">${inr(x.short?.net_inr)}</td><td class="num ${cl(x.ce?.net_inr)}">${inr(x.ce?.net_inr)}</td><td class="num ${cl(x.pe?.net_inr)}">${inr(x.pe?.net_inr)}</td><td class="num">${x.pf??'—'}</td></tr>`).join('')+'</tbody></table></div></div>':'');
+      Object.entries(r.choices).map(([c,x])=>`<tr class="z" data-c="${c}" style="${c===curChoice?'background:var(--sel-bg)':''}"><td>${EXP[ck(c)[0]]}</td><td>${ck(c)[1]}</td><td class="num">${x.trades}${x.skipped?`<span class="warn" title="${x.skipped} skipped">*</span>`:''}</td><td class="num ${cl(x.long?.net_inr)}">${inr(x.long?.net_inr)}</td><td class="num ${cl(x.short?.net_inr)}">${inr(x.short?.net_inr)}</td><td class="num ${cl(x.ce?.net_inr)}">${inr(x.ce?.net_inr)}</td><td class="num ${cl(x.pe?.net_inr)}">${inr(x.pe?.net_inr)}</td><td class="num">${x.pf??'—'}</td></tr>`).join('')+'</tbody></table></div></div>':'');
   document.querySelectorAll('#p-robust tr.z').forEach(tr=>tr.onclick=()=>{const [e,k]=ck(tr.dataset.c);S().exp=e;S().strike=k;saveAll();openType();});
 }
 
