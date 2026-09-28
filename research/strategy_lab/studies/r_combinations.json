@@ -1,0 +1,929 @@
+{
+ "windows": {
+  "2026": [
+   "2026-01-05",
+   "2026-09-25"
+  ],
+  "3M": [
+   "2026-06-29",
+   "2026-09-25"
+  ]
+ },
+ "variants": [
+  "base: 1R/2R/trail 3R-1, intraday",
+  "reverse once",
+  "reverse up to 3",
+  "keep reversing",
+  "positional",
+  "positional + reverse once",
+  "positional + keep reversing",
+  "targets 2R/4R",
+  "targets 1R/3R, trail 4R-1",
+  "wider trail 3R-2",
+  "early trail 2R-1",
+  "no scale-out, trail 2R-1",
+  "positional, targets 2R/4R, trail 4R-2",
+  "positional, no scale-out, trail 3R-2",
+  "stop 75 pts",
+  "stop 35 pts",
+  "positional, stop 75, trail 3R-2"
+ ],
+ "results": {
+  "ST9": {
+   "2026": {
+    "base: 1R/2R/trail 3R-1, intraday": {
+     "net": -657613,
+     "lot_exits": 657,
+     "positions": 219,
+     "pf": 0.58,
+     "t": -6.15,
+     "max_dd": -677648,
+     "locked": 596,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -657613
+     }
+    },
+    "reverse once": {
+     "net": -573650,
+     "lot_exits": 741,
+     "positions": 247,
+     "pf": 0.66,
+     "t": -4.88,
+     "max_dd": -593419,
+     "locked": 657,
+     "reversal_lots": 267,
+     "by_year": {
+      "2026": -573650
+     }
+    },
+    "reverse up to 3": {
+     "net": -803426,
+     "lot_exits": 816,
+     "positions": 272,
+     "pf": 0.59,
+     "t": -6.59,
+     "max_dd": -823195,
+     "locked": 681,
+     "reversal_lots": 414,
+     "by_year": {
+      "2026": -803426
+     }
+    },
+    "keep reversing": {
+     "net": -871934,
+     "lot_exits": 852,
+     "positions": 284,
+     "pf": 0.58,
+     "t": -6.99,
+     "max_dd": -891703,
+     "locked": 694,
+     "reversal_lots": 489,
+     "by_year": {
+      "2026": -871934
+     }
+    },
+    "positional": {
+     "net": -106936,
+     "lot_exits": 537,
+     "positions": 179,
+     "pf": 0.93,
+     "t": -0.65,
+     "max_dd": -262690,
+     "locked": 646,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -106936
+     }
+    },
+    "positional + reverse once": {
+     "net": -234245,
+     "lot_exits": 627,
+     "positions": 209,
+     "pf": 0.87,
+     "t": -1.27,
+     "max_dd": -351119,
+     "locked": 703,
+     "reversal_lots": 261,
+     "by_year": {
+      "2026": -234245
+     }
+    },
+    "positional + keep reversing": {
+     "net": -587064,
+     "lot_exits": 723,
+     "positions": 241,
+     "pf": 0.73,
+     "t": -3.25,
+     "max_dd": -639885,
+     "locked": 757,
+     "reversal_lots": 519,
+     "by_year": {
+      "2026": -587064
+     }
+    },
+    "targets 2R/4R": {
+     "net": -731520,
+     "lot_exits": 645,
+     "positions": 215,
+     "pf": 0.59,
+     "t": -5.97,
+     "max_dd": -751406,
+     "locked": 600,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -731520
+     }
+    },
+    "targets 1R/3R, trail 4R-1": {
+     "net": -674330,
+     "lot_exits": 645,
+     "positions": 215,
+     "pf": 0.58,
+     "t": -5.93,
+     "max_dd": -693241,
+     "locked": 600,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -674330
+     }
+    },
+    "wider trail 3R-2": {
+     "net": -618705,
+     "lot_exits": 645,
+     "positions": 215,
+     "pf": 0.61,
+     "t": -5.5,
+     "max_dd": -638740,
+     "locked": 600,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -618705
+     }
+    },
+    "early trail 2R-1": {
+     "net": -764208,
+     "lot_exits": 735,
+     "positions": 245,
+     "pf": 0.56,
+     "t": -7.12,
+     "max_dd": -782118,
+     "locked": 570,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -764208
+     }
+    },
+    "no scale-out, trail 2R-1": {
+     "net": -823471,
+     "lot_exits": 245,
+     "positions": 245,
+     "pf": 0.55,
+     "t": -3.9,
+     "max_dd": -837358,
+     "locked": 570,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -823471
+     }
+    },
+    "positional, targets 2R/4R, trail 4R-2": {
+     "net": -67908,
+     "lot_exits": 489,
+     "positions": 163,
+     "pf": 0.96,
+     "t": -0.32,
+     "max_dd": -282240,
+     "locked": 662,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -67908
+     }
+    },
+    "positional, no scale-out, trail 3R-2": {
+     "net": 599994,
+     "lot_exits": 166,
+     "positions": 166,
+     "pf": 1.38,
+     "t": 1.29,
+     "max_dd": -232893,
+     "locked": 659,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": 599994
+     }
+    },
+    "stop 75 pts": {
+     "net": -632096,
+     "lot_exits": 510,
+     "positions": 170,
+     "pf": 0.6,
+     "t": -5.04,
+     "max_dd": -676727,
+     "locked": 645,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -632096
+     }
+    },
+    "stop 35 pts": {
+     "net": -1008276,
+     "lot_exits": 933,
+     "positions": 311,
+     "pf": 0.46,
+     "t": -10.62,
+     "max_dd": -1028271,
+     "locked": 504,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -1008276
+     }
+    },
+    "positional, stop 75, trail 3R-2": {
+     "net": 10373,
+     "lot_exits": 297,
+     "positions": 99,
+     "pf": 1.01,
+     "t": 0.06,
+     "max_dd": -343506,
+     "locked": 726,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": 10373
+     }
+    }
+   },
+   "3M": {
+    "base: 1R/2R/trail 3R-1, intraday": {
+     "net": -88657,
+     "lot_exits": 174,
+     "positions": 58,
+     "pf": 0.74,
+     "t": -1.66,
+     "max_dd": -146798,
+     "locked": 239,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -88657
+     }
+    },
+    "reverse once": {
+     "net": -187190,
+     "lot_exits": 201,
+     "positions": 67,
+     "pf": 0.55,
+     "t": -3.73,
+     "max_dd": -203910,
+     "locked": 251,
+     "reversal_lots": 63,
+     "by_year": {
+      "2026": -187190
+     }
+    },
+    "reverse up to 3": {
+     "net": -202295,
+     "lot_exits": 216,
+     "positions": 72,
+     "pf": 0.56,
+     "t": -3.79,
+     "max_dd": -220420,
+     "locked": 257,
+     "reversal_lots": 96,
+     "by_year": {
+      "2026": -202295
+     }
+    },
+    "keep reversing": {
+     "net": -202295,
+     "lot_exits": 216,
+     "positions": 72,
+     "pf": 0.56,
+     "t": -3.79,
+     "max_dd": -220420,
+     "locked": 257,
+     "reversal_lots": 96,
+     "by_year": {
+      "2026": -202295
+     }
+    },
+    "positional": {
+     "net": 17708,
+     "lot_exits": 123,
+     "positions": 41,
+     "pf": 1.06,
+     "t": 0.22,
+     "max_dd": -77146,
+     "locked": 260,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": 17708
+     }
+    },
+    "positional + reverse once": {
+     "net": -205977,
+     "lot_exits": 156,
+     "positions": 52,
+     "pf": 0.6,
+     "t": -2.4,
+     "max_dd": -273831,
+     "locked": 269,
+     "reversal_lots": 60,
+     "by_year": {
+      "2026": -205977
+     }
+    },
+    "positional + keep reversing": {
+     "net": -289903,
+     "lot_exits": 183,
+     "positions": 61,
+     "pf": 0.53,
+     "t": -3.55,
+     "max_dd": -338478,
+     "locked": 286,
+     "reversal_lots": 138,
+     "by_year": {
+      "2026": -289903
+     }
+    },
+    "targets 2R/4R": {
+     "net": -78330,
+     "lot_exits": 168,
+     "positions": 56,
+     "pf": 0.78,
+     "t": -1.35,
+     "max_dd": -148784,
+     "locked": 241,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -78330
+     }
+    },
+    "targets 1R/3R, trail 4R-1": {
+     "net": -87385,
+     "lot_exits": 168,
+     "positions": 56,
+     "pf": 0.74,
+     "t": -1.59,
+     "max_dd": -142869,
+     "locked": 241,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -87385
+     }
+    },
+    "wider trail 3R-2": {
+     "net": -88417,
+     "lot_exits": 174,
+     "positions": 58,
+     "pf": 0.74,
+     "t": -1.65,
+     "max_dd": -143958,
+     "locked": 239,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -88417
+     }
+    },
+    "early trail 2R-1": {
+     "net": -59477,
+     "lot_exits": 189,
+     "positions": 63,
+     "pf": 0.83,
+     "t": -1.08,
+     "max_dd": -121955,
+     "locked": 234,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -59477
+     }
+    },
+    "no scale-out, trail 2R-1": {
+     "net": -31872,
+     "lot_exits": 63,
+     "positions": 63,
+     "pf": 0.91,
+     "t": -0.27,
+     "max_dd": -137532,
+     "locked": 234,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -31872
+     }
+    },
+    "positional, targets 2R/4R, trail 4R-2": {
+     "net": 86544,
+     "lot_exits": 111,
+     "positions": 37,
+     "pf": 1.25,
+     "t": 0.95,
+     "max_dd": -78398,
+     "locked": 264,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": 86544
+     }
+    },
+    "positional, no scale-out, trail 3R-2": {
+     "net": 209438,
+     "lot_exits": 39,
+     "positions": 39,
+     "pf": 1.61,
+     "t": 1.04,
+     "max_dd": -85345,
+     "locked": 262,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": 209438
+     }
+    },
+    "stop 75 pts": {
+     "net": -3450,
+     "lot_exits": 138,
+     "positions": 46,
+     "pf": 0.99,
+     "t": -0.06,
+     "max_dd": -74628,
+     "locked": 251,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -3450
+     }
+    },
+    "stop 35 pts": {
+     "net": -133599,
+     "lot_exits": 228,
+     "positions": 76,
+     "pf": 0.65,
+     "t": -2.72,
+     "max_dd": -144840,
+     "locked": 221,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -133599
+     }
+    },
+    "positional, stop 75, trail 3R-2": {
+     "net": 85132,
+     "lot_exits": 63,
+     "positions": 21,
+     "pf": 1.46,
+     "t": 1.2,
+     "max_dd": -96605,
+     "locked": 280,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": 85132
+     }
+    }
+   }
+  },
+  "ST10": {
+   "2026": {
+    "base: 1R/2R/trail 3R-1, intraday": {
+     "net": -344286,
+     "lot_exits": 399,
+     "positions": 133,
+     "pf": 0.62,
+     "t": -4.12,
+     "max_dd": -346984,
+     "locked": 43,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -344286
+     }
+    },
+    "reverse once": {
+     "net": -396976,
+     "lot_exits": 480,
+     "positions": 160,
+     "pf": 0.64,
+     "t": -4.26,
+     "max_dd": -400116,
+     "locked": 74,
+     "reversal_lots": 174,
+     "by_year": {
+      "2026": -396976
+     }
+    },
+    "reverse up to 3": {
+     "net": -433028,
+     "lot_exits": 525,
+     "positions": 175,
+     "pf": 0.64,
+     "t": -4.37,
+     "max_dd": -436168,
+     "locked": 89,
+     "reversal_lots": 264,
+     "by_year": {
+      "2026": -433028
+     }
+    },
+    "keep reversing": {
+     "net": -435225,
+     "lot_exits": 528,
+     "positions": 176,
+     "pf": 0.64,
+     "t": -4.38,
+     "max_dd": -438365,
+     "locked": 91,
+     "reversal_lots": 273,
+     "by_year": {
+      "2026": -435225
+     }
+    },
+    "positional": {
+     "net": -295880,
+     "lot_exits": 357,
+     "positions": 119,
+     "pf": 0.72,
+     "t": -2.48,
+     "max_dd": -335792,
+     "locked": 61,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -295880
+     }
+    },
+    "positional + reverse once": {
+     "net": -392380,
+     "lot_exits": 429,
+     "positions": 143,
+     "pf": 0.7,
+     "t": -2.96,
+     "max_dd": -460016,
+     "locked": 97,
+     "reversal_lots": 180,
+     "by_year": {
+      "2026": -392380
+     }
+    },
+    "positional + keep reversing": {
+     "net": -579758,
+     "lot_exits": 492,
+     "positions": 164,
+     "pf": 0.62,
+     "t": -4.41,
+     "max_dd": -602554,
+     "locked": 137,
+     "reversal_lots": 363,
+     "by_year": {
+      "2026": -579758
+     }
+    },
+    "targets 2R/4R": {
+     "net": -344059,
+     "lot_exits": 399,
+     "positions": 133,
+     "pf": 0.65,
+     "t": -3.67,
+     "max_dd": -348278,
+     "locked": 43,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -344059
+     }
+    },
+    "targets 1R/3R, trail 4R-1": {
+     "net": -329408,
+     "lot_exits": 399,
+     "positions": 133,
+     "pf": 0.64,
+     "t": -3.82,
+     "max_dd": -332106,
+     "locked": 43,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -329408
+     }
+    },
+    "wider trail 3R-2": {
+     "net": -342213,
+     "lot_exits": 399,
+     "positions": 133,
+     "pf": 0.62,
+     "t": -4.08,
+     "max_dd": -344911,
+     "locked": 43,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -342213
+     }
+    },
+    "early trail 2R-1": {
+     "net": -370063,
+     "lot_exits": 402,
+     "positions": 134,
+     "pf": 0.6,
+     "t": -4.55,
+     "max_dd": -372760,
+     "locked": 42,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -370063
+     }
+    },
+    "no scale-out, trail 2R-1": {
+     "net": -344788,
+     "lot_exits": 134,
+     "positions": 134,
+     "pf": 0.65,
+     "t": -2.03,
+     "max_dd": -356087,
+     "locked": 42,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -344788
+     }
+    },
+    "positional, targets 2R/4R, trail 4R-2": {
+     "net": -326262,
+     "lot_exits": 327,
+     "positions": 109,
+     "pf": 0.73,
+     "t": -2.25,
+     "max_dd": -451536,
+     "locked": 71,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -326262
+     }
+    },
+    "positional, no scale-out, trail 3R-2": {
+     "net": -150474,
+     "lot_exits": 117,
+     "positions": 117,
+     "pf": 0.88,
+     "t": -0.48,
+     "max_dd": -397894,
+     "locked": 63,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -150474
+     }
+    },
+    "stop 75 pts": {
+     "net": -328579,
+     "lot_exits": 342,
+     "positions": 114,
+     "pf": 0.65,
+     "t": -3.39,
+     "max_dd": -328579,
+     "locked": 62,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -328579
+     }
+    },
+    "stop 35 pts": {
+     "net": -312361,
+     "lot_exits": 447,
+     "positions": 149,
+     "pf": 0.61,
+     "t": -4.3,
+     "max_dd": -314324,
+     "locked": 27,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -312361
+     }
+    },
+    "positional, stop 75, trail 3R-2": {
+     "net": -180477,
+     "lot_exits": 240,
+     "positions": 80,
+     "pf": 0.82,
+     "t": -1.27,
+     "max_dd": -276888,
+     "locked": 100,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -180477
+     }
+    }
+   },
+   "3M": {
+    "base: 1R/2R/trail 3R-1, intraday": {
+     "net": -83143,
+     "lot_exits": 126,
+     "positions": 42,
+     "pf": 0.66,
+     "t": -2.11,
+     "max_dd": -108821,
+     "locked": 17,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -83143
+     }
+    },
+    "reverse once": {
+     "net": -94721,
+     "lot_exits": 153,
+     "positions": 51,
+     "pf": 0.68,
+     "t": -2.06,
+     "max_dd": -133668,
+     "locked": 24,
+     "reversal_lots": 48,
+     "by_year": {
+      "2026": -94721
+     }
+    },
+    "reverse up to 3": {
+     "net": -111126,
+     "lot_exits": 171,
+     "positions": 57,
+     "pf": 0.66,
+     "t": -2.29,
+     "max_dd": -150073,
+     "locked": 24,
+     "reversal_lots": 66,
+     "by_year": {
+      "2026": -111126
+     }
+    },
+    "keep reversing": {
+     "net": -107162,
+     "lot_exits": 171,
+     "positions": 57,
+     "pf": 0.68,
+     "t": -2.2,
+     "max_dd": -146110,
+     "locked": 25,
+     "reversal_lots": 69,
+     "by_year": {
+      "2026": -107162
+     }
+    },
+    "positional": {
+     "net": -104618,
+     "lot_exits": 105,
+     "positions": 35,
+     "pf": 0.66,
+     "t": -1.73,
+     "max_dd": -164257,
+     "locked": 28,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -104618
+     }
+    },
+    "positional + reverse once": {
+     "net": -127628,
+     "lot_exits": 132,
+     "positions": 44,
+     "pf": 0.68,
+     "t": -1.77,
+     "max_dd": -240436,
+     "locked": 37,
+     "reversal_lots": 54,
+     "by_year": {
+      "2026": -127628
+     }
+    },
+    "positional + keep reversing": {
+     "net": -153373,
+     "lot_exits": 144,
+     "positions": 48,
+     "pf": 0.65,
+     "t": -2.09,
+     "max_dd": -217690,
+     "locked": 48,
+     "reversal_lots": 99,
+     "by_year": {
+      "2026": -153373
+     }
+    },
+    "targets 2R/4R": {
+     "net": -81720,
+     "lot_exits": 126,
+     "positions": 42,
+     "pf": 0.68,
+     "t": -1.93,
+     "max_dd": -109153,
+     "locked": 17,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -81720
+     }
+    },
+    "targets 1R/3R, trail 4R-1": {
+     "net": -82955,
+     "lot_exits": 126,
+     "positions": 42,
+     "pf": 0.66,
+     "t": -2.07,
+     "max_dd": -105767,
+     "locked": 17,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -82955
+     }
+    },
+    "wider trail 3R-2": {
+     "net": -80134,
+     "lot_exits": 126,
+     "positions": 42,
+     "pf": 0.67,
+     "t": -2.01,
+     "max_dd": -105812,
+     "locked": 17,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -80134
+     }
+    },
+    "early trail 2R-1": {
+     "net": -83832,
+     "lot_exits": 126,
+     "positions": 42,
+     "pf": 0.66,
+     "t": -2.13,
+     "max_dd": -109386,
+     "locked": 17,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -83832
+     }
+    },
+    "no scale-out, trail 2R-1": {
+     "net": -94633,
+     "lot_exits": 42,
+     "positions": 42,
+     "pf": 0.62,
+     "t": -1.36,
+     "max_dd": -119112,
+     "locked": 17,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -94633
+     }
+    },
+    "positional, targets 2R/4R, trail 4R-2": {
+     "net": -48781,
+     "lot_exits": 93,
+     "positions": 31,
+     "pf": 0.85,
+     "t": -0.63,
+     "max_dd": -190527,
+     "locked": 32,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -48781
+     }
+    },
+    "positional, no scale-out, trail 3R-2": {
+     "net": 7463,
+     "lot_exits": 34,
+     "positions": 34,
+     "pf": 1.02,
+     "t": 0.05,
+     "max_dd": -190944,
+     "locked": 29,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": 7463
+     }
+    },
+    "stop 75 pts": {
+     "net": -175336,
+     "lot_exits": 123,
+     "positions": 41,
+     "pf": 0.47,
+     "t": -3.69,
+     "max_dd": -198700,
+     "locked": 18,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -175336
+     }
+    },
+    "stop 35 pts": {
+     "net": -62971,
+     "lot_exits": 144,
+     "positions": 48,
+     "pf": 0.72,
+     "t": -1.61,
+     "max_dd": -76630,
+     "locked": 11,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -62971
+     }
+    },
+    "positional, stop 75, trail 3R-2": {
+     "net": -71663,
+     "lot_exits": 84,
+     "positions": 28,
+     "pf": 0.8,
+     "t": -0.88,
+     "max_dd": -200875,
+     "locked": 35,
+     "reversal_lots": 0,
+     "by_year": {
+      "2026": -71663
+     }
+    }
+   }
+  }
+ }
+}

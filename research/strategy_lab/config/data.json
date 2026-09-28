@@ -1,5 +1,7 @@
 {
   "_about": "Input candle files shared by every strategy. Other timeframes are built from the 1-minute files into cache/.",
+  "history_from": "2026-01-01",
+  "_history_from": "sessions before this date are ignored (All data = from here); remove it to use the whole files",
   "futures": {
     "minute": "D:/nifty/niftyfut_nearmonth_minute_2021-10-01_to_2026-09-25.csv",
     "5minute": "D:/nifty/niftyfut_nearmonth_5minute_2021-10-01_to_2026-09-25.csv"

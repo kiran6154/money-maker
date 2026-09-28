@@ -5,7 +5,9 @@
     python serve.py 8770 --lan         # also reachable from a phone on the same Wi-Fi / over Tailscale (away from home)
     python serve.py 8770 --host 100.x.y.z   # only on that address
     python serve.py 8770 --tailscale   # only on this PC's Tailscale address: your own devices, from anywhere
-Only dashboard.html and web/*.json are served (never the database, strategy files, tools or logs).
+Only dashboard.html, explorer.html and web/*.json are served (never the database, strategy files, tools or logs).
+Chart explorer (read-only, computed on request): GET /api/explorer/meta, /api/explorer/instruments?date=,
+/api/explorer/chart?date=&inst=FUT|INDEX|OPT&code=&tf=&expiry=&strike=&right=CE|PE&days_before=&holding=own|positional|HH:MM
 
 Static files come from this folder (as `python -m http.server` did). The API runs lab.py, one job at a time:
     GET  /api/status                       {"api": true, "busy": bool, "jobs": [last 10 jobs, newest first]}
@@ -27,6 +29,7 @@ TFS = ("minute", "3minute", "5minute", "15minute", "30minute")
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 jobs, lock, wake = [], threading.Lock(), threading.Event()
+EXPLORER, xlock, XCACHE = None, threading.Lock(), {}      # chart explorer (explorer.py), loaded on first use
 
 
 def codes():
@@ -117,14 +120,49 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         p = urllib.parse.unquote(self.path.split("?")[0].split("#")[0])
         if p in ("/", ""): return "/dashboard.html"
         if ".." in p or "\\" in p: return None
-        if p == "/dashboard.html" or (p.startswith("/web/") and p.endswith(".json")): return p
+        if p in ("/dashboard.html", "/explorer.html") or (p.startswith("/web/") and p.endswith(".json")): return p
         return None
+
+    def explorer(self, path):
+        """GET /api/explorer/{meta,instruments,chart}: read-only views computed on request (explorer.py); one at a time."""
+        global EXPLORER
+        q = {k: v[-1] for k, v in urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).items()}
+        try:
+            with xlock:
+                if EXPLORER is None:
+                    import explorer as EXPLORER_MOD; EXPLORER = EXPLORER_MOD
+                if path == "/api/explorer/meta":
+                    return self.reply(200, dict(strategies=EXPLORER.strategies(), range=EXPLORER.data_range(), tfs=EXPLORER.TFS))
+                date = q.get("date", "")
+                if not DATE.match(date): raise ValueError("date must be YYYY-MM-DD")
+                tf = q.get("tf", "minute")
+                if path == "/api/explorer/instruments":
+                    key = (date, tf)
+                    if key not in XCACHE: XCACHE[key] = EXPLORER.instruments(date, tf)
+                    return self.reply(200, XCACHE[key])
+                if path == "/api/explorer/chart":
+                    so = q.get("holding", "own")
+                    square_off = "own" if so == "own" else (None if so == "positional" else so)
+                    if square_off not in ("own", None) and not re.fullmatch(r"\d\d:\d\d", square_off):
+                        raise ValueError("holding is own, positional or HH:MM")
+                    strike = q.get("strike")
+                    if strike is not None and not strike.isdigit(): raise ValueError("strike must be a whole number")
+                    exp = q.get("expiry")
+                    if exp is not None and not DATE.match(exp): raise ValueError("expiry must be YYYY-MM-DD")
+                    return self.reply(200, EXPLORER.chart(date, q.get("inst", "FUT"), q.get("code", ""), tf, exp,
+                                                          int(strike) if strike else None, q.get("right"),
+                                                          int(q.get("days_before", "1") or 1), square_off))
+            return self.reply(404, dict(error="unknown endpoint"))
+        except ValueError as e:
+            return self.reply(400, dict(error=str(e)))
 
     def do_GET(self):
         if self.path.split("?")[0] == "/api/status":
             with lock:
                 js = [dict(j, log=tail(j)) for j in reversed(jobs[-10:])]
             return self.reply(200, dict(api=True, busy=any(j["state"] in ("queued", "running") for j in js), jobs=js))
+        if self.path.startswith("/api/explorer/"):
+            return self.explorer(self.path.split("?")[0])
         p = self.public()
         if p is None: return self.send_error(404)
         self.path = p

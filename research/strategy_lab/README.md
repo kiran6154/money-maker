@@ -34,6 +34,10 @@ swings (Pine port) → protected level → CHoCH / BOS → AVWAP pair from previ
 | `ST10` | Strategy 10 | 5 min | touch | **managed** | the same managed exits on Strategy 2's entries |
 | `ST11` | Strategy 11 | 1 min | touch | **managed + reverse** | Strategy 9 with **stop and reverse**: an initial-stop exit opens the opposite position at the stop (full 3 lots, same management), once per signal (S48) |
 | `ST12` | Strategy 12 | 5 min | touch | **managed + reverse** | Strategy 10 with stop and reverse |
+| `ST15` | Strategy 15 | 1 min | touch | **managed, positional** | Strategy 1's entries, positional, all 3 lots trail from 3R, 2R behind (no partial exits) — best of the 2026 exit study, in-sample (S50) |
+| `ST16` | Strategy 16 | 5 min | touch | **managed, positional** | the same exits on Strategy 2's entries |
+| `ST17` | Strategy 17 | 1 min | touch | **managed, positional** | Strategy 1's entries, positional, lot 1 out at 2R, lot 2 at 4R, the last lot trails from 4R, 2R behind |
+| `ST18` | Strategy 18 | 1 min | touch | **managed, positional** | Strategy 1's entries, positional, stop 75 pts, 1R / 2R, trail from 3R, 2R behind |
 
 Each file holds one strategy: `code`, `name`, `description`, design `timeframe`, `warmup_days`, `rules`
 (`break_mode`, `choch_mode`, `avwap_weight`, `sl_rule`, `entry_rule`, `exit_rule`), `lot_size`, `capital`, per-type charges and
@@ -292,6 +296,9 @@ which moved two 1m positions; the permutation now splits by the SETUPs FZ traded
 | `results/summary.json`, `results/trades.csv` | **versioned** latest headline numbers and trades — diff them across commits |
 | `results/history/<CODE>.json` | **versioned** — every version of a strategy (definition + result code) with its headline numbers per backtest and choice; the baseline each new version is read against |
 | `serve.py`, `start_lab.cmd` | the dashboard server with the backtest queue (`python serve.py`, or double-click `start_lab.cmd`); binds its port exclusively and says so if it is taken |
+| `explorer.py`, `explorer.html` | the chart explorer: any date, futures / index / one option, every indicator and a strategy's trades on that instrument's own candles (read-only, via serve.py) |
+| `studies/` | one-off study scripts that reuse the lab without writing its results (`r_combinations.py`: exit combinations for Strategies 9–10) |
+| `exports/` | standalone HTML exports (chart + trades + CSV) for sharing, e.g. `ST9_1m_futures_2026-06-29_to_2026-07-02.html` |
 | `tests/test_strategy_files.py` | adding a backtest (terminal or dashboard) adds exactly one line in the style of its neighbours; the rest of every strategy file stays as written |
 | `tests/test_position.py` | position handling on hand-made candles: managed exits, R targets, the ladder trail, first-candle fills, scale-out, the strike lock |
 | `results/fz_setups.csv`, `results/fz_ledger.csv` | **versioned** FZ gate ledger (one row per SETUP) and its per-run tables; written only by a full build |
@@ -355,6 +362,18 @@ on other candles", and *Recompute what is missing*. A click queues a job: it add
 Jobs run one at a time; a terminal `lab.py` run waits for a running job and the other way round (`cache/lab.lock`). Logs:
 `cache/jobs/<id>.log`. The server listens on 127.0.0.1 only and refuses cross-origin POSTs; it never touches a broker.
 Opened any other way (a plain static server), the panel shows the equivalent terminal commands instead.
+
+**Chart explorer (`explorer.html`, via `python serve.py`):** a visualization page, not a backtest. Pick a date, a strategy,
+the candle size, the holding (strategy's own / intraday 15:25 / positional) and how many sessions before to show. The top
+chart is the near-month futures or the NIFTY index; the chart below is one option (expiry, CE / PE, strike — only contracts
+with candles that day are offered; the default strike is the one nearest the index open). Both charts draw every indicator
+(swings, AVWAP pair, protected level, CHoCH / BOS, volume) and the strategy's trades computed on that instrument's own
+candles (for the option, the strategy applied to the option chart itself), with the stop / 1R / 2R / 3R lines, and keep
+the same time window. Served by `explorer.py` through `GET /api/explorer/{meta,instruments,chart}` (read-only; the first
+option listing of a date takes about 30 s, then it is cached).
+
+**Studies (`studies/`):** one-off scripts that reuse the lab without writing its results — e.g. `studies/r_combinations.py`
+(exit combinations for Strategies 9–10 over the last year and five years; output `studies/r_combinations.json`).
 
 **From a phone:** the server listens only on this PC unless started with `--lan` (every network address of the PC — home
 Wi-Fi), `--tailscale` (only the PC's Tailscale address) or `--host <ip>`; it prints the phone address(es) at start.

@@ -457,6 +457,19 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S50. Exit-combination study on Strategy 9 / 10 entries (2026): positional holding with a wide all-lot trail is the only clear improvement, reversing mostly hurts — and the winner is chosen in-sample
+
+| | |
+|---|---|
+| Where | [`research/strategy_lab/studies/r_combinations.py`](../research/strategy_lab/studies/r_combinations.py) (output `studies/r_combinations.json`); new strategy files `strategy_15.json`–`strategy_18.json`. Filed 2026-09-29. |
+| Why | User (2026-09-29): try other R combinations, reverse once vs keep reversing, and holding longer ("if we hold it long it will avoid wrong trades"). 17 exit variants on the same entries, near-month futures, costs as in the files, `history_from` 2026-01-01 (user decision: 2026 only). |
+| Impact | **Measured** (net ₹, 2026 = 5 Jan – 25 Sep, 3M = 29 Jun – 25 Sep; May 2026 contract missing). Strategy 9 (1m): base intraday −6.58L (PF 0.58) / −0.89L; reverse once −5.74L / −1.87L; reverse up to 3 −8.03L / −2.02L; keep reversing −8.72L / −2.02L; positional −1.07L (0.93) / +0.18L; positional + reverse once −2.34L / −2.06L; positional + keep reversing −5.87L / −2.90L; **positional, no scale-out, trail 3R lag 2R +6.00L (PF 1.38, t 1.29, max DD −2.33L) / +2.09L (PF 1.61)**; positional 2R/4R trail 4R-2 −0.68L / +0.87L; positional stop 75 trail 3R-2 +0.10L / +0.85L; stop 35 −10.08L / −1.34L. Strategy 10 (5m): base −3.44L / −0.83L; every reversal variant worse; best again positional no scale-out trail 3R-2 −1.50L / +0.07L. **Caveat:** the best of 17 variants on the same window is an in-sample pick (multiple comparisons), t 1.29 is not significant, and the 3M window is inside the 2026 window. What would measure it: the same variants on 2024–2025 (remove `history_from` or set it earlier) as an out-of-sample check, and on the option types. |
+| 15-minute | **Measured** (user asked, 2026-09-29; Strategy 10's rules on 15-minute candles, same 17 variants): about 46 positions in 2026, too few to judge. Base −1.32L / −0.38L (2026 / 3M); reverse once −1.96L / −0.44L; keep reversing −2.36L / −0.48L; positional −0.60L / −1.06L; best for 2026 positional, no scale-out, trail 3R-2 +0.23L (PF 1.05) but −0.57L on 3M; best on 3M no scale-out, trail 2R-1 −0.30L. No 15-minute strategy created. Output `studies/r_combinations_15minute.json`. |
+| Decision | Created (user asked for "next strategies with different combinations of R"): **Strategy 15** (1m entries, positional, no scale-out, trail 3R lag 2R), **Strategy 16** (the same on 5m entries), **Strategy 17** (1m, positional, targets 2R / 4R, trail 4R lag 2R), **Strategy 18** (1m, positional, stop 75 pts, 1R / 2R, trail 3R lag 2R). Numbers 13–14 are reserved for FZ v3. |
+| Fix sketch | Nothing about Strategies 1–12 changes. Before trusting 15–18: the out-of-sample run above; then the option types (the 5% option stop is the separate question in S43). |
+| Effort | **S** per window. |
+| Priority | _Open — filed 2026-09-29; read Strategies 15–18 as in-sample until the 2024–2025 check is done._ |
+
 ### S48. Lab Strategies 11–12 (stop and reverse on Strategies 9–10): the readings, and what a reversal costs in a chop
 
 | | |

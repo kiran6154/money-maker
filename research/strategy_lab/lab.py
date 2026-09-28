@@ -364,7 +364,8 @@ _SESS = {}
 def sessions():
     """Trading sessions available in the futures data."""
     if not _SESS:
-        _SESS["d"] = sorted({r["datetime"][:10] for r in csv.DictReader(open(FUT1))})
+        start = DATA.get("history_from") or ""                  # config/data.json: ignore the sessions before it
+        _SESS["d"] = sorted(d for d in {r["datetime"][:10] for r in csv.DictReader(open(FUT1))} if d >= start)
     return _SESS["d"]
 
 
