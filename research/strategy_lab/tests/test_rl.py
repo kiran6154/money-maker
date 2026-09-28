@@ -119,5 +119,5 @@ for bad in (dict(CFG, stops_pts=[35, 75]), dict(CFG, profiles={"p": {"scale_out"
 jb = [j for j in full["journal"] if j["base_taken"]]
 check("base book has taken SETUPs", len(jb) > 10, True)
 check("no infeasible intraday base after 15:25", any(j["base_taken"] and j["hour"] >= "15:25" for j in full["journal"]), False)
-print("\n".join(fails) if fails else "OK - rl (no look-ahead on 4 cuts, determinism, learning, outcomes)")
+print("\n".join(fails) if fails else "OK - rl (no look-ahead on 4 random cuts + 8 SETUP-candle cuts, determinism, learning, outcomes, books)")
 sys.exit(1 if fails else 0)
