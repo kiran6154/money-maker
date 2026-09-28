@@ -247,7 +247,7 @@ def type_rows(spec):
             fz_json=json.dumps(spec["fz"], ensure_ascii=False) if "fz" in spec else None,   # verbatim, with provenance
             position_json=json.dumps(position_of(spec), sort_keys=True),
             underlying=spec.get("underlying", "FUT"), native_scan_json=json.dumps(native_scan_of(spec), sort_keys=True),
-            rl_json=json.dumps(spec["rl"], sort_keys=True) if "rl" in spec else None))
+            rl_json=json.dumps(spec["rl"], ensure_ascii=False) if "rl" in spec else None))   # file order: the first profile is the base
     return rows
 
 
@@ -958,7 +958,7 @@ def manage(st, rec, tl, ol, hl, ll, cl, cap, expiry=None):
                 if (new > stop) if long else (new < stop): stop, trailing = new, True
     if lots:
         k = max(iend, i0 - 1)
-        ended = expiry is not None and k >= 0 and (tl[k][:10] >= expiry or k == len(tl) - 1)
+        ended = expiry is not None and k >= 0 and tl[k][:10] >= expiry     # the contract's end; the data's end alone leaves it open
         at_eod = bool(eod) and k >= 0 and tl[k][:10] == eod[:10] and (k == len(tl) - 1 or tl[k + 1] > eod)
         for lot in lots:
             out.append(dict(base, lots=lot["lots"], tranche=lot["tranche"], exit_time=tl[k], exit_px=cl[k],

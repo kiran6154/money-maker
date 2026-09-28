@@ -89,5 +89,24 @@ eod_end = [dict(t1[0], open=False, exit_reason="eod", exit_time=t[-1])]
 check("not learnable: eod on the last bar", rl.learnable(eod_end, t), False)
 check("reward net units", round(rl.reward_of(dict(CFG, reward="net"), st, 50, 1, t1), 4), round(t1[0]["net"] / (st["lot_size"] * 50), 4))
 check("reward pf weights losses", rl.reward_of(dict(CFG, reward="pf"), st, 50, 1, [dict(t1[0], net=-3250.0)]), -1.5)
+# 5. sizing stays learnable: the R reward of 3 lots is about 3x that of 1 lot (charges per order make it a little more), and the
+#    clip is per lot (3 lots of +20 per lot -> +30, not +10); an intraday profile is not an option at / after its square-off
+r1, r3 = rl.reward_of(dict(CFG, reward="r"), st, 50, 1, t11), rl.reward_of(dict(CFG, reward="r"), st, 50, 3, t13)
+check("r reward scales with lots", 2.9 <= r3 / r1 <= 3.1, True)
+check("clip per lot", rl.reward_of(dict(CFG, reward="net"), st, 50, 3, [dict(t13[0], net=3 * 20 * st["lot_size"] * 50)]), 30.0)
+feas = rl.feasible_arms(CFG, arms, "2026-08-03 15:26:00")
+check("intraday arms infeasible after square-off", [rl.arm_label(a) for a, f in zip(arms, feas) if not f],
+      [rl.arm_label(a) for a in arms if a[0] == "intraday 1R/2R trail 3R-1"])
+check("all arms feasible mid-day", all(rl.feasible_arms(CFG, arms, "2026-08-03 11:00:00")), True)
+pol2 = rl.LinTS(4, 2, 1.0, 0.0, 0); pol2.update(1, np.array([1.0, 0.0]), 5.0); pol2.update(2, np.array([1.0, 0.0]), 3.0)
+check("choose respects the mask", pol2.choose(np.array([1.0, 0.0]), [True, False, True, True])[0], 2)
+check("base arm = first profile · stop 50 · max lots", rl.arm_label(arms[rl.base_arm_of(CFG, arms)]), "intraday 1R/2R trail 3R-1 · stop 50 · 3 lots")
+for bad in (dict(CFG, stops_pts=[35, 75]), dict(CFG, profiles={"p": {"scale_out": [{"lots": 1, "target_r": 1}, {"lots": 1, "target_r": 2}, {"lots": 1, "target_r": 3}], "trail": {"start_r": 4, "lag_r": 1}, "square_off": None}})):
+    try: rl.config_of({"rl": bad}); fails.append(f"config accepted {list(bad)[:1]}")
+    except ValueError: pass
+# the full 5m run: the base and control books never hold two positions at once (their taken SETUPs are separated by their exits)
+jb = [j for j in full["journal"] if j["base_taken"]]
+check("base book has taken SETUPs", len(jb) > 10, True)
+check("no infeasible intraday base after 15:25", any(j["base_taken"] and j["hour"] >= "15:25" for j in full["journal"]), False)
 print("\n".join(fails) if fails else "OK - rl (no look-ahead on 4 cuts, determinism, learning, outcomes)")
 sys.exit(1 if fails else 0)

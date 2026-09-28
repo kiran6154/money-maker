@@ -6,14 +6,16 @@ What the learner is
   A contextual bandit with Bayesian linear regression per action (linear Thompson sampling). One decision per SETUP,
   from features known at the SETUP candle's close (time of day, ATR, distance from the two AVWAPs, trend flip, bars since
   the CHoCH, the day's CHoCH count, the session's results so far, recent form). Actions: skip, or (exit profile x stop x
-  lots) from the strategy file's `rl` block. It learns with full information: once a SETUP's candles have played out, the
-  outcome of EVERY action for that SETUP is known from the price data, so every action's model is updated - not only the
-  one taken. Updates are applied strictly in time order: an outcome is used only once its exit candle has closed, so no
-  decision sees the future (tests/test_rl.py checks this by truncation).
+  lots) from the strategy file's `rl` block; an intraday profile is not an option at or after its square-off time. It learns
+  with full information: once a SETUP's candles have played out, the outcome of EVERY feasible action for that SETUP is
+  known from the price data, so every action's model is updated - not only the one taken. Updates are applied strictly in
+  time order: an outcome is used only once its exit candle has closed, so no decision sees the future (tests/test_rl.py
+  checks this by truncation).
 
-Rewards (the strategy file picks one; the three are run as separate strategies)
-  net  net rupees after slippage and charges, in units of one lot's 50-point risk (lot_size x 50)
-  r    net points per lot divided by the stop distance (an R multiple)
+Rewards (the strategy file picks one; the three are run as separate strategies). Each is a per-lot value, clipped to +-10
+per lot so one outlier cannot swamp a linear model, times the lots, so sizing stays learnable:
+  net  net rupees after slippage and charges, per lot, in units of one lot's 50-point risk (lot_size x 50)
+  r    the position's R multiple: net points per lot divided by the stop distance
   pf   as net, with losses weighted x1.5 (profit-factor oriented: fewer, cleaner trades)
   skip always earns 0.
 
@@ -24,9 +26,11 @@ Learning window
   learning history. So a 2026 window is out-of-sample for the knowledge the learner starts it with, and the learner keeps
   learning during it, as it would live. A position still open at a window's end is valued at the window's last candle.
 
-Yardsticks, reported beside the learner: the BASE book (the first profile at stop 50 with the most lots - Strategy 9's rule - at
-every SETUP its own open position does not lock), the RANDOM CONTROL book (a seeded uniformly random action per SETUP, skip
-included, under the same lock rule) and the ORACLE (the best action per SETUP in hindsight; a bound, not a book).
+Yardsticks, reported beside the learner: the BASE book (the strategy file's first profile at stop 50 with the most lots -
+Strategy 9's rule - at every feasible SETUP its own open position does not lock), the RANDOM CONTROL book (a seeded
+uniformly random action per SETUP, skip included, under the same lock rule) and the ORACLE (the best NET among the feasible
+actions per SETUP in hindsight; a bound, not a book). Base and control outcomes count in full even when they run past the
+window's end; the learner's own trades are cut at the window's last candle.
 
 v1 scope: near-month futures only (the Futures type); option types are refused with a reason. Costs, the strike lock and
 the fill rules are the lab's (lab.manage / lab.price_trade). Deterministic: a fixed seed in the strategy file.
@@ -42,6 +46,8 @@ FEATURES = ("bias", "h0915", "h10", "h11", "h12", "h13", "h14", "dir_up", "flip"
             "bars_since_choch", "entry_body", "range20", "chochs_today", "day_r", "form3", "consec_loss", "closed_today", "d_day_open")
 FUT_WHY = "RL v1 decides on the near-month futures only; option types and index signals are not part of it yet"
 MODULES = ("rl.py",)
+BASE_STOP = 50               # the base book's stop (Strategy 9's rule); the strategy file's stops must include it
+CLIP = 10.0                  # reward clip per lot
 _SIM = {}                    # one learning run per strategy row (key -> simulate result); the last one only
 
 
@@ -51,7 +57,7 @@ def rl_rule(st):
 
 # ---------------------------------------------------------------- configuration (strategy file `rl` block)
 def config_of(spec):
-    """The strategy file's `rl` block, validated: reward, seed, ridge, explore, stops_pts, lots, profiles."""
+    """The strategy file's `rl` block, validated: reward, seed, ridge, explore, stops_pts, lots, profiles (+ optional notes)."""
     c = spec.get("rl")
     if not isinstance(c, dict): raise ValueError("entry_rule rl_v1 needs an 'rl' block")
     need = {"reward", "seed", "ridge", "explore", "stops_pts", "lots", "profiles"}
@@ -61,24 +67,39 @@ def config_of(spec):
     if not (isinstance(c["ridge"], (int, float)) and c["ridge"] > 0): raise ValueError("ridge must be > 0")
     if not (isinstance(c["explore"], (int, float)) and c["explore"] >= 0): raise ValueError("explore must be >= 0")
     if not c["stops_pts"] or not all(isinstance(s, (int, float)) and s > 0 for s in c["stops_pts"]): raise ValueError("stops_pts: positive numbers")
+    if BASE_STOP not in c["stops_pts"]: raise ValueError(f"stops_pts must include {BASE_STOP} (the base book's stop)")
     if not c["lots"] or not all(isinstance(k, int) and k >= 1 for k in c["lots"]): raise ValueError("lots: whole numbers >= 1")
-    if not isinstance(c["profiles"], dict) or not c["profiles"]: raise ValueError("profiles: at least one exit profile")
+    if not isinstance(c["profiles"], dict) or not c["profiles"]: raise ValueError("profiles: at least one exit profile (the first is the base)")
     for name, p in c["profiles"].items():
         if set(p) != {"scale_out", "trail", "square_off"}: raise ValueError(f"profile {name!r}: keys are scale_out, trail, square_off")
         if any(so.get("lots") != 1 or "target_r" not in so for so in p["scale_out"]):
             raise ValueError(f"profile {name!r}: each scale_out tranche is {{\"lots\": 1, \"target_r\": R}} (v1 sizes by whole lots)")
-        lab.position_of({"position": dict(lots=max(c["lots"]), exit="position", stop={"futures_pts": 50, "option_pct": 5},
+        if len(p["scale_out"]) >= max(c["lots"]):
+            raise ValueError(f"profile {name!r}: {len(p['scale_out'])} targets need more than {max(c['lots'])} lots (one lot must trail)")
+        lab.position_of({"position": dict(lots=max(c["lots"]), exit="position", stop={"futures_pts": BASE_STOP, "option_pct": 5},
                                           scale_out=p["scale_out"], trail=p["trail"], square_off=p["square_off"])})
     return c
 
 
 def arms_of(cfg):
-    """[('skip',)] + [(profile name, stop pts, lots)] in a fixed order."""
+    """[('skip',)] + [(profile name, stop pts, lots)] in a fixed order (profiles in file order)."""
     return [("skip",)] + [(p, s, k) for p in cfg["profiles"] for s in cfg["stops_pts"] for k in cfg["lots"]]
 
 
 def arm_label(a):
     return "skip" if a[0] == "skip" else f"{a[0]} · stop {a[1]:g} · {a[2]} lot{'s' if a[2] > 1 else ''}"
+
+
+def base_arm_of(cfg, arms):
+    first = list(cfg["profiles"])[0]
+    return next(i for i, a in enumerate(arms) if a[0] == first and a[1] == BASE_STOP and a[2] == max(cfg["lots"]))
+
+
+def feasible_arms(cfg, arms, entry_time):
+    """Which actions exist at this SETUP: an intraday profile cannot be entered at or after its square-off time."""
+    hm = entry_time[11:16]
+    ok = {p: v["square_off"] is None or hm < v["square_off"] for p, v in cfg["profiles"].items()}
+    return [a[0] == "skip" or ok[a[0]] for a in arms]
 
 
 def position_for(cfg, st, profile, stop, lots):
@@ -106,10 +127,11 @@ def hour_bucket(t):
 
 
 class State:
-    """What the learner may know at a SETUP: the session's closed results and recent form (from the trades it took)."""
+    """What the learner may know at a SETUP: the session's closed results and recent form (from the trades it took), as
+    per-lot R multiples (net points per lot / stop), whatever the reward version."""
 
     def __init__(self):
-        self.closed = []                 # (exit_time, reward) of the learner's own closed trades, time-ordered
+        self.closed = []                 # (exit_time, per-lot R) of the learner's own closed trades, time-ordered
 
     def features(self, bars, r, x, atr, day_open, chochs_today, e):
         t, o, c = bars["t"], bars["o"], bars["c"]
@@ -147,13 +169,16 @@ class LinTS:
     def means(self, x):
         return np.array([0.0] + [float(x @ np.linalg.solve(self.A[a], self.b[a])) for a in range(1, len(self.A))])
 
-    def choose(self, x):
+    def choose(self, x, feasible=None):
+        """The arm with the highest sampled value among the feasible ones (skip, value 0, is always feasible). One Gaussian
+        draw per arm on every call, feasible or not, so the random sequence does not depend on the mask."""
         vals = [0.0]
         for a in range(1, len(self.A)):
             Ainv = np.linalg.inv(self.A[a])
             mu = Ainv @ self.b[a]
             theta = mu + self.explore * np.linalg.cholesky(Ainv + 1e-12 * np.eye(len(mu))) @ self.rng.standard_normal(len(mu))
-            vals.append(float(x @ theta))
+            v = float(x @ theta)
+            vals.append(v if feasible is None or feasible[a] else float("-inf"))
         return int(np.argmax(vals)), vals
 
     def update(self, a, x, reward):
@@ -163,24 +188,27 @@ class LinTS:
         return [np.linalg.solve(self.A[a], self.b[a]).round(4).tolist() for a in range(len(self.A))]
 
 
+def per_lot_r(st, stop, lots, tranches):
+    """Net points per lot divided by the stop distance: the position's R multiple per lot."""
+    return sum(tr["net"] for tr in tranches) / (st["lot_size"] * stop * lots)
+
+
 def reward_of(cfg, st, stop, lots, tranches):
-    """The reward of one action's outcome (its tranches, priced), in the strategy's reward version."""
+    """The reward of one action's outcome (its tranches, priced): a per-lot value clipped to +-CLIP, times the lots."""
     net = sum(tr["net"] for tr in tranches)
-    if cfg["reward"] == "r":
-        val = net / (st["lot_size"] * stop * lots)
-    else:
-        val = net / (st["lot_size"] * 50)
-        if cfg["reward"] == "pf" and val < 0: val *= 1.5
-    return max(-10.0, min(10.0, val))
+    per_lot = net / (st["lot_size"] * stop * lots) if cfg["reward"] == "r" else net / (st["lot_size"] * BASE_STOP * lots)
+    per_lot = max(-CLIP, min(CLIP, per_lot))
+    if cfg["reward"] == "pf" and per_lot < 0: per_lot *= 1.5
+    return per_lot * lots
 
 
 # ---------------------------------------------------------------- outcomes of every action for one SETUP
-def outcomes(cfg, st, cs, rec, bars, cap, expiry):
+def outcomes(cfg, st, cs, rec, bars, cap, expiry, profiles=None):
     """{(profile, stop): [priced max-lots tranches]} for one SETUP, computed once per profile x stop; lots are read off them."""
     t, o, h, l, c = bars["t"], bars["o"], bars["h"], bars["l"], bars["c"]
     out = {}
     kmax = max(cfg["lots"])
-    for p in cfg["profiles"]:
+    for p in (profiles if profiles is not None else cfg["profiles"]):
         for s in cfg["stops_pts"]:
             stp = dict(st, position_json=json.dumps(position_for(cfg, st, p, s, kmax), sort_keys=True))
             trs = lab.manage(stp, rec, t, o, h, l, c, cap, expiry)
@@ -219,6 +247,7 @@ def simulate(st, cs, bars, cfg, p_engine):
     atr = atr_arr(bars, st["atr_period"] or 14)
     contracts, clast = lab.fut_contracts()
     arms = arms_of(cfg)
+    base_arm = base_arm_of(cfg, arms)
     policy = LinTS(len(arms), len(FEATURES), cfg["ridge"], cfg["explore"], cfg["seed"])
     ctrl_rng = np.random.RandomState(cfg["seed"] + 1)      # the control: a uniformly random action per SETUP (skip included)
     state, lock = State(), lab.StrikeLock(st)
@@ -229,8 +258,6 @@ def simulate(st, cs, bars, cfg, p_engine):
     day_open, cur_day = None, None
     ch_days = {}
     for e in r["chs"]: ch_days.setdefault(t[e["i"]][:10], []).append(e["i"])
-    first = list(cfg["profiles"])[0]
-    base_arm = next((i for i, a in enumerate(arms) if a[0] == first and a[1] == 50 and a[2] == max(cfg["lots"])), None)
 
     def flush(upto):
         while queue and queue[0][0] <= upto:
@@ -251,10 +278,12 @@ def simulate(st, cs, bars, cfg, p_engine):
         rec = dict(dir=x["dir"], signal="BULLISH" if bull else "BEARISH", position="LONG" if bull else "SHORT", opt_type="FUT",
                    kind="FUT", instrument=c_, strike=None, expiry=e_, choch_time=t[x["choch"]], entry_time=te, exit_time=te,
                    exit_reason="open", open=True, sl=None, entry_px=c[k0], exit_px=None, und_entry=None, und_exit=None)
-        outs = outcomes(cfg, st, cs, rec, bars, cap, e_)
+        feasible = feasible_arms(cfg, arms, te)
+        profiles = [p for p in cfg["profiles"] if any(feasible[i] for i, a in enumerate(arms) if a[0] == p)]
+        outs = outcomes(cfg, st, cs, rec, bars, cap, e_, profiles)
         per_arm = {}                            # arm -> (tranches, reward, net, learnable)
         for ai, a in enumerate(arms):
-            if a[0] == "skip": per_arm[ai] = ([], 0.0, 0.0, True); continue
+            if a[0] == "skip" or not feasible[ai]: per_arm[ai] = ([], 0.0, 0.0, False); continue
             trs = tranches_for(cfg, st, cs, outs[(a[0], a[1])], a[0], a[2])
             rw = reward_of(cfg, st, a[1], a[2], trs) if trs else 0.0
             ok = learnable(trs, t)
@@ -262,18 +291,15 @@ def simulate(st, cs, bars, cfg, p_engine):
             if ok:
                 seq += 1; queue.append((max(tr["exit_time"] for tr in trs), seq, ai, feats, rw))
         queue.sort(key=lambda q: (q[0], q[1]))
-        best_i = max(per_arm, key=lambda i: per_arm[i][1])
-        oracle = per_arm[best_i][2]                        # hindsight bound per SETUP, not a book (no lock)
-        # the base book: the base rule at every SETUP its own open position does not lock
-        base_net, base_taken = 0.0, False
-        if base_arm is not None and not lock_base.held(c_, te):
+        best_i = max((i for i in per_arm if feasible[i]), key=lambda i: per_arm[i][2])     # best NET in hindsight, skip = 0
+        oracle = per_arm[best_i][2]
+        base_net, base_taken = 0.0, False       # the base book: the base rule at every feasible SETUP its own position does not lock
+        if feasible[base_arm] and not lock_base.held(c_, te):
             base_net, base_taken = per_arm[base_arm][2], True
             lock_base.hold(c_, max(tr["exit_time"] for tr in per_arm[base_arm][0]))
-        # the control book: a uniformly random action per SETUP (drawn for every SETUP, so the sequence is fixed by the seed),
-        # taken when its own open position does not lock
-        ci = int(ctrl_rng.randint(len(arms)))
+        ci = int(ctrl_rng.randint(len(arms)))   # the control book: drawn for every SETUP, so the sequence is fixed by the seed
         ctrl_net, ctrl_taken = 0.0, False
-        if arms[ci][0] != "skip" and not lock_ctrl.held(c_, te):
+        if arms[ci][0] != "skip" and feasible[ci] and not lock_ctrl.held(c_, te):
             ctrl_net, ctrl_taken = per_arm[ci][2], True
             lock_ctrl.hold(c_, max(tr["exit_time"] for tr in per_arm[ci][0]))
         held = lock.held(c_, te)
@@ -282,12 +308,12 @@ def simulate(st, cs, bars, cfg, p_engine):
                    d_lo=round(float(feats[11]), 2), day_r=round(float(feats[16]), 2), form3=int(feats[17]), consec_loss=int(round(feats[18] * 3)),
                    base_net=round(base_net, 2), base_taken=base_taken, oracle_net=round(oracle, 2), oracle_arm=arm_label(arms[best_i]),
                    control_net=round(ctrl_net, 2), control_arm=arm_label(arms[ci]), control_taken=ctrl_taken,
-                   pred_base=round(float(means[base_arm]), 3) if base_arm is not None else None)
+                   feasible=sum(feasible) - 1, pred_base=round(float(means[base_arm]), 3))
         if held:
             row.update(decision="locked", pred=None, net=0.0, reward=0.0); journal.append(row)
             skipped.append(dict(entry_time=te, position=rec["position"], dir=x["dir"], why=f"strike locked: {c_} open until {held}"))
             continue
-        ai, vals = policy.choose(feats)
+        ai, vals = policy.choose(feats, feasible)
         a = arms[ai]
         row.update(decision=arm_label(a), pred=round(float(means[ai]), 3))
         if a[0] == "skip":
@@ -297,22 +323,23 @@ def simulate(st, cs, bars, cfg, p_engine):
         row.update(net=round(net, 2), reward=round(rw, 3)); journal.append(row)
         end = max(tr["exit_time"] for tr in trs)
         lock.hold(c_, end)
-        if ok: state.closed.append((end, rw))
+        if ok: state.closed.append((end, per_lot_r(st, a[1], a[2], trs)))
         for tr in trs:
             trades.append(dict(tr, arm=arm_label(a), pred=round(float(means[ai]), 3)))
     flush(t[-1])
-    return dict(engine=r, bars=bars, trades=trades, skipped=skipped, journal=journal, arms=arms, policy=policy, learned=sum(policy.n[1:]))
+    return dict(engine=r, bars=bars, trades=trades, skipped=skipped, journal=journal, arms=arms, base_arm=base_arm, policy=policy,
+                learned=sum(policy.n[1:]))
 
 
 def learned_run(st, cs):
     """The one learning run of this strategy row over the whole futures file (cached; the last one only)."""
     f = st["data_file"]
+    p = dict(break_mode=st["break_mode"], choch_mode=st.get("choch_mode") or st["break_mode"], avwap_weight=st["avwap_weight"], sl_rule=st["sl_rule"])
     key = (st["code"], st["timeframe"], f, os.path.getsize(f), int(os.path.getmtime(f)), st["rl_json"], st["position_json"],
-           st["lot_size"], st["slippage_pts"], json.dumps(cs, sort_keys=True, default=str))
+           st["lot_size"], st["slippage_pts"], st["atr_period"], json.dumps(p, sort_keys=True), json.dumps(cs, sort_keys=True, default=str))
     if key not in _SIM:
         _SIM.clear()
         bars, _ = engine.load(f, "2000-01-01", "2099-12-31", 0)
-        p = dict(break_mode=st["break_mode"], choch_mode=st.get("choch_mode") or st["break_mode"], avwap_weight=st["avwap_weight"], sl_rule=st["sl_rule"])
         _SIM[key] = simulate(st, cs, bars, json.loads(st["rl_json"]), p)
     return _SIM[key]
 
@@ -358,7 +385,16 @@ def run_variant(st, cs):
         n = len({m[0] for m in mk if lo <= m[0] <= hi}); pnl = sum(m[5] for m in mk if lo <= m[0] <= hi)
         charts.append(dict(lab.chart(bars, r, i0, i1, mk), day=d, kind="signal",
                            label=f"{d} · futures" + (f" · {n} position{'s' * (n > 1)} · {pnl:+.1f} pts" if n else "")))
-    J = [dict(j, scored=d0 <= j["time"] <= t_end) for j in res["journal"] if j["time"] <= t_end]
+    # journal rows: the learner's net of a SETUP whose lots were cut at the window end is the cut value (as the trades table)
+    by_setup = {}
+    for tr in trades: by_setup[(tr["entry_time"], tr["position"])] = by_setup.get((tr["entry_time"], tr["position"]), 0.0) + tr["net"]
+    J = []
+    for j in res["journal"]:
+        if j["time"] > t_end: break
+        j = dict(j, scored=d0 <= j["time"] <= t_end)
+        key = (j["time"], "LONG" if j["dir"] == "up" else "SHORT")
+        if j["scored"] and key in by_setup: j["net"] = round(by_setup[key], 2)
+        J.append(j)
     sc = [j for j in J if j["scored"]]; W = [j for j in J if not j["scored"]]
     taken = [j for j in sc if j["decision"] not in ("skip", "locked")]
     months = {}
@@ -370,22 +406,23 @@ def run_variant(st, cs):
     mix = {}
     for j in taken: mix[j["decision"]] = mix.get(j["decision"], 0) + 1
     Wt = res["policy"].weights()
-    payload = dict(reward=cfg["reward"], seed=cfg["seed"], arms=[arm_label(a) for a in res["arms"]], features=list(FEATURES),
+    arms = res["arms"]
+    payload = dict(reward=cfg["reward"], seed=cfg["seed"], arms=[arm_label(a) for a in arms], features=list(FEATURES),
                    learned_updates=res["learned"], learn_from=t[0][:10], scored_from=st["date_from"], scored_to=st["date_to"],
                    summary=dict(setups=len(sc), taken=len(taken), skipped=sum(1 for j in sc if j["decision"] == "skip"),
                                 locked=sum(1 for j in sc if j["decision"] == "locked"),
-                                rl_net=round(sum(tr["net"] for tr in trades), 2), base_net=round(sum(j["base_net"] for j in sc), 2),
+                                rl_net=round(sum(j["net"] for j in sc), 2), base_net=round(sum(j["base_net"] for j in sc), 2),
                                 oracle_net=round(sum(j["oracle_net"] for j in sc), 2), control_net=round(sum(j["control_net"] for j in sc), 2),
+                                base_taken=sum(1 for j in sc if j["base_taken"]), control_taken=sum(1 for j in sc if j["control_taken"]),
                                 warmup_setups=len(W), warmup_rl_net=round(sum(j["net"] for j in W), 2),
                                 warmup_base_net=round(sum(j["base_net"] for j in W), 2), warmup_control_net=round(sum(j["control_net"] for j in W), 2)),
                    action_mix=sorted(mix.items(), key=lambda kv: -kv[1]),
                    months=[dict(m, **{k: round(m[k], 2) for k in ("rl_net", "base_net", "oracle_net", "control_net")}) for m in months.values()],
                    notes=cfg.get("notes"),
-                   weights={arm_label(a): Wt[i] for i, a in enumerate(res["arms"]) if i > 0 and res["policy"].n[i]},
-                   journal=J, base_arm=f"{first_profile(cfg)} · stop 50 · {max(cfg['lots'])} lots (Strategy 9's rule), run as its own book",
-                   books="learner, base and random control each hold one position per contract (the lab's strike lock); the oracle is the best action per SETUP in hindsight and ignores the lock")
+                   weights={arm_label(a): Wt[i] for i, a in enumerate(arms) if i > 0 and res["policy"].n[i]},
+                   journal=J, base_arm=f"{arm_label(arms[res['base_arm']])} (Strategy 9's rule), run as its own book",
+                   books="learner, base and random control each hold one position per contract (the lab's strike lock); an intraday "
+                         "profile is not available at or after its square-off time; base and control outcomes count in full even past "
+                         "the window's end, the learner's own lots are cut there; the oracle is the best net per SETUP in hindsight and "
+                         "ignores the lock")
     return {"-": dict(trades=trades, skipped=skipped, signals=signals, charts=charts, rl=payload)}
-
-
-def first_profile(cfg):
-    return list(cfg["profiles"])[0]

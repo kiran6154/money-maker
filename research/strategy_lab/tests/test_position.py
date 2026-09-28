@@ -77,6 +77,8 @@ parts = lab.manage(st(MANAGED), rec("LONG", 100, t[0]), t, o, h, l, c, t[-1])
 check("open at end", {(p["exit_px"], p["exit_reason"], p["open"]) for p in parts}, {(104, "open", True)})
 parts = lab.manage(st(MANAGED), rec("LONG", 100, t[0], kind="OPT"), t, o, h, l, c, t[-1], expiry="2026-08-03")
 check("expiry", {(p["exit_reason"], p["open"]) for p in parts}, {("expiry", False)})
+parts = lab.manage(st(MANAGED), rec("LONG", 100, t[0]), t, o, h, l, c, t[-1], expiry="2026-08-10")
+check("data end before expiry stays open", {(p["exit_reason"], p["open"]) for p in parts}, {("open", True)})
 
 # 7. options: R = 5% of the entry premium (200 -> 10)
 t, o, h, l, c = bars("2026-08-03", [(200, 200, 200, 200), (200, 211, 199, 210), (210, 210, 189, 190)])
