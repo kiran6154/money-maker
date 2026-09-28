@@ -2,22 +2,27 @@
 
     python serve.py            # http://localhost:8766/dashboard.html  (listens on 127.0.0.1 only)
     python serve.py 8800
+    python serve.py 8770 --lan         # also reachable from a phone on the same Wi-Fi / over Tailscale (away from home)
+    python serve.py 8770 --host 100.x.y.z   # only on that address
+    python serve.py 8770 --tailscale   # only on this PC's Tailscale address: your own devices, from anywhere
+Only dashboard.html and web/*.json are served (never the database, strategy files, tools or logs).
 
 Static files come from this folder (as `python -m http.server` did). The API runs lab.py, one job at a time:
     GET  /api/status                       {"api": true, "busy": bool, "jobs": [last 10 jobs, newest first]}
-    POST /api/backtest  {"code": "ST1", "what": "1M|3M|6M|YTD|1Y|5Y|all|custom", "from": "YYYY-MM-DD", "to": "YYYY-MM-DD",
-                         "tf": "minute|3minute|5minute|15minute|30minute" (optional), "label": "..." (optional)}
+    POST /api/backtest  {"code": "ST1", "what": "MTD|1M|3M|6M|YTD|1Y|5Y|all|custom", "from": "YYYY-MM-DD", "to": "YYYY-MM-DD",
+                         "tf": "minute|3minute|5minute|15minute|30minute" (optional), "underlying": "FUT|INDEX" (optional), "square_off": null|"HH:MM" (optional),
+                         "label": "..." (optional)}
                         -> `lab.py backtest ...`: adds the backtest to the strategy's file (if it is not there yet), then a
                            full cached run (only what is missing or changed is computed) that republishes dashboard.html
     POST /api/run       {}  -> `lab.py`: recompute whatever is missing or stale, republish
 A job's output goes to cache/jobs/<id>.log; the page polls /api/status and reloads when its job finishes.
 Nothing here places orders or touches a broker: lab.py only reads candle files.
 """
-import http.server, json, os, re, subprocess, sys, threading, time, datetime as D, functools
+import http.server, json, os, re, subprocess, sys, threading, time, datetime as D, functools, urllib.parse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 JOBS_DIR = os.path.join(HERE, "cache", "jobs")
-PRESETS = ("1M", "3M", "6M", "YTD", "1Y", "5Y")
+PRESETS = ("MTD", "1M", "3M", "6M", "YTD", "1Y", "5Y")
 TFS = ("minute", "3minute", "5minute", "15minute", "30minute")
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -46,6 +51,13 @@ def backtest_args(q):
     if q.get("tf"):
         if q["tf"] not in TFS: raise ValueError(f"tf must be one of {TFS}")
         args += ["--tf", q["tf"]]
+    if q.get("underlying"):
+        if q["underlying"] not in ("FUT", "INDEX"): raise ValueError("underlying must be FUT or INDEX")
+        args += ["--underlying", q["underlying"]]
+    if "square_off" in q:                              # holding: null / "none" = positional, "HH:MM" = intraday
+        so = q["square_off"]
+        if so is not None and so != "none" and not re.fullmatch(r"\d\d:\d\d", str(so)): raise ValueError("square_off is null or HH:MM")
+        args += ["--square-off", "none" if so in (None, "none") else so]
     label = str(q.get("label") or "").strip()
     if label:
         if not re.match(r"^[\w .:+()/-]{1,40}$", label): raise ValueError("label: up to 40 letters, digits, spaces and . : + ( ) / -")
@@ -100,17 +112,38 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_response(code); self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
 
+    def public(self):
+        """Only the dashboard and its result files are served - never the database, strategy files, tools or logs."""
+        p = urllib.parse.unquote(self.path.split("?")[0].split("#")[0])
+        if p in ("/", ""): return "/dashboard.html"
+        if ".." in p or "\\" in p: return None
+        if p == "/dashboard.html" or (p.startswith("/web/") and p.endswith(".json")): return p
+        return None
+
     def do_GET(self):
         if self.path.split("?")[0] == "/api/status":
             with lock:
                 js = [dict(j, log=tail(j)) for j in reversed(jobs[-10:])]
             return self.reply(200, dict(api=True, busy=any(j["state"] in ("queued", "running") for j in js), jobs=js))
+        p = self.public()
+        if p is None: return self.send_error(404)
+        self.path = p
         return super().do_GET()
+
+    def do_HEAD(self):
+        p = self.public()
+        if p is None: return self.send_error(404)
+        self.path = p
+        return super().do_HEAD()
+
+    def list_directory(self, path):                  # no folder listings
+        self.send_error(404)
 
     def do_POST(self):
         path = self.path.split("?")[0]
-        if self.headers.get("Origin") not in (None, f"http://localhost:{self.server.server_port}",
-                                              f"http://127.0.0.1:{self.server.server_port}"):
+        # same-origin only: the page served by this server (whatever address the phone or PC used to open it)
+        origin, host = self.headers.get("Origin"), self.headers.get("Host")
+        if origin is not None and origin != f"http://{host}":
             return self.reply(403, dict(error="cross-origin request refused"))
         try:
             n = int(self.headers.get("Content-Length") or 0)
@@ -120,7 +153,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         try:
             if path == "/api/backtest":
                 args = backtest_args(q)
-                j = submit(args, f"{q['code']} · {q.get('label') or q['what']}" + (f" · {q['tf']}" if q.get("tf") else ""))
+                j = submit(args, f"{q['code']} · {q.get('label') or q['what']}" + (f" · {q['tf']}" if q.get("tf") else "")
+                           + (" · index" if q.get("underlying") == "INDEX" else "")
+                           + ((" · positional" if q["square_off"] in (None, "none") else f" · intraday {q['square_off']}") if "square_off" in q else ""))
             elif path == "/api/run":
                 j = submit([], "recompute missing / changed results")
             else:
@@ -140,14 +175,35 @@ class Server(http.server.ThreadingHTTPServer):
         super().server_bind()
 
 
+def addresses():
+    """This PC's IPv4 addresses (Tailscale ones start with 100.)."""
+    import socket
+    try: return sorted({a[4][0] for a in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)})
+    except OSError: return []
+
+
 def main():
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8766
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    opts = sys.argv[1:]
+    port = int(args[0]) if args else 8766
+    # --lan: every network address of this PC (home Wi-Fi, and Tailscale for away from home); --host <ip>: one address,
+    # e.g. the Tailscale 100.x address only. Default: this PC only.
+    host = "0.0.0.0" if "--lan" in opts else (opts[opts.index("--host") + 1] if "--host" in opts else "127.0.0.1")
+    if "--tailscale" in opts:                         # away from home: only the Tailscale address (your own devices)
+        ts = [a for a in addresses() if a.startswith("100.")]
+        if not ts: sys.exit("no Tailscale address on this PC: install Tailscale, sign in, then run again")
+        host = ts[0]
     try:
-        srv = Server(("127.0.0.1", port), functools.partial(Handler, directory=HERE))
+        srv = Server((host, port), functools.partial(Handler, directory=HERE))
     except OSError as e:
         sys.exit(f"port {port} is in use ({e.strerror}); stop the other server or pass another port: python serve.py 8770")
     threading.Thread(target=worker, daemon=True).start()
     print(f"strategy lab: http://localhost:{port}/dashboard.html  (backtest queue on; Ctrl+C to stop)")
+    if host != "127.0.0.1":
+        for a in (addresses() if host == "0.0.0.0" else [host]):
+            if not a.startswith("127."):
+                print(f"  from a phone: http://{a}:{port}/dashboard.html" + ("   (Tailscale: works away from home)" if a.startswith("100.") else ""))
+        print("  anyone who can reach these addresses can open the page and queue backtests (nothing here touches a broker)")
     try: srv.serve_forever()
     except KeyboardInterrupt: pass
 

@@ -300,6 +300,48 @@
         "source": "user decision 2026-09-27 call 2",
         "statistic": "",
         "note": "a sit overlapping a live room already visited this session is a visit of it, never a birth; the older room keeps its edges"
+      },
+      "session_visit_rule": {
+        "value": "sit",
+        "source": "user decision 2026-09-28",
+        "statistic": "",
+        "note": "'visited this session' = a real sit today (at least cluster_bars consecutive same-session closes inside the room), not any close; alternative 'any_close'"
+      },
+      "adjacent_birth": {
+        "value": "block_half_width",
+        "source": "user decision 2026-09-28",
+        "statistic": "",
+        "note": "a sit whose band edge is within band_half_width of a live room sat in this session (overlapping or not) is not a birth and not a visit (sits_near_room); alternative 'allow'"
+      },
+      "defend_half": {
+        "value": "away_half",
+        "source": "user decision 2026-09-28",
+        "statistic": "",
+        "note": "a defend TAKE also needs the SETUP close in the half of the room away from the defended edge (above the mid for a long, below for a short); otherwise WATCH, take_why defend_wrong_half; alternative 'off'"
+      },
+      "room_edges": {
+        "value": "sit_range",
+        "source": "user decision 2026-09-28b",
+        "statistic": "",
+        "note": "a room's lo / hi are the min / max close of the sit that bore it (the cluster_bars window), frozen at birth; mid = (lo + hi) / 2; alternative 'half_width' (mid +- band_half_width)"
+      },
+      "absorb_rule": {
+        "value": "mid_inside",
+        "source": "user decision 2026-09-28b",
+        "statistic": "",
+        "note": "a sit is a visit of a live room only when its mid lies inside that room; otherwise it is a birth candidate for same_session_overlap / adjacent_birth / room_overlap; alternative 'overlap' (merge_overlap x the sit's width)"
+      },
+      "defend_direction": {
+        "value": "one_per_visit",
+        "source": "user decision 2026-09-28b",
+        "statistic": "",
+        "note": "after a defend TAKE one way in a visit, a defend the other way in the same visit is WATCH, take_why defend_opposite_in_visit; alternative 'any'"
+      },
+      "same_day_replace": {
+        "value": "replace_unaccepted",
+        "source": "user decision 2026-09-28d",
+        "statistic": "",
+        "note": "a sit not absorbed by mid_inside whose close range overlaps or touches a live room born earlier the same session retires that room (retired_by same_day_replace) and is born in its place; rooms from earlier days keep keep_older / adjacent_birth protection; alternative 'off'"
       }
     }
   }

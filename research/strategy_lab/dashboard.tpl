@@ -48,6 +48,9 @@ h1{font-size:16px;font-weight:600;margin:0}.sub{color:var(--muted);font-size:12p
 .ctop{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 10px;border-bottom:1px solid var(--line)}
 .crumb{font-size:13px;font-weight:600}.crumb span{color:var(--muted);font-weight:400;margin:0 4px}
 .cbody{position:relative;flex:1;min-height:0}#chart{position:absolute;inset:0}
+.optwrap{flex:0 0 46%;display:flex;flex-direction:column;border-top:2px solid var(--line);min-height:0}
+.optwrap .ctop{padding:4px 10px}.cbody2{position:relative;flex:1;min-height:0}#chart2{position:absolute;inset:0}
+#optNone{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
 .ohlc{font:12px ui-monospace,Consolas,monospace;color:var(--muted);white-space:nowrap}.ohlc b{color:var(--ink);font-weight:500}
 .nav{display:inline-flex;align-items:center;gap:4px}
 .nav button,.nav select{font:12px system-ui;border:1px solid var(--line);background:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;color:var(--ink)}
@@ -130,6 +133,10 @@ svg text{font:10px system-ui;fill:#6b7280}
     <div class="layers" id="layers"></div>
   </div>
   <div class="cbody"><div id="chart"></div><div class="loading" id="loading">Loading…</div></div>
+  <div class="optwrap" id="optWrap" style="display:none">
+    <div class="ctop"><span class="crumb" id="optLbl">Option</span><span class="seg sm" id="optSeg"></span><div class="ohlc" id="ohlc2"></div></div>
+    <div class="cbody2"><div id="chart2"></div><div class="hint" id="optNone" style="display:none">No option position in this session.</div></div>
+  </div>
 </div>
 
 <div class="kpis" id="kpis"></div>
@@ -172,8 +179,8 @@ svg text{font:10px system-ui;fill:#6b7280}
     <li>Slippage per side: futures 5 pts, options 0.5 pt. Charges per the charge schedule. Short option = sell at entry, buy at exit.</li>
     <li>Capital per lot (for returns, Calmar, risk of ruin): futures and short options use the margins in Config; long-only options use the average premium paid.</li>
     <li>Monte Carlo: 2,000 simulations with a fixed seed. * = incomplete data (positions skipped for missing option candles).</li></ul></div>
-  <div class="card"><h3>Foundation-Zone (Strategy 5, 6)</h3><ul>
-    <li><b>Bands</b> — <span class="sw" style="color:var(--pur)">▮</span>A: born when a swing becomes the protected level · <span style="color:var(--acc)">▮</span> B: born when the last <code>cluster_bars</code> closes sit within <code>cluster_width</code>. ± <code>band_half_width</code> around the mid; a new band overlapping one enough merges into it; none is ever deleted. Memory starts at the file's first session, so every window is a slice of one run.</li>
+  <div class="card"><h3>Foundation-Zone (Strategies 5–8)</h3><ul>
+    <li><b>Bands</b> — <span class="sw" style="color:var(--pur)">▮</span>A: born when a swing becomes the protected level · <span style="color:var(--acc)">▮</span> B: born when the last <code>cluster_bars</code> closes sit within <code>cluster_width</code>. ± <code>band_half_width</code> around the mid; a new band overlapping one enough merges into it; none is ever deleted (Strategies 5, 6). <b>Rooms</b> (Strategies 7, 8): born only from a sit, a sit inside a live room (or overlapping a room visited this session) is a visit of it, live rooms never overlap, a room with no close inside for <code>room_max_age_sessions</code> sessions is retired; named <code>&lt;letter&gt; &lt;mm-dd hh:mm&gt;</code>. Memory starts at the file's first session, so every window is a slice of one run.</li>
     <li><b>Card</b> (per bar, as-of, on the crosshair) — the ref band whose visit is live, visit n, this and first visit bars and volume, and the read. A visit ends only on <code>leave_closes</code> closes in a row outside on one side. Reads in order: LEAVE of the band just left (for <code>leave_ttl_bars</code>) → HUNT (out and back in: one close on 1m, a deep wick on 5m) → REJECT (wick at an edge, close back toward the mid) → FIRST_PRINT (visit 1) / ACCEPTED (lived <code>accept_bars</code>, volume held) / THIN / RECYCLE → PENDING (first close outside) → NEW.</li>
     <li><b>Gate</b> at each Foundation SETUP, first match: <span class="sw" style="color:var(--dn)">B</span>BLOCK (in a position, open time from <code>no_entry_from</code>, an opening bar piercing a band last visited on an earlier day, a SETUP in the pierce direction of a HUNT within <code>fade_block_bars</code>, NEW ground) · <span class="sw" style="color:var(--acc)">T</span>TAKE (a LEAVE its way, a FIRST_PRINT in the entry direction, an ACCEPTED defend after a HUNT or REJECT at the opposite edge) · <span class="sw" style="color:#9e9e9e">W</span>WATCH on the band holding the close (on the band just left when the SETUP is its first close outside).</li>
     <li><span class="sw" style="color:var(--pur)">R</span><b>REENTER</b> — a watch arms on a close beyond its band and re-enters on the bar where <code>leave_closes</code> closes are out, none came back inside or across the mid, far-side volume is at least the sit's (skipped when NA) and a Foundation SETUP points the same way on that bar or the one before; fill at that bar's close. A close back inside breaks the run and the next close beyond arms the watch again. A LEAVE TAKE of the band a watch waits on, in its direction, is that watch's REENTER; a FIRST_PRINT or defend TAKE stays a TAKE. Cancelled at the next session, by an opposite TAKE or LEAVE, or after <code>cancel_inside_bars</code> closes back inside.</li>
@@ -200,7 +207,7 @@ const SDESC=(m,s)=>m.variant==='FUT'?{BOTH:'long and short futures (total)',LONG
   :m.variant==='OPT_FUT_SIGNAL'?{BOTH:'both legs of every signal: long one option, short the other',LONG:'CE on future long, PE on future short',SHORT:'PE on future long, CE on future short',CE:'CE: long on future long, short on future short',PE:'PE: short on future long, long on future short'}[s]
   :{BOTH:'bullish and bearish setups on the CE and PE charts',LONG:'bullish setups, CE and PE charts',SHORT:'bearish setups, CE and PE charts',CE:'CE chart, both directions',PE:'PE chart, both directions'}[s];
 const inSch=(t,s)=>s==='BOTH'||(s==='LONG'||s==='SHORT'?t.pos===s:t.otype===s);
-const on={trades:true,avwap:true,prot:true,struct:true,swings:true,vol:true,zones:true};
+const on={trades:true,avwap:true,prot:true,struct:true,swings:true,vol:true,zones:true,rlevels:true};
 const cache={};let ch=null,eqch=null,uwch=null,mcch=null,D=null,cur=null,curChoice=null;
 const load_=k=>{try{return JSON.parse(localStorage.getItem(k)||'null');}catch(e){return null;}};
 const save_=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}};
@@ -217,7 +224,11 @@ fams.forEach(f=>{const rs=runsOf(f),ok=Object.entries(rs).filter(([k,r])=>r.stat
 const saveAll=()=>{save_('st2',ST);save_('sel2',SEL);};
 const S=()=>SEL[ST.fam];
 const runOf=m=>m.runs[SEL[m.family].run];
-const choiceOf=m=>m.variant==='FUT'?'-':`${SEL[m.family].exp}-${SEL[m.family].strike}`;
+const choiceOf=m=>{if(m.variant==='FUT')return '-';const e=SEL[m.family].exp,r=m.runs[SEL[m.family].run];
+  return m.variant==='OPT_NATIVE'&&r&&r.choices[`${e}-SCAN`]?`${e}-SCAN`:`${e}-${SEL[m.family].strike}`;};
+const HOLD0=m=>m.position&&m.position.square_off?`intraday ${m.position.square_off}`:'positional';
+const HOLD=x=>x.holding||'';
+const SCANTXT=m=>{const n=m.native_scan;return n?`rescans ${n.choices.join(' · ')} every ${n.every_minutes} min from the index${n.one_per_side?' · one position per side':''}`:'';};
 const statOf=(m,sch)=>{const r=runOf(m);const s=r&&r.choices[choiceOf(m)];if(!s)return null;return sch==='BOTH'?s:({LONG:s.long,SHORT:s.short,CE:s.ce,PE:s.pe})[sch]||null;};
 const cov=m=>{const r=runOf(m),s=r&&r.choices[choiceOf(m)];if(!s||!s.skipped)return null;return {text:`Incomplete: ${s.trades} of ${s.trades+s.skipped} positions priced; ${s.skipped} skipped for missing option data.`};};
 const star=c=>c?`<span class="warn" title="${c.text}">*</span>`:'';
@@ -242,8 +253,8 @@ function renderHeader(){
   const btCtl=`<span class="seg" id="btSeg">${tabs.map(([k,x])=>`<button data-l="${esc(x.label)}" class="${x.label===r.label?'on':''} ${x.status!=='ok'?'off':''}" title="${esc(x.status==='ok'?rng(x)+(x.notes?' · '+x.notes:''):'not available: '+x.reason)}">${esc(x.label)}</button>`).join('')}</span>`;
   // candles: only when this backtest also exists on another timeframe
   const alts=Object.entries(runs).filter(([k,x])=>x.label===r.label&&x.kind===r.kind&&x.status==='ok').sort((a,b)=>b[1].design-a[1].design);
-  const tfCtl=alts.length>1?`<span class="lbl">Candles</span><span class="seg sm" id="tfSeg">${alts.map(([k,x])=>`<button data-k="${k}" class="${k===S().run?'on':''}">${TFS[x.timeframe]}${x.design?' · design':''}</button>`).join('')}</span>`:'';
-  const addCmds=`<small class="sub">Run in research/strategy_lab, then reload:</small><code>python lab.py backtest ${f} 1Y\npython lab.py backtest ${f} YTD\npython lab.py backtest ${f} 2026-07-10 2026-08-10 --label "July"\n${['minute','3minute','5minute','15minute','30minute'].filter(t=>!alts.some(([k,x])=>x.timeframe===t)).map(t=>`python lab.py backtest ${f} ${r.kind==='all'?'all':r.kind==='preset'?r.preset:r.date_from+' '+r.date_to} --tf ${t} --label "${r.label}"`).join('\n')}</code><small class="sub">Data covers ${fmtD(DATA_RANGE[0])} ${DATA_RANGE[0].slice(0,4)} – ${fmtD(DATA_RANGE[1])} ${DATA_RANGE[1].slice(0,4)}; a backtest the data cannot cover is refused.</small>`;
+  const tfCtl=alts.length>1?`<span class="lbl">Candles</span><span class="seg sm" id="tfSeg">${alts.map(([k,x])=>`<button data-k="${k}" class="${k===S().run?'on':''}">${TFS[x.timeframe]}${x.underlying==='INDEX'?' · index':' · futures'}${HOLD(x)?' · '+HOLD(x).replace(/^intraday .*/,'intraday'):''}${x.design?' · design':''}</button>`).join('')}</span>`:'';
+  const addCmds=`<small class="sub">Run in research/strategy_lab, then reload:</small><code>python lab.py backtest ${f} 1Y\npython lab.py backtest ${f} YTD\npython lab.py backtest ${f} 2026-07-10 2026-08-10 --label "July"\npython lab.py backtest ${f} ${r.kind==='all'?'all':r.kind==='preset'?r.preset:r.date_from+' '+r.date_to} --underlying ${(r.underlying||'FUT')==='INDEX'?'FUT':'INDEX'} --label "${r.label}"\npython lab.py backtest ${f} ${r.kind==='all'?'all':r.kind==='preset'?r.preset:r.date_from+' '+r.date_to} --square-off ${/^intraday/.test(HOLD(r)||HOLD0(m0))?'none':'15:25'} --label "${r.label}"\n${['minute','3minute','5minute','15minute','30minute'].filter(t=>!alts.some(([k,x])=>x.timeframe===t)).map(t=>`python lab.py backtest ${f} ${r.kind==='all'?'all':r.kind==='preset'?r.preset:r.date_from+' '+r.date_to} --tf ${t} --label "${r.label}"`).join('\n')}</code><small class="sub">Data covers ${fmtD(DATA_RANGE[0])} ${DATA_RANGE[0].slice(0,4)} – ${fmtD(DATA_RANGE[1])} ${DATA_RANGE[1].slice(0,4)}; a backtest the data cannot cover is refused.</small>`;
   const rules=`<div style="margin-bottom:4px">${esc(SABOUT(m0))}</div><b>Rules</b> — swings (Pine port) → protected level (unbroken swing beyond the trend AVWAP) → CHoCH by ${m0.choch_mode??m0.break_mode}, BOS by ${m0.break_mode} → AVWAP pair from the previous SH and SL at each CHoCH → SETUP (both AVWAPs sloping with the CHoCH and a close beyond the CHoCH candle) → ${m0.position&&m0.position.exit==='position'?`managed exit: ${m0.position.lots} lots, stop ${m0.position.stop.futures_pts} pts (futures) / ${m0.position.stop.option_pct}% of premium (options) = 1R`+(m0.position.scale_out||[]).map((x,i)=>`, lot ${i+1} out at ${x.target_r!=null?x.target_r+'R':'+'+x.target_pts}`).join('')+(m0.position.trail?`, the rest trails from ${m0.position.trail.start_r}R (${m0.position.trail.lag_r}R behind the best R reached)`:'')+'; no CHoCH exit.':`exit on stop loss (${m0.sl_rule.replace('_',' ')}) or the next CHoCH.`}
     <span class="sub"> · designed on ${TFS[dtf]} candles · warm-up ${m0.warmup_days} sessions · AVWAP ${m0.avwap_weight}-weighted · slippage futures 5 / options 0.5 pt per side</span>`;
   // option settings: once, across the option columns
@@ -253,15 +264,16 @@ function renderHeader(){
     optRow=(nf?`<div class="optpad" style="grid-column:1/${nf+1}"></div>`:'')+
       `<div class="optrow" style="grid-column:${nf+1}/${rs.length+1}"><b>Options</b> expiry <span class="seg sm" id="expSeg">${exps.map(e=>`<button data-v="${e}" class="${S().exp===e?'on':''}">${EXP[e]}</button>`).join('')}</span>
        strike <select id="stkSel">${strikes.map(x=>`<option ${S().strike===x?'selected':''}>${x}</option>`).join('')}</select>
-       <span>${S().strike.startsWith('ATR')?`spot ± ${S().strike.slice(3)}×ATR(${o.atr_period}), OTM`:'from spot'}</span><span class="sp" style="flex:1"></span><span>applies to both option types</span></div>`;}
+       <span>${S().strike.startsWith('ATR')?`spot ± ${S().strike.slice(3)}×ATR(${o.atr_period}), OTM`:'from spot'}</span><span class="sp" style="flex:1"></span><span>strike: Options (via futures)${rs.some(x=>x.variant==='OPT_NATIVE')?' · Options (standalone) '+SCANTXT(rs.find(x=>x.variant==='OPT_NATIVE')):''}</span></div>`;}
   const col=m=>{const on=m.code===cur.code,sch=schemeOf(m),all=statOf(m,'BOTH');
     const cv=m.variant==='FUT'?`<div class="cov">exchange futures · every signal priced</div>`
       :`<div class="cov ${all&&all.skipped?'thin':''}">${!all?'not run':all.skipped?`${all.trades} of ${all.trades+all.skipped} positions priced · ${all.skipped} without option data`:`all ${all.trades} ${LOTS(m)>1?'lot exits':'positions'} priced`}</div>`;
     const row=x=>{const st=statOf(m,x);return `<div class="srow ${on&&sch===x?'on':''}" data-c="${m.code}" data-s="${x}" title="${esc(SDESC(m,x))}${st?` · PF ${st.pf??'—'}`:''}"><span>${SCH[x]}</span><span class="n ${st?cl(st.net_inr):''}">${st?inr(st.net_inr):'—'}</span><span class="m">${st?`${st.trades} trades · ${pctw(st)}`:''}</span></div>`;};
     const sides=m.variant==='FUT'?'':`<div class="sides">${['CE','PE'].map(x=>{const st=statOf(m,x);return `<span class="sd ${on&&sch===x?'on':''}" data-c="${m.code}" data-s="${x}" title="${esc(SDESC(m,x))}">${x} side <b class="${st?cl(st.net_inr):''}">${st?inr(st.net_inr):'—'}</b></span>`;}).join(' · ')}</div>`;
-    return `<div class="col ${on?'cur':''}"><h4 data-c="${m.code}">${TYPE[m.variant]}</h4>${cv}${['BOTH','LONG','SHORT'].map(row).join('')}${sides}</div>`;};
+    const scan=m.variant==='OPT_NATIVE'&&choiceOf(m).endsWith('-SCAN')?`<div class="cov">${SCANTXT(m)}</div>`:'';
+    return `<div class="col ${on?'cur':''}"><h4 data-c="${m.code}">${TYPE[m.variant]}</h4>${cv}${scan}${['BOTH','LONG','SHORT'].map(row).join('')}${sides}</div>`;};
   $('head').innerHTML=`<div class="hbar"><span class="brand">Strategy lab</span>${stratCtl}<span class="pipe">|</span>${btCtl}<span class="dates">${r.status==='ok'?rng(r):''}</span>${tfCtl}
-      ${r.timeframe!==dtf?`<span class="badge">rules built for ${TFS[dtf]}</span>`:''}<span class="sp"></span>
+      ${r.timeframe!==dtf?`<span class="badge">rules built for ${TFS[dtf]}</span>`:''}${(r.underlying||'FUT')!==(m0.underlying||'FUT')?`<span class="badge">signals on the ${r.underlying==='INDEX'?'index':'futures'} · designed on the ${m0.underlying==='INDEX'?'index':'futures'}</span>`:''}${HOLD(r)&&HOLD(r)!==HOLD0(m0)?`<span class="badge">${HOLD(r)} · the strategy is ${HOLD0(m0)}</span>`:''}<span class="sp"></span>
       <span id="jobBadge"></span><span class="menu"><span class="link" id="addL">+ backtest</span><div class="pop" id="addP" style="left:auto;right:0;padding:8px 10px">${backtestPanel(f,r,runs,addCmds)}</div></span><span class="link" id="rulesL">Rules ${ST.rules?'▴':'▾'}</span></div>
     <div id="rules" class="${ST.rules?'on':''}">${rules}</div>
     <div class="cols" style="grid-template-columns:repeat(${rs.length},minmax(0,1fr))">${optRow}${rs.map(col).join('')}</div>`;
@@ -304,6 +316,11 @@ function backtestPanel(f,r,runs,cmds){
     <h5>Custom range</h5><div class="row"><input type="date" id="bqFrom" min="${DATA_RANGE[0]}" max="${DATA_RANGE[1]}" value="${DATA_RANGE[0]}"> → <input type="date" id="bqTo" min="${DATA_RANGE[0]}" max="${DATA_RANGE[1]}" value="${DATA_RANGE[1]}">
       <input id="bqLabel" placeholder="name, e.g. July" size="10" maxlength="40"><button class="qb" id="bqCustom">Run</button></div>
     ${tfs.length?`<h5>Run “${esc(r.label)}” on other candles</h5><div class="row">${tfs.map(t=>`<button class="qb" data-tf="${t}">${TFS[t]}</button>`).join('')}</div>`:''}
+    ${(()=>{const other=(r.underlying||'FUT')==='INDEX'?'FUT':'INDEX',has=Object.values(runs).some(x=>x.label===r.label&&x.timeframe===r.timeframe&&(x.underlying||'FUT')===other);
+      const h0=HOLD(r)||HOLD0(rowsOf(f)[0]),hOther=/^intraday/.test(h0)?'positional':'15:25',
+        hHas=Object.values(runs).some(x=>x.label===r.label&&x.timeframe===r.timeframe&&(x.underlying||'FUT')===(r.underlying||'FUT')&&(HOLD(x)||'')===(hOther==='positional'?'positional':'intraday 15:25'));
+      const hold=`<h5>Run “${esc(r.label)}” ${hOther==='positional'?'positional (held overnight, no square-off)':'intraday (every position closed by 15:25)'}</h5><div class="row"><button class="qb" data-hold="${hOther}" ${hHas?'disabled title="already run"':''}>${hOther==='positional'?'Positional':'Intraday 15:25'}${hHas?' ✓':''}</button><span class="sub">now: ${h0}</span></div>`;
+      return hold+`<h5>Run “${esc(r.label)}” with signals on the ${other==='INDEX'?'index':'futures'}</h5><div class="row"><button class="qb" data-und="${other}" ${has?'disabled title="already run"':''}>${other==='INDEX'?'NIFTY index (equal-weight AVWAP)':'Near-month futures'}${has?' ✓':''}</button><span class="sub">the Futures type still trades the near-month contract</span></div>`;})()}
     <h5>Results missing or out of date</h5><div class="row"><button class="qb" id="bqAll">Recompute what is missing</button><span class="sub">only what changed is computed</span></div>
     <div id="bqMsg" class="sub"></div><pre id="bqLog" style="display:none"></pre>
     <small class="sub">A job adds the backtest to the strategy's file and runs lab.py; the page reloads when it is done. 1-minute option runs can take a while.</small></div>
@@ -318,6 +335,13 @@ function wireBacktestPanel(f,r){
   document.querySelectorAll('#addP [data-tf]').forEach(b=>b.onclick=()=>queueJob('api/backtest',r.kind==='custom'||r.kind==='named'
     ?{code:f,what:'custom',from:r.date_from,to:r.date_to,tf:b.dataset.tf,label:r.label}
     :{code:f,what:r.kind==='all'?'all':r.preset,tf:b.dataset.tf,label:r.label}));
+  document.querySelectorAll('#addP [data-hold]').forEach(b=>b.onclick=()=>queueJob('api/backtest',Object.assign(r.kind==='custom'||r.kind==='named'
+    ?{code:f,what:'custom',from:r.date_from,to:r.date_to}:{code:f,what:r.kind==='all'?'all':r.preset},
+    {label:r.label,square_off:b.dataset.hold==='positional'?null:b.dataset.hold},r.timeframe!==designTf(f)?{tf:r.timeframe}:{},
+    (r.underlying||'FUT')!=='FUT'?{underlying:r.underlying}:{})));
+  document.querySelectorAll('#addP [data-und]').forEach(b=>b.onclick=()=>queueJob('api/backtest',Object.assign(r.kind==='custom'||r.kind==='named'
+    ?{code:f,what:'custom',from:r.date_from,to:r.date_to}:{code:f,what:r.kind==='all'?'all':r.preset},
+    {label:r.label,underlying:b.dataset.und},r.timeframe!==designTf(f)?{tf:r.timeframe}:{})));
   if($('bqCustom'))$('bqCustom').onclick=()=>queueJob('api/backtest',{code:f,what:'custom',from:$('bqFrom').value,to:$('bqTo').value,label:$('bqLabel').value.trim()});
   if($('bqAll'))$('bqAll').onclick=()=>queueJob('api/run',{});
   pollJobs(false);}
@@ -341,9 +365,11 @@ async function pollJobs(expect){
 function saveChart(fmt){
   if(typeof ch==='undefined'||!ch||!ch.takeScreenshot)return;
   const shot=ch.takeScreenshot(),title=($('crumb').innerText||'').replace(/\s+/g,' ').trim(),day=($('series').selectedOptions[0]||{}).text||'';
-  const H=26,c=document.createElement('canvas');c.width=shot.width;c.height=shot.height+H;
+  const low=ch2&&$('optWrap').style.display!=='none'?ch2.takeScreenshot():null,lowT=low?$('optLbl').textContent:'';
+  const H=26,c=document.createElement('canvas');c.width=Math.max(shot.width,low?low.width:0);c.height=shot.height+H+(low?low.height+H:0);
   const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);
   g.fillStyle='#111';g.font='13px system-ui, sans-serif';g.fillText((title+(day?'  ·  '+day:'')).slice(0,220),8,17);g.drawImage(shot,0,H);
+  if(low){g.fillText(lowT.slice(0,220),8,shot.height+H+17);g.drawImage(low,0,shot.height+2*H);}
   const name=(title+' '+day).replace(/[^\w.-]+/g,'_').replace(/_+/g,'_').slice(0,120)+(fmt==='jpeg'?'.jpg':'.png');
   c.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();
     setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);},fmt==='jpeg'?'image/jpeg':'image/png',fmt==='jpeg'?0.85:undefined);}
@@ -352,13 +378,35 @@ $('snapPng').onclick=()=>saveChart('png');$('snapJpg').onclick=()=>saveChart('jp
 // ================= data + chart chunks
 const getJSON=async f=>{if(!cache[f])cache[f]=fetch(f).then(r=>{if(!r.ok)throw new Error(f+' '+r.status);return r.json();});return cache[f];};
 const busy=(v,txt)=>{$('loading').style.display=v?'flex':'none';if(txt)$('loading').textContent=txt;};
-let WIN=null,extending=false,VIEW='signal';
+let WIN=null,extending=false,VIEW='signal',ch2=null,SYNC=false;
+// option types with an underlying chart: that chart on top (index or futures, whichever the signals came from) and the traded
+// option's own chart below it, from the session before; both keep the same time window
+const STACK=()=>!!(D&&cur&&cur.variant!=='FUT'&&D.charts.some(c=>(c.kind||'signal')==='signal')&&D.charts.some(c=>c.kind==='option'));
+function syncCharts(from,r){if(SYNC||!r)return;const other=from==='opt'?ch:ch2;if(!other)return;SYNC=true;
+  try{other.timeScale().setVisibleRange(r);}catch(e){}finally{setTimeout(()=>SYNC=false,0);}}
+async function showOpt(day,pick){
+  const box=$('optWrap');if(!STACK()){box.style.display='none';if(ch2){ch2.remove();ch2=null;}return;}
+  box.style.display='';const ix=D.charts.map((c,i)=>i).filter(i=>D.charts[i].kind==='option'&&D.charts[i].day===day);
+  const k=pick!=null&&ix.includes(pick)?pick:ix[0];
+  $('optSeg').innerHTML=ix.length>1?ix.map(i=>`<button data-k="${i}" class="${i===k?'on':''}">${esc(D.charts[i].label.split(' · ').slice(1,2).join(''))}</button>`).join(''):'';
+  $('optSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>showOpt(day,+b.dataset.k));
+  if(k==null){$('optLbl').textContent='Option';$('optNone').style.display='flex';$('ohlc2').innerHTML='';if(ch2){ch2.remove();ch2=null;}return null;}
+  $('optNone').style.display='none';$('optLbl').textContent=D.charts[k].label.split(' · ').slice(1).join(' · ')+' · from the session before';
+  const c=await getJSON(D.base+D.charts[k].file);drawChart(c,true,null,'opt');
+  try{const r=ch&&ch.timeScale().getVisibleRange();if(r)ch2.timeScale().setVisibleRange(r);}catch(e){}
+  return c;}
 const merge=parts=>{const seen=new Set(),M=[];for(const c of parts)for(const m of c.M)if(!seen.has(m[0]+'|'+m[9])){seen.add(m[0]+'|'+m[9]);M.push(m);}
-  const cat=k=>parts.flatMap(c=>c[k]||[]),ZN=new Map();for(const c of parts)for(const z of c.ZONES||[])if(!ZN.has(z[0]))ZN.set(z[0],z);   // FZ: Z rows per bar, ZONES by id (option chunks have neither)
+  // FZ: Z rows per bar, ZONES by id (option chunks have neither). A room (FZ v2 id, not 'A/B<yyyy-mm-dd ...>') is drawn only to the
+  // end of the last merged chunk that lists it: lab leaves a room out of every chunk that starts after it retired, so a merged
+  // window must not carry it on past that chunk (a 6th element, end; base bands keep none and run to the last bar)
+  const cat=k=>parts.flatMap(c=>c[k]||[]),ZN=new Map();
+  for(const c of parts){const e=c.C&&c.C.length?c.C[c.C.length-1][0]:null;
+    for(const z of c.ZONES||[]){const r=ZN.get(z[0])||[...z.slice(0,5),null];if(!/^[AB]\d{4}-/.test(z[0]))r[5]=e;ZN.set(z[0],r);}}
   return {C:cat('C'),S:cat('S'),E:cat('E'),PR:cat('PR'),PAIR:cat('PAIR'),M,Z:cat('Z'),ZONES:[...ZN.values()]};};
 async function renderWin(range){const parts=[];for(let k=WIN.lo;k<=WIN.hi;k++)parts.push(await getJSON(D.base+D.charts[k].file));const c=merge(parts);drawChart(c,!range,range);return c;}
 const inView=()=>D.charts.map((c,i)=>i).filter(i=>(D.charts[i].kind||'signal')===VIEW);
-async function showChunk(k){if(k==null||isNaN(k))return;$('series').value=k;busy(true,'Loading chart…');try{WIN={lo:k,hi:k};return await renderWin();}finally{busy(false);}}
+async function showChunk(k){if(k==null||isNaN(k))return;$('series').value=k;busy(true,'Loading chart…');
+  try{WIN={lo:k,hi:k};const c=await renderWin();await showOpt(D.charts[k].day);return c;}finally{busy(false);}}
 async function extend(dir,r){if(extending||VIEW!=='signal')return;
   const k=dir<0?WIN.lo-1:WIN.hi+1;if(k<0||k>=D.charts.length||(D.charts[k].kind||'signal')!=='signal')return;
   extending=true;busy(true,dir<0?'Loading earlier session…':'Loading next session…');
@@ -381,9 +429,11 @@ async function openType(keepDay){
   renderHeader();
   const file=r.choices[curChoice].file;busy(true,'Loading…');
   try{D=await getJSON(file);D.base=file.slice(0,file.lastIndexOf('/')+1);}finally{busy(false);}
-  const kinds=[...new Set(D.charts.map(c=>c.kind||'signal'))];VIEW=kinds.includes('option')?'option':'signal';
-  $('viewSeg').style.display=kinds.length>1?'':'none';
-  $('viewSeg').innerHTML=kinds.map(k=>`<button data-v="${k}">${k==='option'?'Option chart':'Signal chart (futures)'}</button>`).join('');
+  const kinds=[...new Set(D.charts.map(c=>c.kind||'signal'))];VIEW=STACK()?'signal':kinds.includes('option')?'option':'signal';
+  $('viewSeg').style.display=kinds.length>1&&!STACK()?'':'none';
+  const und=(runOf(cur).underlying||'FUT')==='INDEX'||cur.variant==='OPT_NATIVE'?'index':'futures';
+  $('viewSeg').innerHTML=kinds.map(k=>`<button data-v="${k}">${k==='option'?'Option chart':`Signal chart (${und})`}</button>`).join('');
+  if(!STACK()){$('optWrap').style.display='none';if(ch2){ch2.remove();ch2=null;}}
   $('viewSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
   CALM=null;schemeChanged(true);let k0;
   if(keep){const ix=D.charts.map((c,i)=>i).filter(i=>(D.charts[i].kind||'signal')===VIEW&&D.charts[i].day);   // same day, else the nearest one
@@ -399,30 +449,33 @@ function schemeChanged(noChart){
 const inScheme=lbl=>{const [pos,ot]=(lbl||'').split(' ');return inSch({pos,otype:ot||'FUT'},schemeOf(cur));};
 
 // ================= chart
-function drawChart(CH_,single,range){
+function drawChart(CH_,single,range,tgt){
   const {C,S:SW,E,PR,PAIR,M,Z=[],ZONES=[]}=CH_;
-  if(ch){ch.remove();ch=null;}
-  ch=LightweightCharts.createChart($('chart'),{autoSize:true,layout:{background:{color:'#fff'},textColor:'#4b5563',fontFamily:'system-ui'},
+  const OPT=tgt==='opt',EL=$(OPT?'chart2':'chart');
+  if(OPT){if(ch2){ch2.remove();ch2=null;}}else if(ch){ch.remove();ch=null;}
+  const cx=LightweightCharts.createChart(EL,{autoSize:true,layout:{background:{color:'#fff'},textColor:'#4b5563',fontFamily:'system-ui'},
     grid:{vertLines:{color:'#f3f4f6'},horzLines:{color:'#f3f4f6'}},rightPriceScale:{borderColor:'#e6e8ec'},
     timeScale:{timeVisible:true,secondsVisible:false,rightOffset:4,borderColor:'#e6e8ec'},crosshair:{mode:0},
     handleScroll:{mouseWheel:false,pressedMouseMove:true,horzTouchDrag:true,vertTouchDrag:false},
     handleScale:{mouseWheel:false,pinch:true,axisPressedMouseMove:true},localization:{timeFormatter:t=>iso(t).slice(5,16).replace('T',' ')}});
-  // FZ bands (Strategies 5-6): one translucent lo-hi box per remembered band from its birth (or the first bar) to the last bar,
+  if(OPT)ch2=cx;else ch=cx;
+  // FZ bands / rooms (Strategies 5-8): one translucent lo-hi box per remembered band from its birth (or the first bar) to the last bar
+  // (a room: to the end of the last merged chunk that lists it, see merge()),
   // added before the candles so it sits under them; A = protected-level band (chart purple), B = cluster-sit band (chart blue)
   const tint=(h,a)=>`rgba(${parseInt(h.slice(1,3),16)},${parseInt(h.slice(3,5),16)},${parseInt(h.slice(5,7),16)},${a})`;
   const ZS=[],t0=C[0][0],t1=C[C.length-1][0];
-  for(const [,kind,lo,hi,born] of ZONES){const a=Math.max(born,t0);if(a>=t1)continue;const col=tint(kind==='A'?'#7b1fa2':'#2962ff',.07);
-    const s=ch.addBaselineSeries({lastValueVisible:false,priceLineVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null,visible:on.zones,
+  for(const [,kind,lo,hi,born,end] of ZONES){const a=Math.max(born,t0),b=end!=null?Math.min(end,t1):t1;if(a>=b)continue;const col=tint(kind==='A'?'#7b1fa2':'#2962ff',.07);
+    const s=cx.addBaselineSeries({lastValueVisible:false,priceLineVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null,visible:on.zones,
       baseValue:{type:'price',price:lo},lineVisible:false,topLineColor:col,topFillColor1:col,topFillColor2:col,bottomLineColor:col,bottomFillColor1:col,bottomFillColor2:col});
-    s.setData([{time:a,value:hi},{time:t1,value:hi}]);ZS.push(s);}
-  const cs=ch.addCandlestickSeries({upColor:'#089981',downColor:'#f23645',wickUpColor:'#089981',wickDownColor:'#f23645',borderVisible:false});
+    s.setData([{time:a,value:hi},{time:b,value:hi}]);ZS.push(s);}
+  const cs=cx.addCandlestickSeries({upColor:'#089981',downColor:'#f23645',wickUpColor:'#089981',wickDownColor:'#f23645',borderVisible:false});
   cs.priceScale().applyOptions({scaleMargins:{top:0.06,bottom:0.2}});
   cs.setData(C.map(r=>({time:r[0],open:r[1],high:r[2],low:r[3],close:r[4]})));
   const base={lastValueVisible:false,priceLineVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null};
-  const L={vol:[],swings:[],avwap:[],prot:[],trades:[],zones:ZS};
-  const line=(layer,opt,data)=>{const s=ch.addLineSeries({...base,...opt,visible:on[layer]});s.setData(data);L[layer].push(s);};
-  const vs=ch.addHistogramSeries({priceScaleId:'vol',priceFormat:{type:'volume'},lastValueVisible:false,priceLineVisible:false,visible:on.vol});
-  ch.priceScale('vol').applyOptions({scaleMargins:{top:0.84,bottom:0}});
+  const L={vol:[],swings:[],avwap:[],prot:[],trades:[],zones:ZS,rlevels:[]};
+  const line=(layer,opt,data)=>{const s=cx.addLineSeries({...base,...opt,visible:on[layer]});s.setData(data);L[layer].push(s);};
+  const vs=cx.addHistogramSeries({priceScaleId:'vol',priceFormat:{type:'volume'},lastValueVisible:false,priceLineVisible:false,visible:on.vol});
+  cx.priceScale('vol').applyOptions({scaleMargins:{top:0.84,bottom:0}});
   vs.setData(C.map(r=>({time:r[0],value:r[7],color:r[4]>=r[1]?'rgba(8,153,129,.35)':'rgba(242,54,69,.35)'})));L.vol.push(vs);
   for(const [idx,col] of [[5,'rgba(8,153,129,.4)'],[6,'rgba(242,54,69,.4)']])
     line('swings',{color:col,lineVisible:false,pointMarkersVisible:true,pointMarkersRadius:1.5},C.map(r=>r[idx]==null?{time:r[0]}:{time:r[0],value:r[idx]}));
@@ -440,9 +493,24 @@ function drawChart(CH_,single,range){
   for(const [et0,ep,xt,xp,d,pts,open,sl,why,label] of M){const lbl=label||(d==='up'?'LONG':'SHORT');if(!inScheme(lbl))continue;
     const up=d==='up',win=pts>0,xe=Math.min(xt,tmax),et=Math.max(et0,tmin);
     if(et0>=tmin)MK.trades.push({time:et0,position:up?'belowBar':'aboveBar',color:'#111',shape:up?'arrowUp':'arrowDown',size:1.5,text:lbl});
-    if(xt<=tmax)MK.trades.push({time:xt,position:up?'aboveBar':'belowBar',color:win?'#089981':'#f23645',shape:'circle',size:0.9,text:(why==='stop_loss'?'SL ':why==='expiry'?'EXPIRY ':why==='band_reclaim'?'BAND ':open?'OPEN* ':'')+fmt(pts)});
+    if(xt<=tmax)MK.trades.push({time:xt,position:up?'aboveBar':'belowBar',color:win?'#089981':'#f23645',shape:'circle',size:0.9,text:(why==='stop_loss'?'SL ':why==='trail_stop'?'TRAIL ':why==='eod'?'EOD ':/^target /.test(why||'')?'T'+why.slice(7)+' ':why==='expiry'?'EXPIRY ':why==='band_reclaim'?'BAND ':open?'OPEN* ':'')+fmt(pts)});
     line('trades',{color:win?'#089981':'#f23645',lineWidth:2,lineStyle:2},et===xe?[{time:et,value:ep}]:[{time:et,value:ep},{time:xe,value:xp}]);
     if(sl!=null)line('trades',{color:'#d32f2f',lineWidth:1,lineStyle:1},et===xe?[{time:et,value:sl}]:[{time:et,value:sl},{time:xe,value:sl}]);}
+  // managed exits (position.exit "position", Strategies 9-10): each position's stop, its target levels (1R, 2R ...) and the level
+  // where the trail starts (3R), from the entry to the position's last exit, labelled on the price axis. R = |entry - initial stop|
+  // in the traded instrument; drawn on futures / index charts for the Futures type and on the option's own chart for option types
+  if(MANAGED(cur)&&(cur.variant==='FUT'||OPT||VIEW==='option')){
+    const P=cur.position,byE=new Map(),seen=new Set(),base0=l=>(l||'').split(' · ')[0];
+    for(const t of allTrades())if(t.sl!=null)byE.set(t.ets+'|'+t.pos+'|'+(cur.variant==='FUT'?'':t.otype),t);
+    const lv=[['SL',-1,'#d32f2f'],...(P.scale_out||[]).filter(x=>x.target_r!=null).map(x=>[x.target_r+'R',x.target_r,'#089981']),
+              ...(P.trail?[[P.trail.start_r+'R trail',P.trail.start_r,'#2962ff']]:[])];
+    for(const m of M){const [et0,ep,,,d,,,,,label]=m,lbl=label||(d==='up'?'LONG':'SHORT');if(!inScheme(lbl))continue;
+      const pos=d==='up'?'LONG':'SHORT',ot=cur.variant==='FUT'?'':(base0(lbl).split(' ')[1]||''),key=et0+'|'+pos+'|'+ot;
+      if(seen.has(key))continue;const t=byE.get(key);if(!t)continue;seen.add(key);
+      const end=Math.min(Math.max(...M.filter(z=>z[0]===et0&&z[4]===d&&base0(z[9])===base0(lbl)).map(z=>z[2])),tmax),a=Math.max(et0,tmin);
+      const R=Math.abs(t.ep-t.sl),sg=d==='up'?1:-1;if(!R||a>end)continue;
+      for(const [name,k,col] of lv){const y=+(ep+sg*k*R).toFixed(2);
+        line('rlevels',{color:col,lineWidth:1,lineStyle:k<0?0:2,title:name,lastValueVisible:true},a===end?[{time:a,value:y}]:[{time:a,value:y},{time:end,value:y}]);}}}
   // FZ gate at each Foundation SETUP (T TAKE · W WATCH · B BLOCK · R REENTER), plus R where a watch re-entered on a later bar;
   // below the bar for up, above for down; futures chunks only (they carry Z); toggled with the trades layer
   if(D&&D.fz&&Z.length){const {cols,rows}=D.fz.ledger,[iT,iD,iG,iO,iF,iOG]=['time','dir','gate','watch_outcome','fill_time','outcome_gate'].map(k=>cols.indexOf(k));
@@ -452,10 +520,10 @@ function drawChart(CH_,single,range){
     for(const r of rows){if(G[r[iG]])put(r[iT],r[iD],G[r[iG]]);if(later(r))put(r[iF],r[iD],G.REENTER);}}
   const markers=()=>{const m=[];if(on.swings)m.push(...MK.swings);if(on.struct)m.push(...MK.struct);if(on.trades)m.push(...MK.trades,...MK.fz);m.sort((a,b)=>a.time-b.time);cs.setMarkers(m);};
   markers();
-  const chips=[['trades','Trades','#111'],['avwap','AVWAP','#ff6d00'],['prot','Protected','#7b1fa2'],['struct','CHoCH/BOS','#9e9e9e'],['swings','Swings','#089981'],['vol','Volume','#c3c7cf']].concat(ZONES.length?[['zones','Zones','#2962ff']]:[]);
-  $('layers').innerHTML='';
+  const chips=[['trades','Trades','#111'],...(MANAGED(cur)?[['rlevels','1R / 2R / 3R','#089981']]:[]),['avwap','AVWAP','#ff6d00'],['prot','Protected','#7b1fa2'],['struct','CHoCH/BOS','#9e9e9e'],['swings','Swings','#089981'],['vol','Volume','#c3c7cf']].concat(ZONES.length?[['zones','Zones','#2962ff']]:[]);
+  if(!OPT){$('layers').innerHTML='';
   for(const [k,lbl,col] of chips){const b=document.createElement('span');b.className='chip'+(on[k]?' on':'');b.innerHTML=`<i style="background:${col}"></i>${lbl}`;
-    b.onclick=()=>{on[k]=!on[k];b.classList.toggle('on',on[k]);(L[k]||[]).forEach(s=>s.applyOptions({visible:on[k]}));markers();};$('layers').appendChild(b);}
+    b.onclick=()=>{on[k]=!on[k];b.classList.toggle('on',on[k]);(L[k]||[]).forEach(s=>s.applyOptions({visible:on[k]}));markers();};$('layers').appendChild(b);}}
   const byT=new Map(C.map(r=>[r[0],r]));
   // FZ card of the hovered bar, from its as-of Z row: band and edges · visit n · this / first visit bars · volume ratio · read
   const byZ=new Map(Z.map(z=>[z[0],z])),ZI=new Map(ZONES.map(z=>[z[0],z])),RD=D&&D.fz?D.fz.legend.read:[];
@@ -464,17 +532,22 @@ function drawChart(CH_,single,range){
   const zcard=z=>{if(!z)return '';const [,id,vn,tb,tv,fb,fv,rc,left,,vna,,,,,fvna]=z,b=id&&ZI.get(id),rd=RD[rc]||'';
     const band=id?`Z ${zn(id)}${b?` ${b[2]}–${b[3]}`:''} · visit ${vn} · ${tb}/${fb??'—'} bars · vol ${!vna&&!fvna&&tv!=null&&fv?(tv/fv).toFixed(2):'NA'}`:'no band';
     return `<span class="pipe">|</span>${band} · <b>${rd}</b>${rd==='LEAVE'&&left?` from ${zn(left)}`:''}`;};
-  const showBar=r=>{if(!r)return;$('ohlc').innerHTML=`${iso(r[0]).slice(5,16).replace('T',' ')} O <b>${r[1]}</b> H <b>${r[2]}</b> L <b>${r[3]}</b> C <b class="${r[4]>=r[1]?'pos':'neg'}">${r[4]}</b> V <b>${r[7].toLocaleString('en-IN')}</b>${zcard(byZ.get(r[0]))}`;};
-  showBar(C[C.length-1]);ch.subscribeCrosshairMove(p=>showBar(p.time?byT.get(p.time):C[C.length-1]));
-  $('chart').onwheel=e=>{if(!e.ctrlKey)return;e.preventDefault();const ts=ch.timeScale(),r=ts.getVisibleLogicalRange();if(!r)return;
+  const showBar=r=>{if(!r)return;$(OPT?'ohlc2':'ohlc').innerHTML=`${iso(r[0]).slice(5,16).replace('T',' ')} O <b>${r[1]}</b> H <b>${r[2]}</b> L <b>${r[3]}</b> C <b class="${r[4]>=r[1]?'pos':'neg'}">${r[4]}</b> V <b>${r[7].toLocaleString('en-IN')}</b>${zcard(byZ.get(r[0]))}`;};
+  showBar(C[C.length-1]);cx.subscribeCrosshairMove(p=>showBar(p.time?byT.get(p.time):C[C.length-1]));
+  EL.onwheel=e=>{if(!e.ctrlKey)return;e.preventDefault();const ts=cx.timeScale(),r=ts.getVisibleLogicalRange();if(!r)return;
     const x=ts.coordinateToLogical(e.offsetX)??(r.from+r.to)/2,k=e.deltaY>0?1.15:1/1.15;ts.setVisibleLogicalRange({from:x-(x-r.from)*k,to:x+(r.to-x)*k});};
   const per=375/({'minute':1,'3minute':3,'5minute':5,'15minute':15,'30minute':30}[runOf(cur).timeframe]||5);
-  if(range)ch.timeScale().setVisibleLogicalRange(range);
-  else if(single)ch.timeScale().fitContent();else ch.timeScale().setVisibleLogicalRange({from:C.length-per-2,to:C.length+2});
-  if(WIN)ch.timeScale().subscribeVisibleLogicalRangeChange(r=>{if(!r||extending)return;if(r.from<5&&WIN.lo>0)extend(-1,r);else if(r.to>C.length+2&&WIN.hi<D.charts.length-1)extend(1,r);});
-  CH_.zoom=(a,b)=>{const idx=t=>{let lo=0,hi=C.length-1;while(lo<hi){const m=(lo+hi)>>1;if(C[m][0]<t)lo=m+1;else hi=m;}return lo;};ch.timeScale().setVisibleLogicalRange({from:idx(a)-20,to:idx(b)+20});};
+  if(range)cx.timeScale().setVisibleLogicalRange(range);
+  else if(single)cx.timeScale().fitContent();else cx.timeScale().setVisibleLogicalRange({from:C.length-per-2,to:C.length+2});
+  if(WIN&&!OPT)cx.timeScale().subscribeVisibleLogicalRangeChange(r=>{if(!r||extending)return;if(r.from<5&&WIN.lo>0)extend(-1,r);else if(r.to>C.length+2&&WIN.hi<D.charts.length-1)extend(1,r);});
+  cx.timeScale().subscribeVisibleTimeRangeChange(r=>syncCharts(OPT?'opt':'top',r));
+  CH_.zoom=(a,b)=>{const idx=t=>{let lo=0,hi=C.length-1;while(lo<hi){const m=(lo+hi)>>1;if(C[m][0]<t)lo=m+1;else hi=m;}return lo;};cx.timeScale().setVisibleLogicalRange({from:idx(a)-20,to:idx(b)+20});};
 }
 async function openTrade(et,xt){
+  if(STACK()){const day=iso(et).slice(0,10),k=D.charts.findIndex(c=>(c.kind||'signal')==='signal'&&c.day===day);
+    if(k>=0){if(VIEW!=='signal')await setView('signal',k);const c=await showChunk(k);if(c)c.zoom(et,xt);
+      const o=D.charts.findIndex(c=>c.kind==='option'&&c.day===day&&c.marks.includes(et));if(o>=0)await showOpt(day,o);
+      document.querySelector('.chartcard').scrollIntoView({behavior:'smooth',block:'start'});return;}}
   let k=inView().find(i=>D.charts[i].marks.includes(et));
   if(k==null){k=D.charts.findIndex(c=>c.marks.includes(et));if(k<0)k=inView().slice(-1)[0];else await setView(D.charts[k].kind||'signal',k);}
   const c=await showChunk(k);if(c)c.zoom(et,xt);document.querySelector('.chartcard').scrollIntoView({behavior:'smooth',block:'start'});
@@ -485,7 +558,7 @@ async function openAt(t0,t1){const d=iso(t0).slice(0,10),k=D.charts.findIndex(c=
   if(VIEW!=='signal')await setView('signal',k);const c=await showChunk(k);if(c)c.zoom(t0,t1);document.querySelector('.chartcard').scrollIntoView({behavior:'smooth',block:'start'});}
 
 // ================= trades of the current selection
-const allTrades=()=>D.trades.map(([otype,instr,strike,cht,et,ep,sl,xt,xp,why,pts,gross,chg,net,open,cb,ue,ux,stale,mfe,mae,pos,ot,sig,exp,g_,rr_,z_,f_,lots,tranche])=>({otype:ot||otype,pos:pos||'LONG',sig:sig||'',exp,instr,strike,cht,et,ep,sl,xt,xp,why,pts,gross,chg,net,open,cb,ue,ux,stale,mfe:mfe??0,mae:mae??0,lots:lots||1,tranche:tranche||'',
+const allTrades=()=>D.trades.map(([otype,instr,strike,cht,et,ep,sl,xt,xp,why,pts,gross,chg,net,open,cb,ue,ux,stale,mfe,mae,pos,ot,sig,exp,g_,rr_,z_,f_,lots,tranche,scan])=>({otype:ot||otype,pos:pos||'LONG',sig:sig||'',exp,instr,strike,cht,et,ep,sl,xt,xp,why,pts,gross,chg,net,open,cb,ue,ux,stale,mfe:mfe??0,mae:mae??0,lots:lots||1,tranche:tranche||'',scan:scan||'',
     ets:Date.parse(et.replace(' ','T')+'Z')/1000,xts:Date.parse(xt.replace(' ','T')+'Z')/1000}));
 const sel=()=>allTrades().filter(t=>inSch(t,schemeOf(cur)));
 const sessionsOf=()=>[...new Set(D.charts.map(c=>c.day).filter(Boolean))].sort();
@@ -581,7 +654,7 @@ function renderTrades(T,LOT){
   const cbTip=cb=>['Brokerage '+inr(cb.brokerage),'STT '+inr(cb.stt),'Exchange '+inr(cb.exchange),'SEBI '+inr(cb.sebi),'Stamp '+inr(cb.stamp),'GST '+inr(cb.gst)].join('&#10;');
   const und=cur.variant==='OPT_FUT_SIGNAL',opt=cur.variant!=='FUT',lotc=T.some(t=>t.lots>1||t.tranche);let cum=0;
   const expD=e=>e?new Date(e+'T00:00:00Z').toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit',timeZone:'UTC'}):'—';
-  const inst=t=>opt?`<td>${expD(t.exp)}</td><td class="num" title="${esc(t.instr)}">${t.strike!=null?Math.round(t.strike):'—'}</td><td>${t.otype}</td>`:`<td>${t.instr}</td>`;
+  const inst=t=>opt?`<td>${expD(t.exp)}</td><td class="num" title="${esc(t.instr)}${t.scan?' · picked by the '+t.scan+' scan':''}">${t.strike!=null?Math.round(t.strike):'—'}${t.scan?' <span class="sub">'+t.scan+'</span>':''}</td><td>${t.otype}</td>`:`<td>${t.instr}</td>`;
   $('ttrades').innerHTML=`<thead><tr><th>#</th><th>Position</th>${opt?'<th>Expiry</th><th class="num">Strike</th><th>CE/PE</th>':'<th>Instrument</th>'}<th>Signal</th><th>${opt?'Option entry':'Entry'}</th><th class="num">SL${und?' (fut)':opt?' (option)':''}</th><th>${opt?'Option exit':'Exit'}</th><th>Reason</th>${und?'<th class="num">Fut in → out</th>':''}${lotc?'<th class="num">Lots</th>':''}<th class="num">Max profit</th><th class="num">Max loss</th><th class="num">Points</th><th class="num">Gross ₹</th><th class="num">Charges ₹</th><th class="num">Net ₹</th><th class="num">Cum. net ₹</th></tr></thead><tbody>`+
     T.map((t,i)=>{cum+=t.net;return `<tr class="z" data-a="${t.ets}" data-b="${t.xts}"><td>${i+1}</td><td><span class="pill ${t.pos==='LONG'?'long':'short'}">${t.pos}</span></td>${inst(t).replace(/<\/td>$/,(t.stale?' <span class="pill open" title="price from an earlier candle the same day">stale</span>':'')+'</td>')}<td>${sigName(t)}</td><td>${t.et.slice(5,16)} @ ${t.ep}</td><td class="num">${t.sl??'—'}</td><td>${t.xt.slice(5,16)} @ ${t.xp}</td><td><span class="pill ${t.why==='stop_loss'?'short':t.open?'open':'grey'}">${WHY[t.why]||t.why}</span></td>${und?`<td class="num">${t.ue} → ${t.ux}</td>`:''}${lotc?`<td class="num" title="${esc(t.tranche)}">${t.lots}${t.tranche?' · '+esc(t.tranche):''}</td>`:''}<td class="num pos" title="${inr(t.mfe*LOT)} per lot">${fmt(t.mfe)}</td><td class="num neg" title="${inr(t.mae*LOT)} per lot">${fmt(t.mae)}</td><td class="num ${cl(t.pts)}">${fmt(t.pts)}</td><td class="num ${cl(t.pts)}">${inr(t.gross)}</td><td class="num neg" title="${cbTip(t.cb)}">${inr(-t.chg)}</td><td class="num ${cl(t.net)}">${inr(t.net)}${t.open?'<span class="warn" title="open at the backtest end, valued at its last candle">*</span>':''}</td><td class="num ${cl(cum)}">${inr(cum)}</td></tr>`;}).join('')+'</tbody>';
   const op=T.filter(t=>t.open);
@@ -608,9 +681,9 @@ function renderSignals(){
   $('sighint').textContent=D.signals.length?'Every CHoCH on the futures chart, the AVWAP pair it started, and the SETUP that followed.'+(F?' Read and Gate: the FZ card at that SETUP and what the gate did (details in the Zone gate tab).':''):'Options (standalone): the signals are on each day\'s option chart — pick it in the session list above the chart.';
   $('tsignals').innerHTML=D.signals.length?`<thead><tr><th>CHoCH</th><th>Direction</th><th class="num">Protected</th><th>AVWAP from SH</th><th>AVWAP from SL</th><th>SETUP</th>${F?'<th>Read</th><th>Gate</th>':''}</tr></thead><tbody>`+
     D.signals.map(g=>`<tr><td>${g.time.slice(5,16)}</td><td><span class="pill ${g.dir==='up'?'long':'short'}">${g.dir==='up'?'future long':'future short'}</span></td><td class="num">${g.lvl}</td><td>${g.hi?g.hi[0].slice(5,16)+' @ '+g.hi[1]:'—'}</td><td>${g.lo?g.lo[0].slice(5,16)+' @ '+g.lo[1]:'—'}</td><td>${g.setup?g.setup.slice(5,16):'<span class="pill grey">none</span>'}</td>${fzc(g)}</tr>`).join('')+'</tbody>':'';}
-function renderConfig(){const m=cur,r=runOf(m),sch=D.charges,labs={code:'Code',break_mode:'Break mode (swings, BOS)',choch_mode:'CHoCH mode',avwap_weight:'AVWAP weight',sl_rule:'Stop-loss rule',warmup_days:'Warm-up (sessions)',slippage_pts:'Slippage (pts/side)',lot_size:'Lot size',capital_fut:'Futures margin / lot (₹)',capital_opt_short:'Short option margin / lot (₹)',charge_code:'Charge schedule'};
+function renderConfig(){const m=cur,r=runOf(m),sch=D.charges,labs={code:'Code',holding:'Holding',break_mode:'Break mode (swings, BOS)',choch_mode:'CHoCH mode',avwap_weight:'AVWAP weight',sl_rule:'Stop-loss rule',warmup_days:'Warm-up (sessions)',slippage_pts:'Slippage (pts/side)',lot_size:'Lot size',capital_fut:'Futures margin / lot (₹)',capital_opt_short:'Short option margin / lot (₹)',charge_code:'Charge schedule'};
   $('cfg').innerHTML=`<dt>Showing</dt><dd>${m.name} · ${SCH[schemeOf(m)]}${m.variant!=='FUT'?` · ${EXP[ck(curChoice)[0]]} · strike ${ck(curChoice)[1]}`:''}</dd><dt>Backtest</dt><dd>${r.label} · ${r.date_from} → ${r.date_to} · ${TFS[r.timeframe]}${r.design?' (design timeframe)':''}</dd>`+
-    Object.entries(labs).map(([k,v])=>`<dt>${v}</dt><dd>${m[k]??'—'}</dd>`).join('')+
+    Object.entries(labs).map(([k,v])=>`<dt>${v}</dt><dd>${k==='holding'?(HOLD(r)||HOLD0(m)):m[k]??'—'}</dd>`).join('')+
     `<dt>Brokerage</dt><dd>${sch.brokerage_flat?'₹'+sch.brokerage_flat+' flat per order':sch.brokerage_pct+'% or ₹'+sch.brokerage_cap+' per order'}</dd><dt>STT</dt><dd>${sch.stt_buy_pct}% buy · ${sch.stt_sell_pct}% sell</dd><dt>Exchange</dt><dd>${sch.exchange_pct}%</dd><dt>Stamp</dt><dd>${sch.stamp_buy_pct}% buy</dd><dt>GST</dt><dd>${sch.gst_pct}%</dd><dt>Note</dt><dd>${sch.notes}</dd>`+fzConfig(m,r);}
 // FZ rows: every threshold of this timeframe's fz block as the strategy file states it, with its provenance
 function fzConfig(m,r){let b=null;try{b=m.fz_json?JSON.parse(m.fz_json)[r.timeframe]:null;}catch(e){}if(!b)return '';
@@ -621,7 +694,7 @@ function fzConfig(m,r){let b=null;try{b=m.fz_json?JSON.parse(m.fz_json)[r.timefr
 let FZG='ALL';   // ledger filter: ALL or one gate
 function renderFZ(){
   const F=D&&D.fz,el=$('p-fz');
-  if(!F){el.innerHTML='<p class="hint">Not an FZ strategy. The Zone gate belongs to Strategies 5 and 6, which card every Foundation SETUP against a memory of price bands and gate it TAKE / WATCH / BLOCK, with REENTER after a confirmed leave of the band.</p>';return;}
+  if(!F){el.innerHTML='<p class="hint">Not an FZ strategy. The Zone gate belongs to Strategies 5 to 8, which card every Foundation SETUP against a memory of price bands and gate it TAKE / WATCH / BLOCK, with REENTER after a confirmed leave of the band.</p>';return;}
   const s=F.stats,c=F.control,pm=F.permutation,fl=F.flags,w=s.watches||{},p=s.positions||{},r=runOf(cur),GT=['TAKE','REENTER','WATCH','BLOCK'];
   const kv=o=>Object.entries(o||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k} ${v}`).join(' · ')||'—';
   const ord=(o,ks)=>ks.filter(k=>o&&o[k]!=null).map(k=>`${k} ${o[k]}`).join(' · ')||'—';

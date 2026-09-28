@@ -22,13 +22,25 @@ Two memory models (room_model), the rest of the module shared:
   rooms    FZ v2 (Strategies 7, 8): a room is born only on the transition into a sit (birth_a_source 'none'), centred on
            the sit, visit 1 = the sit; a sit overlapping a live room by merge_overlap is a visit of that room (the live
            visit follows it); a sit overlapping a room already visited this session is a visit of that older room
-           (same_session_overlap 'keep_older'); live rooms never overlap (room_overlap: 'supersede' retires the rooms a new sit partly
+           (same_session_overlap 'keep_older'; 'visited' = any close inside, or a sit of cluster_bars closes inside,
+           session_visit_rule); a sit within band_half_width of a room sat in this session is not a birth and not a
+           visit (adjacent_birth 'block_half_width', counted sits_near_room); live rooms never overlap (room_overlap: 'supersede' retires the rooms a new sit partly
            overlaps, 'clip' stops the new room at their edges); a room with no inside close in room_max_age_sessions
            sessions is retired on a session's first bar (never the ref band again, absorbs nothing, contains no price);
            ids '<letter> <mm-dd hh:mm>' (birth order in the session, birth bar)
   In either model a stay with fewer than visit_min_bars inside closes that ends by the leave rule is a touch: counted on
   the zone and the card (touches), not a visit (visit_n does not advance); and the close-form HUNT is 1..hunt_max_bars
-  closes outside on one side, then a close back inside.
+  closes outside on one side, then a close back inside. defend_half 'away_half' (either model; base 'off') lets a defend
+  TAKE through only when the SETUP close is in the half of the room away from the defended edge (above the mid for a
+  long, below it for a short); otherwise the row falls through to WATCH with take_why defend_wrong_half. defend_direction
+  'one_per_visit' (base 'any'): after a defend TAKE one way in a visit, a defend the other way in the same visit is WATCH
+  with take_why defend_opposite_in_visit.
+  Rooms only: room_edges 'sit_range' (base 'half_width') gives a room the min / max close of the sit that bore it, frozen
+  at birth; absorb_rule 'mid_inside' (base 'overlap') absorbs a sit only into the live room containing its mid;
+  same_day_replace 'replace' (base 'off'): a sit that is not absorbed and overlaps or touches a room born earlier the
+  same session is born and retires that room (retired_by same_day_replace; a watch on it ends, reason room_replaced);
+  'replace_unaccepted' does so only while that room has not had an ACCEPTED stay (accepted_at, set as of the close
+  on which a stay of the room first reads ACCEPTED); an accepted same-day room keeps keep_older / adjacent_birth.
 
 One live visit at a time wins over a return (the D01 tie-break): a close back inside the band just left ends its LEAVE
 and sets the band's leave_failed flag (the card shows it as last_leave_failed while that band is the ref band), but it
@@ -56,7 +68,11 @@ CHOICES = dict(birth_a_source=("protected_level", "every_swing", "none"), birth_
                hunt_form=("close", "wick"), leave_far_side=("any", "block_list", "no_band"),
                fade_scope=("ref_band", "any_band"), edge_watch=("ref_band", "containing_band"),
                volume_base=("first", "previous"), reenter_fill=("confirm_bar",), room_model=("bands", "rooms"),
-               room_overlap=("supersede", "clip"), same_session_overlap=("keep_older", "supersede"))
+               room_overlap=("supersede", "clip"), same_session_overlap=("keep_older", "supersede"),
+               session_visit_rule=("any_close", "sit"), adjacent_birth=("allow", "block_half_width"),
+               defend_half=("off", "away_half"), room_edges=("half_width", "sit_range"),
+               absorb_rule=("overlap", "mid_inside"), defend_direction=("any", "one_per_visit"),
+               same_day_replace=("off", "replace", "replace_unaccepted"))
 BAR_COUNTS = ("cluster_bars", "accept_bars", "first_print_min_bars", "hunt_max_bars", "leave_closes", "leave_ttl_bars",
               "fade_block_bars", "defend_window_bars", "open_bars", "open_quiet_bars", "open_sit_closes",
               "cancel_inside_bars", "control_draws", "visit_min_bars")
@@ -155,6 +171,7 @@ def run(bars, view, cfg, tf_min, s0, open_position):
     card, rows, decisions, reasons, watches = [], {}, [], {}, []
     stash = {}                           # REENTER decided in the watch step on a SETUP bar, for that bar's gate
     absorbed = [None]                    # the zone that absorbed the last candidate birth() refused
+    replaced = [set()]                   # rooms: ids of same-day rooms the last candidate replaces (same_day_replace)
 
     # ---------------------------------------------------------------- helpers
     def inside(z, x): return z["lo"] - EPS <= x <= z["hi"] + EPS
@@ -185,33 +202,65 @@ def run(bars, view, cfg, tf_min, s0, open_position):
         """The visit before V (number V.n - 1, not a touch), or None."""
         return next((W for W in reversed(z["visits"]) if W["n"] == V["n"] - 1 and not W.get("touch") and W is not V), None)
 
-    def room_fit(mid, i):
-        """Rooms: (lo, hi, None, overlapped) for a new room centred at `mid` at bar i, or (None, None, room, []) when a
-        live room absorbs it (overlap >= merge_overlap of the width; largest overlap, then nearest mid, then the older
-        room). With same_session_overlap = keep_older, a sit overlapping (by any amount) a live room that already had an
-        inside close this session (before bar i) is absorbed by it too: the older room keeps its edges and the sit is a
-        visit of it. Any other overlap is removed by room_overlap: supersede returns the overlapped rooms to be retired
-        (the new sit replaces them; the new room keeps its full width), clip stops the new room's edges at theirs."""
-        lo, hi = mid - HW, mid + HW
-        need, best = g["merge_overlap"] * 2 * HW - EPS, None
-        for z in alive:
-            ov = round(min(hi, z["hi"]) - max(lo, z["lo"]), 6)
-            if ov >= need and (best is None or (ov, -abs(z["mid"] - mid), -z["seq"]) > best[0]):
-                best = ((ov, -abs(z["mid"] - mid), -z["seq"]), z)
-        if best: return None, None, best[1], []
-        over = [z for z in alive if min(hi, z["hi"]) - max(lo, z["lo"]) > EPS]
+    def visited_today(z, i):
+        """Room z counts as visited this session (before bar i) under session_visit_rule: any_close = a close inside it
+        this session; sit = a run of at least cluster_bars consecutive same-session closes inside it this session (the
+        sit that bore it counts)."""
+        return (z["sat_sess"] if g["session_visit_rule"] == "sit" else z["last_in"]) == sess[i]
+
+    def room_fit(mid, i, rng=None):
+        """Rooms: (lo, hi, absorber, overlapped, near, how) for a candidate sit at bar i, in this order. The candidate's
+        band is mid +- band_half_width (room_edges = half_width) or the sit's own close range `rng` (sit_range; a
+        candidate without a sit, i.e. a swing birth, keeps mid +- band_half_width).
+          absorber  absorb_rule = overlap: a live room overlapping the band by >= merge_overlap x the candidate's width
+                    (largest overlap, then nearest mid, then the older room); absorb_rule = mid_inside: the live room
+                    containing the candidate's mid (nearest mid, then the older room)  -> how = 'merge'
+                    then, with same_session_overlap = keep_older, a live room visited this session (visited_today) that
+                    the band overlaps by any amount: the older room keeps its edges, the sit is a visit  -> how = 'older'
+          near      with adjacent_birth = block_half_width, a live room visited this session whose edge is within a
+                    distance of the band (overlapping or not): band_half_width (half_width) or that room's own half-range
+                    (sit_range): no birth and no visit
+          same_day_replace = replace (checked after the absorb rule, before keep_older / adjacent_birth): the live rooms
+                    born earlier this session that the band overlaps or touches (gap <= 0) are not protected by
+                    keep_older / adjacent_birth; the sit is born and replaces them (their ids go to replaced[0]; birth()
+                    retires them with retired_by = same_day_replace). Rooms born on earlier days keep both protections
+          else a new room at lo..hi; `overlapped` are the live rooms it partly overlaps, retired under room_overlap =
+          supersede (the new room keeps its edges); under clip the new room's edges stop at theirs instead (how =
+          'clipped' when they moved)."""
+        sr = g["room_edges"] == "sit_range" and rng is not None
+        lo, hi = rng if sr else (mid - HW, mid + HW)
+        ovl = lambda z: round(min(hi, z["hi"]) - max(lo, z["lo"]), 6)
+        key = lambda z: (ovl(z), -abs(z["mid"] - mid), -z["seq"])
+        replaced[0] = set()
+        if g["absorb_rule"] == "mid_inside":
+            best = [z for z in alive if inside(z, mid)]
+            if best: return None, None, min(best, key=lambda z: (abs(z["mid"] - mid), z["seq"])), [], None, "merge"
+        else:
+            need = g["merge_overlap"] * ((hi - lo) if sr else 2 * HW) - EPS
+            best = [z for z in alive if ovl(z) >= need]
+            if best: return None, None, max(best, key=key), [], None, "merge"
+        repl = []
+        if g["same_day_replace"] in ("replace", "replace_unaccepted"):
+            repl = [z for z in alive if sess[z["birth_bar"]] == sess[i] and max(lo - z["hi"], z["lo"] - hi) <= EPS
+                    and (g["same_day_replace"] == "replace" or z["accepted_at"] is None)]
+        over = [z for z in alive if ovl(z) > EPS and z not in repl]
         if g["same_session_overlap"] == "keep_older":
-            today = [z for z in over if z["last_in"] == sess[i]]
-            if today:
-                key = lambda z: (round(min(hi, z["hi"]) - max(lo, z["lo"]), 6), -abs(z["mid"] - mid), -z["seq"])
-                i >= s0 and inc("sits_kept_by_older")
-                return None, None, max(today, key=key), []
+            today = [z for z in over if visited_today(z, i)]
+            if today: return None, None, max(today, key=key), [], None, "older"
+        if g["adjacent_birth"] == "block_half_width":
+            dist = (lambda z: (z["hi"] - z["lo"]) / 2) if g["room_edges"] == "sit_range" else (lambda z: HW)
+            near = [z for z in alive if z not in repl and visited_today(z, i)
+                    and max(lo - z["hi"], z["lo"] - hi) <= dist(z) + EPS]
+            if near: return None, None, None, [], min(near, key=lambda z: (abs(z["mid"] - mid), z["seq"])), None
+        how = None
         if g["room_overlap"] == "clip":
             for z in over:
                 if z["mid"] < mid: lo = z["hi"]
                 else: hi = z["lo"]
+            how = "clipped" if over else None
             over = []
-        return lo, hi, None, over
+        replaced[0] = {z["id"] for z in repl}
+        return lo, hi, None, over + repl, None, how
 
     def retire(z, i, why):
         """Retire zone z at bar i (room_max_age_sessions: 'retired'; a superseding sit: 'superseded'): never the ref band
@@ -229,32 +278,41 @@ def run(bars, view, cfg, tf_min, s0, open_position):
             if ov >= need and (best is None or (ov, -z["seq"]) > best[0]): best = ((ov, -z["seq"]), z)
         return best and best[1]
 
-    def birth(kind, mid, origin, i, zid, back, count_merge=True):
+    def birth(kind, mid, origin, i, zid, back, count_merge=True, rng=None):
         """New zone (or None when absorbed; absorbed[0] is then the absorbing zone). Its visit history is replayed with
         the zone-local visit rule over the closes before bar i: from the start of the run of inside closes containing
         `origin` when `back` and that close is inside, else from `origin`. Returns (zone, the replayed visit if still
         open, its outside run, its side). Rooms: named '<letter> <mm-dd hh:mm>' (the letter = birth order within the
         session, the time = the birth bar); the live rooms it overlaps are superseded or it is clipped (room_overlap)."""
-        if ROOMS: lo_, hi_, z0, over = room_fit(mid, i)
+        near = how = None
+        if ROOMS: lo_, hi_, z0, over, near, how = room_fit(mid, i, rng)
         else: z0 = target(mid)
         absorbed[0] = z0
+        if near is not None:                               # adjacent_birth: a sit next to a room sat in today
+            i >= s0 and inc("sits_near_room")
+            return None
         if z0 is not None:
             if count_merge: z0["merges"] += 1; inc(f"merges_{kind}")
+            if how == "older": i >= s0 and inc("sits_kept_by_older")   # same_session_overlap, not the absorb rule
             return None
         if ROOMS:
             k = born_in.get(sess[i], 0); born_in[sess[i]] = k + 1
             zid = f"{room_letters(k)} {t[i][5:10]} {t[i][11:16]}"
             lo, hi = round(lo_, 4), round(hi_, 4)
             mid = round((lo + hi) / 2, 4)
-            if hi - lo < 2 * HW - EPS: i >= s0 and inc("rooms_clipped")
-            for z_ in over: retire(z_, i, "superseded")
+            if how == "clipped": i >= s0 and inc("rooms_clipped")
+            for z_ in over:
+                if z_["id"] in replaced[0]:
+                    retire(z_, i, "same_day_replace")
+                    if watch is not None and watch["band"]["id"] == z_["id"]: end_watch("room_replaced", i)
+                else: retire(z_, i, "superseded")
         else:
             mid = round(mid, 4)                            # edges frozen at birth (float noise trimmed; EPS covers it)
             lo, hi = round(mid - HW, 4), round(mid + HW, 4)
         z = dict(id=zid, kind=kind, lo=lo, hi=hi, mid=mid, origin_bar=origin, birth_bar=i,
                  born_ts=t[i], merges=0, visits=[], seq=len(zones), hunt_at=None, hunt_dir=None, reject_at=None,
                  reject_dir=None, leave_failed=False, today=-1, today_in=0, touches=0, retired_bar=None, retired_by=None,
-                 last_in=sess[i])
+                 last_in=sess[i], sat_sess=sess[i] if kind == "B" else -1, run_sess=-1, in_run=0, accepted_at=None)
         zones.append(z); byid[zid] = z; alive.append(z)
         inc(f"births_{kind}"); i >= s0 and inc(f"births_{kind}_shown")
         j0 = origin
@@ -429,8 +487,12 @@ def run(bars, view, cfg, tf_min, s0, open_position):
             elif S != V["entry_dir"]: row["take_why"] = "first_print_against"
             else: return "first_print", ref
         elif read == "ACCEPTED":
-            if defend(ref, V, k, S): return "defend", ref
-            row["take_why"] = "accepted_no_defend"
+            if not defend(ref, V, k, S): row["take_why"] = "accepted_no_defend"
+            elif g["defend_half"] == "away_half" and not (c[k] > ref["mid"] if S == "up" else c[k] < ref["mid"]):
+                row["take_why"] = "defend_wrong_half"          # the close is not in the half away from the defended edge
+            elif g["defend_direction"] == "one_per_visit" and V.get("defend_dir") not in (None, S):
+                row["take_why"] = "defend_opposite_in_visit"   # this visit already had a defend TAKE the other way
+            else: return "defend", ref
         return None, None
 
     def gate(k, S, row, cd):
@@ -450,6 +512,8 @@ def run(bars, view, cfg, tf_min, s0, open_position):
                 row.update(gate="REENTER", branch=branch)          # a LEAVE of the watched band the watched way (M22)
                 open_reenter(k, k, watch, f"take_on_watch:{branch}"); return
             row.update(gate="TAKE", branch=branch)
+            if branch == "defend" and g["defend_direction"] == "one_per_visit":
+                z["visits"][-1]["defend_dir"] = S              # the gate's decision, whether or not a position opens
             res = open_position("TAKE", k, S, k, snap(z))
             if not opened(res):
                 row.update(refused=res or "refused"); k >= s0 and inc("take_refused"); return
@@ -493,17 +557,17 @@ def run(bars, view, cfg, tf_min, s0, open_position):
             # a candidate on the transition into the sit; while the sit lasts, only a drift the memory cannot absorb
             # (drift_birth), which the room model does not use
             if not cond_prev: cands.append(("B", (hi_ + lo_) / 2, i - N + 1, "B" + t[i], False, True))
-            elif g["drift_birth"] and (room_fit((hi_ + lo_) / 2, i)[2] if ROOMS else target((hi_ + lo_) / 2)) is None:
+            elif g["drift_birth"] and not (any(room_fit((hi_ + lo_) / 2, i, (lo_, hi_))[2::2]) if ROOMS else target((hi_ + lo_) / 2)):
                 cands.append(("B", (hi_ + lo_) / 2, i - N + 1, "B" + t[i], False, False))
         drift = cond and cond_prev
         cond_prev = cond
         prefer = None                                      # rooms: the live room a sit was absorbed into (it takes the visit)
         for kind, mid, origin, zid, back, count in cands:
-            got = birth(kind, mid, origin, i, zid, back, count_merge=count)
+            got = birth(kind, mid, origin, i, zid, back, count_merge=count, rng=(lo_, hi_) if kind == "B" else None)
             if got is not None and kind == "B" and drift: inc("births_B_drift")
             if got is None and ROOMS and kind == "B" and count:
                 Z = absorbed[0]                            # a sit inside a live room is a visit of that room
-                if Z is not ref and inside(Z, x):
+                if Z is not None and Z is not ref and inside(Z, x):
                     if ref is not None:
                         end_stay(ref, ref["visits"][-1], i - 1, "sit_moved"); i >= s0 and inc("visit_ends_sit_moved")
                         ref, orun, oside = None, 0, None
@@ -518,13 +582,18 @@ def run(bars, view, cfg, tf_min, s0, open_position):
         if ref is not None and ref["retired_bar"] is not None:  # superseded with no room taking the visit over
             end_stay(ref, ref["visits"][-1], i - 1, "superseded"); ref, orun, oside = None, 0, None
 
-        # -- bands containing this close; today's inside counts (open guard); the session of the last inside close
+        # -- bands containing this close; today's inside counts (open guard); the session of the last inside close; the
+        #    run of consecutive same-session inside closes and the session of the last sit (session_visit_rule = sit)
         inz = []
         for z in alive:
             if inside(z, x):
                 inz.append(z); z["last_in"] = sess[i]
                 if z["today"] != sess[i]: z["today"], z["today_in"] = sess[i], 0
                 z["today_in"] += 1
+                z["in_run"] = z["in_run"] + 1 if z["run_sess"] == sess[i] else 1; z["run_sess"] = sess[i]
+                if z["in_run"] >= N: z["sat_sess"] = sess[i]
+            else:
+                z["in_run"] = 0
 
         # -- the live visit: continue, count an outside close, or end on the leave_closes-th and start a LEAVE
         prev_ref, prev_orun, prev_oside = ref, orun, oside
@@ -600,6 +669,8 @@ def run(bars, view, cfg, tf_min, s0, open_position):
         elif V is not None and orun == 0: read = inside_read(ref, V)
         elif V is not None: read = "PENDING"
         else: read = "NEW"
+        if V is not None and orun == 0 and ref["accepted_at"] is None and inside_read(ref, V) == "ACCEPTED":
+            ref["accepted_at"] = i                         # as of this close: the room has had an ACCEPTED stay
         zin = ref if (ref is not None and orun == 0) else nearest(inz, x)
         F = first_of(ref) if ref is not None else None
         P = prev_of(ref, V) if ref is not None else None

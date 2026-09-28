@@ -12,7 +12,7 @@ def load(path, date_from, date_to, warmup_days):
     return window(dict(t=[r["datetime"] for r in rows],
                        o=[float(r["open"]) for r in rows], h=[float(r["high"]) for r in rows],
                        l=[float(r["low"]) for r in rows], c=[float(r["close"]) for r in rows],
-                       v=[float(r["volume"]) for r in rows]), date_from, date_to, warmup_days, path)
+                       v=[float(r.get("volume") or 0) for r in rows]), date_from, date_to, warmup_days, path)   # index files: no volume
 
 
 def window(bars, date_from, date_to, warmup_days, name="series"):

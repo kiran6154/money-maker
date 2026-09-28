@@ -27,6 +27,16 @@ A strategy file's optional `position` block sets how each signal is held (defaul
 entry on a locked instrument is skipped until the open one exits; "none"), and `scale_out` tranches that exit part of
 the lots at a fixed target in traded-instrument points while the rest ride the strategy's exit.
 
+Signal source (`underlying`, strategy file; a backtest may override it): "FUT" runs the engine on the near-month futures
+candles, "INDEX" on the NIFTY index candles with an equal-weighted AVWAP (the index has no volume). Either way the Futures
+type trades the near-month futures contract (priced on its own candles at the signal's times; a stop crossed on the index
+fills at the futures price of that candle shifted by the stop's distance), and a position still open at its contract's
+last candle is closed there (`expiry`) - the next month's contract is never used early.
+
+Options (standalone) rescan (`options.native_scan`): every `every_minutes` the strikes of each scan choice are picked for
+CE and PE from the index; the first SETUP on any picked contract opens the position; with `one_per_side` no other contract
+of that side is entered until it has closed. Results are keyed W-SCAN / M-SCAN.
+
 Every full run also appends to results/history/<CODE>.json: one version per change of the strategy's definition or of
 the code its results come from, with the headline numbers per backtest and choice, so a modified strategy is always read
 against its previous version (the dashboard shows the difference; the run prints it).
@@ -86,8 +96,14 @@ TYPES = [("FUT", "", "Futures", "FUTURE"),
          ("OPT_NATIVE", "_NB", "Options (standalone)", "OPTION_NATIVE")]
 TIMEFRAMES = ("minute", "3minute", "5minute", "15minute", "30minute")
 ENTRY_RULES = ("setup_v1", "fz_v1", "fz_v2")
-POSITION_DEFAULT = {"lots": 1, "lock": "strike", "scale_out": [], "exit": "strategy", "stop": None, "trail": None}
+POSITION_DEFAULT = {"lots": 1, "lock": "strike", "scale_out": [], "exit": "strategy", "stop": None, "trail": None,
+                    "square_off": None, "reverse": None}
+REVERSE_TRIGGERS = ("initial_stop",)
 POSITION_EXITS = ("strategy", "position")
+UNDERLYINGS = ("FUT", "INDEX")
+NATIVE_SCAN_DEFAULT = {"choices": ["ATR2", "ATM", "ITM1", "OTM1"], "every_minutes": 5, "one_per_side": True}
+INDEX_WHY_FZ = "FZ runs on futures candles (its thresholds are futures points)"
+INDEX_WHY_NATIVE = "standalone options run on each option's own candles; the signal source does not apply"
 POSITION_LOCKS = ("strike", "none")
 FZ_MODULES = ("fz.py", "fz_exec.py", "fz_report.py")
 FZ_NATIVE_WHY = "FZ thresholds are futures points; no native-option unit rule in v1"
@@ -138,9 +154,17 @@ def load_strategies():
                 try: fz.thresholds(block)
                 except ValueError as e: sys.exit(f"{where}: fz[{tf}]: {e}")
         elif "fz" in spec:
-            sys.exit(f"{where}: an 'fz' block needs entry_rule fz_v1 (it would be stored but never applied)")
+            sys.exit(f"{where}: an 'fz' block needs an fz entry_rule (fz_v1 / fz_v2; it would be stored but never applied)")
         try: position_of(spec)
         except ValueError as e: sys.exit(f"{where}: position: {e}")
+        try: native_scan_of(spec)
+        except ValueError as e: sys.exit(f"{where}: options.native_scan: {e}")
+        if spec.get("underlying", "FUT") not in UNDERLYINGS: sys.exit(f"{where}: underlying must be one of {UNDERLYINGS}")
+        for b in spec["backtests"]:
+            if b.get("underlying", "FUT") not in UNDERLYINGS: sys.exit(f"{where}: backtest {b['label']!r}: underlying must be one of {UNDERLYINGS}")
+            if "square_off" in b:                     # holding override: null = positional, "HH:MM" = intraday
+                try: position_of({"position": {"square_off": b["square_off"]}})
+                except ValueError as e: sys.exit(f"{where}: backtest {b['label']!r}: {e}")
         if spec["code"] in codes: sys.exit(f"{where}: duplicate strategy code {spec['code']}")
         if sum(1 for b in spec["backtests"] if b.get("default")) != 1: sys.exit(f"{where}: exactly one backtest needs \"default\": true")
         codes.add(spec["code"])
@@ -164,6 +188,15 @@ def position_of(spec):
     if p["trail"] is not None and (set(p["trail"]) != {"start_r", "lag_r"} or not all(map(num, p["trail"].values()))):
         raise ValueError('trail is {"start_r": R > 0, "lag_r": R > 0}')
     if p["exit"] == "position" and p["stop"] is None: raise ValueError('exit "position" needs a stop (lots would never close)')
+    if p["reverse"] is not None:
+        rv = p["reverse"]
+        if not isinstance(rv, dict) or set(rv) != {"trigger", "max"} or rv["trigger"] not in REVERSE_TRIGGERS \
+                or not isinstance(rv["max"], int) or rv["max"] < 1:
+            raise ValueError(f'reverse is {{"trigger": one of {REVERSE_TRIGGERS}, "max": reversals per signal >= 1}}, or null')
+        if p["exit"] != "position": raise ValueError('reverse needs exit "position" (it reverses at the managed stop)')
+    if p["square_off"] is not None and not (isinstance(p["square_off"], str) and re.fullmatch(r"\d\d:\d\d", p["square_off"])
+                                            and "09:15" < p["square_off"] <= "15:30"):
+        raise ValueError('square_off is "HH:MM" after 09:15 and up to 15:30 (every position closed by then), or null')
     if (p["trail"] or any("target_r" in so for so in p["scale_out"])) and p["stop"] is None:
         raise ValueError("target_r / trail are multiples of the stop distance (R): they need a stop")
     for so in p["scale_out"]:
@@ -173,6 +206,17 @@ def position_of(spec):
         if not num(so.get("target_pts", so.get("target_r"))): raise ValueError("a target must be > 0")
     if sum(so["lots"] for so in p["scale_out"]) > p["lots"]: raise ValueError("scale_out lots add up to more than lots")
     return p
+
+
+def native_scan_of(spec):
+    """options.native_scan over NATIVE_SCAN_DEFAULT, validated: {choices, every_minutes, one_per_side}."""
+    n = dict(NATIVE_SCAN_DEFAULT, **(spec["options"].get("native_scan") or {}))
+    if set(n) != set(NATIVE_SCAN_DEFAULT): raise ValueError(f"keys are {sorted(NATIVE_SCAN_DEFAULT)}")
+    if not n["choices"] or not all(re.fullmatch(r"ATM|ATR\d+(\.\d+)?|(ITM|OTM)\d+", c) for c in n["choices"]):
+        raise ValueError("choices are strike choices such as ATR2, ATM, ITM1, OTM1")
+    if n["every_minutes"] not in (1, 3, 5, 15, 30): raise ValueError("every_minutes is one of 1, 3, 5, 15, 30")
+    if not isinstance(n["one_per_side"], bool): raise ValueError("one_per_side is true or false")
+    return n
 
 
 def type_rows(spec):
@@ -195,7 +239,8 @@ def type_rows(spec):
             atr_period=o["atr_period"], expiry_types=",".join(o["expiry_types"]), expiry_min_days=o["expiry_min_days"],
             positions="BOTH", capital_fut=cap["futures_margin"], capital_opt_short=cap["short_option_margin"],
             fz_json=json.dumps(spec["fz"], ensure_ascii=False) if "fz" in spec else None,   # verbatim, with provenance
-            position_json=json.dumps(position_of(spec), sort_keys=True)))
+            position_json=json.dumps(position_of(spec), sort_keys=True),
+            underlying=spec.get("underlying", "FUT"), native_scan_json=json.dumps(native_scan_of(spec), sort_keys=True)))
     return rows
 
 
@@ -217,9 +262,11 @@ def sync(db):
                        f"on conflict(code) do update set {','.join(f'{c}=excluded.{c}' for c in cols)}", [row[c] for c in cols])
         db.execute("delete from strategy_backtest where family=?", (spec["code"],))
         for b in spec["backtests"]:
-            db.execute("insert into strategy_backtest(family,label,kind,preset,date_from,date_to,timeframe,is_default,notes)"
-                       " values(?,?,?,?,?,?,?,?,?)", (spec["code"], b["label"], b["kind"], b.get("preset"), b.get("from"),
-                                                      b.get("to"), b.get("timeframe"), int(bool(b.get("default"))), b.get("notes")))
+            db.execute("insert into strategy_backtest(family,label,kind,preset,date_from,date_to,timeframe,is_default,notes,"
+                       "underlying,square_off) values(?,?,?,?,?,?,?,?,?,?,?)",
+                       (spec["code"], b["label"], b["kind"], b.get("preset"), b.get("from"), b.get("to"), b.get("timeframe"),
+                        int(bool(b.get("default"))), b.get("notes"), b.get("underlying"),
+                        ("none" if b["square_off"] is None else b["square_off"]) if "square_off" in b else None))
     for r in db.execute("select code from strategy where enabled=1").fetchall():
         if r[0] not in live: db.execute("update strategy set enabled=0 where code=?", (r[0],))
     db.commit()
@@ -246,7 +293,8 @@ def migrate(db):
                    ("expiry_min_days", "integer not null default 1"), ("positions", "text not null default 'BOTH'"),
                    ("expiry_types", "text not null default 'WEEKLY,MONTHLY'"), ("signal_source", "text"),
                    ("capital_fut", "real not null default 120000"), ("capital_opt_short", "real not null default 150000"),
-                   ("choch_mode", "text"), ("fz_json", "text"), ("position_json", "text")):
+                   ("choch_mode", "text"), ("fz_json", "text"), ("position_json", "text"), ("underlying", "text"),
+                   ("native_scan_json", "text")):
         add("strategy", c, ddl)
     for c, ddl in (("sl_px", "real"), ("gross_inr", "real"), ("charges_inr", "real"), ("instrument", "text"),
                    ("strike", "real"), ("strike_choice", "text"), ("und_entry_px", "real"), ("und_exit_px", "real"),
@@ -258,6 +306,8 @@ def migrate(db):
     for c, ddl in (("gross_inr", "real"), ("charges_inr", "real"), ("strike_choice", "text"), ("period", "text")):
         add("strategy_run", c, ddl)
     add("charge_schedule", "brokerage_flat", "real not null default 0")
+    add("strategy_backtest", "underlying", "text")
+    add("strategy_backtest", "square_off", "text")      # NULL: the strategy's own; 'none': positional; 'HH:MM': intraday
     # one row per Foundation SETUP of an FZ run: the ledger columns (the SETUP's time is setup_time)
     db.execute("create table if not exists fz_setup(id integer primary key, run_id integer not null references strategy_run(id),"
                " strategy_id integer not null references strategy(id), setup_time text)")
@@ -337,6 +387,8 @@ def resolve_backtest(bt, warmup):
         p, to = bt["preset"], D.date.fromisoformat(last)
         if p == "YTD":
             frm = D.date(to.year, 1, 1)
+        elif p == "MTD":                               # this month: from the 1st of the latest data month
+            frm = D.date(to.year, to.month, 1)
         else:
             months = {"1M": 1, "3M": 3, "6M": 6, "1Y": 12, "5Y": 60}[p]
             y, m = to.year, to.month - months
@@ -512,10 +564,72 @@ def mark(x, bars, label=None):
             x["exit_reason"], label]
 
 
+def prev_session_start(tl, i0):
+    """Index of the first candle of the session before the one starting at i0 (i0 itself when there is none): option charts
+    open one session early so the day before the trade is visible."""
+    if i0 <= 0: return max(i0, 0)
+    d = tl[i0 - 1][:10]
+    return bisect.bisect_left(tl, f"{d} 00:00:00")
+
+
 def option_chart(s, i0, i1, marks):
     """Chart payload for an option contract's own candles (no engine overlays: the signals came from elsewhere)."""
     C = [[ts(s.t[i]), s.o[i], s.h[i], s.l[i], s.c[i], None, None, int(s.v[i])] for i in range(i0, i1 + 1)]
     return dict(C=C, S=[], E=[], PR=[], PAIR=[], M=marks)
+
+
+_KNOWN = {}
+def known_sessions():
+    """Every session in the candle files (futures 1-minute and the long index 5-minute files under the data root)."""
+    if not _KNOWN:
+        days = set(sessions())
+        root = os.path.dirname(os.path.normpath(DATA["options"]["weekly_dir"]))
+        for f in glob.glob(os.path.join(root, "nifty50_5minute_*.csv")):
+            if " - Copy" not in f: days |= {r["datetime"][:10] for r in csv.DictReader(open(f))}
+        _KNOWN["d"] = days
+    return _KNOWN["d"]
+
+
+def monthly_expiry(ym):
+    """NIFTY monthly expiry of month 'YYYY-MM': the last Thursday up to August 2025, the last Tuesday from September 2025
+    (NSE), moved to the session before when that day is a holiday (only where the candle files know the sessions)."""
+    y, m = int(ym[:4]), int(ym[5:7])
+    d = (D.date(y + (m == 12), m % 12 + 1, 1) - D.timedelta(days=1))
+    wd = 3 if (y, m) < (2025, 9) else 1
+    while d.weekday() != wd: d -= D.timedelta(days=1)
+    days = known_sessions()
+    if days and d.isoformat() <= max(days):
+        while d.isoformat() not in days and d.month == m: d -= D.timedelta(days=1)
+    return d.isoformat()
+
+
+_COV = {}
+def option_coverage(st):
+    """First session from which every session's contracts (each expiry type of the row, nearest expiry >= expiry_min_days)
+    have full-chain option data - an expiry whose manifest.json carries `full_chain` (tools/breeze_options.py) or the Kite
+    chain expiry - through the end of the data. Before it, only the local files' five strikes around each expiry's
+    settlement exist (a hindsight window), so option types are not run there."""
+    base = "minute" if st["timeframe"] in ("minute", "3minute") else "5minute"
+    key = (base, st.get("expiry_types"), st.get("expiry_min_days"))
+    if key not in _COV:
+        chain = OptionChain(dict(st, timeframe=base))
+        sub = "nifty_options" if base == "5minute" else "nifty_options_1minute"
+        full = {}
+        def ok(e):
+            if e is None: return False
+            if e == st["option_expiry"]: return True
+            if e not in full:
+                f = os.path.join(st["weekly_dir"], sub, e[:4], e, "manifest.json")
+                full[e] = os.path.exists(f) and "full_chain" in json.load(open(f, encoding="utf-8"))
+            return full[e]
+        kinds = [k.strip() for k in (st.get("expiry_types") or "WEEKLY").split(",")]
+        ss, start = sessions(), None
+        for d in ss:
+            good = all(ok(chain.expiry_for(d, st["expiry_min_days"], k)) for k in kinds)
+            if good and start is None: start = d
+            if not good: start = None
+        _COV[key] = start
+    return _COV[key]
 
 
 class OptionChain:
@@ -545,9 +659,7 @@ class OptionChain:
         d = D.date.fromisoformat(day)
         cal = self.calendar
         if kind == "MONTHLY":
-            last = {}
-            for e in cal: last[e[:7]] = e           # calendar is sorted: the month's last expiry wins
-            cal = sorted(last.values())
+            cal = sorted({monthly_expiry(e[:7]) for e in cal})    # the exchange's monthly date, not the month's last weekly
         return next((e for e in cal if (D.date.fromisoformat(e) - d).days >= min_days), None)
 
     def _local_right(self, expiry, right):
@@ -597,6 +709,8 @@ def expire(rec, s, expiry):
 def choice_keys(st):
     """Result keys: '-' for futures; '<W|M>-<strike choice>' for options (expiry type x strike choice)."""
     if st["variant"] == "FUT": return ["-"]
+    if st["variant"] == "OPT_NATIVE" and not fz_rule(st):       # the rescan book (options.native_scan), per expiry type
+        return [f"{e.strip()[0]}-SCAN" for e in (st.get("expiry_types") or "WEEKLY").split(",")]
     return [f"{e.strip()[0]}-{c.strip()}" for e in (st.get("expiry_types") or "WEEKLY").split(",")
             for c in st["strike_choices"].split(",")]
 
@@ -682,6 +796,70 @@ def tranches(st, rec, tl, ol, hl, ll, cl):
     return out
 
 
+_FC = {}
+def fut_contracts():
+    """({time: (contract, expiry)}, {contract: its last candle time}) from the 1-minute futures file's `contract` /
+    `expiry` columns (near-month files from tools/breeze_history.py carry both; a file without `expiry` is not cut)."""
+    if FUT1 not in _FC:
+        by, last = {}, {}
+        for r in csv.DictReader(open(FUT1)):
+            c, e = r.get("contract") or "NIFTY FUT", r.get("expiry") or None
+            by[r["datetime"]] = (c, e); last[c] = r["datetime"]
+        _FC[FUT1] = (by, last)
+    return _FC[FUT1]
+
+
+def native_scan_cfg(st):
+    return json.loads(st["native_scan_json"]) if st.get("native_scan_json") else dict(NATIVE_SCAN_DEFAULT)
+
+
+def square_off_at(st, entry_time):
+    """The session-end cut for a position entered at entry_time ("YYYY-MM-DD HH:MM:00"), or None (position.square_off)."""
+    T = position_cfg(st).get("square_off")
+    return f"{entry_time[:10]} {T}:00" if T else None
+
+
+def reversal_of(st, parts, depth):
+    """position.reverse: when the managed lots of a position leave at its initial stop (exit_reason 'stop_loss', not a
+    trail stop), (time, price) at which the opposite position opens - a full new position, managed the same way - else
+    None. Not after the square-off time, and at most `max` reversals per signal (depth counts the ones already made)."""
+    rv = position_cfg(st).get("reverse")
+    if not rv or depth >= rv["max"]: return None
+    hit = [p_ for p_ in parts if p_["exit_reason"] == "stop_loss"]
+    if not hit: return None
+    t0, px = hit[0]["exit_time"], hit[0]["exit_px"]
+    sq = square_off_at(st, t0)
+    if sq and t0 >= sq: return None
+    return t0, px
+
+
+def flip(rec, t0, px, depth):
+    """The opposite position of rec, opened at t0 / px: same instrument, other side."""
+    up = rec["position"] != "LONG"
+    return dict(rec, position="LONG" if up else "SHORT", dir="up" if up else "down", signal="BULLISH" if up else "BEARISH",
+                entry_time=t0, entry_px=px, exit_time=t0, exit_px=None, exit_reason="open", open=True, reversal=depth + 1)
+
+
+def rev_tag(tr):
+    """Tranche label of a reversed position's lots ('REV T1 1R', 'REV2 rest (trail)' ...)."""
+    d = tr.get("reversal") or 0
+    if d: tr["tranche"] = f"REV{d if d > 1 else ''} {tr['tranche']}".strip()
+    return tr
+
+
+def eod_cut(st, rec, tl, cl):
+    """Intraday: a position still open after its entry day's square_off time is closed at the close of the last candle
+    that opens at or before it (reason 'eod'). Returns False for an entry at or after that time (not taken)."""
+    e = square_off_at(st, rec["entry_time"])
+    if not e: return True
+    if rec["entry_time"] >= e: return False
+    if rec["exit_time"] > e:
+        j = bisect.bisect_right(tl, e) - 1
+        if j >= 0 and tl[j][:10] == e[:10] and tl[j] >= rec["entry_time"]:
+            rec.update(exit_time=tl[j], exit_px=cl[j], exit_reason="eod", open=False)
+    return True
+
+
 def position_mode(st):
     return position_cfg(st)["exit"] == "position"
 
@@ -710,6 +888,8 @@ def manage(st, rec, tl, ol, hl, ll, cl, cap, expiry=None):
                  why=f"target {tag(so)}") for n, so in enumerate(P["scale_out"], 1)]
     left = P["lots"] - sum(so["lots"] for so in P["scale_out"])
     if left: lots.append(dict(lots=left, tranche="rest" + (" (trail)" if P["trail"] else ""), tgt=None))
+    eod = square_off_at(st, rec["entry_time"])
+    if eod: cap = min(cap, eod)                       # intraday: the session-end cut is the last candle
     i0 = bisect.bisect_right(tl, rec["entry_time"]); iend = bisect.bisect_right(tl, cap) - 1
     best, trailing, out = e, False, []
     base = dict(rec, sl=round(stop, 2))
@@ -742,9 +922,10 @@ def manage(st, rec, tl, ol, hl, ll, cl, cap, expiry=None):
     if lots:
         k = max(iend, i0 - 1)
         ended = expiry is not None and k >= 0 and (tl[k][:10] >= expiry or k == len(tl) - 1)
+        at_eod = bool(eod) and k >= 0 and tl[k][:10] == eod[:10] and (k == len(tl) - 1 or tl[k + 1] > eod)
         for lot in lots:
             out.append(dict(base, lots=lot["lots"], tranche=lot["tranche"], exit_time=tl[k], exit_px=cl[k],
-                            exit_reason="expiry" if ended else "open", open=not ended))
+                            exit_reason="expiry" if ended else "eod" if at_eod else "open", open=not (ended or at_eod)))
     return out
 
 
@@ -876,9 +1057,13 @@ def run_variant(st, cs):
     fzr, pmode = fz_rule(st), position_mode(st)
     if fzr and st["variant"] == "OPT_NATIVE":
         return {ch: dict(trades=[], skipped=[dict(why=FZ_NATIVE_WHY)], signals=[], charts=[]) for ch in choice_keys(st)}
-    fut, s0 = engine.load(st["data_file"], st["date_from"], st["date_to"], st["warmup_days"])
+    index_sig = st.get("underlying") == "INDEX"
+    # `fut` = the candles the engine reads (the signal source): near-month futures, or the index
+    fut, s0 = engine.load(st.get("signal_file") or st["data_file"], st["date_from"], st["date_to"], st["warmup_days"])
     p = dict(break_mode=st["break_mode"], choch_mode=st.get("choch_mode") or st["break_mode"],
-             avwap_weight=st["avwap_weight"], sl_rule=st["sl_rule"])
+             avwap_weight="equal" if index_sig else st["avwap_weight"], sl_rule=st["sl_rule"])   # the index has no volume
+    FS = Series.get(st["data_file"]) if index_sig else None       # the traded futures, when the signals come from the index
+    contracts, clast = fut_contracts()
     spot = Series.get(st["spot_file"]); atr = atr_series(spot, st["atr_period"])
     step = st["strike_step"]
     chain = OptionChain(st) if st["variant"] != "FUT" else None
@@ -914,12 +1099,38 @@ def run_variant(st, cs):
                             sl=x["sl"], und_entry=fut["c"][x["entry"]], und_exit=x["exit_px"], expiry=None)
                 if fzr: base.update({k: x.get(k) for k in FZ_TRADE_KEYS})
                 if st["variant"] == "FUT":
+                    te = t[x["entry"]]
+                    c_, e_ = contracts.get(te, ("NIFTY FUT", None))
+                    if index_sig:                     # priced on the near-month futures at the index signal's times
+                        fe, _ = FS.at(te); fxc, _ = FS.at(t[x["exit"]])
+                        if fe is None or fxc is None:
+                            skipped.append(dict(base, position="LONG" if bull else "SHORT", opt_type="FUT",
+                                                why=f"no futures candle at {te if fe is None else t[x['exit']]}")); return []
+                        # a stop crossed on the index fills at the futures price of that candle shifted by the stop's distance
+                        fx = x["exit_px"] + (fxc - fut["c"][x["exit"]]) if x["exit_reason"] == "stop_loss" else fxc
+                        PT = (FS.t, FS.o, FS.h, FS.l, FS.c)
+                    else:
+                        fe, fx = fut["c"][x["entry"]], x["exit_px"]
+                        PT = (t, fut["o"], fut["h"], fut["l"], fut["c"])
                     rec = dict(base, kind="FUT", position="LONG" if bull else "SHORT", opt_type="FUT",
-                               instrument="NIFTY SEP FUT", strike=None, entry_px=fut["c"][x["entry"]], exit_px=x["exit_px"])
-                    parts = (manage(st, rec, t, fut["o"], fut["h"], fut["l"], fut["c"], t[-1]) if pmode
-                             else tranches(st, rec, t, fut["o"], fut["h"], fut["l"], fut["c"]))
-                    legs = [(price_trade(st, cs, excursion(t, fut["h"], fut["l"], tr, bull)),
-                             ("LONG" if bull else "SHORT") + (f" · {tr['tranche']}" if tr["tranche"] else ""), None) for tr in parts]
+                               instrument=c_, expiry=e_, strike=None, entry_px=fe, exit_px=fx)
+                    cap = t[-1]
+                    if e_:                            # near month: the contract's last candle ends the position
+                        cap = min(cap, clast[c_])
+                        if not pmode and rec["exit_time"] > clast[c_]:
+                            j = bisect.bisect_right(PT[0], clast[c_]) - 1
+                            rec.update(exit_time=PT[0][j], exit_px=PT[4][j], exit_reason="expiry", open=False)
+                    if not pmode and not eod_cut(st, rec, PT[0], PT[4]) or pmode and square_off_at(st, te) and te >= square_off_at(st, te):
+                        skipped.append(dict(base, position=rec["position"], opt_type="FUT", instrument=c_,
+                                            why=f"entry at or after the square-off time ({position_cfg(st)['square_off']})")); return []
+                    parts = (manage(st, rec, *PT, cap, e_) if pmode else tranches(st, rec, *PT))
+                    if pmode:                         # stop and reverse (position.reverse), on the same contract
+                        cur_rec, cur, depth = rec, parts, 0
+                        while (rv := reversal_of(st, cur, depth)):
+                            cur_rec = flip(cur_rec, rv[0], rv[1], depth); depth += 1
+                            cur = [rev_tag(p_) for p_ in manage(st, cur_rec, *PT, cap, e_)]; parts = parts + cur
+                    legs = [(price_trade(st, cs, excursion(PT[0], PT[2], PT[3], tr, tr["position"] == "LONG")),
+                             tr["position"] + (f" · {tr['tranche']}" if tr["tranche"] else ""), None) for tr in parts]
                 else:
                     # bullish -> long CE and short PE; bearish -> long PE and short CE (separate positions)
                     legs = []
@@ -938,11 +1149,45 @@ def run_variant(st, cs):
                             skipped.append(dict(base, position=pos, opt_type=right, why=f"{nm} has no candle at entry")); continue
                         rec = dict(base, kind="OPT", position=pos, opt_type=right, instrument=nm, strike=k, expiry=exp,
                                    entry_px=en, exit_px=None, stale=st1)
+                        sq = square_off_at(st, rec["entry_time"])
+                        if sq and rec["entry_time"] >= sq:
+                            skipped.append(dict(base, position=pos, opt_type=right, instrument=nm,
+                                                why=f"entry at or after the square-off time ({position_cfg(st)['square_off']})")); continue
                         if pmode:                             # managed on the option's own candles up to the backtest end
-                            for tr in manage(st, rec, os_.t, os_.o, os_.h, os_.l, os_.c, f"{st['date_to']} 23:59:59", exp):
+                            end_ = f"{st['date_to']} 23:59:59"
+                            cur = manage(st, rec, os_.t, os_.o, os_.h, os_.l, os_.c, end_, exp)
+                            for tr in cur:
                                 excursion(os_.t, os_.h, os_.l, tr, pos == "LONG")
                                 legs.append((price_trade(st, cs, tr), f"{pos} {right}" + (f" · {tr['tranche']}" if tr["tranche"] else ""), os_))
+                            # stop and reverse: the opposite signal's leg (long CE -> long PE, short PE -> short CE), strike from
+                            # the index at the stop, entered at that option's close of the stop candle
+                            depth, r_right = 0, right
+                            while (rv := reversal_of(st, cur, depth)):
+                                t0 = rv[0]; r_right = "PE" if r_right == "CE" else "CE"
+                                si2 = spot.ix.get(t0)
+                                if si2 is None:
+                                    skipped.append(dict(base, position=pos, opt_type=r_right, entry_time=t0, why="reverse: no spot candle")); break
+                                k2 = pick_strike(sc, r_right, spot.c[si2], atr[si2], step)
+                                exp2 = chain.expiry_for(t0[:10], st["expiry_min_days"], ekind)
+                                os2 = chain.get(exp2, k2, r_right) if exp2 else None
+                                nm2 = chain.name(exp2, k2, r_right) if exp2 else f"{int(k2)} {r_right}"
+                                en2 = os2.at(t0)[0] if os2 is not None else None
+                                if en2 is None:
+                                    skipped.append(dict(base, position=pos, opt_type=r_right, entry_time=t0, why=f"reverse: no data for {nm2}")); break
+                                rdir = "down" if (cur[0]["dir"] if cur else rec["dir"]) == "up" else "up"
+                                rec2 = dict(rec, dir=rdir, signal="BULLISH" if rdir == "up" else "BEARISH", opt_type=r_right,
+                                            instrument=nm2, strike=k2, expiry=exp2, entry_time=t0, entry_px=en2, exit_time=t0, exit_px=None,
+                                            exit_reason="open", open=True, reversal=depth + 1)
+                                depth += 1
+                                cur = [rev_tag(p_) for p_ in manage(st, rec2, os2.t, os2.o, os2.h, os2.l, os2.c, end_, exp2)]
+                                for tr in cur:
+                                    excursion(os2.t, os2.h, os2.l, tr, pos == "LONG")
+                                    legs.append((price_trade(st, cs, tr), f"{pos} {r_right}" + (f" · {tr['tranche']}" if tr["tranche"] else ""), os2))
                             continue
+                        if sq and rec["exit_time"] > sq:     # intraday: the session-end cut, before the contract's own end
+                            j = bisect.bisect_right(os_.t, sq) - 1
+                            if j >= 0 and os_.t[j][:10] == sq[:10] and os_.t[j] >= rec["entry_time"]:
+                                rec.update(exit_time=os_.t[j], exit_px=os_.c[j], exit_reason="eod", open=False)
                         expire(rec, os_, exp)
                         if rec["exit_px"] is None:
                             ex, st2 = os_.at(rec["exit_time"])
@@ -973,18 +1218,26 @@ def run_variant(st, cs):
                         lock.hold(inst, max(lg[0]["exit_time"] for lg in mine))
                 for rec, lbl, os_ in legs:
                     trs.append(rec)
-                    fm = mark(x, fut, lbl); fm[5] = round(rec["pts"], 2); fm.append(x["dir"])
-                    if rec["exit_reason"] == "expiry": fm[2], fm[8] = ts(rec["exit_time"]), "expiry"
+                    fm = mark(x, fut, lbl); fm[5] = round(rec["pts"], 2); fm.append(rec.get("dir") or x["dir"])
+                    if rec.get("reversal"):
+                        j0 = max(bisect.bisect_right(t, rec["entry_time"]) - 1, 0)
+                        fm[0], fm[1] = ts(t[j0]), (rec["entry_px"] if rec["kind"] == "FUT" and not index_sig else fut["c"][j0])
+                        fm[4] = "up" if (rec["position"] == "LONG") == (rec["kind"] == "FUT" or rec["opt_type"] == "CE") else "down"
+                    if rec["exit_reason"] in ("expiry", "eod"):
+                        j = max(bisect.bisect_right(t, rec["exit_time"]) - 1, 0)
+                        fm[2], fm[3], fm[6], fm[8] = ts(t[j]), (rec["exit_px"] if rec["kind"] == "FUT" and not index_sig
+                                                                else fut["c"][j]), False, rec["exit_reason"]
                     if pmode:                                  # the lot's own exit, drawn at the futures price of that candle
                         j = max(bisect.bisect_right(t, rec["exit_time"]) - 1, 0)
-                        fm[2], fm[3], fm[6], fm[7], fm[8] = ts(t[j]), (rec["exit_px"] if rec["kind"] == "FUT" else fut["c"][j]), \
+                        fm[2], fm[3], fm[6], fm[7], fm[8] = ts(t[j]), (rec["exit_px"] if rec["kind"] == "FUT" and not index_sig
+                                                                       else fut["c"][j]), \
                             rec["open"], rec["sl"], rec["exit_reason"]
                     fmarks.append(fm)
                     if os_ is not None:                        # the traded option's own chart
                         omarks.setdefault((rec["instrument"], rec["entry_time"][:10]), (os_, []))[1].append(
                             [ts(rec["entry_time"]), rec["entry_px"], ts(rec["exit_time"]), rec["exit_px"],
                              "up" if rec["position"] == "LONG" else "down", round(rec["pts"], 2), rec["open"], None,
-                             rec["exit_reason"], lbl, x["dir"]])
+                             rec["exit_reason"], lbl, rec.get("dir") or x["dir"]])
             charts = []
             for d, (i0, i1) in day_span.items():      # one futures chart chunk per session, loaded lazily by the dashboard
                 lo, hi = ts(t[i0]), ts(t[i1])
@@ -994,7 +1247,7 @@ def run_variant(st, cs):
                 charts.append(dict(day_base[d], M=mk, day=d, kind="signal",
                                    label=f"{d} · futures" + (f" · {n} trades · {pnl:+.1f} pts" if n else "")))
             for (nm, d), (os_, mk) in sorted(omarks.items(), key=lambda kv: (kv[0][1], kv[0][0])):
-                i0 = bisect.bisect_left(os_.t, f"{d} 00:00:00")
+                i0 = prev_session_start(os_.t, bisect.bisect_left(os_.t, f"{d} 00:00:00"))   # from the session before
                 i1 = max(bisect.bisect_right(os_.t, f"{d} 23:59:59") - 1,
                          max(bisect.bisect_right(os_.t, D.datetime.utcfromtimestamp(m[2]).strftime("%Y-%m-%d %H:%M:%S")) - 1 for m in mk))
                 charts.append(dict(option_chart(os_, i0, i1, mk), day=d, kind="option",
@@ -1005,75 +1258,117 @@ def run_variant(st, cs):
                 out[ch]["fz"] = fz_payload(st, fut, s0, F, trs, raw)
         return out
 
-    # OPT_NATIVE: the engine runs on the option's own candles: a bullish setup opens a long position in that option,
-    # a bearish setup a short position (per `positions`).
-    # Each day's CE and PE contract (nearest weekly expiry, strike from spot) is fixed at the first completed candle.
-    days = sorted({x[:10] for x in fut["t"][s0:]})
+    # OPT_NATIVE: the engine runs on each option's own candles (strategy timeframe). Every NS["every_minutes"] the strike
+    # of each scan choice is picked for CE and PE from the index candle of that length that has just completed (ATR(n) on
+    # the same candles), and that contract is watched until the next scan. A SETUP on a watched contract whose entry candle
+    # closes inside the watch opens a position: bullish -> long that option, bearish -> short (per `positions`); the first
+    # one wins (ties: scan-list order). With one_per_side no other contract of that side (CE / PE) is entered until the
+    # position has closed; otherwise the lock is per strike. Exits: the engine's own (next CHoCH / stop) or the managed
+    # position; a contract's data ends at its expiry.
+    NS = native_scan_cfg(st)
+    scan_tf = {1: "minute", 3: "3minute", 5: "5minute", 15: "15minute", 30: "30minute"}[NS["every_minutes"]]
+    sp = Series.get(tf_file("spot", scan_tf)); satr = atr_series(sp, st["atr_period"])
+    tfm, days = TF_MIN[st["timeframe"]], {x[:10] for x in fut["t"][s0:]}
+    plus = lambda tt, m: (D.datetime.strptime(tt, "%Y-%m-%d %H:%M:%S") + D.timedelta(minutes=m)).strftime("%Y-%m-%d %H:%M:%S")
+    scans = [(plus(sp.t[j], NS["every_minutes"]), j) for j in range(len(sp.t)) if sp.t[j][:10] in days]
+    want = {"BOTH": ("up", "down"), "LONG": ("up",), "SHORT": ("down",)}[st["positions"]]
     runs = {}
+    spot_tf, spot_days = Series.get(st["spot_file"]), {}                # the index on the strategy's candles, per session
+    for i, x in enumerate(spot_tf.t):
+        if x[:10] in days: spot_days.setdefault(x[:10], [i, i])[1] = i
+
+    def contract_run(exp, k, right, nm):
+        """(bars, engine result, entry-candle close times, trades sorted by them) for one contract, or None (no data)."""
+        key = (exp, int(k), right)
+        if key not in runs:
+            os_ = chain.get(exp, k, right) if exp else None
+            runs[key] = None
+            if os_ is not None:
+                try:
+                    ob, _ = engine.window(dict(t=os_.t, o=os_.o, h=os_.h, l=os_.l, c=os_.c, v=os_.v),
+                                          st["date_from"], st["date_to"], st["warmup_days"], nm)
+                    r = engine.run(ob, p)
+                    ends = sorted(((plus(ob["t"][x["entry"]], tfm), x) for x in r["trades"]), key=lambda z: (z[0], z[1]["entry"]))
+                    runs[key] = (ob, r, [z[0] for z in ends], [z[1] for z in ends])
+                except ValueError:
+                    pass
+        return runs[key]
+
     for ch in choice_keys(st):
-        ekind, sc = split_choice(ch)
-        trs, skipped, charts = [], [], []
-        lock = StrikeLock(st)
-        for d in days:
-            first = bisect.bisect_left(spot.t, f"{d} 00:00:00")
-            if first >= len(spot.t) or spot.t[first][:10] != d: continue
-            exp = chain.expiry_for(d, st["expiry_min_days"], ekind)
-            for right in ("CE", "PE"):
-                k = pick_strike(sc, right, spot.c[first], atr[first], step)
-                nm = chain.name(exp, k, right) if exp else f"{int(k)} {right}"
-                os_ = chain.get(exp, k, right) if exp else None
-                if os_ is None:
-                    skipped.append(dict(signal="BULLISH", opt_type=right, entry_time=d, why=f"no data for {nm}")); continue
-                key = (exp, int(k), right)
-                if key not in runs:
-                    try:
-                        ob, os0 = engine.window(dict(t=os_.t, o=os_.o, h=os_.h, l=os_.l, c=os_.c, v=os_.v),
-                                                st["date_from"], st["date_to"], st["warmup_days"], nm)
-                        runs[key] = (ob, engine.run(ob, p))
-                    except ValueError:
-                        runs[key] = None
-                if runs[key] is None:
-                    skipped.append(dict(signal="BULLISH", opt_type=right, entry_time=d, why=f"no candles for {nm} in period")); continue
-                ob, r = runs[key]; t = ob["t"]
-                day_idx = [i for i, x in enumerate(t) if x[:10] == d]
-                if not day_idx:
-                    skipped.append(dict(signal="BULLISH", opt_type=right, entry_time=d, why=f"{nm} has no candles on {d}")); continue
-                want = {"BOTH": ("up", "down"), "LONG": ("up",), "SHORT": ("down",)}[st["positions"]]
-                picks = [x for x in r["trades"] if x["dir"] in want and t[x["entry"]][:10] == d and x["entry"] > day_idx[0]]
-                marks = []
-                for x in picks:
-                    lng = x["dir"] == "up"
-                    rec = dict(dir=x["dir"], signal="BULLISH" if lng else "BEARISH", position="LONG" if lng else "SHORT",
-                               opt_type=right, kind="OPT", instrument=nm, strike=k,
-                               expiry=exp, choch_time=t[x["choch"]], entry_time=t[x["entry"]], exit_time=t[x["exit"]],
-                               exit_reason=x["exit_reason"], open=x["open"], sl=x["sl"], entry_px=ob["c"][x["entry"]],
-                               exit_px=x["exit_px"], und_entry=None, und_exit=None)
-                    if x["open"] and t[x["exit"]][:10] == exp:
-                        rec.update(exit_reason="expiry", open=False)     # the contract's data ends at its expiry
-                    u = lock.held(nm, rec["entry_time"])
-                    if u:
-                        skipped.append(dict(signal=rec["signal"], position=rec["position"], opt_type=right, instrument=nm,
-                                            expiry=exp, entry_time=rec["entry_time"], why=f"strike locked: {nm} open until {u}"))
+        ekind, _ = split_choice(ch)
+        trs, skipped, charts, marks_by = [], [], [], {}
+        for right in ("CE", "PE"):
+            events, missing = [], set()
+            for n, (T, j) in enumerate(scans):
+                T2 = scans[n + 1][0] if n + 1 < len(scans) and scans[n + 1][0][:10] == T[:10] else f"{T[:10]} 23:59:59"
+                exp = chain.expiry_for(T[:10], st["expiry_min_days"], ekind)
+                for rank, c in enumerate(NS["choices"]):
+                    k = pick_strike(c, right, sp.c[j], satr[j], step)
+                    nm = chain.name(exp, k, right) if exp else f"{int(k)} {right}"
+                    cr = contract_run(exp, k, right, nm)
+                    if cr is None:
+                        if (T[:10], nm) not in missing:
+                            missing.add((T[:10], nm))
+                            skipped.append(dict(signal="", opt_type=right, instrument=nm, expiry=exp, entry_time=T[:10],
+                                                why=f"no data for {nm} (scan {c})"))
                         continue
-                    parts = (manage(st, rec, t, ob["o"], ob["h"], ob["l"], ob["c"], t[-1], exp) if pmode
-                             else tranches(st, rec, t, ob["o"], ob["h"], ob["l"], ob["c"]))
-                    lock.hold(nm, max(p_["exit_time"] for p_ in parts))
-                    for tr in parts:
-                        excursion(t, ob["h"], ob["l"], tr, lng)
-                        trs.append(price_trade(st, cs, tr))
-                    if pmode:                                  # one mark per lot group, at its own exit
-                        for tr in parts:
-                            j = bisect.bisect_right(t, tr["exit_time"]) - 1
-                            m = mark(x, ob, f"{rec['position']} {right} · {tr['tranche']}"); m[5] = round(tr["pts"], 2)
-                            m[2], m[3], m[6], m[7], m[8] = ts(t[j]), tr["exit_px"], tr["open"], tr["sl"], tr["exit_reason"]
-                            m.append(x["dir"]); marks.append(m)
-                    else:
-                        m = mark(x, ob, f"{rec['position']} {right}"); m[5] = round(sum(p_["pts"] * p_["lots"] for p_ in parts), 2)
-                        m[8] = rec["exit_reason"]; m.append(x["dir"]); marks.append(m)
-                i1 = max([day_idx[-1]] + [x["exit"] for x in picks]
-                         + ([bisect.bisect_right(t, tr["exit_time"]) - 1 for tr in trs if tr["instrument"] == nm] if pmode else []))
-                charts.append(dict(label=f"{d} · {nm}" + (f" · {len(picks)} trade{'s' * (len(picks) > 1)}" if picks else ""),
-                                   day=d, kind="option", **chart(ob, r, day_idx[0], i1, marks)))
+                    _, _, ends, xs = cr
+                    for q in range(bisect.bisect_left(ends, T), bisect.bisect_left(ends, T2)):
+                        if xs[q]["dir"] in want: events.append((ends[q], rank, c, exp, int(k), nm, xs[q]))
+            events.sort(key=lambda z: (z[0], z[1]))
+            side_free, lock, seen = "", StrikeLock(st), set()
+            for when, rank, c, exp, k, nm, x in events:
+                if (nm, x["entry"]) in seen: continue      # the same SETUP seen through two scan choices
+                seen.add((nm, x["entry"]))
+                ob, r, _, _ = runs[(exp, k, right)]; t_ = ob["t"]
+                lng = x["dir"] == "up"
+                rec = dict(dir=x["dir"], signal="BULLISH" if lng else "BEARISH", position="LONG" if lng else "SHORT",
+                           opt_type=right, kind="OPT", instrument=nm, strike=k, expiry=exp, scan=c,
+                           choch_time=t_[x["choch"]], entry_time=t_[x["entry"]], exit_time=t_[x["exit"]],
+                           exit_reason=x["exit_reason"], open=x["open"], sl=x["sl"], entry_px=ob["c"][x["entry"]],
+                           exit_px=x["exit_px"], und_entry=None, und_exit=None)
+                held = (side_free if NS["one_per_side"] and rec["entry_time"] < side_free else None) or lock.held(nm, rec["entry_time"])
+                if held:
+                    skipped.append(dict(signal=rec["signal"], position=rec["position"], opt_type=right, instrument=nm,
+                                        expiry=exp, entry_time=rec["entry_time"],
+                                        why=f"strike locked: {right} side open until {held} ({nm}, scan {c})"))
+                    continue
+                if x["open"] and t_[x["exit"]][:10] == exp:
+                    rec.update(exit_reason="expiry", open=False)     # the contract's data ends at its expiry
+                sq = square_off_at(st, rec["entry_time"])
+                if sq and rec["entry_time"] >= sq: continue          # no entry at or after the square-off time
+                if not pmode: eod_cut(st, rec, t_, ob["c"])
+                parts = (manage(st, rec, t_, ob["o"], ob["h"], ob["l"], ob["c"], t_[-1], exp) if pmode
+                         else tranches(st, rec, t_, ob["o"], ob["h"], ob["l"], ob["c"]))
+                if pmode:                                  # stop and reverse on the same option
+                    cur_rec, cur, depth = rec, parts, 0
+                    while (rv := reversal_of(st, cur, depth)):
+                        cur_rec = flip(cur_rec, rv[0], rv[1], depth); depth += 1
+                        cur = [rev_tag(p_) for p_ in manage(st, cur_rec, t_, ob["o"], ob["h"], ob["l"], ob["c"], t_[-1], exp)]
+                        parts = parts + cur
+                end = max(p_["exit_time"] for p_ in parts)
+                side_free = max(side_free, end); lock.hold(nm, end)
+                for tr in parts:
+                    excursion(t_, ob["h"], ob["l"], tr, tr["position"] == "LONG")
+                    trs.append(price_trade(st, cs, tr))
+                    jx = bisect.bisect_right(t_, tr["exit_time"]) - 1
+                    m = mark(x, ob, f"{tr['position']} {right}" + (f" · {tr['tranche']}" if tr["tranche"] else ""))
+                    m[2], m[3], m[5], m[6], m[7], m[8] = ts(t_[jx]), tr["exit_px"], round(tr["pts"], 2), tr["open"], tr["sl"], tr["exit_reason"]
+                    if tr.get("reversal"):                 # drawn from its own entry, in its own direction
+                        j0 = max(bisect.bisect_right(t_, tr["entry_time"]) - 1, 0)
+                        m[0], m[1], m[4] = ts(t_[j0]), tr["entry_px"], "up" if tr["position"] == "LONG" else "down"
+                    m.append(tr.get("dir") or x["dir"])
+                    marks_by.setdefault((nm, rec["entry_time"][:10], exp, k, right), []).append((m, jx))
+        for (nm, d, exp, k, right), ms in sorted(marks_by.items(), key=lambda kv: (kv[0][1], kv[0][0])):
+            ob, r, _, _ = runs[(exp, k, right)]; t_ = ob["t"]
+            idx = [i for i, x in enumerate(t_) if x[:10] == d]
+            i1 = max([idx[-1]] + [jx for _, jx in ms])
+            n_ = len({m[0] for m, _ in ms})
+            charts.append(dict(label=f"{d} · {nm} · {n_} trade{'s' * (n_ > 1)} · {sum(m[5] for m, _ in ms):+.1f} pts",
+                               day=d, kind="option", **chart(ob, r, prev_session_start(t_, idx[0]), i1, [m for m, _ in ms])))
+        # the index, one chart per session, drawn above the option charts (the strikes are picked from it)
+        for d, (i0, i1) in sorted(spot_days.items()):
+            charts.append(dict(label=f"{d} · index", day=d, kind="signal", **option_chart(spot_tf, i0, i1, [])))
         trs.sort(key=lambda x: x["entry_time"])
         out[ch] = dict(trades=trs, skipped=skipped, signals=[], charts=charts)
     return out
@@ -1138,10 +1433,11 @@ def write_result(folder, st, ch, res, s, cs, key):
     The dashboard reads the summary first and fetches chart chunks only when they are shown.
     FZ rows: each trade's gate, reenter_reason, zone_id, fill_used (indices 25-28; None on other rows), summary.json gains
     'fz' (fz_payload: ledger, cross-tabs, bridge, control, legend ...) and fz_hash next to key.
-    Every row: lots (29) and tranche (30: "" for a whole position, "T1 +5" / "rest" for scale-out parts)."""
+    Every row: lots (29), tranche (30: "" for a whole position, "T1 +5" / "rest" for scale-out parts) and scan (31: the
+    scan choice that picked a standalone option's strike, else "")."""
     os.makedirs(folder, exist_ok=True)
     for f in os.listdir(folder): os.remove(os.path.join(folder, f))
-    extra = lambda x: [x.get(k) for k in FZ_TRADE_KEYS] + [x.get("lots", 1), x.get("tranche", "")]
+    extra = lambda x: [x.get(k) for k in FZ_TRADE_KEYS] + [x.get("lots", 1), x.get("tranche", ""), x.get("scan", "")]
     trades = [[x["opt_type"], x["instrument"], x["strike"], x["choch_time"], x["entry_time"], x["entry_px"], x["sl"], x["exit_time"],
                x["exit_px"], x["exit_reason"], round(x["pts"], 2), round(x["gross"], 2), round(x["chg"]["total"], 2),
                round(x["net"], 2), x["open"], {k: round(v, 2) for k, v in x["chg"].items()}, x.get("und_entry"), x.get("und_exit"),
@@ -1165,7 +1461,7 @@ def write_result(folder, st, ch, res, s, cs, key):
 # lab.py functions that cannot change a result (definitions sync, CLI, output bookkeeping): an edit to them keeps stored
 # results; any other lab.py edit, engine.py, and (FZ rows) the FZ modules re-run
 CACHE_EXEMPT = {"main", "add_backtest", "load_strategies", "type_rows", "sync", "connect", "migrate", "save_run",
-                "cache_key", "code_hash", "record_history", "def_view", "flat", "fz_flat", "slug"}
+                "cache_key", "code_hash", "record_history", "def_view", "flat", "fz_flat", "slug", "insert_backtest"}
 _CODE_HASH = {}
 def code_hash(fzr=False):
     """sha1[:16] of the code a result comes from: lab.py without CACHE_EXEMPT functions, engine.py, FZ modules for FZ."""
@@ -1188,7 +1484,7 @@ def cache_key(st, pr):
     row = {k: v for k, v in st.items() if k not in ("id", "created_at", "enabled", "name", "description")}
     h.update(json.dumps([row, pr["date_from"], pr["date_to"]], sort_keys=True, default=str).encode())
     h.update(code_hash(fz_rule(st)).encode())
-    files = [st["data_file"], st["spot_file"], os.path.join(st["option_dir"] or "", "manifest.csv")]
+    files = [st["data_file"], st["spot_file"], st.get("signal_file"), FUT1, os.path.join(st["option_dir"] or "", "manifest.csv")]
     if fz_rule(st): files.append(FUT1)                  # front_month per session comes from the 1-minute file
     if st["variant"] != "FUT" and st.get("weekly_dir"):
         files += sorted(glob.glob(os.path.join(st["weekly_dir"], "nifty_options*", "*", "*", "manifest.json")))
@@ -1253,7 +1549,8 @@ def record_history(specs, index):
 
 
 def add_backtest(argv):
-    """python lab.py backtest <CODE> <1M|3M|6M|YTD|1Y|5Y|all|FROM> [TO] [--tf 15minute] [--label "..."]
+    """python lab.py backtest <CODE> <MTD|1M|3M|6M|YTD|1Y|5Y|all|FROM> [TO] [--tf 15minute] [--underlying INDEX]
+       [--square-off none|HH:MM] [--label "..."]
     Appends the backtest to that strategy's file in strategies/ (the source of truth) and returns the code to run."""
     args, opts, i = [], {}, 0
     while i < len(argv):
@@ -1263,19 +1560,53 @@ def add_backtest(argv):
     path = next((p for p, sp in load_strategies() if sp["code"] == code), None)
     if not path: sys.exit(f"no strategy file with code {code}")
     if opts.get("tf") and opts["tf"] not in TIMEFRAMES: sys.exit(f"--tf must be one of {', '.join(TIMEFRAMES)}")
-    if what in ("1M", "3M", "6M", "YTD", "1Y", "5Y"): b = dict(label=opts.get("label", what), kind="preset", preset=what)
+    if what in ("MTD", "1M", "3M", "6M", "YTD", "1Y", "5Y"):
+        b = dict(label=opts.get("label", "This month" if what == "MTD" else what), kind="preset", preset=what)
     elif what == "all": b = dict(label=opts.get("label", "All data"), kind="all")
     else: b = dict(label=opts.get("label", f"{what} to {args[2]}"), kind="custom", **{"from": what, "to": args[2]})
     if opts.get("tf"): b["timeframe"] = opts["tf"]
+    if opts.get("underlying"):
+        if opts["underlying"] not in UNDERLYINGS: sys.exit(f"--underlying must be one of {UNDERLYINGS}")
+        b["underlying"] = opts["underlying"]
+    if opts.get("square-off"):                        # positional: --square-off none; intraday: --square-off 15:25
+        b["square_off"] = None if opts["square-off"].lower() in ("none", "positional") else opts["square-off"]
+        try: position_of({"position": {"square_off": b["square_off"]}})
+        except ValueError as e: sys.exit(f"--square-off: {e}")
     spec = json.load(open(path, encoding="utf-8"))
-    same = lambda x: (x["label"], x.get("timeframe") or spec["timeframe"]) == (b["label"], b.get("timeframe") or spec["timeframe"])
+    key = lambda x: (x["label"], x.get("timeframe") or spec["timeframe"], x.get("underlying") or spec.get("underlying", "FUT"),
+                     x.get("square_off", "own"))
+    same = lambda x: key(x) == key(b)
     if any(same(x) for x in spec["backtests"]):
         print(f"{os.path.basename(path)} already has backtest {b['label']!r} on {b.get('timeframe') or spec['timeframe']}; running it")
         return [code]
-    spec["backtests"].append(b)
-    json.dump(spec, open(path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+    insert_backtest(path, b)
     print(f"added to {os.path.basename(path)}:", b)
     return [code]
+
+
+def insert_backtest(path, b):
+    """Add one backtest to a strategy file as one line after the last entry of its "backtests" list, in the style of the
+    entries already there; the rest of the file (its layout, key order, comments in notes) stays byte for byte."""
+    raw = open(path, encoding="utf-8", newline="").read()
+    nl = "\r\n" if "\r\n" in raw else "\n"
+    k = raw.index('"backtests"')
+    i = raw.index("[", k)
+    depth, j = 0, i
+    for j in range(i, len(raw)):                     # the list's closing bracket (strings in it hold no brackets)
+        depth += raw[j] == "["; depth -= raw[j] == "]"
+        if depth == 0: break
+    body = raw[i + 1:j]
+    last = body.rstrip()
+    line_start = raw.rfind(nl, 0, i + 1 + len(last)) + len(nl)
+    indent = re.match(r"[ \t]*", raw[line_start:]).group(0) if last else "    "
+    one = "{ " + ", ".join(f"{json.dumps(kk)}: {json.dumps(v, ensure_ascii=False)}" for kk, v in b.items()) + " }"
+    if last:
+        pos = i + 1 + len(last)
+        new = raw[:pos] + "," + nl + indent + one + raw[pos:]
+    else:
+        new = raw[:i + 1] + nl + indent + one + nl + raw[i + 1:]
+    json.loads(new)                                  # still valid JSON, or nothing is written
+    open(path, "w", encoding="utf-8", newline="").write(new)
 
 
 def fz_flat(fzp):
@@ -1333,7 +1664,8 @@ def main():
     else:
         only = [a for a in argv if not a.startswith("--")]
     db = connect()
-    order = {sp["code"]: i for i, (_, sp) in enumerate(load_strategies())}      # strategy file order: 1, 2, ... 9, 10
+    specs0 = load_strategies()          # the files as this run read them: another session editing them mid-run cannot stop it
+    order = {sp["code"]: i for i, (_, sp) in enumerate(specs0)}      # strategy file order: 1, 2, ... 9, 10
     sts = sorted((dict(x) for x in db.execute("select * from strategy where enabled=1 order by family, id")),
                  key=lambda x: (order.get(x["family"], 999), x["id"]))
     bts = [dict(x) for x in db.execute("select * from strategy_backtest where enabled=1 order by family, is_default desc, id")]
@@ -1351,19 +1683,40 @@ def main():
                                    "charge_code", "slippage_pts", "strike_choices", "strike_default", "atr_period",
                                    "expiry_types", "capital_fut", "capital_opt_short", "fz_json")}
         meta["position"] = position_cfg(st)
+        meta.update(underlying=st.get("underlying") or "FUT", native_scan=native_scan_cfg(st))
         meta.update(strategy_name=st["name"].split(" · ")[0], strategy_description=st["description"],
                     choch_mode=st.get("choch_mode") or st["break_mode"])
         if fzr: meta["fz_hash"] = fz_hash()
         meta["runs"] = {}
         for bt in [b for b in bts if b["family"] == st["family"]]:
             tf = bt["timeframe"] or st["timeframe"]
-            rk = f"{slug(bt['label'])}_{TF_LABEL[tf]}"
+            und = bt.get("underlying") or st.get("underlying") or "FUT"
+            # holding: the strategy's own (position.square_off), or the backtest's override - positional ('none') or intraday
+            sq0 = position_cfg(st).get("square_off"); ov = bt.get("square_off")
+            sq = sq0 if ov is None else (None if ov == "none" else ov)
+            rk = (f"{slug(bt['label'])}_{TF_LABEL[tf]}" + ("_idx" if und == "INDEX" else "")
+                  + ("" if sq == sq0 else "_pos" if sq is None else "_intra"))
             frm, to, status, reason = resolve_backtest(bt, st["warmup_days"])
+            if status == "ok" and st["variant"] != "FUT":   # options: only where a full option chain exists (no hindsight strikes)
+                cov = option_coverage(st)
+                if cov is None:
+                    status, reason = "refused", "no full-chain option data; fill expiries with tools/breeze_options.py"
+                elif frm < cov:
+                    if bt["kind"] == "all":
+                        frm = cov                             # All data for options = the full-chain period
+                    else:
+                        status, reason = "refused", (f"options have full-chain data from {cov} (earlier expiries hold only the five "
+                                                     f"strikes around settlement); fill them with tools/breeze_options.py")
+            if status == "ok" and und == "INDEX":
+                if fzr: status, reason = "refused", INDEX_WHY_FZ
+                elif st["variant"] == "OPT_NATIVE": status, reason = "refused", INDEX_WHY_NATIVE
             if status == "ok" and fzr:
                 if tf not in blocks: status, reason = "refused", f"no FZ thresholds for {tf}"
                 elif st["variant"] == "OPT_NATIVE": status, reason = "refused", FZ_NATIVE_WHY
             info = dict(id=bt["id"], label=bt["label"], kind=bt["kind"], preset=bt["preset"], notes=bt["notes"],
-                        date_from=frm, date_to=to, timeframe=tf, design=tf == st["timeframe"], is_default=bt["is_default"],
+                        date_from=frm, date_to=to, timeframe=tf, underlying=und,
+                        holding=f"intraday {sq}" if sq else "positional",
+                        design=tf == st["timeframe"] and und == (st.get("underlying") or "FUT") and sq == sq0, is_default=bt["is_default"],
                         status=status, reason=reason, choices={})
             meta["runs"][rk] = info
             if status != "ok":
@@ -1373,7 +1726,9 @@ def main():
             # Unseen runs are date slices of the All-data run (resolve_backtest still refuses on the file's warm-up)
             warm = ss.index(frm) if fzr else st["warmup_days"]
             info.update(memory_start=ss[max(0, ss.index(frm) - warm)], same_sample="file_start" if fzr else "own_warmup")
-            stp = dict(st, timeframe=tf, data_file=tf_file("fut", tf), spot_file=tf_file("spot", tf),
+            if sq != sq0: st = dict(st, position_json=json.dumps(dict(position_cfg(st), square_off=sq), sort_keys=True))
+            stp = dict(st, timeframe=tf, data_file=tf_file("fut", tf), spot_file=tf_file("spot", tf), underlying=und,
+                       signal_file=tf_file("spot" if und == "INDEX" else "fut", tf),
                        date_from=frm, date_to=to, period=rk, warmup_days=warm)
             pr = dict(date_from=frm, date_to=to)
             key = cache_key(stp, pr)
@@ -1441,7 +1796,7 @@ def main():
     if only:                                           # never publish a dashboard or results/ that lack the other strategies
         print(f"partial run ({' '.join(only)}): dashboard and results not rebuilt")
         return
-    hist = record_history(load_strategies(), index)
+    hist = record_history(specs0, index)
     for m in index:                                    # the previous version of the same strategy, to read this one against
         cur, prev = hist.get(m["family"], (None, None))
         m["version"] = cur and dict(version=cur["version"], at=cur["at"], changes=cur["changes"])

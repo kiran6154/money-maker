@@ -32,6 +32,8 @@ swings (Pine port) → protected level → CHoCH / BOS → AVWAP pair from previ
 | `ST8` | Strategy 8 | 5 min | touch | CHoCH candle | FZ v2 on rooms with Strategy 2 SETUPs (20-minute sit, rooms retired after 3 sessions) |
 | `ST9` | Strategy 9 | 1 min | touch | **managed** | Strategy 1's entries with **managed exits** (`position.exit: position`): 3 lots, stop 50 pts / 5% of premium = 1R, lot 1 out at 1R, lot 2 at 2R, last lot trails from 3R (1R ladder); no CHoCH exit (S43) |
 | `ST10` | Strategy 10 | 5 min | touch | **managed** | the same managed exits on Strategy 2's entries |
+| `ST11` | Strategy 11 | 1 min | touch | **managed + reverse** | Strategy 9 with **stop and reverse**: an initial-stop exit opens the opposite position at the stop (full 3 lots, same management), once per signal (S48) |
+| `ST12` | Strategy 12 | 5 min | touch | **managed + reverse** | Strategy 10 with stop and reverse |
 
 Each file holds one strategy: `code`, `name`, `description`, design `timeframe`, `warmup_days`, `rules`
 (`break_mode`, `choch_mode`, `avwap_weight`, `sl_rule`, `entry_rule`, `exit_rule`), `lot_size`, `capital`, per-type charges and
@@ -52,6 +54,20 @@ removed are disabled in the database, never deleted.
   exits every position at the next CHoCH before the next SETUP, so on Strategies 1–6 today the lock never binds (0 of the
   All-data positions); it matters as soon as a design can re-enter while a position is open. `"none"` switches it off.
 - **`lots`**: lots per position (charges, gross and net scale with it; points stay per lot).
+- **`square_off`** (`"HH:MM"` or null): intraday. A position still open after that time on its entry day closes at the close of
+  the last candle that opens at or before it (exit reason `eod`); a signal at or after it is not taken. Strategies 1–4 and 9–10
+  use `"15:25"` (user decision 2026-09-28); the FZ strategies (5–8) keep their own exits.
+- **`reverse`** (`{"trigger": "initial_stop", "max": 1}` or null; needs `exit: "position"`, Strategies 11–12): when a position's lots
+  leave at its initial stop (not a trail stop), the opposite position opens at the stop fill — a full new position with the
+  same lots, stop, targets and trail — up to `max` times per signal, never at or after the square-off. Futures and standalone
+  options reverse on the same contract; Options (via futures) reverse a stopped leg into the opposite signal's leg (long CE →
+  long PE, short PE → short CE), strike from the index at the stop, entered at that option's close of the stop candle. Reversed
+  lots are labelled `REV T1 1R`, `REV rest (trail)`, … in the trades table and on the chart.
+- **Intraday or positional per backtest:** any backtest entry can override the strategy's holding with `"square_off": null`
+  (positional: held overnight) or `"square_off": "HH:MM"` (intraday). The run key gets `_pos` / `_intra`, the Candles switch
+  labels each run intraday / positional, a badge shows when a run is not on the strategy's own holding, and *+ backtest* has
+  a *Positional* / *Intraday 15:25* button for the backtest on screen (`python lab.py backtest ST9 MTD --square-off none`).
+  Strategies 1–4 and 9–10 carry a positional *This month* next to their intraday default.
 - **`scale_out`**: part of the lots exit at a fixed target, the rest ride the strategy's exit, e.g. 2 lots, one out at +10:
   `{"lots": 2, "scale_out": [{"lots": 1, "target_pts": 10}]}`. The target is in the traded instrument's points (option
   premium for options, futures points for futures), from the entry fill; it fills on the first candle after the entry
@@ -86,7 +102,33 @@ Changing any of these is a strategy change: its results get a new version in `re
 
 - **Futures:** long future on a future-long signal, short future on a future-short signal.
 - **Options (via futures):** the futures' signals traded in options — long CE and short PE on future long, long PE and short CE on future short.
-- **Options (standalone):** the engine on the option's own chart, independent of the futures — long on bullish setups, short on bearish setups.
+- **Options (standalone):** the engine on the option's own chart, independent of the futures — long on bullish setups, short
+  on bearish setups. **Rescan** (`options.native_scan`, default `{"choices": ["ATR2", "ATM", "ITM1", "OTM1"],
+  "every_minutes": 5, "one_per_side": true}`): every 5 minutes, on the index candle that has just completed, the strike of
+  each scan choice is picked for CE and PE (ATR(14) on those 5-minute candles; nearest weekly or month-end expiry), and each
+  picked contract is watched until the next scan. The choices are checked independently; the first SETUP on any watched
+  contract whose entry candle closes in the watch opens the position (ties: scan-list order). With `one_per_side` no other
+  CE (or PE) is entered until that position has closed — the strike is held till the trade completes; signals refused
+  meanwhile are listed as `strike locked: CE side open until …`. Exits: the engine's own on that option's chart (next CHoCH,
+  stop), or the managed position (Strategies 9–10); a contract's data ends at its expiry. Results: one book per expiry
+  type, `W-SCAN` / `M-SCAN` (the strike selector applies to Options (via futures)); each trade records the scan choice that
+  picked it (trades table, strike column).
+
+### Signal source: futures or index (`underlying`)
+A strategy's `underlying` (`"FUT"` default, or `"INDEX"`) is the candle series the engine reads; any backtest can run on the
+other one (`"underlying"` in the backtest entry, `python lab.py backtest ST2 all --underlying INDEX`, or *+ backtest → Run
+with signals on the index / futures*; run keys get `_idx`, the Candles switch labels each run futures / index, and a badge
+shows when a run is not on the strategy's own source).
+- **INDEX:** the NIFTY index candles, with an **equal-weighted AVWAP** (the index has no volume; user decision 2026-09-27).
+  The Futures type still trades the near-month futures: entry at the futures close of the signal candle; exits at the
+  futures price of the exit candle — a stop crossed on the index fills at the futures price of that candle shifted by the
+  stop's distance. Options (via futures) take their strikes from the index as always. FZ strategies and Options
+  (standalone) refuse index runs (FZ's thresholds are futures points; standalone options read the option's own chart).
+- **Near-month futures only:** each futures position trades the contract of its entry candle (`contract` / `expiry`
+  columns of the 1-minute file), which is the near-month contract from the day after the previous monthly expiry to its own
+  expiry; a position still open at that contract's last candle is closed there (`expiry`). The upcoming contract is never
+  traded early. The strike lock is per contract, so the next contract is free after the roll. (The Kite files of July–
+  September hold the September contract throughout; `tools/breeze_history.py` builds the near-month files.)
 
 Every type runs long + short once; long only and short only are its long and short halves (same signals, same fills), stored as
 `stats_long` / `stats_short` next to `stats`. Below the chart: KPIs (with long and short cards in the long + short scheme) and tabs —
@@ -242,7 +284,7 @@ which moved two 1m positions; the permutation now splits by the SETUPs FZ traded
 | Path | What |
 |---|---|
 | `engine.py` | foundation engine (pure; no I/O besides loading candles) |
-| `fz.py`, `fz_exec.py`, `fz_report.py` | the Foundation-Zone gate (Strategies 5–6): gate, execution / simulator, reports (see *FZ*) |
+| `fz.py`, `fz_exec.py`, `fz_report.py` | the Foundation-Zone gate (Strategies 5–6 bands, 7–8 rooms): gate, execution / simulator, reports (see *FZ*) |
 | `lab.py` | runs enabled strategies, stores results, writes dashboard + exports |
 | `dashboard.tpl` | dashboard template (`dashboard.html` is generated) |
 | `strategies/strategy_<n>.json` | **versioned** — one file per strategy: the source of truth for its rules and backtests |
@@ -250,9 +292,10 @@ which moved two 1m positions; the permutation now splits by the SETUPs FZ traded
 | `results/summary.json`, `results/trades.csv` | **versioned** latest headline numbers and trades — diff them across commits |
 | `results/history/<CODE>.json` | **versioned** — every version of a strategy (definition + result code) with its headline numbers per backtest and choice; the baseline each new version is read against |
 | `serve.py`, `start_lab.cmd` | the dashboard server with the backtest queue (`python serve.py`, or double-click `start_lab.cmd`); binds its port exclusively and says so if it is taken |
+| `tests/test_strategy_files.py` | adding a backtest (terminal or dashboard) adds exactly one line in the style of its neighbours; the rest of every strategy file stays as written |
 | `tests/test_position.py` | position handling on hand-made candles: managed exits, R targets, the ladder trail, first-candle fills, scale-out, the strike lock |
 | `results/fz_setups.csv`, `results/fz_ledger.csv` | **versioned** FZ gate ledger (one row per SETUP) and its per-run tables; written only by a full build |
-| `tools/` | Kite downloads: `kitefut.py` / `kite1m.py` futures, `kite_spot.py` index, `kite_options.py` option chain (credentials read at runtime from money-maker); `breeze_options.py` fills expired option strikes from ICICI Breeze (credentials from the environment) |
+| `tools/` | Kite downloads: `kitefut.py` / `kite1m.py` futures, `kite_spot.py` index, `kite_options.py` option chain (credentials read at runtime from money-maker); `breeze_options.py` fills expired option strikes and `breeze_history.py` fetches years of near-month futures and index candles from ICICI Breeze (credentials from the environment) |
 | `web/` | per-variant, per-strike detail JSON the dashboard loads (generated, not versioned) |
 | `tests/test_truncation.py` | look-ahead test (Foundation and FZ) |
 | `tests/test_fz_parity.py` | FZ: `simulate()` reproduces every Foundation trade, no trade fields in `fz.py`, the card does not depend on positions, every `fz` key has a source |
@@ -264,6 +307,14 @@ which moved two 1m positions; the permutation now splits by the SETUPs FZ traded
 `fz` block verbatim and `trade.gate / reenter_reason / zone_id / fill_used` the FZ position fields).
 
 ## Backtests, timeframes, statistics
+- **This month** (`preset: "MTD"`, from the 1st of the latest data month) is the default backtest of Strategies 1–4 and 9–10;
+  All data (five years for futures), 1Y, 3M, 1M, Design and Unseen stay one click away.
+- **Charts for option types:** the underlying chart on top (the index when the run's signals come from the index or for
+  Options (standalone), else the near-month futures) and the traded option's own chart below it, from the session before
+  the trade; both keep the same time window when either is scrolled or zoomed. A session with several contracts shows a
+  button per contract; clicking a trade opens its session and its contract, zoomed to it. *PNG* / *JPG* save both charts.
+- **Strategy files keep their layout:** adding a backtest from the terminal or the dashboard inserts one line after the last
+  backtest in the style of the others (`lab.insert_backtest`); nothing else in the file is rewritten.
 - **Backtests are per strategy** (listed in the strategy's file, synced to `strategy_backtest`): each is one independent run over its own dates (plus warm-up) —
   `all` (every session after warm-up), presets `1M 3M 6M YTD 1Y 5Y` counted back from the latest data date, or named/custom
   ranges such as **Design period** (26 Aug – 25 Sep: the rules were built here) and **Unseen test** (8 Jul – 25 Aug). A backtest
@@ -294,6 +345,7 @@ python lab.py ST1             # one strategy (partial run: stores it, does not r
 python lab.py backtest ST2 1Y # add a backtest to strategies/strategy_2.json and run it
 python serve.py               # then open http://localhost:8766/dashboard.html (python serve.py 8770 for another port)
 start_lab.cmd                 # the same, by double-click (keeps the window open)
+python serve.py 8770 --lan    # also reachable from other devices (see "From a phone" below)
 ```
 **Running backtests from the page (no terminal, no assistant):** open the dashboard through `python serve.py`. *+ backtest*
 then lists the presets (1M 3M 6M YTD 1Y 5Y, All data — ✓ = already a backtest of this strategy; dashed = the data does not
@@ -303,6 +355,17 @@ on other candles", and *Recompute what is missing*. A click queues a job: it add
 Jobs run one at a time; a terminal `lab.py` run waits for a running job and the other way round (`cache/lab.lock`). Logs:
 `cache/jobs/<id>.log`. The server listens on 127.0.0.1 only and refuses cross-origin POSTs; it never touches a broker.
 Opened any other way (a plain static server), the panel shows the equivalent terminal commands instead.
+
+**From a phone:** the server listens only on this PC unless started with `--lan` (every network address of the PC — home
+Wi-Fi), `--tailscale` (only the PC's Tailscale address) or `--host <ip>`; it prints the phone address(es) at start.
+- **At home:** `python serve.py 8770 --lan`, open `http://<PC address>:8770/dashboard.html`; Windows Firewall asks once.
+- **Away from home:** install Tailscale on the PC and the phone and sign in with the same account, then
+  `python serve.py 8770 --tailscale` (or `start_lab.cmd 8770 --tailscale`) and open the printed `http://100.x…` address.
+  Only devices on your Tailscale account can reach it; it refuses to start when Tailscale is not connected.
+- **Not offered:** port-forwarding or a public tunnel (ngrok, Cloudflare quick tunnel). The server has no login, so a public
+  address would let anyone open the page and queue jobs.
+Whatever the address: only `dashboard.html` and `web/*.json` are served (never the database, strategy files, tools, logs or
+folder listings), and queue requests are accepted only from the page itself (same origin).
 
 **Versions (before / after a change):** every full run writes `results/history/<CODE>.json`. A new version starts whenever the
 strategy's definition (the file without its name, description and backtest list) or the code its results come from changes;
@@ -325,5 +388,19 @@ Change a rule → edit the strategy's file (or copy it into a new strategy) → 
 commit `strategies/` + `results/` together so the commit shows the rule change and its before/after numbers.
 
 ## Data
-`D:/nifty/niftyfut_5minute_2026-07-01_to_2026-09-25.csv`, `D:/nifty/niftyfut_minute_2026-07-01_to_2026-09-25.csv`
-(NIFTY26SEPFUT from Kite; `front_month` = 1 from 2026-08-26).
+**Longer history (`tools/breeze_history.py`):** 1-minute near-month NIFTY futures (contract switched at each monthly
+expiry, `contract` / `expiry` / `front_month` columns) and the 1-minute NIFTY index from ICICI Breeze, 2 sessions per request,
+resumable (`D:/nifty/breeze/...`). `--plan` counts the requests without a login (1 Oct 2021 – 25 Sep 2026: 1,237 sessions,
+60 contracts, 1,250 requests, about 15 minutes); `--build` writes `niftyfut_nearmonth_{minute,5minute}_<from>_to_<to>.csv` and
+`nifty50_breeze_{minute,5minute}_…csv` and repoints `config/data.json` (only the four path values change). Presets 1Y and 5Y
+are then no longer refused; option legs older than the local files stay skipped (orange *) until those expiries are filled
+with `tools/breeze_options.py`.
+
+Current files (built 2026-09-28): `D:/nifty/niftyfut_nearmonth_{minute,5minute}_2021-10-01_to_2026-09-25.csv` and
+`D:/nifty/nifty50_breeze_{minute,5minute}_2021-10-01_to_2026-09-25.csv` — 1,188 sessions. **Gaps:** the April 2025 and May 2026
+futures contracts (their monthly dates were first taken from the option calendar's last weekly; `lab.monthly_expiry` now
+applies the exchange rule — last Thursday to Aug 2025, last Tuesday from Sep 2025, the session before on a holiday; the
+missing 32 requests come with the next `tools/breeze_history.py --from 2021-10-01` run, then `--build`), and the index on
+30–31 Mar 2022. Options run only from 30 Jun 2026, where every expiry has a full chain (`lab.option_coverage`); earlier
+option backtests are refused with the reason, and All data for option types starts there. The earlier Kite files
+(`niftyfut_*_2026-07-01_to_2026-09-25.csv`, the September contract throughout) are no longer used.

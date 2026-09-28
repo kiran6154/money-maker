@@ -104,5 +104,43 @@ for bad in ({"exit": "position"}, {"scale_out": [{"lots": 1, "target_r": 1}], "l
     try: lab.position_of({"position": bad}); fails.append(f"validation accepted {bad}")
     except ValueError: pass
 
-print("\n".join(fails) if fails else "OK - position handling (10 groups)")
+# 11. intraday square-off: managed lots still open at 15:25 close at that candle (reason eod); an entry at/after 15:25 is refused;
+#     on the strategy's exit, a position past 15:25 is cut there
+EOD = dict(MANAGED, square_off="15:25")
+t, o, h, l, c = bars("2026-08-03", [(100, 100, 100, 100), (101, 104, 99, 103), (103, 105, 101, 104)], start=15 * 60 + 23)
+parts = lab.manage(st(EOD), rec("LONG", 100, t[0]), t, o, h, l, c, t[-1])
+check("eod managed", {(p["exit_time"][11:16], p["exit_reason"], p["open"]) for p in parts}, {("15:25", "eod", False)})
+r1 = dict(rec("LONG", 100, "2026-08-03 15:20:00"), exit_time="2026-08-04 10:00:00", exit_px=90, exit_reason="next_choch", open=False)
+tt = ["2026-08-03 15:20:00", "2026-08-03 15:25:00", "2026-08-04 09:15:00", "2026-08-04 10:00:00"]
+check("eod cut", (lab.eod_cut(st(EOD), r1, tt, [100, 101, 97, 90]), r1["exit_time"], r1["exit_px"], r1["exit_reason"]),
+      (True, "2026-08-03 15:25:00", 101, "eod"))
+check("eod late entry", lab.eod_cut(st(EOD), dict(r1, entry_time="2026-08-03 15:25:00"), tt, [100, 101, 97, 90]), False)
+check("no square-off", lab.eod_cut(st({}), dict(r1), tt, [100, 101, 97, 90]), True)
+for bad in ({"square_off": "9:30"}, {"square_off": "15:45"}, {"square_off": 1525}):
+    try: lab.position_of({"position": bad}); fails.append(f"validation accepted {bad}")
+    except ValueError: pass
+
+# 12. stop and reverse: an initial-stop exit opens the opposite position at the stop fill (a trail stop does not); once per signal
+#     (max 1); not at or after the square-off; the reversed lots carry reversal = 1 and a REV tranche label
+SAR = dict(MANAGED, reverse={"trigger": "initial_stop", "max": 1})
+t, o, h, l, c = bars("2026-08-03", [(100, 100, 100, 100), (99, 100, 89, 90), (90, 91, 79, 80), (80, 81, 69, 70)])
+parts = lab.manage(st(SAR), rec("LONG", 100, t[0]), t, o, h, l, c, t[-1])
+rv = lab.reversal_of(st(SAR), parts, 0)
+check("sar trigger", rv, (t[1], 90))
+r2 = lab.flip(rec("LONG", 100, t[0]), rv[0], rv[1], 0)
+check("sar flip", (r2["position"], r2["entry_px"], r2["entry_time"], r2["reversal"]), ("SHORT", 90, t[1], 1))
+p2 = [lab.rev_tag(p) for p in lab.manage(st(SAR), r2, t, o, h, l, c, t[-1])]
+check("sar reversed lots", by(p2), {"REV T1 1R": (80, "target 1R"), "REV T2 2R": (70, "target 2R"), "REV rest (trail)": (70, "open")})
+check("sar max 1", lab.reversal_of(st(SAR), [dict(p, exit_reason="stop_loss") for p in p2], 1), None)
+t, o, h, l, c = bars("2026-08-03", [(100, 100, 100, 100), (101, 111, 101, 110), (110, 121, 109, 120), (120, 131, 119, 130), (130, 141, 129, 140), (139, 139, 125, 126)])
+check("no reverse on trail", lab.reversal_of(st(SAR), lab.manage(st(SAR), rec("LONG", 100, t[0]), t, o, h, l, c, t[-1]), 0), None)
+late = [dict(exit_reason="stop_loss", exit_time="2026-08-03 15:26:00", exit_px=90)]
+check("no reverse after square-off", lab.reversal_of(st(dict(SAR, square_off="15:25")), late, 0), None)
+check("no reverse when off", lab.reversal_of(st(MANAGED), [dict(late[0], exit_time="2026-08-03 10:00:00")], 0), None)
+for bad in ({"reverse": {"trigger": "any", "max": 1}, "exit": "position", "stop": {"futures_pts": 10, "option_pct": 5}},
+            {"reverse": {"trigger": "initial_stop", "max": 1}}):
+    try: lab.position_of({"position": bad}); fails.append(f"validation accepted {bad}")
+    except ValueError: pass
+
+print("\n".join(fails) if fails else "OK - position handling (12 groups)")
 sys.exit(1 if fails else 0)

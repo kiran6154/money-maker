@@ -1,0 +1,557 @@
+//@version=6
+// ─────────────────────────────────────────────────────────────────────────────
+// Strategy 10 (ST10) — Pine port of research/strategy_lab (strategies/strategy_10.json)
+//
+// Entries = Strategy 2 (5-minute candles): swings (Pine port) -> protected level ->
+// CHoCH / BOS -> AVWAP pair from the previous SH & SL at each CHoCH -> SETUP.
+// Exits   = managed position (lab.py manage()): 3 lots, stop 50 pts = 1R,
+// lot 1 out at 1R, lot 2 at 2R, from 3R the last lot's stop steps up 1R behind
+// the best R reached. No CHoCH exit. Intraday square-off at 15:25.
+//
+// Two books on the chart:
+//   * Ledger table (top right) = the lab's rules exactly: stop checked before
+//     targets on the same candle, 5 pts slippage per side, Zerodha NFO futures
+//     charges per tranche round trip. Compare this with the lab's numbers.
+//   * Strategy Tester = TradingView's own fills of the same orders. It can differ
+//     on a candle that touches both the stop and a target (TV guesses the
+//     intrabar path; the lab takes the stop), and its commission is approximate.
+//
+// Not ported: option types (via futures / standalone), near-month contract roll
+// (use a continuous contract such as NSE:NIFTY1!), the lab's warm-up window
+// (state here starts at the first chart bar).
+// ─────────────────────────────────────────────────────────────────────────────
+strategy("Strategy 10 — managed exits (ST10)", shorttitle = "ST10", overlay = true,
+     pyramiding = 0, process_orders_on_close = true,
+     initial_capital = 120000, default_qty_type = strategy.fixed, default_qty_value = 1,
+     commission_type = strategy.commission.percent, commission_value = 0.0145,
+     margin_long = 1, margin_short = 1,
+     max_labels_count = 500, max_lines_count = 500)
+
+const string DESIGN_TF = "5"
+const string CODE      = "ST10"
+
+// ── inputs (defaults = strategy file) ────────────────────────────────────────
+const string G1 = "Rules"
+breakMode = input.string("touch", "Break mode (swings, BOS, use-up)", options = ["touch", "close"], group = G1)
+chochMode = input.string("touch", "CHoCH mode", options = ["touch", "close"], group = G1)
+avwapW    = input.string("volume", "AVWAP weight", options = ["volume", "equal"], group = G1,
+     tooltip = "equal = the lab's INDEX mode (the index has no volume)")
+
+const string G2 = "Position (managed exits)"
+lotSize    = input.int(65, "Lot size (units)", minval = 1, group = G2)
+lotsTot    = input.int(3, "Lots per position", minval = 1, group = G2)
+stopPts    = input.float(50.0, "Stop = 1R (futures points)", minval = 0.05, group = G2)
+t1Lots     = input.int(1, "T1 lots", minval = 0, inline = "t1", group = G2)
+t1R        = input.float(1.0, "at R", minval = 0.1, inline = "t1", group = G2)
+t2Lots     = input.int(1, "T2 lots", minval = 0, inline = "t2", group = G2)
+t2R        = input.float(2.0, "at R", minval = 0.1, inline = "t2", group = G2)
+trailOn    = input.bool(true, "Trail the stop", group = G2)
+trailStart = input.int(3, "Trail starts at (full R reached)", minval = 1, group = G2)
+trailLag   = input.int(1, "Trail lag (R)", minval = 0, group = G2)
+sqOn       = input.bool(true, "Intraday square-off", inline = "sq", group = G2)
+sqH        = input.int(15, "at", minval = 9, maxval = 15, inline = "sq", group = G2)
+sqM        = input.int(25, ":", minval = 0, maxval = 59, inline = "sq", group = G2)
+slipPts    = input.float(5.0, "Slippage per side (pts, ledger only)", minval = 0, group = G2)
+
+const string G3 = "Window"
+fromT = input.time(timestamp("2020-01-01T00:00:00+05:30"), "Trade from", group = G3)
+toT   = input.time(timestamp("2099-12-31T00:00:00+05:30"), "Trade until", group = G3)
+
+const string G4 = "Display"
+showSw     = input.bool(true, "Swings (H / L)", group = G4)
+showStruct = input.bool(true, "CHoCH / BOS labels", group = G4)
+showAv     = input.bool(true, "Trend AVWAP + protected level", group = G4)
+showPair   = input.bool(true, "AVWAP pair of the latest CHoCH", group = G4)
+showLvls   = input.bool(true, "Stop / targets of the open position", group = G4)
+showTbl    = input.bool(true, "Ledger table", group = G4)
+
+bool touch   = breakMode == "touch"
+bool chTouch = chochMode == "touch"
+int  restLots = math.max(lotsTot - t1Lots - t2Lots, 0)
+float qtyU    = lotSize / syminfo.pointvalue     // tester units per lot
+
+// ── session clock ────────────────────────────────────────────────────────────
+string tz      = syminfo.timezone
+int    curHHMM = hour(time, tz) * 100 + minute(time, tz)
+int    nextT   = time + timeframe.in_seconds() * 1000
+int    nextHHMM = hour(nextT, tz) * 100 + minute(nextT, tz)
+int    sqHHMM  = sqH * 100 + sqM
+// the last candle that opens at or before the square-off time
+bool   isSqBar = sqOn and (curHHMM > sqHHMM or nextHHMM > sqHHMM or session.islastbar)
+bool   firstBar = nz(ta.change(dayofmonth(time, tz))) != 0   // first candle of a session: no fill on the opening print
+
+// ── AVWAP from any anchor bar (cumulative sums, trimmed in chunks) ───────────
+var array<float> tpA   = array.new<float>()
+var array<float> cumPV = array.from(0.0)
+var array<float> cumW  = array.from(0.0)
+var int avBase = 0            // bar_index of tpA[0]
+
+if tpA.size() >= 90000
+    int drop = 10000
+    tpA   := tpA.slice(drop, tpA.size()).copy()
+    cumPV := cumPV.slice(drop, cumPV.size()).copy()
+    cumW  := cumW.slice(drop, cumW.size()).copy()
+    avBase += drop
+
+float wBar = avwapW == "volume" ? nz(volume) : 1.0
+tpA.push(hlc3)
+cumPV.push(cumPV.last() + hlc3 * wBar)
+cumW.push(cumW.last() + wBar)
+
+// AVWAP anchored at bar a, value at bar i (engine av(a, i))
+f_av(int a, int i) =>
+    float r = na
+    if not na(a) and not na(i)
+        int ai = a - avBase
+        int ii = i - avBase
+        if ai >= 0 and ii >= ai and ii + 1 < cumW.size()
+            float dw = cumW.get(ii + 1) - cumW.get(ai)
+            r := dw > 0 ? (cumPV.get(ii + 1) - cumPV.get(ai)) / dw : tpA.get(ai)
+    r
+
+f_below(float lvl, bool byTouch) => byTouch ? low <= lvl : close < lvl
+f_above(float lvl, bool byTouch) => byTouch ? high >= lvl : close > lvl
+
+// ── swings ───────────────────────────────────────────────────────────────────
+type Swing
+    bool  isHigh
+    int   bar
+    float p
+    int   conf
+    bool  broken  = false
+    bool  bosUsed = false
+
+var array<Swing> sw       = array.new<Swing>()
+var array<Swing> unbroken = array.new<Swing>()
+var array<Swing> cands    = array.new<Swing>()
+var Swing anchor = na
+var Swing lastH  = na
+var Swing lastL  = na
+var int   trend  = 0
+
+// protected-level candidate: L below the trend AVWAP (uptrend) / H above it (downtrend) at its confirmation
+f_qual(Swing s, Swing anc, int tr) =>
+    float a = f_av(anc.bar, s.conf)
+    bool q = false
+    if not na(a)
+        q := tr == 1 ? (not s.isHigh and s.p < a) : tr == -1 ? (s.isHigh and s.p > a) : false
+    q
+
+f_rebuild(int i, Swing anc, int tr) =>
+    array<Swing> out = array.new<Swing>()
+    int n = sw.size()
+    if n > 0
+        for j = n - 1 to 0
+            Swing s = sw.get(j)
+            if s.bar < anc.bar
+                break
+            if s.conf < i and not s.broken and f_qual(s, anc, tr)
+                out.unshift(s)
+    out
+
+var int   mode = 0
+var float chP  = na
+var int   chB  = na
+var float chBL = na     // low of the candidate-high candle
+var float clP  = na
+var int   clB  = na
+var float clBH = na     // high of the candidate-low candle
+
+bool he = mode >= 0
+bool le = mode <= 0
+if he and (na(chP) or high >= chP)
+    chP  := high
+    chB  := bar_index
+    chBL := low
+if le and (na(clP) or low <= clP)
+    clP  := low
+    clB  := bar_index
+    clBH := high
+bool isSH = he and not na(chP) and bar_index > chB and f_below(chBL, touch)
+bool isSL = le and not na(clP) and bar_index > clB and f_above(clBH, touch)
+if mode == 0 and isSH and isSL
+    if clB < chB
+        isSH := false
+    else
+        isSL := false
+
+Swing newSw = na
+if isSH
+    newSw := Swing.new(true, chB, chP, bar_index)
+    mode  := -1
+    chP   := na
+    chB   := na
+    chBL  := na
+    clP   := low
+    clB   := bar_index
+    clBH  := high
+if isSL
+    newSw := Swing.new(false, clB, clP, bar_index)
+    mode  := 1
+    clP   := na
+    clB   := na
+    clBH  := na
+    chP   := high
+    chB   := bar_index
+    chBL  := low
+if showSw and not na(newSw)
+    label.new(newSw.bar, newSw.p, newSw.isHigh ? "H" : "L", style = newSw.isHigh ? label.style_label_down : label.style_label_up,
+         color = color.new(color.gray, 100), textcolor = newSw.isHigh ? color.teal : color.maroon, size = size.tiny)
+
+// ── trend, protected level, CHoCH / BOS ──────────────────────────────────────
+float protLvl  = na
+float trendAv  = na
+bool  chochNow = false
+int   chochDir = 0
+Swing chHi = na
+Swing chLo = na
+
+if not na(anchor)
+    float v = f_av(anchor.bar, bar_index)
+    trendAv := v
+    Swing P = na
+    if cands.size() > 0
+        for j = cands.size() - 1 to 0
+            Swing s = cands.get(j)
+            if not s.broken
+                P := s
+                break
+    protLvl := na(P) ? na : P.p
+    if trend == 1 and not na(lastH) and not lastH.bosUsed and f_above(lastH.p, touch)
+        lastH.bosUsed := true
+        if showStruct
+            label.new(bar_index, high, "BOS", style = label.style_none, textcolor = color.teal, size = size.tiny)
+    if trend == -1 and not na(lastL) and not lastL.bosUsed and f_below(lastL.p, touch)
+        lastL.bosUsed := true
+        if showStruct
+            label.new(bar_index, low, "BOS", style = label.style_none, textcolor = color.maroon, size = size.tiny)
+    if not na(P) and ((trend == 1 and f_below(P.p, chTouch)) or (trend == -1 and f_above(P.p, chTouch)))
+        bool flip = not na(v) and ((trend == 1 and f_below(v, chTouch)) or (trend == -1 and f_above(v, chTouch)))
+        flip := flip and not na(trend == 1 ? lastH : lastL)     // need a swing to re-anchor at
+        chochNow := true
+        chochDir := trend == 1 ? -1 : 1
+        chHi := lastH
+        chLo := lastL
+        if showStruct
+            label.new(bar_index, chochDir == 1 ? low : high, (flip ? "CHoCH" : "choch") + (chochDir == 1 ? " ↑" : " ↓"),
+                 style = chochDir == 1 ? label.style_label_up : label.style_label_down,
+                 color = color.new(chochDir == 1 ? color.green : color.red, flip ? 20 : 70), textcolor = color.white, size = size.tiny)
+        if flip
+            if not na(lastL)
+                lastL.bosUsed := true
+            if not na(lastH)
+                lastH.bosUsed := true
+            trend  := -trend
+            anchor := trend == -1 ? lastH : lastL
+            cands  := f_rebuild(bar_index, anchor, trend)
+
+// swings touched / closed through by this candle are used up
+if unbroken.size() > 0
+    for j = unbroken.size() - 1 to 0
+        Swing s = unbroken.get(j)
+        if (not s.isHigh and f_below(s.p, touch)) or (s.isHigh and f_above(s.p, touch))
+            s.broken := true
+            unbroken.remove(j)
+
+// swings confirmed on this candle
+if not na(newSw)
+    sw.push(newSw)
+    if sw.size() > 50000
+        sw := sw.slice(10000, sw.size()).copy()
+    if newSw.isHigh
+        lastH := newSw
+    else
+        lastL := newSw
+    unbroken.push(newSw)
+    if na(anchor)
+        trend  := newSw.isHigh ? -1 : 1
+        anchor := newSw
+        cands  := array.new<Swing>()
+        if f_qual(newSw, anchor, trend)
+            cands.push(newSw)
+    else if newSw.bar >= anchor.bar and f_qual(newSw, anchor, trend)
+        cands.push(newSw)
+
+// ── AVWAP pair per CHoCH + SETUP ─────────────────────────────────────────────
+var bool  wOn  = false
+var int   wAH  = na
+var int   wAL  = na
+var int   wDir = 0
+var float wHiC = na      // CHoCH candle high
+var float wLoC = na      // CHoCH candle low
+var int   pairAH = na
+var int   pairAL = na
+
+int setupDir = 0
+// the window of a CHoCH runs up to and including the next CHoCH's candle
+if wOn and bar_index - 1 > math.max(wAH, wAL)
+    float dH = f_av(wAH, bar_index) - f_av(wAH, bar_index - 1)
+    float dL = f_av(wAL, bar_index) - f_av(wAL, bar_index - 1)
+    if not na(dH) and not na(dL)
+        if wDir == -1 and close < wLoC and dH < 0 and dL < 0
+            setupDir := -1
+            wOn := false
+        else if wDir == 1 and close > wHiC and dH > 0 and dL > 0
+            setupDir := 1
+            wOn := false
+if chochNow
+    if not na(chHi) and not na(chLo)
+        wOn  := true
+        wAH  := chHi.bar
+        wAL  := chLo.bar
+        wDir := chochDir
+        wHiC := high
+        wLoC := low
+        pairAH := chHi.bar
+        pairAL := chLo.bar
+    else
+        wOn := false
+
+// ── managed position (lab.py manage()) + ledger ──────────────────────────────
+f_charges(float buyPx, float sellPx, float qty) =>          // ZERODHA_NFO_FUT, config/charges.json
+    float buyV  = buyPx * qty
+    float sellV = sellPx * qty
+    float brk   = math.min(buyV * 0.03 / 100, 20.0) + math.min(sellV * 0.03 / 100, 20.0)
+    float stt   = sellV * 0.02 / 100
+    float exch  = (buyV + sellV) * 0.00173 / 100
+    float sebi  = (buyV + sellV) * 0.0001 / 100
+    float stamp = buyV * 0.002 / 100
+    float gst   = (brk + exch + sebi) * 0.18
+    brk + stt + exch + sebi + stamp + gst
+
+// one tranche's round trip: [net pts per unit, gross Rs, charges Rs]
+f_leg(int dir, float e, float px, int nLots) =>
+    float buy  = dir == 1 ? e + slipPts : px + slipPts
+    float sell = dir == 1 ? px - slipPts : e - slipPts
+    float qty  = nLots * lotSize
+    [sell - buy, (sell - buy) * qty, f_charges(buy, sell, qty)]
+
+var bool   inPos = false
+var int    pDir  = 0
+var string pId   = ""
+var float  pE    = na
+var float  pR    = na
+var float  pStop = na
+var float  pBest = na
+var bool   pTrail = false
+var int    pBar  = na
+var int    lot1  = 0
+var int    lot2  = 0
+var int    lotR  = 0
+var float  tg1   = na
+var float  tg2   = na
+var float  pNet  = 0.0
+
+var int   nPos = 0
+var int   nLong = 0
+var int   nShort = 0
+var int   nWin = 0
+var int   cStop = 0
+var int   cTrail = 0
+var int   cT1 = 0
+var int   cT2 = 0
+var int   cEod = 0
+var int   nLocked = 0
+var int   nLate = 0
+var float gGross = 0.0
+var float gChg = 0.0
+var float cumNet = 0.0
+var float eqPeak = 0.0
+var float maxDD = 0.0
+
+float exitPx  = na      // for the chart markers
+float tgtPx   = na
+bool  stopMoved = false
+bool  eodNow  = false
+
+if inPos and bar_index > pBar
+    bool gap  = pDir == 1 ? open <= pStop : open >= pStop
+    bool hitS = gap or (pDir == 1 ? low <= pStop : high >= pStop)
+    if hitS                                                     // 1. stop, before targets
+        float px = firstBar ? close : (gap ? open : pStop)
+        exitPx := px
+        if lot1 > 0
+            [p1, g1, c1] = f_leg(pDir, pE, px, lot1)
+            pNet += g1 - c1
+            gGross += g1
+            gChg += c1
+        if lot2 > 0
+            [p2, g2, c2] = f_leg(pDir, pE, px, lot2)
+            pNet += g2 - c2
+            gGross += g2
+            gChg += c2
+        if lotR > 0
+            [p3, g3, c3] = f_leg(pDir, pE, px, lotR)
+            pNet += g3 - c3
+            gGross += g3
+            gChg += c3
+        if pTrail
+            cTrail += 1
+        else
+            cStop += 1
+        lot1 := 0
+        lot2 := 0
+        lotR := 0
+    else
+        if lot1 > 0                                              // 2. targets
+            bool g = pDir == 1 ? open >= tg1 : open <= tg1
+            bool hit = firstBar ? (pDir == 1 ? close >= tg1 : close <= tg1) : (g or (pDir == 1 ? high >= tg1 : low <= tg1))
+            if hit
+                float px = firstBar ? close : (g ? open : tg1)
+                [p1, g1, c1] = f_leg(pDir, pE, px, lot1)
+                pNet += g1 - c1
+                gGross += g1
+                gChg += c1
+                cT1 += 1
+                lot1 := 0
+                tgtPx := px
+        if lot2 > 0
+            bool g = pDir == 1 ? open >= tg2 : open <= tg2
+            bool hit = firstBar ? (pDir == 1 ? close >= tg2 : close <= tg2) : (g or (pDir == 1 ? high >= tg2 : low <= tg2))
+            if hit
+                float px = firstBar ? close : (g ? open : tg2)
+                [p2, g2, c2] = f_leg(pDir, pE, px, lot2)
+                pNet += g2 - c2
+                gGross += g2
+                gChg += c2
+                cT2 += 1
+                lot2 := 0
+                tgtPx := px
+        if trailOn and lot1 + lot2 + lotR > 0                    // 3. trail, applies from the next candle
+            pBest := pDir == 1 ? math.max(pBest, high) : math.min(pBest, low)
+            int reached = math.floor(pDir * (pBest - pE) / pR + 1e-9)
+            if reached >= trailStart
+                float nw = pE + pDir * (reached - trailLag) * pR
+                if pDir == 1 ? nw > pStop : nw < pStop
+                    pStop  := nw
+                    pTrail := true
+                    stopMoved := true
+
+// ── entry ────────────────────────────────────────────────────────────────────
+bool inWindow = time >= fromT and time <= toT
+bool entered  = false
+if setupDir != 0 and inWindow
+    if inPos and lot1 + lot2 + lotR > 0
+        nLocked += 1                                            // lock "strike": the contract is still open
+    else if sqOn and curHHMM >= sqHHMM
+        nLate += 1                                              // entry at or after the square-off time
+    else
+        entered := true
+
+// position fully closed on this candle (exit first, so a new entry on the same candle is taken)
+if inPos and lot1 + lot2 + lotR == 0
+    inPos := false
+    nPos += 1
+    nWin += pNet > 0 ? 1 : 0
+    cumNet += pNet
+    eqPeak := math.max(eqPeak, cumNet)
+    maxDD  := math.max(maxDD, eqPeak - cumNet)
+
+if not inPos and strategy.position_size != 0 and not entered
+    strategy.close_all(comment = "sync")                         // tester drifted from the ledger (rare)
+
+if entered
+    if strategy.position_size != 0
+        strategy.close_all(comment = "sync")
+    inPos  := true
+    pDir   := setupDir
+    pId    := setupDir == 1 ? "L" : "S"
+    pE     := close
+    pR     := stopPts
+    pStop  := close - setupDir * stopPts
+    pBest  := close
+    pTrail := false
+    pBar   := bar_index
+    lot1   := t1Lots
+    lot2   := t2Lots
+    lotR   := restLots
+    tg1    := close + setupDir * t1R * stopPts
+    tg2    := close + setupDir * t2R * stopPts
+    pNet   := 0.0
+    nLong  += setupDir == 1 ? 1 : 0
+    nShort += setupDir == -1 ? 1 : 0
+    strategy.entry(pId, setupDir == 1 ? strategy.long : strategy.short, qty = lotsTot * qtyU)
+    if lot1 > 0
+        strategy.exit("T1", pId, qty = lot1 * qtyU, limit = tg1, stop = pStop, comment_profit = "T1", comment_loss = "SL")
+    if lot2 > 0
+        strategy.exit("T2", pId, qty = lot2 * qtyU, limit = tg2, stop = pStop, comment_profit = "T2", comment_loss = "SL")
+    if lotR > 0
+        strategy.exit("TR", pId, qty = lotR * qtyU, stop = pStop, comment = "SL")
+else if stopMoved and inPos
+    if lot1 > 0
+        strategy.exit("T1", pId, qty = lot1 * qtyU, limit = tg1, stop = pStop, comment_profit = "T1", comment_loss = "trail")
+    if lot2 > 0
+        strategy.exit("T2", pId, qty = lot2 * qtyU, limit = tg2, stop = pStop, comment_profit = "T2", comment_loss = "trail")
+    if lotR > 0
+        strategy.exit("TR", pId, qty = lotR * qtyU, stop = pStop, comment = "trail")
+
+// intraday square-off: open lots close at the close of the last candle opening at or before the cut
+if inPos and isSqBar and lot1 + lot2 + lotR > 0
+    eodNow := true
+    exitPx := close
+    if lot1 > 0
+        [p1, g1, c1] = f_leg(pDir, pE, close, lot1)
+        pNet += g1 - c1
+        gGross += g1
+        gChg += c1
+    if lot2 > 0
+        [p2, g2, c2] = f_leg(pDir, pE, close, lot2)
+        pNet += g2 - c2
+        gGross += g2
+        gChg += c2
+    if lotR > 0
+        [p3, g3, c3] = f_leg(pDir, pE, close, lotR)
+        pNet += g3 - c3
+        gGross += g3
+        gChg += c3
+    cEod += 1
+    lot1 := 0
+    lot2 := 0
+    lotR := 0
+    inPos := false
+    nPos += 1
+    nWin += pNet > 0 ? 1 : 0
+    cumNet += pNet
+    eqPeak := math.max(eqPeak, cumNet)
+    maxDD  := math.max(maxDD, eqPeak - cumNet)
+    strategy.close_all(comment = "eod")
+
+// ── drawing ──────────────────────────────────────────────────────────────────
+color avCol = trend == 1 ? color.new(color.green, 30) : color.new(color.red, 30)
+plot(showAv ? trendAv : na, "Trend AVWAP", avCol, 2, plot.style_linebr)
+plot(showAv ? protLvl : na, "Protected level", color.new(color.orange, 0), 1, plot.style_linebr)
+plot(showPair ? f_av(pairAH, bar_index) : na, "Pair AVWAP (from SH)", color.new(color.purple, 20), 1, plot.style_linebr)
+plot(showPair ? f_av(pairAL, bar_index) : na, "Pair AVWAP (from SL)", color.new(color.blue, 20), 1, plot.style_linebr)
+
+bool holding = inPos and bar_index >= pBar
+plot(showLvls and holding ? pStop : na, "Stop", color.red, 2, plot.style_linebr)
+plot(showLvls and holding and lot1 > 0 ? tg1 : na, "T1", color.new(color.green, 40), 1, plot.style_linebr)
+plot(showLvls and holding and lot2 > 0 ? tg2 : na, "T2", color.new(color.green, 0), 1, plot.style_linebr)
+
+plotshape(setupDir == 1, "SETUP long", shape.triangleup, location.belowbar, entered ? color.green : color.gray, size = size.small)
+plotshape(setupDir == -1, "SETUP short", shape.triangledown, location.abovebar, entered ? color.red : color.gray, size = size.small)
+plotshape(tgtPx, "Target fill", shape.circle, location.absolute, color.green, size = size.tiny)
+plotshape(exitPx, "Stop / trail / eod fill", shape.xcross, location.absolute, eodNow ? color.gray : color.red, size = size.tiny)
+
+// ── ledger table ─────────────────────────────────────────────────────────────
+var table tb = table.new(position.top_right, 2, 14, bgcolor = color.new(color.black, 20), border_width = 1)
+f_row(int r, string k, string v, color c) =>
+    tb.cell(0, r, k, text_color = color.silver, text_size = size.small, text_halign = text.align_left)
+    tb.cell(1, r, v, text_color = c, text_size = size.small, text_halign = text.align_right)
+
+if showTbl and barstate.islast
+    float net = gGross - gChg
+    string tfNote = timeframe.period == DESIGN_TF ? timeframe.period + "m" : timeframe.period + " (designed on " + DESIGN_TF + "m)"
+    f_row(0, CODE + " ledger (lab rules)", tfNote, timeframe.period == DESIGN_TF ? color.white : color.orange)
+    f_row(1, "Positions (long / short)", str.tostring(nPos) + " (" + str.tostring(nLong) + " / " + str.tostring(nShort) + ")", color.white)
+    f_row(2, "Win % (position net > 0)", nPos > 0 ? str.tostring(100.0 * nWin / nPos, "#.0") + "%" : "-", color.white)
+    f_row(3, "Gross Rs", str.tostring(gGross, "#,##0"), gGross >= 0 ? color.lime : color.red)
+    f_row(4, "Charges Rs", str.tostring(gChg, "#,##0"), color.white)
+    f_row(5, "Net Rs", str.tostring(net, "#,##0"), net >= 0 ? color.lime : color.red)
+    f_row(6, "Net / position Rs", nPos > 0 ? str.tostring(cumNet / nPos, "#,##0") : "-", color.white)
+    f_row(7, "Max drawdown Rs (closed)", str.tostring(maxDD, "#,##0"), color.white)
+    f_row(8, "Exits: T1 / T2", str.tostring(cT1) + " / " + str.tostring(cT2), color.white)
+    f_row(9, "Exits: stop / trail / eod", str.tostring(cStop) + " / " + str.tostring(cTrail) + " / " + str.tostring(cEod), color.white)
+    f_row(10, "SETUPs not taken: locked / late", str.tostring(nLocked) + " / " + str.tostring(nLate), color.gray)
+    f_row(11, "Open", inPos ? (pDir == 1 ? "LONG " : "SHORT ") + str.tostring(lot1 + lot2 + lotR) + " lots @ " + str.tostring(pE, format.mintick) + ", stop " + str.tostring(pStop, format.mintick) : "flat", color.white)
+    f_row(12, "Costs", "slip " + str.tostring(slipPts) + " pts/side, Zerodha NFO fut", color.gray)

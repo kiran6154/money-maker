@@ -1,12 +1,12 @@
 {
   "_about": "Input candle files shared by every strategy. Other timeframes are built from the 1-minute files into cache/.",
   "futures": {
-    "minute": "D:/nifty/niftyfut_minute_2026-07-01_to_2026-09-25.csv",
-    "5minute": "D:/nifty/niftyfut_5minute_2026-07-01_to_2026-09-25.csv"
+    "minute": "D:/nifty/niftyfut_nearmonth_minute_2021-10-01_to_2026-09-25.csv",
+    "5minute": "D:/nifty/niftyfut_nearmonth_5minute_2021-10-01_to_2026-09-25.csv"
   },
   "spot": {
-    "minute": "D:/nifty/nifty50_minute_kite_2026-07-01_to_2026-09-25.csv",
-    "5minute": "D:/nifty/nifty50_5minute_kite_2026-07-01_to_2026-09-25.csv"
+    "minute": "D:/nifty/nifty50_breeze_minute_2021-10-01_to_2026-09-25.csv",
+    "5minute": "D:/nifty/nifty50_breeze_5minute_2021-10-01_to_2026-09-25.csv"
   },
   "options": {
     "weekly_dir": "D:/nifty/data",
