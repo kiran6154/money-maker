@@ -190,8 +190,9 @@ trade with which exit profile, which stop and how many lots** — the strategy f
   strategy; each backtest is a window cut from that run, so a 2026 window is out of sample for the weights it starts with
   (not for the action set: the three profiles came from the 2026 exit study, S50 — the `notes` say so). A position still
   open at a window's end is valued at its last candle.
-- **Journal tab** (dashboard, learner strategies only): tiles (SETUPs, taken / skipped / locked, learner net, base net =
-  Strategy 9's rule, random control = a seeded uniformly random action per SETUP, oracle = the best action in hindsight),
+- **Journal tab** (dashboard, learner strategies only): tiles (SETUPs, taken / skipped / locked, learner net, the base book =
+  Strategy 9's rule run as its own book under the same one-position lock, the random book = a seeded uniformly random action
+  per SETUP under the same lock, the oracle = the best action per SETUP in hindsight — a bound, not a book),
   the action mix, month by month (scored and learning months), the learned weights, and every scored SETUP with its
   features, decision, predicted reward, outcome, base and oracle. `summary.json['rl']` carries all of it.
 - **Scope v1:** near-month futures only (option types and index signals are refused with the reason). Costs, strike lock

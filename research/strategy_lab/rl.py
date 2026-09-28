@@ -24,6 +24,10 @@ Learning window
   learning history. So a 2026 window is out-of-sample for the knowledge the learner starts it with, and the learner keeps
   learning during it, as it would live. A position still open at a window's end is valued at the window's last candle.
 
+Yardsticks, reported beside the learner: the BASE book (the first profile at stop 50 with the most lots - Strategy 9's rule - at
+every SETUP its own open position does not lock), the RANDOM CONTROL book (a seeded uniformly random action per SETUP, skip
+included, under the same lock rule) and the ORACLE (the best action per SETUP in hindsight; a bound, not a book).
+
 v1 scope: near-month futures only (the Futures type); option types are refused with a reason. Costs, the strike lock and
 the fill rules are the lab's (lab.manage / lab.price_trade). Deterministic: a fixed seed in the strategy file.
 """
@@ -218,6 +222,7 @@ def simulate(st, cs, bars, cfg, p_engine):
     policy = LinTS(len(arms), len(FEATURES), cfg["ridge"], cfg["explore"], cfg["seed"])
     ctrl_rng = np.random.RandomState(cfg["seed"] + 1)      # the control: a uniformly random action per SETUP (skip included)
     state, lock = State(), lab.StrikeLock(st)
+    lock_base, lock_ctrl = lab.StrikeLock(st), lab.StrikeLock(st)   # the base rule and the control run as their own books, same lock rule
     chs_by_i = {e["i"]: e for e in r["chs"]}
     queue, seq = [], 0                          # (exit_time, seq, arm index, features, reward): applied in time order
     trades, journal, skipped = [], [], []
@@ -258,15 +263,25 @@ def simulate(st, cs, bars, cfg, p_engine):
                 seq += 1; queue.append((max(tr["exit_time"] for tr in trs), seq, ai, feats, rw))
         queue.sort(key=lambda q: (q[0], q[1]))
         best_i = max(per_arm, key=lambda i: per_arm[i][1])
-        oracle = per_arm[best_i][2]
-        base_net = per_arm[base_arm][2] if base_arm is not None else 0.0
-        ci = int(ctrl_rng.randint(len(arms)))              # drawn for every SETUP, so the control sequence is fixed by the seed
+        oracle = per_arm[best_i][2]                        # hindsight bound per SETUP, not a book (no lock)
+        # the base book: the base rule at every SETUP its own open position does not lock
+        base_net, base_taken = 0.0, False
+        if base_arm is not None and not lock_base.held(c_, te):
+            base_net, base_taken = per_arm[base_arm][2], True
+            lock_base.hold(c_, max(tr["exit_time"] for tr in per_arm[base_arm][0]))
+        # the control book: a uniformly random action per SETUP (drawn for every SETUP, so the sequence is fixed by the seed),
+        # taken when its own open position does not lock
+        ci = int(ctrl_rng.randint(len(arms)))
+        ctrl_net, ctrl_taken = 0.0, False
+        if arms[ci][0] != "skip" and not lock_ctrl.held(c_, te):
+            ctrl_net, ctrl_taken = per_arm[ci][2], True
+            lock_ctrl.hold(c_, max(tr["exit_time"] for tr in per_arm[ci][0]))
         held = lock.held(c_, te)
         means = policy.means(feats)
         row = dict(time=te, dir=x["dir"], hour=te[11:16], atr_pct=round(float(feats[9]) / 10, 3), d_hi=round(float(feats[10]), 2),
                    d_lo=round(float(feats[11]), 2), day_r=round(float(feats[16]), 2), form3=int(feats[17]), consec_loss=int(round(feats[18] * 3)),
-                   base_net=round(base_net, 2), oracle_net=round(oracle, 2), oracle_arm=arm_label(arms[best_i]),
-                   control_net=round(per_arm[ci][2], 2), control_arm=arm_label(arms[ci]),
+                   base_net=round(base_net, 2), base_taken=base_taken, oracle_net=round(oracle, 2), oracle_arm=arm_label(arms[best_i]),
+                   control_net=round(ctrl_net, 2), control_arm=arm_label(arms[ci]), control_taken=ctrl_taken,
                    pred_base=round(float(means[base_arm]), 3) if base_arm is not None else None)
         if held:
             row.update(decision="locked", pred=None, net=0.0, reward=0.0); journal.append(row)
@@ -367,7 +382,8 @@ def run_variant(st, cs):
                    months=[dict(m, **{k: round(m[k], 2) for k in ("rl_net", "base_net", "oracle_net", "control_net")}) for m in months.values()],
                    notes=cfg.get("notes"),
                    weights={arm_label(a): Wt[i] for i, a in enumerate(res["arms"]) if i > 0 and res["policy"].n[i]},
-                   journal=J, base_arm=f"{first_profile(cfg)} · stop 50 · {max(cfg['lots'])} lots (Strategy 9's rule)")
+                   journal=J, base_arm=f"{first_profile(cfg)} · stop 50 · {max(cfg['lots'])} lots (Strategy 9's rule), run as its own book",
+                   books="learner, base and random control each hold one position per contract (the lab's strike lock); the oracle is the best action per SETUP in hindsight and ignores the lock")
     return {"-": dict(trades=trades, skipped=skipped, signals=signals, charts=charts, rl=payload)}
 
 

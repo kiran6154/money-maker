@@ -1817,9 +1817,12 @@ def main():
                 hl = fzp["headline"] if fzr and fzp else None
                 rel = os.path.relpath(folders[ch], HERE).replace(os.sep, "/")
                 brief = lambda z: z and {k: z[k] for k in ("trades", "wins", "pts", "net_inr", "pf")}
-                # skipped = positions without option data (incomplete, *); locked = signals the strike lock refused (a rule)
-                n_lock = sum(str(k.get("why", "")).startswith("strike locked") for k in skl); n_skip = len(skl) - n_lock
-                info["choices"][ch] = dict(file=f"{rel}/summary.json", run_id=run_id, skipped=n_skip, locked=n_lock, **s,
+                # skipped = positions without option data (incomplete, *); locked = signals the strike lock refused (a rule);
+                # declined = SETUPs a learner chose to skip (a decision)
+                n_lock = sum(str(k.get("why", "")).startswith("strike locked") for k in skl)
+                n_decl = sum(str(k.get("why", "")).startswith("learner skipped") for k in skl)
+                n_skip = len(skl) - n_lock - n_decl
+                info["choices"][ch] = dict(file=f"{rel}/summary.json", run_id=run_id, skipped=n_skip, locked=n_lock, declined=n_decl, **s,
                                            long=brief(s_long), short=brief(s_short), ce=brief(s_ce), pe=brief(s_pe),
                                            **({"fz": hl} if hl else {}), **({"rl": rlp["summary"]} if rlp else {}))
                 srow = dict(run=rk, backtest=bt["label"], timeframe=tf, code=st["code"], variant=st["variant"], choice=ch, **s)
