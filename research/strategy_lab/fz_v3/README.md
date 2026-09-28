@@ -16,3 +16,9 @@ without the local `D:/nifty` files.
 Study scripts read these paths directly through `engine.load`; they never go through `lab.sessions()`,
 which honours `history_from` in `config/data.json`. Study outputs go under `fz_v3/out/` (not committed
 unless they are part of a result the user asked to keep).
+
+`built/<timeframe>/` holds the dataset the local Data phase produced on 2026-09-29 (build scripts, README.md with
+every column and its look-ahead status, engine events, Foundation trades, the ST7/ST8 room card and ledger, the
+per-SETUP feature tables; parquet only, `bars` omitted because it is rebuilt from `data/` by the scripts). A cloud
+run may rebuild everything from `data/` and must then compare its per-SETUP tables with these (same SETUP count,
+same Foundation trades) before learning anything. `built/study/` holds the local study scripts as they were at commit time.
