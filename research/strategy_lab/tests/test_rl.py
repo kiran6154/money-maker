@@ -43,6 +43,17 @@ for cut in sorted(random.sample(range(n // 3, n - 20), 4)):
     b = [d for d in dec(res) if d[0] < upto]
     check(f"no look-ahead (cut {cut} = {upto})", b, a)
 
+# 1b. one-candle peeks: random cuts rarely land next to a SETUP, so also cut right after 8 SETUP candles - the decision taken on
+#     the cut candle itself must match the full run (a feature or update that peeked one bar ahead would differ here)
+random.seed(5)
+setups = sorted(full["engine"]["trades"], key=lambda z: z["entry"])
+for x in random.sample(setups[5:], 8):
+    cut = x["entry"] + 1
+    part = {k: v[:cut] for k, v in bars.items()}
+    res = rl.simulate(st, cs, part, CFG, P)
+    upto = bars["t"][cut - 1]
+    check(f"decision on the cut candle ({upto})", [d for d in dec(res) if d[0] <= upto], [d for d in full_dec if d[0] <= upto])
+
 # 2. determinism
 again = rl.simulate(st, cs, bars, CFG, P)
 check("determinism", dec(again), full_dec)

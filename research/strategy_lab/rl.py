@@ -29,8 +29,8 @@ Learning window
 Yardsticks, reported beside the learner: the BASE book (the strategy file's first profile at stop 50 with the most lots -
 Strategy 9's rule - at every feasible SETUP its own open position does not lock), the RANDOM CONTROL book (a seeded
 uniformly random action per SETUP, skip included, under the same lock rule) and the ORACLE (the best NET among the feasible
-actions per SETUP in hindsight; a bound, not a book). Base and control outcomes count in full even when they run past the
-window's end; the learner's own trades are cut at the window's last candle.
+actions per SETUP in hindsight; a bound, not a book). All three books are valued at the window's last candle for positions
+still open there.
 
 v1 scope: near-month futures only (the Futures type); option types are refused with a reason. Costs, the strike lock and
 the fill rules are the lab's (lab.manage / lab.price_trade). Deterministic: a fixed seed in the strategy file.
@@ -293,21 +293,22 @@ def simulate(st, cs, bars, cfg, p_engine):
         queue.sort(key=lambda q: (q[0], q[1]))
         best_i = max((i for i in per_arm if feasible[i]), key=lambda i: per_arm[i][2])     # best NET in hindsight, skip = 0
         oracle = per_arm[best_i][2]
-        base_net, base_taken = 0.0, False       # the base book: the base rule at every feasible SETUP its own position does not lock
+        book = lambda trs: [(tr["exit_time"], tr["entry_px"], tr["lots"], tr["position"], round(tr["net"], 2)) for tr in trs]   # for the window cut
+        base_net, base_taken, base_trs = 0.0, False, []   # the base book: the base rule at every feasible SETUP its own position does not lock
         if feasible[base_arm] and not lock_base.held(c_, te):
-            base_net, base_taken = per_arm[base_arm][2], True
-            lock_base.hold(c_, max(tr["exit_time"] for tr in per_arm[base_arm][0]))
+            base_net, base_taken, base_trs = per_arm[base_arm][2], True, book(per_arm[base_arm][0])
+            lock_base.hold(c_, max(tr["exit_time"] for tr in per_arm[base_arm][0]), any(tr["open"] for tr in per_arm[base_arm][0]))
         ci = int(ctrl_rng.randint(len(arms)))   # the control book: drawn for every SETUP, so the sequence is fixed by the seed
-        ctrl_net, ctrl_taken = 0.0, False
+        ctrl_net, ctrl_taken, ctrl_trs = 0.0, False, []
         if arms[ci][0] != "skip" and feasible[ci] and not lock_ctrl.held(c_, te):
-            ctrl_net, ctrl_taken = per_arm[ci][2], True
-            lock_ctrl.hold(c_, max(tr["exit_time"] for tr in per_arm[ci][0]))
+            ctrl_net, ctrl_taken, ctrl_trs = per_arm[ci][2], True, book(per_arm[ci][0])
+            lock_ctrl.hold(c_, max(tr["exit_time"] for tr in per_arm[ci][0]), any(tr["open"] for tr in per_arm[ci][0]))
         held = lock.held(c_, te)
         means = policy.means(feats)
         row = dict(time=te, dir=x["dir"], hour=te[11:16], atr_pct=round(float(feats[9]) / 10, 3), d_hi=round(float(feats[10]), 2),
                    d_lo=round(float(feats[11]), 2), day_r=round(float(feats[16]), 2), form3=int(feats[17]), consec_loss=int(round(feats[18] * 3)),
-                   base_net=round(base_net, 2), base_taken=base_taken, oracle_net=round(oracle, 2), oracle_arm=arm_label(arms[best_i]),
-                   control_net=round(ctrl_net, 2), control_arm=arm_label(arms[ci]), control_taken=ctrl_taken,
+                   base_net=round(base_net, 2), base_taken=base_taken, base_trs=base_trs, oracle_net=round(oracle, 2), oracle_arm=arm_label(arms[best_i]),
+                   control_net=round(ctrl_net, 2), control_arm=arm_label(arms[ci]), control_taken=ctrl_taken, control_trs=ctrl_trs,
                    feasible=sum(feasible) - 1, pred_base=round(float(means[base_arm]), 3))
         if held:
             row.update(decision="locked", pred=None, net=0.0, reward=0.0); journal.append(row)
@@ -322,7 +323,7 @@ def simulate(st, cs, bars, cfg, p_engine):
         trs, rw, net, ok = per_arm[ai]
         row.update(net=round(net, 2), reward=round(rw, 3)); journal.append(row)
         end = max(tr["exit_time"] for tr in trs)
-        lock.hold(c_, end)
+        lock.hold(c_, end, any(tr["open"] for tr in trs))
         if ok: state.closed.append((end, per_lot_r(st, a[1], a[2], trs)))
         for tr in trs:
             trades.append(dict(tr, arm=arm_label(a), pred=round(float(means[ai]), 3)))
@@ -385,15 +386,29 @@ def run_variant(st, cs):
         n = len({m[0] for m in mk if lo <= m[0] <= hi}); pnl = sum(m[5] for m in mk if lo <= m[0] <= hi)
         charts.append(dict(lab.chart(bars, r, i0, i1, mk), day=d, kind="signal",
                            label=f"{d} · futures" + (f" · {n} position{'s' * (n > 1)} · {pnl:+.1f} pts" if n else "")))
-    # journal rows: the learner's net of a SETUP whose lots were cut at the window end is the cut value (as the trades table)
+    # journal rows: every book is cut at the window's last candle - the learner's net of a SETUP whose lots were cut is the
+    # cut value (as the trades table), and a base / control outcome running past the end is valued there too
     by_setup = {}
     for tr in trades: by_setup[(tr["entry_time"], tr["position"])] = by_setup.get((tr["entry_time"], tr["position"]), 0.0) + tr["net"]
+
+    def cut_book(meta):
+        if all(xt <= t_end for xt, *_ in meta): return None
+        net = 0.0
+        for xt, ep, lots, pos, nt in meta:
+            if xt <= t_end: net += nt
+            else: net += lab.price_trade(st, cs, dict(position=pos, entry_px=ep, exit_px=bars["c"][i_end], lots=lots, kind="FUT"))["net"]
+        return round(net, 2)
+
     J = []
     for j in res["journal"]:
         if j["time"] > t_end: break
         j = dict(j, scored=d0 <= j["time"] <= t_end)
         key = (j["time"], "LONG" if j["dir"] == "up" else "SHORT")
         if j["scored"] and key in by_setup: j["net"] = round(by_setup[key], 2)
+        for k in ("base", "control"):
+            cut = cut_book(j.get(f"{k}_trs") or [])
+            if cut is not None: j[f"{k}_net"] = cut
+        j.pop("base_trs", None); j.pop("control_trs", None)
         J.append(j)
     sc = [j for j in J if j["scored"]]; W = [j for j in J if not j["scored"]]
     taken = [j for j in sc if j["decision"] not in ("skip", "locked")]
@@ -422,7 +437,6 @@ def run_variant(st, cs):
                    weights={arm_label(a): Wt[i] for i, a in enumerate(arms) if i > 0 and res["policy"].n[i]},
                    journal=J, base_arm=f"{arm_label(arms[res['base_arm']])} (Strategy 9's rule), run as its own book",
                    books="learner, base and random control each hold one position per contract (the lab's strike lock); an intraday "
-                         "profile is not available at or after its square-off time; base and control outcomes count in full even past "
-                         "the window's end, the learner's own lots are cut there; the oracle is the best net per SETUP in hindsight and "
-                         "ignores the lock")
+                         "profile is not available at or after its square-off time; all three books are valued at the window's last "
+                         "candle for positions still open there; the oracle is the best net per SETUP in hindsight and ignores the lock")
     return {"-": dict(trades=trades, skipped=skipped, signals=signals, charts=charts, rl=payload)}

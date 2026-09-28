@@ -171,7 +171,7 @@ def chart(date, inst, code, tf="minute", expiry=None, strike=None, right=None, d
             while (rv := lab.reversal_of(st, cur, depth)):
                 cur_rec = lab.flip(cur_rec, rv[0], rv[1], depth); depth += 1
                 cur = [lab.rev_tag(q) for q in lab.manage(st, cur_rec, *O, cap, exp_)]; parts = parts + cur
-        lock.hold(inst_name, max(q["exit_time"] for q in parts))
+        lock.hold(inst_name, max(q["exit_time"] for q in parts), any(q["open"] for q in parts))
         for tr in parts:
             lab.excursion(t, bars["h"], bars["l"], tr, tr["position"] == "LONG")
             lab.price_trade(st, cs, tr)

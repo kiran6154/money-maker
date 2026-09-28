@@ -793,15 +793,19 @@ class StrikeLock:
     exit first, so the new position is taken."""
 
     def __init__(self, st):
-        self.on, self.until = position_cfg(st)["lock"] == "strike", {}
+        self.on, self.until = position_cfg(st)["lock"] == "strike", {}     # inst -> (last exit time, still open at that candle)
 
     def held(self, inst, entry_time):
-        """The open position's exit time if `inst` is locked at `entry_time`, else None."""
+        """The open position's exit time if `inst` is locked at `entry_time`, else None. A position that has not exited
+        (still open at its last candle, e.g. the data's end) locks that candle too."""
         u = self.until.get(inst)
-        return u if self.on and u is not None and entry_time < u else None
+        if not self.on or u is None: return None
+        t, still_open = u
+        return t if (entry_time <= t if still_open else entry_time < t) else None
 
-    def hold(self, inst, exit_time):
-        self.until[inst] = max(exit_time, self.until.get(inst, ""))
+    def hold(self, inst, exit_time, still_open=False):
+        cur = self.until.get(inst)
+        if cur is None or exit_time > cur[0] or (exit_time == cur[0] and still_open): self.until[inst] = (exit_time, still_open)
 
 
 def tranches(st, rec, tl, ol, hl, ll, cl):
@@ -959,7 +963,9 @@ def manage(st, rec, tl, ol, hl, ll, cl, cap, expiry=None):
     if lots:
         k = max(iend, i0 - 1)
         ended = expiry is not None and k >= 0 and tl[k][:10] >= expiry     # the contract's end; the data's end alone leaves it open
-        at_eod = bool(eod) and k >= 0 and tl[k][:10] == eod[:10] and (k == len(tl) - 1 or tl[k + 1] > eod)
+        # the square-off candle: the one opening at the square-off time, or the last one before it when the next candle is past it;
+        # data that simply ends earlier that day leaves the lots open
+        at_eod = bool(eod) and k >= 0 and tl[k][:10] == eod[:10] and (tl[k] >= eod or (k + 1 < len(tl) and tl[k + 1] > eod))
         for lot in lots:
             out.append(dict(base, lots=lot["lots"], tranche=lot["tranche"], exit_time=tl[k], exit_px=cl[k],
                             exit_reason="expiry" if ended else "eod" if at_eod else "open", open=not (ended or at_eod)))
@@ -1252,7 +1258,7 @@ def run_variant(st, cs):
                                             why=f"strike locked: {inst} open until {u}"))
                         legs = [lg for lg in legs if lg[0]["instrument"] != inst]
                     else:
-                        lock.hold(inst, max(lg[0]["exit_time"] for lg in mine))
+                        lock.hold(inst, max(lg[0]["exit_time"] for lg in mine), any(lg[0]["open"] for lg in mine))
                 for rec, lbl, os_ in legs:
                     trs.append(rec)
                     fm = mark(x, fut, lbl); fm[5] = round(rec["pts"], 2); fm.append(rec.get("dir") or x["dir"])
@@ -1384,7 +1390,7 @@ def run_variant(st, cs):
                         cur = [rev_tag(p_) for p_ in manage(st, cur_rec, t_, ob["o"], ob["h"], ob["l"], ob["c"], t_[-1], exp)]
                         parts = parts + cur
                 end = max(p_["exit_time"] for p_ in parts)
-                side_free = max(side_free, end); lock.hold(nm, end)
+                side_free = max(side_free, end); lock.hold(nm, end, any(p_["open"] for p_ in parts))
                 for tr in parts:
                     excursion(t_, ob["h"], ob["l"], tr, tr["position"] == "LONG")
                     trs.append(price_trade(st, cs, tr))
