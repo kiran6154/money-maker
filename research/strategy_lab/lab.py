@@ -142,7 +142,13 @@ def load_strategies():
         if r.get("break_mode") not in ("touch", "close") or r.get("choch_mode", r["break_mode"]) not in ("touch", "close"):
             sys.exit(f"{where}: break_mode / choch_mode must be 'touch' or 'close'")
         if spec["timeframe"] not in TIMEFRAMES: sys.exit(f"{where}: timeframe must be one of {TIMEFRAMES}")
-        if r.get("entry_rule") not in ENTRY_RULES: sys.exit(f"{where}: entry_rule must be one of {ENTRY_RULES}")
+        import rl as _rl                     # RL rows (rl.py): a function-local import keeps lab.py's result hash unchanged
+        if r.get("entry_rule") not in ENTRY_RULES + _rl.RULES: sys.exit(f"{where}: entry_rule must be one of {ENTRY_RULES + _rl.RULES}")
+        if r["entry_rule"] in _rl.RULES:
+            try: _rl.config_of(spec)
+            except ValueError as e: sys.exit(f"{where}: rl: {e}")
+        elif "rl" in spec:
+            sys.exit(f"{where}: an 'rl' block needs entry_rule {_rl.RULES[0]}")
         if r["entry_rule"].startswith("fz"):
             # thresholds per timeframe; every key an object with a value and a source (fz.thresholds refuses a missing,
             # unknown, ill-typed or unsourced key: there are no defaults in code)
@@ -240,7 +246,8 @@ def type_rows(spec):
             positions="BOTH", capital_fut=cap["futures_margin"], capital_opt_short=cap["short_option_margin"],
             fz_json=json.dumps(spec["fz"], ensure_ascii=False) if "fz" in spec else None,   # verbatim, with provenance
             position_json=json.dumps(position_of(spec), sort_keys=True),
-            underlying=spec.get("underlying", "FUT"), native_scan_json=json.dumps(native_scan_of(spec), sort_keys=True)))
+            underlying=spec.get("underlying", "FUT"), native_scan_json=json.dumps(native_scan_of(spec), sort_keys=True),
+            rl_json=json.dumps(spec["rl"], sort_keys=True) if "rl" in spec else None))
     return rows
 
 
@@ -293,7 +300,7 @@ def migrate(db):
                    ("expiry_min_days", "integer not null default 1"), ("positions", "text not null default 'BOTH'"),
                    ("expiry_types", "text not null default 'WEEKLY,MONTHLY'"), ("signal_source", "text"),
                    ("capital_fut", "real not null default 120000"), ("capital_opt_short", "real not null default 150000"),
-                   ("choch_mode", "text"), ("fz_json", "text"), ("position_json", "text"), ("underlying", "text"),
+                   ("choch_mode", "text"), ("fz_json", "text"), ("position_json", "text"), ("underlying", "text"), ("rl_json", "text"),
                    ("native_scan_json", "text")):
         add("strategy", c, ddl)
     for c, ddl in (("sl_px", "real"), ("gross_inr", "real"), ("charges_inr", "real"), ("instrument", "text"),
@@ -431,17 +438,24 @@ class Series:
     """Candles of one instrument with time lookup."""
     _cache = {}
 
-    def __init__(self, path=None, rows=None):
-        if rows is None:
-            rows = list(csv.DictReader(open(path))) if path and os.path.exists(path) else []
-        self.t = [r["datetime"] for r in rows]
-        self.o, self.h, self.l, self.c = ([float(r[k]) for r in rows] for k in ("open", "high", "low", "close"))
-        self.v = [float(r.get("volume") or 0) for r in rows]
+    def __init__(self, path=None, rows=None, cols=None):
+        if cols is not None:                                       # (t, o, h, l, c, v) lists, already parsed
+            self.t, self.o, self.h, self.l, self.c, self.v = cols
+        else:
+            if rows is None:
+                with open(path) as fh: rows = list(csv.DictReader(fh)) if path and os.path.exists(path) else []
+            self.t = [r["datetime"] for r in rows]
+            self.o, self.h, self.l, self.c = ([float(r[k]) for r in rows] for k in ("open", "high", "low", "close"))
+            self.v = [float(r.get("volume") or 0) for r in rows]
         self.ix = {x: i for i, x in enumerate(self.t)}
 
     @classmethod
     def from_rows(cls, rows):
         return cls(rows=rows)
+
+    @classmethod
+    def from_cols(cls, cols):
+        return cls(cols=cols)
 
     @classmethod
     def get(cls, path):
@@ -663,21 +677,33 @@ class OptionChain:
             cal = sorted({monthly_expiry(e[:7]) for e in cal})    # the exchange's monthly date, not the month's last weekly
         return next((e for e in cal if (D.date.fromisoformat(e) - d).days >= min_days), None)
 
+    RIGHTS_KEEP, SERIES_KEEP = 40, 600           # cache bounds (an expiry-right's columns; contract series); oldest out first
+
     def _local_right(self, expiry, right):
+        """{strike: (t, o, h, l, c, v) lists} of one expiry and right, from the combined file and the per-strike chunk files
+        (the combined file's sources, plus strikes filled in later by tools/breeze_options.py). Kept as compact columns,
+        never as row dicts: a full expiry as dicts is about ten times the memory and was the build's MemoryError."""
         key = (expiry, right)
         if key in self._rights: return self._rights[key]
         base = os.path.join(self.root, expiry[:4], expiry)
         by = {}
         files = [os.path.join(base, f"NIFTY_{expiry}_{right}_{'5minute' if self.base == '5minute' else '1minute'}.csv")]
-        # per-strike chunk files: the combined file's sources, plus strikes filled in later (tools/breeze_options.py)
         files += sorted(glob.glob(os.path.join(base, ".chunks", "options", right, "*", "*.csv")))
         for f in files:
             if not os.path.exists(f): continue
-            for r in csv.DictReader(open(f)):
-                if r["datetime"][11:16] > "15:29": continue
-                by.setdefault(int(float(r["strike_price"])), {})[r["datetime"]] = r
-        self._rights[key] = {k: [v[t] for t in sorted(v)] for k, v in by.items()}
-        return self._rights[key]
+            with open(f) as fh:
+                for r in csv.DictReader(fh):
+                    dt = r["datetime"]
+                    if dt[11:16] > "15:29": continue
+                    by.setdefault(int(float(r["strike_price"])), {})[dt] = (float(r["open"]), float(r["high"]), float(r["low"]),
+                                                                            float(r["close"]), float(r.get("volume") or 0))
+        cols = {}
+        for k, d in by.items():
+            tt = sorted(d)
+            cols[k] = (tt, [d[x][0] for x in tt], [d[x][1] for x in tt], [d[x][2] for x in tt], [d[x][3] for x in tt], [d[x][4] for x in tt])
+        while len(self._rights) >= self.RIGHTS_KEEP: del self._rights[next(iter(self._rights))]
+        self._rights[key] = cols
+        return cols
 
     def get(self, expiry, strike, right):
         key = (expiry, int(strike), right)
@@ -685,12 +711,22 @@ class OptionChain:
         s = None
         if expiry == self.kite_exp:
             p = os.path.join(self.kite, self.base, f"{self.pre}{int(strike)}{right}.csv")
-            rows = list(csv.DictReader(open(p))) if os.path.exists(p) and os.path.getsize(p) > 100 else None
+            rows = None
+            if os.path.exists(p) and os.path.getsize(p) > 100:
+                with open(p) as fh: rows = list(csv.DictReader(fh))
+            if rows:
+                if TF_MIN[self.tf] != TF_MIN[self.base]: rows = resample_rows(rows, TF_MIN[self.tf])
+                s = Series.from_rows(rows)
         else:
-            rows = self._local_right(expiry, right).get(int(strike))
-        if rows:
-            if TF_MIN[self.tf] != TF_MIN[self.base]: rows = resample_rows(rows, TF_MIN[self.tf])
-            s = Series.from_rows(rows)
+            cols = self._local_right(expiry, right).get(int(strike))
+            if cols:
+                if TF_MIN[self.tf] != TF_MIN[self.base]:            # other timeframes: resample through the row form
+                    rows = [dict(datetime=cols[0][i], open=cols[1][i], high=cols[2][i], low=cols[3][i], close=cols[4][i], volume=cols[5][i])
+                            for i in range(len(cols[0]))]
+                    s = Series.from_rows(resample_rows(rows, TF_MIN[self.tf]))
+                else:
+                    s = Series.from_cols(cols)
+        while len(self._cache) >= self.SERIES_KEEP: del self._cache[next(iter(self._cache))]
         self._cache[key] = s if s and s.t else None
         return self._cache[key]
 
@@ -1402,6 +1438,7 @@ def save_run(db, st, ch, res, cs):
                                  "charge_code", "slippage_pts", "timeframe")}
     params.update(strike_choice=ch, period=st["period"], date_from=st["date_from"], date_to=st["date_to"])
     if fz_rule(st): params.update(fz_json=st["fz_json"], fz_hash=fz_hash(), warmup_days=st["warmup_days"])
+    if st.get("rl_json"): params.update(rl_json=st["rl_json"])
     run_id = db.execute("insert into strategy_run(strategy_id,run_at,params_json,bars,trades,wins,net_pts,gross_inr,charges_inr,"
                         "net_inr,max_dd_pts,strike_choice,period) values(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (st["id"], D.datetime.now().isoformat(timespec="seconds"), json.dumps(params), None, s["trades"], s["wins"],
@@ -1485,6 +1522,9 @@ def cache_key(st, pr):
     row = {k: v for k, v in st.items() if k not in ("id", "created_at", "enabled", "name", "description")}
     h.update(json.dumps([row, pr["date_from"], pr["date_to"]], sort_keys=True, default=str).encode())
     h.update(code_hash(fz_rule(st)).encode())
+    import rl as _rl
+    if _rl.rl_rule(st):                                  # RL rows: the learner's code too (they also read the whole futures file)
+        for f in _rl.MODULES: h.update(open(os.path.join(HERE, f), "rb").read().replace(b"\r\n", b"\n"))
     files = [st["data_file"], st["spot_file"], st.get("signal_file"), FUT1, os.path.join(st["option_dir"] or "", "manifest.csv")]
     if fz_rule(st): files.append(FUT1)                  # front_month per session comes from the 1-minute file
     if st["variant"] != "FUT" and st.get("weekly_dir"):
@@ -1688,6 +1728,9 @@ def main():
         meta.update(strategy_name=st["name"].split(" · ")[0], strategy_description=st["description"],
                     choch_mode=st.get("choch_mode") or st["break_mode"])
         if fzr: meta["fz_hash"] = fz_hash()
+        import rl as _rl
+        rlr = _rl.rl_rule(st)
+        if rlr: meta["rl"] = dict(json.loads(st["rl_json"]), features=list(_rl.FEATURES))
         meta["runs"] = {}
         for bt in [b for b in bts if b["family"] == st["family"]]:
             tf = bt["timeframe"] or st["timeframe"]
@@ -1708,6 +1751,8 @@ def main():
                     else:
                         status, reason = "refused", (f"options have full-chain data from {cov} (earlier expiries hold only the five "
                                                      f"strikes around settlement); fill them with tools/breeze_options.py")
+            if status == "ok" and rlr and (st["variant"] != "FUT" or und == "INDEX"):
+                status, reason = "refused", _rl.FUT_WHY
             if status == "ok" and und == "INDEX":
                 if fzr: status, reason = "refused", INDEX_WHY_FZ
                 elif st["variant"] == "OPT_NATIVE": status, reason = "refused", INDEX_WHY_NATIVE
@@ -1744,12 +1789,18 @@ def main():
                         if d.get("key") == key: stored[ch] = d
             fresh = len(stored) < len(choices)
             if fresh:                                  # one run per code and backtest; freed once written (memory)
-                res = {ch: side_of(rr, st["positions"]) for ch, rr in run_variant(dict(stp, positions="BOTH"), cs).items()}
+                runner = _rl.run_variant if rlr else run_variant
+                res = {ch: side_of(rr, st["positions"]) for ch, rr in runner(dict(stp, positions="BOTH"), cs).items()}
             for ch in choices:
                 if fresh:
                     rr = res[ch]
                     run_id, s = save_run(db, stp, ch, rr, cs)
                     write_result(folders[ch], stp, ch, rr, s, cs, key)
+                    rlp = rr.get("rl")
+                    if rlp:                                # the learner's journal and summary, next to the lab's result
+                        fjs = os.path.join(folders[ch], "summary.json")
+                        d0 = json.load(open(fjs, encoding="utf-8")); d0["rl"] = rlp
+                        json.dump(d0, open(fjs, "w", encoding="utf-8"), separators=(",", ":"))
                     rows = [[x["position"], x["instrument"], x["entry_time"], x["entry_px"], x["exit_time"], x["exit_px"], x["exit_reason"],
                              round(x["pts"], 2), round(x["gross"], 2), round(x["chg"]["total"], 2), round(x["net"], 2), int(x["open"])]
                             for x in rr["trades"]]
@@ -1762,7 +1813,7 @@ def main():
                     d = stored[ch]; s = d["stats"]; run_id = None; skl = d["skipped"]
                     s_long, s_short, s_ce, s_pe = (d.get(k) for k in ("stats_long", "stats_short", "stats_ce", "stats_pe"))
                     rows = [[x[21] if len(x) > 21 else x[0], x[1], x[4], x[5], x[7], x[8], x[9], x[10], x[11], x[12], x[13], int(x[14])] for x in d["trades"]]
-                    fzp = d.get("fz")
+                    fzp = d.get("fz"); rlp = d.get("rl")
                 hl = fzp["headline"] if fzr and fzp else None
                 rel = os.path.relpath(folders[ch], HERE).replace(os.sep, "/")
                 brief = lambda z: z and {k: z[k] for k in ("trades", "wins", "pts", "net_inr", "pf")}
@@ -1770,7 +1821,7 @@ def main():
                 n_lock = sum(str(k.get("why", "")).startswith("strike locked") for k in skl); n_skip = len(skl) - n_lock
                 info["choices"][ch] = dict(file=f"{rel}/summary.json", run_id=run_id, skipped=n_skip, locked=n_lock, **s,
                                            long=brief(s_long), short=brief(s_short), ce=brief(s_ce), pe=brief(s_pe),
-                                           **({"fz": hl} if hl else {}))
+                                           **({"fz": hl} if hl else {}), **({"rl": rlp["summary"]} if rlp else {}))
                 srow = dict(run=rk, backtest=bt["label"], timeframe=tf, code=st["code"], variant=st["variant"], choice=ch, **s)
                 if hl:
                     # fz_take .. fz_reenter: SETUPs by how they ended; fz_reenter_at_setup: gated REENTER on their own bar;

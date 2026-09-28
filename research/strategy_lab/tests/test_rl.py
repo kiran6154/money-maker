@@ -28,23 +28,23 @@ cs = dict(json.load(open(lab.CHARGECFG, encoding="utf-8"))[st["charge_code"]], c
 P = dict(break_mode=st["break_mode"], choch_mode=st.get("choch_mode") or st["break_mode"], avwap_weight=st["avwap_weight"], sl_rule=st["sl_rule"])
 bars, s0 = engine.load(lab.FUT5, "2026-05-01", "2026-09-25", 5)
 n = len(bars["t"])
-full = rl.simulate(st, cs, bars, s0, CFG, P)
+full = rl.simulate(st, cs, bars, CFG, P)
 dec = lambda res: [(j["time"], j["decision"]) for j in res["journal"]]
 full_dec = dec(full)
-print(f"5m window: {n} bars, {len(full_dec)} setups, {len(full['trades'])} scored lot exits, learned updates {full['learned']}")
+print(f"5m window: {n} bars, {len(full_dec)} setups, {len(full['trades'])} lot exits, learned updates {full['learned']}")
 
 # 1. no look-ahead
 random.seed(11)
 for cut in sorted(random.sample(range(n // 3, n - 20), 4)):
     part = {k: v[:cut] for k, v in bars.items()}
-    res = rl.simulate(st, cs, part, min(s0, cut - 1), CFG, P)
+    res = rl.simulate(st, cs, part, CFG, P)
     upto = bars["t"][cut - 1]
     a = [d for d in full_dec if d[0] < upto]
     b = [d for d in dec(res) if d[0] < upto]
     check(f"no look-ahead (cut {cut} = {upto})", b, a)
 
 # 2. determinism
-again = rl.simulate(st, cs, bars, s0, CFG, P)
+again = rl.simulate(st, cs, bars, CFG, P)
 check("determinism", dec(again), full_dec)
 
 # 3. the policy learns known rewards

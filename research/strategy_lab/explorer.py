@@ -102,8 +102,8 @@ def instruments(date, tf="minute"):
                     if os.path.isdir(folder) else []
                 ks = [k for k in ks if (s := ch.get(e, k, right)) is not None and any(x.startswith(date) for x in s.t)]
             else:
-                rows = ch._local_right(e, right)
-                ks = sorted(k for k, rs in rows.items() if any(r["datetime"].startswith(date) for r in rs))
+                cols = ch._local_right(e, right)
+                ks = sorted(k for k, cs_ in cols.items() if any(x.startswith(date) for x in cs_[0]))
             strikes[right] = ks
         if strikes["CE"] or strikes["PE"]:
             opts.append(dict(expiry=e, monthly=e == mo, strikes=strikes))

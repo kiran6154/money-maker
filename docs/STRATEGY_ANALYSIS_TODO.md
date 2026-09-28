@@ -457,6 +457,17 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S51. Lab Strategies 19–24 (learner, `rl_v1`): what is out of sample and what is not, and the build choices behind the learner
+
+| | |
+|---|---|
+| Where | [`research/strategy_lab/rl.py`](../research/strategy_lab/rl.py), `strategies/strategy_19.json`–`strategy_24.json` (`rl` block), `tests/test_rl.py`, the Journal tab. Filed 2026-09-29. |
+| Why | User (2026-09-29): "journal every trade and induce reinforcement learning after each trade to optimize strategy, money management and profit factor", all four decisions (take / skip, exit profile, size, stop), all three reward versions tried separately, learning from the whole data, both 1-minute and 5-minute entries, no shortcuts for hardware. Built as a contextual bandit (linear Thompson sampling, one model per action, full-information updates in exit-time order). Chosen in the build, not by the user: (1) the action set = skip + 3 exit profiles × stops 35 / 50 / 75 × lots 1–3 (27 + skip); the three profiles are the 2026 exit study's candidates (S50), so **a 2026 window is out of sample for the learned weights but not for the action set**; (2) the 21 features (rl.FEATURES), ridge 1.0, exploration 0.3, reward scaling (net ₹ / (lot × 50 pts); R = net points per lot / stop; pf = losses × 1.5), all fixed before any learner result was seen and recorded in each file's `rl.notes`; (3) "learn from the beginning" = the learner starts empty at Oct 2021 and learns through the file's end once per strategy, each backtest a window of that run; (4) an outcome is learnable only when every lot closed for a reason that does not depend on where the data ends (stop / trail / target anywhere; other exits only before the last bar), so truncation cannot change a decision; (5) the base rule for comparison = first profile · stop 50 · max lots (Strategy 9), the control = a seeded uniformly random action per SETUP, the oracle = the best action in hindsight; (6) sizing reads lots off the max-lots outcome (each lot's exit is independent in `lab.manage`), so 1 lot = the trailing lot, 2 lots = first target + trailing lot; (7) futures only in v1. |
+| Impact | **Unquantified until the build publishes** (the memory-fixed 2026-window build runs after this entry). What to read: per learner strategy, learner net vs base vs random control vs oracle, month by month, and the action mix; the learner must beat the random control before its gap to the base means anything; with ~5,300 1-minute and ~1,000 5-minute SETUPs since 2021 every action model gets that many updates (full information), so sparsity is not the issue — regime drift is (2021–2025 weights applied to 2026). |
+| Fix sketch | Nothing changes without the user (Rule 0(c)). Next candidates, each a strategy-file value: action sets not derived from 2026 (e.g. the pre-study profiles only), a recency weight on updates (forgetting), a 2024–2025 scored window as a second check, option types as a v2. |
+| Effort | **S** per variant (one strategy file; the learning run is minutes on 5-minute, about an hour on 1-minute). |
+| Priority | _Open — filed 2026-09-29; read the first published numbers against the random control first._ |
+
 ### S50. Exit-combination study on Strategy 9 / 10 entries (2026): positional holding with a wide all-lot trail is the only clear improvement, reversing mostly hurts — and the winner is chosen in-sample
 
 | | |

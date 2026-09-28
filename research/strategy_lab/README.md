@@ -38,6 +38,9 @@ swings (Pine port) → protected level → CHoCH / BOS → AVWAP pair from previ
 | `ST16` | Strategy 16 | 5 min | touch | **managed, positional** | the same exits on Strategy 2's entries |
 | `ST17` | Strategy 17 | 1 min | touch | **managed, positional** | Strategy 1's entries, positional, lot 1 out at 2R, lot 2 at 4R, the last lot trails from 4R, 2R behind |
 | `ST18` | Strategy 18 | 1 min | touch | **managed, positional** | Strategy 1's entries, positional, stop 75 pts, 1R / 2R, trail from 3R, 2R behind |
+| `ST19` / `ST20` | Strategy 19 / 20 | 1 min / 5 min | touch | **learner** (`rl_v1`) | the journal + learner on Strategy 1's / Strategy 2's SETUPs, reward = net rupees (see *Learner* below; S51) |
+| `ST21` / `ST22` | Strategy 21 / 22 | 1 min / 5 min | touch | **learner** | the same, reward = R multiple |
+| `ST23` / `ST24` | Strategy 23 / 24 | 1 min / 5 min | touch | **learner** | the same, reward = net with losses weighted 1.5x (profit-factor oriented) |
 
 Each file holds one strategy: `code`, `name`, `description`, design `timeframe`, `warmup_days`, `rules`
 (`break_mode`, `choch_mode`, `avwap_weight`, `sl_rule`, `entry_rule`, `exit_rule`), `lot_size`, `capital`, per-type charges and
@@ -167,6 +170,33 @@ Charges: `ZERODHA_NFO_FUT` / `ZERODHA_NFO_OPT` in `charge_schedule`.
 
 Fills: entry at the SETUP candle close; stop at the worse of candle open and stop, or the session's first candle close.
 Look-ahead check: `python tests/test_truncation.py`.
+
+## Learner: journal every trade, learn after each one (Strategies 19–24, `rl.py`, `entry_rule: rl_v1`)
+At every Foundation SETUP a contextual bandit (Bayesian linear regression per action, Thompson sampling) decides **skip, or
+trade with which exit profile, which stop and how many lots** — the strategy file's `rl` block lists the actions:
+```json
+"rl": { "reward": "net", "seed": 7, "ridge": 1.0, "explore": 0.3, "stops_pts": [35, 50, 75], "lots": [1, 2, 3],
+        "profiles": { "intraday 1R/2R trail 3R-1": {...}, "positional trail 3R-2": {...}, "positional 2R/4R trail 4R-2": {...} },
+        "notes": "what was fixed before any result was seen" }
+```
+- **Features** (all at the SETUP candle's close): hour bucket, direction, trend flip, ATR % of price, distance from the two
+  AVWAPs in ATRs, bars since the CHoCH, entry-candle body, 20-bar range, CHoCHs so far today, the session's closed result
+  in R, form over the last 3 trades, consecutive losses, closed trades today, distance from the day's open.
+- **Learning:** full information — once a SETUP's candles have played out, the outcome of every action is known from the
+  price data, so every action's model updates (in exit-time order, only after the exit candle has closed: no decision sees
+  the future; `tests/test_rl.py` checks this by truncation). Rewards: `net` = net ₹ in units of one lot's 50-point risk,
+  `r` = net points per lot ÷ stop, `pf` = net with losses × 1.5. Skip earns 0.
+- **Window:** the learner starts empty at the futures file's first session (Oct 2021) and learns to its end once per
+  strategy; each backtest is a window cut from that run, so a 2026 window is out of sample for the weights it starts with
+  (not for the action set: the three profiles came from the 2026 exit study, S50 — the `notes` say so). A position still
+  open at a window's end is valued at its last candle.
+- **Journal tab** (dashboard, learner strategies only): tiles (SETUPs, taken / skipped / locked, learner net, base net =
+  Strategy 9's rule, random control = a seeded uniformly random action per SETUP, oracle = the best action in hindsight),
+  the action mix, month by month (scored and learning months), the learned weights, and every scored SETUP with its
+  features, decision, predicted reward, outcome, base and oracle. `summary.json['rl']` carries all of it.
+- **Scope v1:** near-month futures only (option types and index signals are refused with the reason). Costs, strike lock
+  and fill rules are the lab's. `lab.py` touches the learner only from its exempt functions (loader, dispatch in `main`,
+  `cache_key` adds `rl.py`), so the other strategies' stored results are unaffected by learner changes.
 
 ## FZ: the Foundation-Zone gate (Strategies 5 and 6)
 > Builder's reference with every rule as coded, the lab wiring, the tests and the open decisions: [`FZ.md`](FZ.md).
@@ -300,6 +330,7 @@ which moved two 1m positions; the permutation now splits by the SETUPs FZ traded
 | `studies/` | one-off study scripts that reuse the lab without writing its results (`r_combinations.py`: exit combinations for Strategies 9–10) |
 | `exports/` | standalone HTML exports (chart + trades + CSV) for sharing, e.g. `ST9_1m_futures_2026-06-29_to_2026-07-02.html` |
 | `tests/test_strategy_files.py` | adding a backtest (terminal or dashboard) adds exactly one line in the style of its neighbours; the rest of every strategy file stays as written |
+| `rl.py`, `tests/test_rl.py` | the learner (journal + contextual bandit, `rl_v1`) and its tests: no look-ahead by truncation, determinism, learning, outcome arithmetic |
 | `tests/test_position.py` | position handling on hand-made candles: managed exits, R targets, the ladder trail, first-candle fills, scale-out, the strike lock |
 | `results/fz_setups.csv`, `results/fz_ledger.csv` | **versioned** FZ gate ledger (one row per SETUP) and its per-run tables; written only by a full build |
 | `tools/` | Kite downloads: `kitefut.py` / `kite1m.py` futures, `kite_spot.py` index, `kite_options.py` option chain (credentials read at runtime from money-maker); `breeze_options.py` fills expired option strikes and `breeze_history.py` fetches years of near-month futures and index candles from ICICI Breeze (credentials from the environment) |

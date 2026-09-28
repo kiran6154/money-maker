@@ -145,7 +145,7 @@ svg text{font:10px system-ui;fill:#6b7280}
   <button class="tab" data-p="equity">Cumulative P&amp;L</button><button class="tab" data-p="dd">Drawdowns</button>
   <button class="tab" data-p="dist">Distribution</button><button class="tab" data-p="mc">Monte Carlo</button>
   <button class="tab" data-p="robust">Robustness</button><button class="tab" data-p="bdown">Breakdown</button>
-  <button class="tab" data-p="daily">Daily P&amp;L</button><button class="tab" data-p="signals">Signals</button><button class="tab" data-p="fz">Zone gate</button>
+  <button class="tab" data-p="daily">Daily P&amp;L</button><button class="tab" data-p="signals">Signals</button><button class="tab" data-p="fz">Zone gate</button><button class="tab" data-p="journal" id="tabJournal">Journal</button>
   <button class="tab" data-p="config">Config</button><button class="tab" data-p="rules">Rules</button>
 </div>
 <div class="panel on" id="p-trades"><p class="hint">Click a trade to open it on the chart. Hover a charges cell for the breakdown.</p><div id="opennote"></div><div class="card scroll"><table id="ttrades"></table></div><div id="skipped" class="hint" style="margin-top:8px"></div></div>
@@ -159,6 +159,7 @@ svg text{font:10px system-ui;fill:#6b7280}
 <div class="panel" id="p-daily"><p class="hint">By exit day. Click a day to open it on the chart.</p><div class="card scroll"><table id="tdaily"></table></div></div>
 <div class="panel" id="p-signals"><p class="hint" id="sighint"></p><div class="card scroll"><table id="tsignals"></table></div></div>
 <div class="panel" id="p-fz"></div>
+<div class="panel" id="p-journal"></div>
 <div class="panel" id="p-config"><div class="card" style="padding:12px 14px"><dl id="cfg"></dl></div></div>
 <div class="panel" id="p-rules"><div class="rules">
   <div class="card"><h3>Strategy, backtest, timeframe</h3><ul>
@@ -609,9 +610,11 @@ function renderBelow(){
     ['Expectancy',inr(s.mean),exR.length?`${fmt(exR.reduce((a,b)=>a+b,0)/exR.length,2)} R per trade`:'per trade',cl(s.mean)]]
     .map(([l,v,sub,c])=>`<div class="card kpi"><div class="l">${l}</div><div class="v ${c}">${v}</div><div class="s">${sub}</div></div>`).join('')+baselineTile();
   renderCalendar(T);renderTrades(T,LOT);renderDaily(T);renderBreakdown(T);renderSignals();renderConfig();
+  $('tabJournal').style.display=D.rl?'':'none';
+  if(!D.rl&&document.querySelector('.tab.on').dataset.p==='journal'){document.querySelector('.tab[data-p="trades"]').click();return;}
   renderTab(document.querySelector('.tab.on').dataset.p);
 }
-function renderTab(p){const T=sel();({perf:()=>renderPerf(T),equity:()=>renderEquity(T),dd:()=>renderDD(T),dist:()=>renderDist(T),mc:()=>renderMC(T),robust:()=>renderRobust(T),fz:()=>renderFZ()}[p]||(()=>{}))();}
+function renderTab(p){const T=sel();({perf:()=>renderPerf(T),equity:()=>renderEquity(T),dd:()=>renderDD(T),dist:()=>renderDist(T),mc:()=>renderMC(T),robust:()=>renderRobust(T),fz:()=>renderFZ(),journal:()=>renderJournal()}[p]||(()=>{}))();}
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b));
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('on',p.id==='p-'+b.dataset.p));renderTab(b.dataset.p);});
 
@@ -689,6 +692,31 @@ function renderConfig(){const m=cur,r=runOf(m),sch=D.charges,labs={code:'Code',h
 function fzConfig(m,r){let b=null;try{b=m.fz_json?JSON.parse(m.fz_json)[r.timeframe]:null;}catch(e){}if(!b)return '';
   return `<dt style="margin-top:10px"><b>Foundation-Zone</b></dt><dd style="margin-top:10px">entry rule ${esc(m.entry_rule)} · fz_hash ${esc(m.fz_hash||'—')} · band memory from ${esc(r.memory_start||'—')} (${esc(r.same_sample||'')}: every window is a date slice of one run from the file start) · thresholds for ${TFS[r.timeframe]} candles</dd>`+
     Object.entries(b).map(([k,x])=>`<dt>${esc(k)}</dt><dd>${x.value===null?'null':esc(x.value)} <span class="sub">· ${esc(x.source)}${x.statistic?' · '+esc(x.statistic):''}${x.note?' · '+esc(x.note):''}</span></dd>`).join('');}
+
+// ---- Journal (learner strategies, entry_rule rl_v1): what the learner decided at every SETUP and what each action would have
+// made, precomputed by rl.py into summary.json['rl']. Scored rows are the backtest window; the rows before it are learning only.
+function renderJournal(){const R=D.rl;if(!R){$('p-journal').innerHTML='';return;}
+  const S=R.summary,J=R.journal.filter(j=>j.scored),W=R.journal.filter(j=>!j.scored);
+  const tile=(l,v,sub,c)=>`<div class="card kpi"><div class="l">${l}</div><div class="v ${c||''}">${v}</div><div class="s">${sub||''}</div></div>`;
+  const takeRate=S.setups?Math.round(100*S.taken/S.setups)+'%':'—';
+  const tiles=[tile('SETUPs (scored)',S.setups,`${S.taken} taken · ${S.skipped} skipped by the learner · ${S.locked} locked`),
+    tile('Take rate',takeRate,'of the scored SETUPs'),tile('Learner net',inr(S.rl_net),'its own trades, after costs',cl(S.rl_net)),
+    tile('Base net',inr(S.base_net),R.base_arm,cl(S.base_net)),tile('Random control',inr(S.control_net),'a seeded uniformly random action per SETUP (skip included)',cl(S.control_net)),
+    tile('Oracle net',inr(S.oracle_net),'best action per SETUP in hindsight (not achievable)',cl(S.oracle_net)),
+    tile('Learning before the window',`${S.warmup_setups} SETUPs`,`from ${R.learn_from} · learner ${inr(S.warmup_rl_net)} vs base ${inr(S.warmup_base_net)} · ${R.learned_updates} updates`)].join('');
+  const mix=R.action_mix.length?`<table><thead><tr><th>Action</th><th class="num">Taken</th><th class="num">Share</th></tr></thead><tbody>${R.action_mix.map(([a,n])=>`<tr><td>${esc(a)}</td><td class="num">${n}</td><td class="num">${Math.round(100*n/Math.max(1,S.taken))}%</td></tr>`).join('')}</tbody></table>`:'<p class="hint">No trade taken in the window.</p>';
+  const months=`<table><thead><tr><th>Month</th><th></th><th class="num">SETUPs</th><th class="num">Taken</th><th class="num">Locked</th><th class="num">Learner ₹</th><th class="num">Base ₹</th><th class="num">Random ₹</th><th class="num">Oracle ₹</th></tr></thead><tbody>`+
+    R.months.map(m=>`<tr class="${m.scored?'':'sub'}"><td>${m.month}</td><td>${m.scored?'scored':'learning'}</td><td class="num">${m.setups}</td><td class="num">${m.taken}</td><td class="num">${m.locked}</td><td class="num ${cl(m.rl_net)}">${inr(m.rl_net)}</td><td class="num ${cl(m.base_net)}">${inr(m.base_net)}</td><td class="num ${cl(m.control_net)}">${inr(m.control_net)}</td><td class="num ${cl(m.oracle_net)}">${inr(m.oracle_net)}</td></tr>`).join('')+'</tbody></table>';
+  const F=R.features,top=Object.entries(R.weights).sort((a,b)=>(R.action_mix.find(x=>x[0]===b[0])||[0,0])[1]-(R.action_mix.find(x=>x[0]===a[0])||[0,0])[1]).slice(0,6);
+  const weights=top.length?`<table><thead><tr><th>Action</th><th>Strongest features (weight in reward units per unit of feature)</th></tr></thead><tbody>${top.map(([a,w])=>{const ws=w.map((v,i)=>[F[i],v]).filter(x=>x[0]!=='bias').sort((x,y)=>Math.abs(y[1])-Math.abs(x[1])).slice(0,5);
+    return `<tr><td>${esc(a)}</td><td>bias ${fmt(w[0],2)} · ${ws.map(([f,v])=>`${f} <b class="${cl(v)}">${v>0?'+':''}${fmt(v,2)}</b>`).join(' · ')}</td></tr>`;}).join('')}</tbody></table>`:'';
+  const WHYD=d=>d==='skip'?'<span class="pill grey">skip</span>':d==='locked'?'<span class="pill open">locked</span>':esc(d);
+  const rows=J.map((j,i)=>`<tr class="z" data-t="${j.time}"><td>${i+1}</td><td>${j.time.slice(5,16)}</td><td><span class="pill ${j.dir==='up'?'long':'short'}">${j.dir==='up'?'LONG':'SHORT'}</span></td><td>${WHYD(j.decision)}</td><td class="num">${j.pred==null?'—':fmt(j.pred,2)}</td><td class="num ${cl(j.net)}">${inr(j.net)}</td><td class="num ${cl(j.base_net)}">${inr(j.base_net)}</td><td>${esc(j.oracle_arm)} <span class="${cl(j.oracle_net)}">${inr(j.oracle_net)}</span></td><td class="num">${fmt(j.atr_pct,3)}</td><td class="num">${fmt(j.d_hi,1)} / ${fmt(j.d_lo,1)}</td><td class="num">${fmt(j.day_r,1)}</td><td class="num">${j.form3}</td><td class="num">${j.consec_loss}</td></tr>`).join('');
+  $('p-journal').innerHTML=`<div class="kpis">${tiles}</div>${R.notes?`<p class="hint">${esc(R.notes)}</p>`:''}<div class="grid2"><div class="card"><h3>Actions taken</h3>${mix}</div><div class="card"><h3>What it learned</h3><p class="hint">Reward: ${R.reward} · seed ${R.seed} · ${R.arms.length-1} actions + skip; every action's model updates on every SETUP (full information), so each has as many updates as there were learnable SETUPs.</p>${weights}</div></div>
+    <div class="card mt"><h3>Month by month</h3><p class="hint">Learner = its own trades; base = ${R.base_arm}; oracle = the best action per SETUP, known only afterwards.</p><div class="scroll">${months}</div></div>
+    <div class="card mt"><h3>Journal — every scored SETUP (${J.length}; ${W.length} learning rows before the window not listed)</h3><p class="hint">pred = the learner's expected reward for its decision at the time; net = what the trade made; base = what Strategy 9's rule would have made; oracle = the best action in hindsight. Features: ATR % of price, distance from the AVWAP high / low in ATRs (signed with the trade), the day's closed result in R, form over the last 3 trades, consecutive losses.</p>
+    <div class="scroll"><table><thead><tr><th>#</th><th>Time</th><th>Dir</th><th>Decision</th><th class="num">pred</th><th class="num">Net ₹</th><th class="num">Base ₹</th><th>Oracle</th><th class="num">ATR %</th><th class="num">d AVWAP H / L</th><th class="num">Day R</th><th class="num">Form 3</th><th class="num">Losses in a row</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  $('p-journal').querySelectorAll('tr.z').forEach(r=>r.onclick=()=>{const t0=Date.parse(r.dataset.t.replace(' ','T')+'Z')/1000;openAt(t0,t0+30*60);});}
 
 // ---- Zone gate (Strategies 5-6): the gate ledger and its reports, all precomputed by lab.py into summary.json['fz']
 let FZG='ALL';   // ledger filter: ALL or one gate
