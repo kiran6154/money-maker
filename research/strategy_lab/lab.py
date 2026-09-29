@@ -143,7 +143,20 @@ def load_strategies():
             sys.exit(f"{where}: break_mode / choch_mode must be 'touch' or 'close'")
         if spec["timeframe"] not in TIMEFRAMES: sys.exit(f"{where}: timeframe must be one of {TIMEFRAMES}")
         import rl as _rl                     # RL rows (rl.py): a function-local import keeps lab.py's result hash unchanged
-        if r.get("entry_rule") not in ENTRY_RULES + _rl.RULES: sys.exit(f"{where}: entry_rule must be one of {ENTRY_RULES + _rl.RULES}")
+        import c2c as _c2c                   # c2c rows (c2c.py): same reason
+        import rainbow as _rb                # rainbow rows (rainbow.py): same reason
+        rules_ok = ENTRY_RULES + _rl.RULES + _c2c.RULES + _rb.RULES
+        if r.get("entry_rule") not in rules_ok: sys.exit(f"{where}: entry_rule must be one of {rules_ok}")
+        if r["entry_rule"] in _rb.RULES:
+            try: _rb.config_of(spec)
+            except ValueError as e: sys.exit(f"{where}: rainbow: {e}")
+        elif "rainbow" in spec:
+            sys.exit(f"{where}: a 'rainbow' block needs entry_rule {_rb.RULES[0]}")
+        if r["entry_rule"] in _c2c.RULES:
+            try: _c2c.config_of(spec)
+            except ValueError as e: sys.exit(f"{where}: c2c: {e}")
+        elif "c2c" in spec:
+            sys.exit(f"{where}: a 'c2c' block needs entry_rule {_c2c.RULES[0]}")
         if r["entry_rule"] in _rl.RULES:
             try: _rl.config_of(spec)
             except ValueError as e: sys.exit(f"{where}: rl: {e}")
@@ -247,7 +260,9 @@ def type_rows(spec):
             fz_json=json.dumps(spec["fz"], ensure_ascii=False) if "fz" in spec else None,   # verbatim, with provenance
             position_json=json.dumps(position_of(spec), sort_keys=True),
             underlying=spec.get("underlying", "FUT"), native_scan_json=json.dumps(native_scan_of(spec), sort_keys=True),
-            rl_json=json.dumps(spec["rl"], ensure_ascii=False) if "rl" in spec else None))   # file order: the first profile is the base
+            rl_json=json.dumps(spec["rl"], ensure_ascii=False) if "rl" in spec else None,
+            c2c_json=json.dumps(spec["c2c"], ensure_ascii=False) if "c2c" in spec else None,   # file order: the first profile is the base
+            rainbow_json=json.dumps(spec["rainbow"], ensure_ascii=False) if "rainbow" in spec else None))
     return rows
 
 
@@ -301,7 +316,7 @@ def migrate(db):
                    ("expiry_types", "text not null default 'WEEKLY,MONTHLY'"), ("signal_source", "text"),
                    ("capital_fut", "real not null default 120000"), ("capital_opt_short", "real not null default 150000"),
                    ("choch_mode", "text"), ("fz_json", "text"), ("position_json", "text"), ("underlying", "text"), ("rl_json", "text"),
-                   ("native_scan_json", "text")):
+                   ("native_scan_json", "text"), ("c2c_json", "text"), ("rainbow_json", "text")):
         add("strategy", c, ddl)
     for c, ddl in (("sl_px", "real"), ("gross_inr", "real"), ("charges_inr", "real"), ("instrument", "text"),
                    ("strike", "real"), ("strike_choice", "text"), ("und_entry_px", "real"), ("und_exit_px", "real"),
@@ -1445,6 +1460,8 @@ def save_run(db, st, ch, res, cs):
     params.update(strike_choice=ch, period=st["period"], date_from=st["date_from"], date_to=st["date_to"])
     if fz_rule(st): params.update(fz_json=st["fz_json"], fz_hash=fz_hash(), warmup_days=st["warmup_days"])
     if st.get("rl_json"): params.update(rl_json=st["rl_json"])
+    if st.get("c2c_json"): params.update(c2c_json=st["c2c_json"])
+    if st.get("rainbow_json"): params.update(rainbow_json=st["rainbow_json"])
     run_id = db.execute("insert into strategy_run(strategy_id,run_at,params_json,bars,trades,wins,net_pts,gross_inr,charges_inr,"
                         "net_inr,max_dd_pts,strike_choice,period) values(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (st["id"], D.datetime.now().isoformat(timespec="seconds"), json.dumps(params), None, s["trades"], s["wins"],
@@ -1525,12 +1542,19 @@ def cache_key(st, pr):
     """Everything a result depends on: the strategy row (an FZ row's fz_json included), the period, the code (the three FZ
     modules only for FZ rows, so an fz.py edit re-runs FZ rows and nothing else), and the input data files."""
     h = hashlib.sha1()
-    row = {k: v for k, v in st.items() if k not in ("id", "created_at", "enabled", "name", "description")}
+    row = {k: v for k, v in st.items() if k not in ("id", "created_at", "enabled", "name", "description")
+           and not (k in ("c2c_json", "rainbow_json") and v is None)}          # rows without a c2c / rainbow block keep their stored keys
     h.update(json.dumps([row, pr["date_from"], pr["date_to"]], sort_keys=True, default=str).encode())
     h.update(code_hash(fz_rule(st)).encode())
     import rl as _rl
     if _rl.rl_rule(st):                                  # RL rows: the learner's code too (they also read the whole futures file)
         for f in _rl.MODULES: h.update(open(os.path.join(HERE, f), "rb").read().replace(b"\r\n", b"\n"))
+    import c2c as _c2c
+    if _c2c.c2c_rule(st):                                # c2c rows: the rule module too
+        for f in _c2c.MODULES: h.update(open(os.path.join(HERE, f), "rb").read().replace(b"\r\n", b"\n"))
+    import rainbow as _rb
+    if _rb.rainbow_rule(st):                             # rainbow rows: the rule module too
+        for f in _rb.MODULES: h.update(open(os.path.join(HERE, f), "rb").read().replace(b"\r\n", b"\n"))
     files = [st["data_file"], st["spot_file"], st.get("signal_file"), FUT1, os.path.join(st["option_dir"] or "", "manifest.csv")]
     if fz_rule(st): files.append(FUT1)                  # front_month per session comes from the 1-minute file
     if st["variant"] != "FUT" and st.get("weekly_dir"):
@@ -1572,7 +1596,11 @@ def record_history(specs, index):
         import rl as _rl
         rule = str(spec["rules"].get("entry_rule", ""))
         dv = def_view(spec)
+        import c2c as _c2c
         ch = code_hash(rule.startswith("fz")) + (f"+rl:{_rl.code_hash()}" if rule in _rl.RULES else "")   # learner rows: rl.py too
+        if rule in _c2c.RULES: ch += f"+c2c:{_c2c.code_hash()}"                                          # c2c rows: c2c.py too
+        import rainbow as _rb
+        if rule in _rb.RULES: ch += f"+rb:{_rb.code_hash()}"                                              # rainbow rows: rainbow.py too
         vid = hashlib.sha1(json.dumps([dv, ch], sort_keys=True).encode()).hexdigest()[:12]
         res = {m["code"]: {rk: {c: {k: v.get(k) for k in BRIEF} for c, v in info["choices"].items()}
                            for rk, info in m["runs"].items() if info["choices"]} for m in metas}
@@ -1591,8 +1619,11 @@ def record_history(specs, index):
                 changes = [f"{k}: {json.dumps(a.get(k))} -> {json.dumps(b.get(k))}" for k in sorted(set(a) | set(b))
                            if a.get(k) != b.get(k) and not prov(k)]
                 old_ch = V[-1]["code_hash"]
-                if old_ch.split("+rl:")[0] != ch.split("+rl:")[0]: changes.append("code (engine.py / lab.py pricing / FZ modules) changed")
+                base_of = lambda x: x.split("+rl:")[0].split("+c2c:")[0].split("+rb:")[0]
+                if base_of(old_ch) != base_of(ch): changes.append("code (engine.py / lab.py pricing / FZ modules) changed")
                 if "+rl:" in ch and old_ch.split("+rl:")[-1] != ch.split("+rl:")[-1]: changes.append("code (rl.py, the learner) changed")
+                if "+c2c:" in ch and old_ch.split("+c2c:")[-1] != ch.split("+c2c:")[-1]: changes.append("code (c2c.py, the rule) changed")
+                if "+rb:" in ch and old_ch.split("+rb:")[-1] != ch.split("+rb:")[-1]: changes.append("code (rainbow.py, the rule) changed")
             V.append({"version": len(V) + 1, "vid": vid, "at": now, "updated": now, "code_hash": ch, "def": dv,
                       "changes": changes, "results": res})
         json.dump(H, open(f, "w", encoding="utf-8"), indent=1, ensure_ascii=False)
@@ -1742,6 +1773,12 @@ def main():
         import rl as _rl
         rlr = _rl.rl_rule(st)
         if rlr: meta["rl"] = dict(json.loads(st["rl_json"]), features=list(_rl.FEATURES))
+        import c2c as _c2c
+        c2r = _c2c.c2c_rule(st)
+        if c2r: meta["c2c"] = json.loads(st["c2c_json"])
+        import rainbow as _rb
+        rbr = _rb.rainbow_rule(st)
+        if rbr: meta["rainbow"] = json.loads(st["rainbow_json"])
         meta["runs"] = {}
         for bt in [b for b in bts if b["family"] == st["family"]]:
             tf = bt["timeframe"] or st["timeframe"]
@@ -1756,7 +1793,13 @@ def main():
                 status, reason = "refused", _rl.FUT_WHY
             if status == "ok" and rlr and sq != sq0:        # each exit profile carries its own square-off; an override changes nothing
                 status, reason = "refused", _rl.SQUARE_OFF_WHY
-            if status == "ok" and st["variant"] != "FUT":   # options: only where a full option chain exists (no hindsight strikes)
+            if status == "ok" and rbr and (st["variant"] != "FUT" or und == "INDEX"):
+                status, reason = "refused", _rb.FUT_WHY
+            if status == "ok" and c2r and st["variant"] != "OPT_FUT_SIGNAL":
+                status, reason = "refused", _c2c.TYPE_WHY
+            if status == "ok" and c2r and tf != _c2c.TIMEFRAME:
+                status, reason = "refused", _c2c.TF_WHY
+            if status == "ok" and st["variant"] != "FUT" and not c2r:   # options: only where a full option chain exists (no hindsight strikes); c2c checks it per expiry
                 cov = option_coverage(st)
                 if cov is None:
                     status, reason = "refused", "no full-chain option data; fill expiries with tools/breeze_options.py"
@@ -1802,17 +1845,20 @@ def main():
                         if d.get("key") == key: stored[ch] = d
             fresh = len(stored) < len(choices)
             if fresh:                                  # one run per code and backtest; freed once written (memory)
-                runner = _rl.run_variant if rlr else run_variant
+                runner = _rl.run_variant if rlr else _c2c.run_variant if c2r else _rb.run_variant if rbr else run_variant
                 res = {ch: dict(rr, **side_of(rr, st["positions"])) for ch, rr in runner(dict(stp, positions="BOTH"), cs).items()}   # the side cut keeps rr's extra payloads (rl, fz)
             for ch in choices:
                 if fresh:
                     rr = res[ch]
                     run_id, s = save_run(db, stp, ch, rr, cs)
                     write_result(folders[ch], stp, ch, rr, s, cs, key)
-                    rlp = rr.get("rl")
-                    if rlp:                                # the learner's journal and summary, next to the lab's result
+                    rlp, c2p, rbp = rr.get("rl"), rr.get("c2c"), rr.get("rainbow")
+                    if rlp or c2p or rbp:                  # the learner's journal / the c2c funnel / the rainbow summary, next to the lab's result
                         fjs = os.path.join(folders[ch], "summary.json")
-                        d0 = json.load(open(fjs, encoding="utf-8")); d0["rl"] = rlp
+                        d0 = json.load(open(fjs, encoding="utf-8"))
+                        if rlp: d0["rl"] = rlp
+                        if c2p: d0["c2c"] = c2p
+                        if rbp: d0["rainbow"] = rbp
                         json.dump(d0, open(fjs, "w", encoding="utf-8"), separators=(",", ":"))
                     rows = [[x["position"], x["instrument"], x["entry_time"], x["entry_px"], x["exit_time"], x["exit_px"], x["exit_reason"],
                              round(x["pts"], 2), round(x["gross"], 2), round(x["chg"]["total"], 2), round(x["net"], 2), int(x["open"])]
@@ -1826,7 +1872,7 @@ def main():
                     d = stored[ch]; s = d["stats"]; run_id = None; skl = d["skipped"]
                     s_long, s_short, s_ce, s_pe = (d.get(k) for k in ("stats_long", "stats_short", "stats_ce", "stats_pe"))
                     rows = [[x[21] if len(x) > 21 else x[0], x[1], x[4], x[5], x[7], x[8], x[9], x[10], x[11], x[12], x[13], int(x[14])] for x in d["trades"]]
-                    fzp = d.get("fz"); rlp = d.get("rl")
+                    fzp = d.get("fz"); rlp = d.get("rl"); c2p = d.get("c2c"); rbp = d.get("rainbow")
                 hl = fzp["headline"] if fzr and fzp else None
                 rel = os.path.relpath(folders[ch], HERE).replace(os.sep, "/")
                 brief = lambda z: z and {k: z[k] for k in ("trades", "wins", "pts", "net_inr", "pf")}
@@ -1837,7 +1883,9 @@ def main():
                 n_skip = len(skl) - n_lock - n_decl
                 info["choices"][ch] = dict(file=f"{rel}/summary.json", run_id=run_id, skipped=n_skip, locked=n_lock, declined=n_decl, **s,
                                            long=brief(s_long), short=brief(s_short), ce=brief(s_ce), pe=brief(s_pe),
-                                           **({"fz": hl} if hl else {}), **({"rl": rlp["summary"]} if rlp else {}))
+                                           **({"fz": hl} if hl else {}), **({"rl": rlp["summary"]} if rlp else {}),
+                                           **({"c2c": c2p["funnel"]} if c2p else {}),
+                                           **({"rainbow": {k: rbp[k] for k in ("signals", "taken", "locked", "exits")}} if rbp else {}))
                 srow = dict(run=rk, backtest=bt["label"], timeframe=tf, code=st["code"], variant=st["variant"], choice=ch, **s)
                 if hl:
                     # fz_take .. fz_reenter: SETUPs by how they ended; fz_reenter_at_setup: gated REENTER on their own bar;

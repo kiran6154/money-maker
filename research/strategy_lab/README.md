@@ -41,6 +41,12 @@ swings (Pine port) → protected level → CHoCH / BOS → AVWAP pair from previ
 | `ST19` / `ST20` | Strategy 19 / 20 | 1 min / 5 min | touch | **learner** (`rl_v1`) | the journal + learner on Strategy 1's / Strategy 2's SETUPs, reward = net rupees (see *Learner* below; S51) |
 | `ST21` / `ST22` | Strategy 21 / 22 | 1 min / 5 min | touch | **learner** | the same, reward = R multiple |
 | `ST23` / `ST24` | Strategy 23 / 24 | 1 min / 5 min | touch | **learner** | the same, reward = net with losses weighted 1.5x (profit-factor oriented) |
+| `ST25` | Strategy 25 | 5 min | **close** | **c2c: premium stop / trail, 15:15 ladder** | **CHoCH to CHoCH put retest** (`entry_rule: c2c_v1`, `c2c.py`, see *CHoCH to CHoCH* below): buy the ITM1 put of the nearest monthly ≥ 15 days out when a swing high confirms within 50 pts of the VWAP anchored at the pre-break peak, after a bearish flip; window PCR rules on; stops on the candle close (S52) |
+| `ST26` | Strategy 26 | 5 min | **close** | c2c | Strategy 25 with the PCR rules off |
+| `ST27` | Strategy 27 | 5 min | **close** | c2c, **touch stops** | Strategy 25 with stops by touch (exit at the stop; at the open on a gap) |
+| `ST28` | Strategy 28 | 5 min | **close** | c2c, touch stops | Strategy 27 with the PCR rules off |
+| `ST29` | Strategy 29 | 1 min | touch | **rainbow** (`rainbow_v1`) | **Rainbow ribbon intraday** (see *Rainbow ribbon* below), the grid's pick for 1-minute: EMA 5–55 ribbon, cross, fan none, osc ≥ 25, all-lot trail 3R−2 — in sample 277 lot exits, net ₹-395,954, PF 0.83, t -1.22; out of sample 112 lot exits, net ₹-334,212, PF 0.57, t -2.38, OOS rank 13 of 48; no variant qualified (all 48 lost) |
+| `ST30` | Strategy 30 | 5 min | touch | **rainbow** (`rainbow_v1`) | **Rainbow ribbon intraday** (see *Rainbow ribbon* below), the grid's pick for 5-minute: Widner 10 × SMA(2), cross, fan full, osc ≥ 25, all-lot trail 3R−2 — in sample 143 lot exits, net ₹-223,690, PF 0.81, t -1.01; out of sample 79 lot exits, net ₹-115,555, PF 0.75, t -0.95, OOS rank 1 of 48; no variant qualified (all 48 lost) |
 
 Each file holds one strategy: `code`, `name`, `description`, design `timeframe`, `warmup_days`, `rules`
 (`break_mode`, `choch_mode`, `avwap_weight`, `sl_rule`, `entry_rule`, `exit_rule`), `lot_size`, `capital`, per-type charges and
@@ -211,6 +217,68 @@ trade with which exit profile, which stop and how many lots** — the strategy f
   exempt functions (loader, dispatch in `main`, `cache_key` and the `results/history` version id add `rl.py`), so the other
   strategies' stored results are unaffected by learner changes.
 
+## CHoCH to CHoCH: put retest (Strategies 25–28, `c2c.py`, `entry_rule: c2c_v1`)
+From the user's *Nifty CHoCH to CHoCH in Plain English* spec (2026-09-29). Every number is in the file's `c2c` block (no
+defaults in code); the four files differ only in `pcr` (window PCR rules, or `null`) and `stop_fill` (`close` / `touch`):
+```json
+"c2c": { "band_pts": 50, "day_drop_pct": 0.6, "stop_pct": 5, "trail_pts": 5, "stop_fill": "close", "max_open": 1,
+         "pcr": { "entry_max": 1.3, "exit_above": 0.95, "window_pts": 300, "min_strikes": 9 },
+         "ladder": { "time": "15:15", "profit_pct": 40, "loss_pct": 2 } }
+```
+- **Regime and VWAP** are the engine's (break and CHoCH by close): bearish from a CHoCH that flips the trend down until one
+  flips it up; the anchored VWAP is the engine's AVWAP from the swing high the flip re-anchors at (equal-weighted on the
+  index, volume-weighted on futures). A CHoCH that breaks the protected level without flipping the trend changes nothing.
+- **Entry**, all on one closed 5-minute candle: bearish regime, a swing high confirms there, VWAP − 50 < swing high < VWAP
+  + 50, close > the session's first open × 0.994, not the flip candle, and (PCR books) window PCR < 1.3. The ITM1 put
+  (one strike above the ATM of the index close) of the nearest monthly ≥ 15 days out, bought at the open of its first
+  candle at or after the next signal candle, the same session only. One position at a time; positional (no square-off).
+- **Exits** on the put's own candles, in this order: stop (5 % below the entry premium, then 5 pts behind the peak premium
+  once it has gained — `close`: a close at or below it, the peak from closes; `touch`: the low touching it, the peak from
+  highs, at the open on a gap), a bullish flip (that candle's close), and the 15:15 ladder once per session (profit > 40 %,
+  loss > 2 %, or PCR > 0.95). A position entered after 15:15 meets its first ladder the next session.
+- **Window PCR** = Σ PE OI / Σ CE OI over the strikes within 300 pts of the ATM on the traded expiry (both rights needed;
+  NA below 9 strikes, which blocks an entry and never triggers an exit). The local files hold a strike window, not the full
+  chain: a stand-in for the exchange PCR (S52).
+- **Data:** only expiries with full-chain data are priced (the lab's coverage rule, per trade); signals on other expiries are
+  skipped with the reason. For "nearest monthly ≥ 15 days" that is 2026-06-23 → 07-13 and 07-22 → 09-14 today (Jul-28 and
+  Aug-25 from Breeze, Sep-29 from Kite; Oct-27 is missing). The default backtest is that window on index signals, with the
+  same window on futures signals beside it.
+- **Scope v1:** the Options (via futures) type only (Futures and standalone options are refused with the reason), 5-minute
+  candles only. `summary.json['c2c']` carries the entry funnel (swing highs → bearish → not the flip candle → in the band →
+  above the day floor → PCR → priced → taken / locked), the exit reasons and the PCR distribution at the candidates.
+  `tests/test_c2c.py` walks the exits on synthetic candles and checks no look-ahead by cutting the window.
+
+## Rainbow ribbon intraday (Strategies 29–30, `rainbow.py`, `entry_rule: rainbow_v1`)
+User (2026-09-29): "create a new strategy of best intraday with rainbow for 1min and 5min". Neither word had a definition in
+the repo, so the build took **rainbow** = Mel Widner's Rainbow Charts (10 recursive 2-period simple averages of the close,
+plus his oscillator) with an EMA ribbon as the alternative, and **best intraday** = the variant a pre-registered grid picks
+in sample and a later window then reports (S53). Every number is in the file's `rainbow` block:
+```json
+"rainbow": { "kind": "widner", "levels": 10, "period": 2, "trigger": "cross", "fan": "none", "osc_min": 25, "lookback": 10,
+             "pullback_bars": 5, "entry_from": "09:20", "entry_until": "14:30", "exit": "none" }
+```
+- **Ribbon:** `widner` = line 1 is SMA(period) of the close, line k the SMA of line k−1, `levels` lines; `ema` = EMAs of the
+  `periods`. Band = [lowest line, highest line]; fan bullish when every faster line is above the next; oscillator = 100 ×
+  (close − mean of the lines) / (highest − lowest close over `lookback` candles). All from candles ≤ the current one.
+- **Entry:** a fresh close outside the band (the previous close was not), in the `entry_from`–`entry_until` window, with the
+  `fan` condition (`full` / `none`), the oscillator at least `osc_min` (signed), and for `trigger: pullback` the band's far
+  edge still sloping the trade's way over the last `pullback_bars` candles with the band touched in that time. Entry at the
+  signal close on the near-month contract; one position per contract (a signal while one is open is skipped).
+- **Exits** are the lab's `position` block: `exit: "strategy"` uses the ribbon's far side at the signal as the stop and (with
+  `rainbow.exit: "band"`) a close back through it as the exit; `exit: "position"` uses the managed exits (stop in points,
+  R-based scale-out, trail). Square-off 15:25 in both files.
+- **The grid (S53, pre-registered):** kind (widner, ema) × trigger (cross, pullback) × fan (full, none) × osc_min (0, 25) ×
+  exits (band; managed 1R / 2R + trail 3R−1 at stop 50; managed all-lot trail 3R−2 at stop 50) = 48 variants per timeframe
+  on Jan 5 – Jun 30 2026, Jul 1 – Sep 25 2026 held out; rule = highest in-sample net with ≥ 30 positions and PF > 1, else
+  the highest in-sample net, said so. `studies/rainbow_grid.py` reproduces it; `studies/rainbow_grid.json` holds every row.
+  Result: **1-minute (ST29)**: pick = EMA 5–55 ribbon, cross, fan none, osc ≥ 25, all-lot trail 3R−2 (NO variant qualified - the highest in-sample net taken); in sample 277 lot exits, net ₹-395,954, PF 0.83, t -1.22; out of sample 112 lot exits, net ₹-334,212, PF 0.57, t -2.38; its out-of-sample rank 13 of 48. Across the grid: 0 of 48 variants positive in sample, 0 out of sample; the best out-of-sample variant was Widner 10 × SMA(2), cross, fan none, osc ≥ 25, all-lot trail 3R−2 at ₹-257,350; the worst in sample lost ₹-20,425,494 (5746 lot exits, band stop + band exit). Band exits (the ribbon's own stop and exit) averaged 1,923 in-sample lot exits and ₹-6,905,606 per variant against 585 and ₹-760,091 for the managed exits: a 2-period ribbon flips sides every few candles, so the ribbon's own exits trade the spread away. **5-minute (ST30)**: pick = Widner 10 × SMA(2), cross, fan full, osc ≥ 25, all-lot trail 3R−2 (NO variant qualified - the highest in-sample net taken); in sample 143 lot exits, net ₹-223,690, PF 0.81, t -1.01; out of sample 79 lot exits, net ₹-115,555, PF 0.75, t -0.95; its out-of-sample rank 1 of 48. Across the grid: 0 of 48 variants positive in sample, 0 out of sample; the best out-of-sample variant was Widner 10 × SMA(2), cross, fan full, osc ≥ 25, all-lot trail 3R−2 at ₹-115,555; the worst in sample lost ₹-3,931,528 (1113 lot exits, band stop + band exit). Band exits (the ribbon's own stop and exit) averaged 366 in-sample lot exits and ₹-1,115,485 per variant against 411 and ₹-552,566 for the managed exits: a 2-period ribbon flips sides every few candles, so the ribbon's own exits trade the spread away.
+- **Chart:** the ribbon is drawn on the futures chart (the *Rainbow* layer, red = fastest line, violet = slowest); the
+  engine's swings / CHoCH / AVWAP overlays stay for context and decide nothing here.
+- **Scope v1:** the Futures type on the futures' own candles; option types and index signals are refused with the reason.
+  `summary.json['rainbow']` carries the signal count, taken / locked / after-square-off, the exit reasons and the oscillator
+  at the signals. `tests/test_rainbow.py` checks the arithmetic on hand-made candles, the signal rules, the exits, the
+  config and no look-ahead by cutting a real window.
+
 ## FZ: the Foundation-Zone gate (Strategies 5 and 6)
 > Builder's reference with every rule as coded, the lab wiring, the tests and the open decisions: [`FZ.md`](FZ.md).
 > **v2 (Strategies 7 and 8)** replaces the band memory below with rooms (born only from sits, never overlapping, retired after
@@ -331,6 +399,8 @@ which moved two 1m positions; the permutation now splits by the SETUPs FZ traded
 | Path | What |
 |---|---|
 | `engine.py` | foundation engine (pure; no I/O besides loading candles) |
+| `c2c.py` | the CHoCH to CHoCH put-retest rule (Strategies 25–28): entry funnel, premium stop / trail, 15:15 ladder, window PCR (see *CHoCH to CHoCH*) |
+| `rainbow.py`, `tests/test_rainbow.py`, `studies/rainbow_grid.py` | the rainbow-ribbon intraday rule (Strategies 29–30): Widner / EMA ribbon, fresh-close entries with fan / oscillator / pullback filters, band or managed exits; its tests; the pre-registered grid that picked the two files' variants (S53) |
 | `fz.py`, `fz_exec.py`, `fz_report.py` | the Foundation-Zone gate (Strategies 5–6 bands, 7–8 rooms): gate, execution / simulator, reports (see *FZ*) |
 | `lab.py` | runs enabled strategies, stores results, writes dashboard + exports |
 | `dashboard.tpl` | dashboard template (`dashboard.html` is generated) |
@@ -417,7 +487,8 @@ the same time window. Served by `explorer.py` through `GET /api/explorer/{meta,i
 option listing of a date takes about 30 s, then it is cached).
 
 **Studies (`studies/`):** one-off scripts that reuse the lab without writing its results — e.g. `studies/r_combinations.py`
-(exit combinations for Strategies 9–10 over the last year and five years; output `studies/r_combinations.json`).
+(exit combinations for Strategies 9–10 over the last year and five years; output `studies/r_combinations.json`) and
+`studies/rainbow_grid.py` (the pre-registered rainbow grid that picked Strategies 29–30; output `studies/rainbow_grid.json`).
 
 **From a phone:** the server listens only on this PC unless started with `--lan` (every network address of the PC — home
 Wi-Fi), `--tailscale` (only the PC's Tailscale address) or `--host <ip>`; it prints the phone address(es) at start.

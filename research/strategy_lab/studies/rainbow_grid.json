@@ -1,0 +1,6636 @@
+{
+ "minute": {
+  "window": {
+   "from_": "2026-01-05",
+   "split": "2026-07-01",
+   "to": "2026-09-25"
+  },
+  "rule": ">= 30 IS positions, PF > 1, highest IS net",
+  "pick": {
+   "kind": "ema",
+   "trigger": "cross",
+   "fan": "none",
+   "osc_min": 25,
+   "exits": "trail",
+   "tf": "minute",
+   "IS": {
+    "trades": 277,
+    "wins": 90,
+    "pts": -185.2,
+    "gross_inr": -36114.0,
+    "charges_inr": 359839.99,
+    "net_inr": -395953.99,
+    "max_dd_inr": -444367.56,
+    "pf": 0.83,
+    "t_stat": -1.22,
+    "weeks": 23,
+    "pos_weeks": 11,
+    "worst_week": [
+     "2026-W06",
+     -154054.75918846176
+    ]
+   },
+   "OOS": {
+    "trades": 112,
+    "wins": 39,
+    "pts": -977.6,
+    "gross_inr": -190632.0,
+    "charges_inr": 143579.91,
+    "net_inr": -334211.91,
+    "max_dd_inr": -392864.71,
+    "pf": 0.57,
+    "t_stat": -2.38,
+    "weeks": 13,
+    "pos_weeks": 2,
+    "worst_week": [
+     "2026-W36",
+     -97450.02399823615
+    ]
+   },
+   "ALL": {
+    "trades": 389,
+    "wins": 129,
+    "pts": -1162.8,
+    "gross_inr": -226746.0,
+    "charges_inr": 503419.9,
+    "net_inr": -730165.9,
+    "max_dd_inr": -778579.47,
+    "pf": 0.77,
+    "t_stat": -2.07,
+    "weeks": 35,
+    "pos_weeks": 13,
+    "worst_week": [
+     "2026-W06",
+     -154054.75918846176
+    ]
+   },
+   "signals": 7230,
+   "locked": 6841,
+   "exit_reasons": {
+    "stop_loss": 232,
+    "eod": 122,
+    "trail_stop": 32,
+    "expiry": 3
+   },
+   "qualified": false,
+   "oos_rank": 13
+  },
+  "rows": [
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "band",
+    "tf": "minute",
+    "IS": {
+     "trades": 1231,
+     "wins": 175,
+     "pts": -13476.48,
+     "gross_inr": -2627913.02,
+     "charges_inr": 1603705.37,
+     "net_inr": -4231618.39,
+     "max_dd_inr": -4232820.03,
+     "pf": 0.18,
+     "t_stat": -24.7,
+     "weeks": 23,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W16",
+      -262075.44056208467
+     ]
+    },
+    "OOS": {
+     "trades": 800,
+     "wins": 55,
+     "pts": -10141.31,
+     "gross_inr": -1977554.51,
+     "charges_inr": 1026635.45,
+     "net_inr": -3004189.96,
+     "max_dd_inr": -3015122.09,
+     "pf": 0.07,
+     "t_stat": -35.37,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W32",
+      -315747.8080201736
+     ]
+    },
+    "ALL": {
+     "trades": 2031,
+     "wins": 230,
+     "pts": -23617.78,
+     "gross_inr": -4605467.53,
+     "charges_inr": 2630340.82,
+     "net_inr": -7235808.35,
+     "max_dd_inr": -7246740.48,
+     "pf": 0.14,
+     "t_stat": -37.83,
+     "weeks": 35,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W32",
+      -315747.8080201736
+     ]
+    },
+    "signals": 2834,
+    "locked": 803,
+    "exit_reasons": {
+     "band_exit": 1437,
+     "stop_loss": 594
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "s9",
+    "tf": "minute",
+    "IS": {
+     "trades": 888,
+     "wins": 323,
+     "pts": -8514.5,
+     "gross_inr": -553442.5,
+     "charges_inr": 413776.18,
+     "net_inr": -967218.68,
+     "max_dd_inr": -967218.68,
+     "pf": 0.59,
+     "t_stat": -7.01,
+     "weeks": 23,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W06",
+      -189978.1231939134
+     ]
+    },
+    "OOS": {
+     "trades": 336,
+     "wins": 120,
+     "pts": -4186.7,
+     "gross_inr": -272135.5,
+     "charges_inr": 153994.0,
+     "net_inr": -426129.5,
+     "max_dd_inr": -443754.56,
+     "pf": 0.45,
+     "t_stat": -6.22,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W36",
+      -97830.90354522364
+     ]
+    },
+    "ALL": {
+     "trades": 1224,
+     "wins": 443,
+     "pts": -12701.2,
+     "gross_inr": -825578.0,
+     "charges_inr": 567770.18,
+     "net_inr": -1393348.18,
+     "max_dd_inr": -1406318.55,
+     "pf": 0.56,
+     "t_stat": -9.05,
+     "weeks": 35,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W06",
+      -189978.1231939134
+     ]
+    },
+    "signals": 2834,
+    "locked": 2426,
+    "exit_reasons": {
+     "stop_loss": 685,
+     "target 1R": 189,
+     "eod": 196,
+     "target 2R": 98,
+     "trail_stop": 51,
+     "expiry": 5
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "trail",
+    "tf": "minute",
+    "IS": {
+     "trades": 274,
+     "wins": 75,
+     "pts": -2215.0,
+     "gross_inr": -431925.0,
+     "charges_inr": 357935.19,
+     "net_inr": -789860.19,
+     "max_dd_inr": -789860.19,
+     "pf": 0.68,
+     "t_stat": -2.62,
+     "weeks": 23,
+     "pos_weeks": 8,
+     "worst_week": [
+      "2026-W06",
+      -234811.50388722532
+     ]
+    },
+    "OOS": {
+     "trades": 110,
+     "wins": 35,
+     "pts": -1296.8,
+     "gross_inr": -252876.0,
+     "charges_inr": 140873.71,
+     "net_inr": -393749.71,
+     "max_dd_inr": -421635.49,
+     "pf": 0.51,
+     "t_stat": -2.73,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W36",
+      -92605.82305902756
+     ]
+    },
+    "ALL": {
+     "trades": 384,
+     "wins": 110,
+     "pts": -3511.8,
+     "gross_inr": -684801.0,
+     "charges_inr": 498808.9,
+     "net_inr": -1183609.9,
+     "max_dd_inr": -1201483.6,
+     "pf": 0.64,
+     "t_stat": -3.54,
+     "weeks": 35,
+     "pos_weeks": 10,
+     "worst_week": [
+      "2026-W06",
+      -234811.50388722532
+     ]
+    },
+    "signals": 2834,
+    "locked": 2450,
+    "exit_reasons": {
+     "stop_loss": 240,
+     "eod": 113,
+     "trail_stop": 28,
+     "expiry": 3
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "band",
+    "tf": "minute",
+    "IS": {
+     "trades": 1098,
+     "wins": 159,
+     "pts": -12236.37,
+     "gross_inr": -2386092.34,
+     "charges_inr": 1429380.33,
+     "net_inr": -3815472.67,
+     "max_dd_inr": -3816674.3,
+     "pf": 0.18,
+     "t_stat": -25.2,
+     "weeks": 23,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W05",
+      -247729.36863667218
+     ]
+    },
+    "OOS": {
+     "trades": 718,
+     "wins": 49,
+     "pts": -9221.35,
+     "gross_inr": -1798163.29,
+     "charges_inr": 921295.44,
+     "net_inr": -2719458.73,
+     "max_dd_inr": -2730390.86,
+     "pf": 0.06,
+     "t_stat": -33.27,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W32",
+      -292864.8912841411
+     ]
+    },
+    "ALL": {
+     "trades": 1816,
+     "wins": 208,
+     "pts": -21457.72,
+     "gross_inr": -4184255.63,
+     "charges_inr": 2350675.77,
+     "net_inr": -6534931.4,
+     "max_dd_inr": -6545863.53,
+     "pf": 0.13,
+     "t_stat": -37.97,
+     "weeks": 35,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W32",
+      -292864.8912841411
+     ]
+    },
+    "signals": 2391,
+    "locked": 575,
+    "exit_reasons": {
+     "band_exit": 1323,
+     "stop_loss": 493
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "s9",
+    "tf": "minute",
+    "IS": {
+     "trades": 849,
+     "wins": 312,
+     "pts": -8909.7,
+     "gross_inr": -579130.5,
+     "charges_inr": 394210.27,
+     "net_inr": -973340.77,
+     "max_dd_inr": -973340.77,
+     "pf": 0.57,
+     "t_stat": -7.54,
+     "weeks": 23,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W06",
+      -160217.49600646744
+     ]
+    },
+    "OOS": {
+     "trades": 321,
+     "wins": 123,
+     "pts": -3107.3,
+     "gross_inr": -201974.5,
+     "charges_inr": 147168.77,
+     "net_inr": -349143.27,
+     "max_dd_inr": -368906.9,
+     "pf": 0.5,
+     "t_stat": -5.45,
+     "weeks": 13,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W28",
+      -71226.52390979322
+     ]
+    },
+    "ALL": {
+     "trades": 1170,
+     "wins": 435,
+     "pts": -12017.0,
+     "gross_inr": -781105.0,
+     "charges_inr": 541379.04,
+     "net_inr": -1322484.04,
+     "max_dd_inr": -1335454.41,
+     "pf": 0.55,
+     "t_stat": -9.18,
+     "weeks": 35,
+     "pos_weeks": 7,
+     "worst_week": [
+      "2026-W06",
+      -160217.49600646744
+     ]
+    },
+    "signals": 2391,
+    "locked": 2001,
+    "exit_reasons": {
+     "stop_loss": 645,
+     "target 1R": 183,
+     "eod": 196,
+     "target 2R": 93,
+     "trail_stop": 47,
+     "expiry": 6
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "trail",
+    "tf": "minute",
+    "IS": {
+     "trades": 261,
+     "wins": 73,
+     "pts": -2658.0,
+     "gross_inr": -518310.0,
+     "charges_inr": 339662.51,
+     "net_inr": -857972.51,
+     "max_dd_inr": -857972.51,
+     "pf": 0.63,
+     "t_stat": -3.12,
+     "weeks": 23,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W06",
+      -195583.67115827932
+     ]
+    },
+    "OOS": {
+     "trades": 105,
+     "wins": 36,
+     "pts": -984.1,
+     "gross_inr": -191899.5,
+     "charges_inr": 134492.96,
+     "net_inr": -326392.46,
+     "max_dd_inr": -348131.45,
+     "pf": 0.55,
+     "t_stat": -2.52,
+     "weeks": 13,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W30",
+      -82866.87133725286
+     ]
+    },
+    "ALL": {
+     "trades": 366,
+     "wins": 109,
+     "pts": -3642.1,
+     "gross_inr": -710209.5,
+     "charges_inr": 474155.47,
+     "net_inr": -1184364.97,
+     "max_dd_inr": -1202238.68,
+     "pf": 0.61,
+     "t_stat": -3.91,
+     "weeks": 35,
+     "pos_weeks": 13,
+     "worst_week": [
+      "2026-W06",
+      -195583.67115827932
+     ]
+    },
+    "signals": 2391,
+    "locked": 2025,
+    "exit_reasons": {
+     "stop_loss": 225,
+     "eod": 113,
+     "trail_stop": 25,
+     "expiry": 3
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "band",
+    "tf": "minute",
+    "IS": {
+     "trades": 5746,
+     "wins": 562,
+     "pts": -66289.7,
+     "gross_inr": -12926490.78,
+     "charges_inr": 7499003.73,
+     "net_inr": -20425494.5,
+     "max_dd_inr": -20433383.6,
+     "pf": 0.12,
+     "t_stat": -73.68,
+     "weeks": 23,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W25",
+      -1393496.5726164132
+     ]
+    },
+    "OOS": {
+     "trades": 4266,
+     "wins": 186,
+     "pts": -54558.89,
+     "gross_inr": -10638983.25,
+     "charges_inr": 5471325.72,
+     "net_inr": -16110308.97,
+     "max_dd_inr": -16110308.97,
+     "pf": 0.04,
+     "t_stat": -121.46,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W39",
+      -1507522.343547154
+     ]
+    },
+    "ALL": {
+     "trades": 10012,
+     "wins": 748,
+     "pts": -120848.58,
+     "gross_inr": -23565474.03,
+     "charges_inr": 12970329.44,
+     "net_inr": -36535803.47,
+     "max_dd_inr": -36541243.71,
+     "pf": 0.08,
+     "t_stat": -118.81,
+     "weeks": 35,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W39",
+      -1507522.343547154
+     ]
+    },
+    "signals": 16172,
+    "locked": 6160,
+    "exit_reasons": {
+     "band_exit": 3793,
+     "stop_loss": 6219
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "s9",
+    "tf": "minute",
+    "IS": {
+     "trades": 999,
+     "wins": 378,
+     "pts": -8709.0,
+     "gross_inr": -566085.0,
+     "charges_inr": 462526.41,
+     "net_inr": -1028611.41,
+     "max_dd_inr": -1076657.45,
+     "pf": 0.61,
+     "t_stat": -6.94,
+     "weeks": 23,
+     "pos_weeks": 1,
+     "worst_week": [
+      "2026-W05",
+      -130431.3462673809
+     ]
+    },
+    "OOS": {
+     "trades": 393,
+     "wins": 135,
+     "pts": -5503.6,
+     "gross_inr": -357734.0,
+     "charges_inr": 179821.54,
+     "net_inr": -537555.54,
+     "max_dd_inr": -563893.5,
+     "pf": 0.44,
+     "t_stat": -7.1,
+     "weeks": 13,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W39",
+      -127811.34944328308
+     ]
+    },
+    "ALL": {
+     "trades": 1392,
+     "wins": 513,
+     "pts": -14212.6,
+     "gross_inr": -923819.0,
+     "charges_inr": 642347.94,
+     "net_inr": -1566166.94,
+     "max_dd_inr": -1599471.41,
+     "pf": 0.57,
+     "t_stat": -9.41,
+     "weeks": 35,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W05",
+      -130431.3462673809
+     ]
+    },
+    "signals": 16172,
+    "locked": 15708,
+    "exit_reasons": {
+     "target 1R": 216,
+     "stop_loss": 798,
+     "target 2R": 119,
+     "eod": 188,
+     "trail_stop": 60,
+     "expiry": 11
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "trail",
+    "tf": "minute",
+    "IS": {
+     "trades": 305,
+     "wins": 91,
+     "pts": -1616.5,
+     "gross_inr": -315217.5,
+     "charges_inr": 395586.75,
+     "net_inr": -710804.25,
+     "max_dd_inr": -820603.78,
+     "pf": 0.74,
+     "t_stat": -2.11,
+     "weeks": 23,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W05",
+      -198084.3477967747
+     ]
+    },
+    "OOS": {
+     "trades": 128,
+     "wins": 39,
+     "pts": -1731.6,
+     "gross_inr": -337662.0,
+     "charges_inr": 163615.92,
+     "net_inr": -501277.92,
+     "max_dd_inr": -553509.8,
+     "pf": 0.49,
+     "t_stat": -3.23,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W39",
+      -138105.44041885898
+     ]
+    },
+    "ALL": {
+     "trades": 433,
+     "wins": 130,
+     "pts": -3348.1,
+     "gross_inr": -652879.5,
+     "charges_inr": 559202.67,
+     "net_inr": -1212082.17,
+     "max_dd_inr": -1300168.45,
+     "pf": 0.68,
+     "t_stat": -3.27,
+     "weeks": 35,
+     "pos_weeks": 11,
+     "worst_week": [
+      "2026-W05",
+      -198084.3477967747
+     ]
+    },
+    "signals": 16172,
+    "locked": 15739,
+    "exit_reasons": {
+     "stop_loss": 279,
+     "eod": 113,
+     "trail_stop": 36,
+     "expiry": 5
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "band",
+    "tf": "minute",
+    "IS": {
+     "trades": 3964,
+     "wins": 435,
+     "pts": -47100.78,
+     "gross_inr": -9184651.54,
+     "charges_inr": 5173799.53,
+     "net_inr": -14358451.07,
+     "max_dd_inr": -14366340.17,
+     "pf": 0.13,
+     "t_stat": -57.38,
+     "weeks": 23,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W25",
+      -1042888.2232193252
+     ]
+    },
+    "OOS": {
+     "trades": 2955,
+     "wins": 129,
+     "pts": -39461.48,
+     "gross_inr": -7694988.16,
+     "charges_inr": 3788961.32,
+     "net_inr": -11483949.47,
+     "max_dd_inr": -11483949.47,
+     "pf": 0.04,
+     "t_stat": -97.79,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W39",
+      -1125865.5857912004
+     ]
+    },
+    "ALL": {
+     "trades": 6919,
+     "wins": 564,
+     "pts": -86562.25,
+     "gross_inr": -16879639.7,
+     "charges_inr": 8962760.84,
+     "net_inr": -25842400.54,
+     "max_dd_inr": -25847840.78,
+     "pf": 0.09,
+     "t_stat": -93.43,
+     "weeks": 35,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W39",
+      -1125865.5857912004
+     ]
+    },
+    "signals": 10048,
+    "locked": 3129,
+    "exit_reasons": {
+     "band_exit": 3207,
+     "stop_loss": 3712
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "s9",
+    "tf": "minute",
+    "IS": {
+     "trades": 957,
+     "wins": 342,
+     "pts": -11025.5,
+     "gross_inr": -716657.5,
+     "charges_inr": 442508.13,
+     "net_inr": -1159165.63,
+     "max_dd_inr": -1208674.72,
+     "pf": 0.56,
+     "t_stat": -8.01,
+     "weeks": 23,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W12",
+      -228856.16874614195
+     ]
+    },
+    "OOS": {
+     "trades": 339,
+     "wins": 150,
+     "pts": -1839.2,
+     "gross_inr": -119548.0,
+     "charges_inr": 155409.62,
+     "net_inr": -274957.62,
+     "max_dd_inr": -285501.39,
+     "pf": 0.62,
+     "t_stat": -3.91,
+     "weeks": 13,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W28",
+      -82135.55502939392
+     ]
+    },
+    "ALL": {
+     "trades": 1296,
+     "wins": 492,
+     "pts": -12864.7,
+     "gross_inr": -836205.5,
+     "charges_inr": 597917.75,
+     "net_inr": -1434123.25,
+     "max_dd_inr": -1474938.35,
+     "pf": 0.57,
+     "t_stat": -8.91,
+     "weeks": 35,
+     "pos_weeks": 10,
+     "worst_week": [
+      "2026-W12",
+      -228856.16874614195
+     ]
+    },
+    "signals": 10048,
+    "locked": 9616,
+    "exit_reasons": {
+     "target 1R": 203,
+     "stop_loss": 737,
+     "target 2R": 111,
+     "eod": 187,
+     "trail_stop": 53,
+     "expiry": 5
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "trail",
+    "tf": "minute",
+    "IS": {
+     "trades": 291,
+     "wins": 86,
+     "pts": -1654.0,
+     "gross_inr": -322530.0,
+     "charges_inr": 376890.54,
+     "net_inr": -699420.54,
+     "max_dd_inr": -800732.78,
+     "pf": 0.73,
+     "t_stat": -2.14,
+     "weeks": 23,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W23",
+      -204108.31371426204
+     ]
+    },
+    "OOS": {
+     "trades": 108,
+     "wins": 42,
+     "pts": -610.2,
+     "gross_inr": -118989.0,
+     "charges_inr": 138360.51,
+     "net_inr": -257349.51,
+     "max_dd_inr": -266480.01,
+     "pf": 0.65,
+     "t_stat": -1.79,
+     "weeks": 13,
+     "pos_weeks": 5,
+     "worst_week": [
+      "2026-W31",
+      -82063.40493411715
+     ]
+    },
+    "ALL": {
+     "trades": 399,
+     "wins": 128,
+     "pts": -2264.2,
+     "gross_inr": -441519.0,
+     "charges_inr": 515251.04,
+     "net_inr": -956770.04,
+     "max_dd_inr": -1049431.06,
+     "pf": 0.72,
+     "t_stat": -2.68,
+     "weeks": 35,
+     "pos_weeks": 14,
+     "worst_week": [
+      "2026-W23",
+      -204108.31371426204
+     ]
+    },
+    "signals": 10048,
+    "locked": 9649,
+    "exit_reasons": {
+     "stop_loss": 249,
+     "eod": 113,
+     "trail_stop": 33,
+     "expiry": 4
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "band",
+    "tf": "minute",
+    "IS": {
+     "trades": 1229,
+     "wins": 175,
+     "pts": -13459.68,
+     "gross_inr": -2624638.49,
+     "charges_inr": 1601158.95,
+     "net_inr": -4225797.44,
+     "max_dd_inr": -4226999.08,
+     "pf": 0.18,
+     "t_stat": -24.71,
+     "weeks": 23,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W16",
+      -262075.44056208467
+     ]
+    },
+    "OOS": {
+     "trades": 797,
+     "wins": 54,
+     "pts": -10113.42,
+     "gross_inr": -1972116.66,
+     "charges_inr": 1022813.35,
+     "net_inr": -2994930.0,
+     "max_dd_inr": -3005862.14,
+     "pf": 0.07,
+     "t_stat": -35.32,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W32",
+      -315747.8080201736
+     ]
+    },
+    "ALL": {
+     "trades": 2026,
+     "wins": 229,
+     "pts": -23573.1,
+     "gross_inr": -4596755.15,
+     "charges_inr": 2623972.3,
+     "net_inr": -7220727.45,
+     "max_dd_inr": -7231659.58,
+     "pf": 0.14,
+     "t_stat": -37.82,
+     "weeks": 35,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W32",
+      -315747.8080201736
+     ]
+    },
+    "signals": 2824,
+    "locked": 798,
+    "exit_reasons": {
+     "band_exit": 1436,
+     "stop_loss": 590
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "s9",
+    "tf": "minute",
+    "IS": {
+     "trades": 888,
+     "wins": 323,
+     "pts": -8514.5,
+     "gross_inr": -553442.5,
+     "charges_inr": 413776.18,
+     "net_inr": -967218.68,
+     "max_dd_inr": -967218.68,
+     "pf": 0.59,
+     "t_stat": -7.01,
+     "weeks": 23,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W06",
+      -189978.1231939134
+     ]
+    },
+    "OOS": {
+     "trades": 336,
+     "wins": 120,
+     "pts": -4194.5,
+     "gross_inr": -272642.5,
+     "charges_inr": 153993.82,
+     "net_inr": -426636.32,
+     "max_dd_inr": -444261.38,
+     "pf": 0.45,
+     "t_stat": -6.23,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W36",
+      -97830.90354522364
+     ]
+    },
+    "ALL": {
+     "trades": 1224,
+     "wins": 443,
+     "pts": -12709.0,
+     "gross_inr": -826085.0,
+     "charges_inr": 567770.0,
+     "net_inr": -1393855.0,
+     "max_dd_inr": -1406825.37,
+     "pf": 0.56,
+     "t_stat": -9.05,
+     "weeks": 35,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W06",
+      -189978.1231939134
+     ]
+    },
+    "signals": 2824,
+    "locked": 2416,
+    "exit_reasons": {
+     "stop_loss": 685,
+     "target 1R": 189,
+     "eod": 196,
+     "target 2R": 98,
+     "trail_stop": 51,
+     "expiry": 5
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "trail",
+    "tf": "minute",
+    "IS": {
+     "trades": 274,
+     "wins": 75,
+     "pts": -2215.0,
+     "gross_inr": -431925.0,
+     "charges_inr": 357935.19,
+     "net_inr": -789860.19,
+     "max_dd_inr": -789860.19,
+     "pf": 0.68,
+     "t_stat": -2.62,
+     "weeks": 23,
+     "pos_weeks": 8,
+     "worst_week": [
+      "2026-W06",
+      -234811.50388722532
+     ]
+    },
+    "OOS": {
+     "trades": 110,
+     "wins": 35,
+     "pts": -1300.7,
+     "gross_inr": -253636.5,
+     "charges_inr": 140873.54,
+     "net_inr": -394510.04,
+     "max_dd_inr": -422395.82,
+     "pf": 0.51,
+     "t_stat": -2.73,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W36",
+      -92605.82305902756
+     ]
+    },
+    "ALL": {
+     "trades": 384,
+     "wins": 110,
+     "pts": -3515.7,
+     "gross_inr": -685561.5,
+     "charges_inr": 498808.73,
+     "net_inr": -1184370.23,
+     "max_dd_inr": -1202243.94,
+     "pf": 0.64,
+     "t_stat": -3.54,
+     "weeks": 35,
+     "pos_weeks": 10,
+     "worst_week": [
+      "2026-W06",
+      -234811.50388722532
+     ]
+    },
+    "signals": 2824,
+    "locked": 2440,
+    "exit_reasons": {
+     "stop_loss": 240,
+     "eod": 113,
+     "trail_stop": 28,
+     "expiry": 3
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "band",
+    "tf": "minute",
+    "IS": {
+     "trades": 1096,
+     "wins": 159,
+     "pts": -12219.58,
+     "gross_inr": -2382817.81,
+     "charges_inr": 1426833.91,
+     "net_inr": -3809651.72,
+     "max_dd_inr": -3810853.36,
+     "pf": 0.17,
+     "t_stat": -25.22,
+     "weeks": 23,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W05",
+      -247729.36863667218
+     ]
+    },
+    "OOS": {
+     "trades": 716,
+     "wins": 48,
+     "pts": -9209.46,
+     "gross_inr": -1795845.44,
+     "charges_inr": 918761.58,
+     "net_inr": -2714607.01,
+     "max_dd_inr": -2725539.14,
+     "pf": 0.06,
+     "t_stat": -33.28,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W32",
+      -292864.8912841411
+     ]
+    },
+    "ALL": {
+     "trades": 1812,
+     "wins": 207,
+     "pts": -21429.04,
+     "gross_inr": -4178663.25,
+     "charges_inr": 2345595.49,
+     "net_inr": -6524258.74,
+     "max_dd_inr": -6535190.87,
+     "pf": 0.13,
+     "t_stat": -37.99,
+     "weeks": 35,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W32",
+      -292864.8912841411
+     ]
+    },
+    "signals": 2382,
+    "locked": 570,
+    "exit_reasons": {
+     "band_exit": 1322,
+     "stop_loss": 490
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "s9",
+    "tf": "minute",
+    "IS": {
+     "trades": 849,
+     "wins": 312,
+     "pts": -8909.7,
+     "gross_inr": -579130.5,
+     "charges_inr": 394210.27,
+     "net_inr": -973340.77,
+     "max_dd_inr": -973340.77,
+     "pf": 0.57,
+     "t_stat": -7.54,
+     "weeks": 23,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W06",
+      -160217.49600646744
+     ]
+    },
+    "OOS": {
+     "trades": 321,
+     "wins": 123,
+     "pts": -3115.1,
+     "gross_inr": -202481.5,
+     "charges_inr": 147168.59,
+     "net_inr": -349650.09,
+     "max_dd_inr": -369413.72,
+     "pf": 0.5,
+     "t_stat": -5.45,
+     "weeks": 13,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W28",
+      -71226.52390979322
+     ]
+    },
+    "ALL": {
+     "trades": 1170,
+     "wins": 435,
+     "pts": -12024.8,
+     "gross_inr": -781612.0,
+     "charges_inr": 541378.86,
+     "net_inr": -1322990.86,
+     "max_dd_inr": -1335961.23,
+     "pf": 0.55,
+     "t_stat": -9.18,
+     "weeks": 35,
+     "pos_weeks": 7,
+     "worst_week": [
+      "2026-W06",
+      -160217.49600646744
+     ]
+    },
+    "signals": 2382,
+    "locked": 1992,
+    "exit_reasons": {
+     "stop_loss": 645,
+     "target 1R": 183,
+     "eod": 196,
+     "target 2R": 93,
+     "trail_stop": 47,
+     "expiry": 6
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "trail",
+    "tf": "minute",
+    "IS": {
+     "trades": 261,
+     "wins": 73,
+     "pts": -2658.0,
+     "gross_inr": -518310.0,
+     "charges_inr": 339662.51,
+     "net_inr": -857972.51,
+     "max_dd_inr": -857972.51,
+     "pf": 0.63,
+     "t_stat": -3.12,
+     "weeks": 23,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W06",
+      -195583.67115827932
+     ]
+    },
+    "OOS": {
+     "trades": 105,
+     "wins": 36,
+     "pts": -988.0,
+     "gross_inr": -192660.0,
+     "charges_inr": 134492.8,
+     "net_inr": -327152.8,
+     "max_dd_inr": -348891.78,
+     "pf": 0.55,
+     "t_stat": -2.53,
+     "weeks": 13,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W30",
+      -82866.87133725286
+     ]
+    },
+    "ALL": {
+     "trades": 366,
+     "wins": 109,
+     "pts": -3646.0,
+     "gross_inr": -710970.0,
+     "charges_inr": 474155.31,
+     "net_inr": -1185125.31,
+     "max_dd_inr": -1202999.01,
+     "pf": 0.61,
+     "t_stat": -3.91,
+     "weeks": 35,
+     "pos_weeks": 13,
+     "worst_week": [
+      "2026-W06",
+      -195583.67115827932
+     ]
+    },
+    "signals": 2382,
+    "locked": 2016,
+    "exit_reasons": {
+     "stop_loss": 225,
+     "eod": 113,
+     "trail_stop": 25,
+     "expiry": 3
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "band",
+    "tf": "minute",
+    "IS": {
+     "trades": 3907,
+     "wins": 390,
+     "pts": -44241.62,
+     "gross_inr": -8627115.83,
+     "charges_inr": 5097198.38,
+     "net_inr": -13724314.21,
+     "max_dd_inr": -13729754.45,
+     "pf": 0.12,
+     "t_stat": -59.35,
+     "weeks": 23,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W25",
+      -880718.2763096635
+     ]
+    },
+    "OOS": {
+     "trades": 2843,
+     "wins": 143,
+     "pts": -35413.33,
+     "gross_inr": -6905598.85,
+     "charges_inr": 3646538.56,
+     "net_inr": -10552137.41,
+     "max_dd_inr": -10552538.75,
+     "pf": 0.04,
+     "t_stat": -89.22,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W39",
+      -969696.2110311685
+     ]
+    },
+    "ALL": {
+     "trades": 6750,
+     "wins": 533,
+     "pts": -79654.95,
+     "gross_inr": -15532714.68,
+     "charges_inr": 8743736.95,
+     "net_inr": -24276451.62,
+     "max_dd_inr": -24282293.2,
+     "pf": 0.09,
+     "t_stat": -93.42,
+     "weeks": 35,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W39",
+      -969696.2110311685
+     ]
+    },
+    "signals": 10904,
+    "locked": 4154,
+    "exit_reasons": {
+     "band_exit": 2903,
+     "stop_loss": 3847
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "s9",
+    "tf": "minute",
+    "IS": {
+     "trades": 969,
+     "wins": 375,
+     "pts": -7072.6,
+     "gross_inr": -459719.0,
+     "charges_inr": 449036.91,
+     "net_inr": -908755.91,
+     "max_dd_inr": -925597.94,
+     "pf": 0.64,
+     "t_stat": -6.17,
+     "weeks": 23,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W10",
+      -133416.4110250671
+     ]
+    },
+    "OOS": {
+     "trades": 381,
+     "wins": 136,
+     "pts": -5008.7,
+     "gross_inr": -325565.5,
+     "charges_inr": 174478.05,
+     "net_inr": -500043.55,
+     "max_dd_inr": -526082.38,
+     "pf": 0.46,
+     "t_stat": -6.73,
+     "weeks": 13,
+     "pos_weeks": 1,
+     "worst_week": [
+      "2026-W39",
+      -124942.66451368801
+     ]
+    },
+    "ALL": {
+     "trades": 1350,
+     "wins": 511,
+     "pts": -12081.3,
+     "gross_inr": -785284.5,
+     "charges_inr": 623514.96,
+     "net_inr": -1408799.46,
+     "max_dd_inr": -1410899.92,
+     "pf": 0.59,
+     "t_stat": -8.54,
+     "weeks": 35,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W10",
+      -133416.4110250671
+     ]
+    },
+    "signals": 10904,
+    "locked": 10454,
+    "exit_reasons": {
+     "target 1R": 216,
+     "stop_loss": 759,
+     "target 2R": 117,
+     "eod": 194,
+     "trail_stop": 55,
+     "expiry": 9
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "trail",
+    "tf": "minute",
+    "IS": {
+     "trades": 294,
+     "wins": 89,
+     "pts": -820.3,
+     "gross_inr": -159958.5,
+     "charges_inr": 381831.01,
+     "net_inr": -541789.51,
+     "max_dd_inr": -582826.84,
+     "pf": 0.79,
+     "t_stat": -1.62,
+     "weeks": 23,
+     "pos_weeks": 10,
+     "worst_week": [
+      "2026-W06",
+      -147568.55732040372
+     ]
+    },
+    "OOS": {
+     "trades": 124,
+     "wins": 39,
+     "pts": -1629.5,
+     "gross_inr": -317752.5,
+     "charges_inr": 158647.28,
+     "net_inr": -476399.78,
+     "max_dd_inr": -533005.35,
+     "pf": 0.5,
+     "t_stat": -3.12,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W39",
+      -128954.3902651233
+     ]
+    },
+    "ALL": {
+     "trades": 418,
+     "wins": 128,
+     "pts": -2449.8,
+     "gross_inr": -477711.0,
+     "charges_inr": 540478.28,
+     "net_inr": -1018189.28,
+     "max_dd_inr": -1037513.36,
+     "pf": 0.71,
+     "t_stat": -2.76,
+     "weeks": 35,
+     "pos_weeks": 12,
+     "worst_week": [
+      "2026-W06",
+      -147568.55732040372
+     ]
+    },
+    "signals": 10904,
+    "locked": 10486,
+    "exit_reasons": {
+     "stop_loss": 264,
+     "eod": 119,
+     "trail_stop": 31,
+     "expiry": 4
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "band",
+    "tf": "minute",
+    "IS": {
+     "trades": 2614,
+     "wins": 291,
+     "pts": -30592.92,
+     "gross_inr": -5965619.63,
+     "charges_inr": 3410249.35,
+     "net_inr": -9375868.98,
+     "max_dd_inr": -9381309.22,
+     "pf": 0.13,
+     "t_stat": -45.7,
+     "weeks": 23,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W25",
+      -645635.2288601211
+     ]
+    },
+    "OOS": {
+     "trades": 1978,
+     "wins": 96,
+     "pts": -25691.32,
+     "gross_inr": -5009808.07,
+     "charges_inr": 2536156.45,
+     "net_inr": -7545964.52,
+     "max_dd_inr": -7548455.63,
+     "pf": 0.04,
+     "t_stat": -72.07,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W39",
+      -745566.4262872097
+     ]
+    },
+    "ALL": {
+     "trades": 4592,
+     "wins": 387,
+     "pts": -56284.24,
+     "gross_inr": -10975427.7,
+     "charges_inr": 5946405.8,
+     "net_inr": -16921833.5,
+     "max_dd_inr": -16929764.85,
+     "pf": 0.09,
+     "t_stat": -73.43,
+     "weeks": 35,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W39",
+      -745566.4262872097
+     ]
+    },
+    "signals": 6542,
+    "locked": 1950,
+    "exit_reasons": {
+     "band_exit": 2378,
+     "stop_loss": 2214
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "s9",
+    "tf": "minute",
+    "IS": {
+     "trades": 915,
+     "wins": 351,
+     "pts": -6897.1,
+     "gross_inr": -448311.5,
+     "charges_inr": 423490.51,
+     "net_inr": -871802.01,
+     "max_dd_inr": -907888.28,
+     "pf": 0.64,
+     "t_stat": -6.02,
+     "weeks": 23,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W23",
+      -155433.5536575431
+     ]
+    },
+    "OOS": {
+     "trades": 342,
+     "wins": 145,
+     "pts": -2516.9,
+     "gross_inr": -163598.5,
+     "charges_inr": 156597.82,
+     "net_inr": -320196.32,
+     "max_dd_inr": -330740.09,
+     "pf": 0.57,
+     "t_stat": -4.58,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W36",
+      -99582.86280419462
+     ]
+    },
+    "ALL": {
+     "trades": 1257,
+     "wins": 496,
+     "pts": -9414.0,
+     "gross_inr": -611910.0,
+     "charges_inr": 580088.34,
+     "net_inr": -1191998.34,
+     "max_dd_inr": -1218453.97,
+     "pf": 0.62,
+     "t_stat": -7.42,
+     "weeks": 35,
+     "pos_weeks": 8,
+     "worst_week": [
+      "2026-W23",
+      -155433.5536575431
+     ]
+    },
+    "signals": 6542,
+    "locked": 6123,
+    "exit_reasons": {
+     "target 1R": 204,
+     "stop_loss": 697,
+     "target 2R": 113,
+     "eod": 191,
+     "trail_stop": 48,
+     "expiry": 4
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "trail",
+    "tf": "minute",
+    "IS": {
+     "trades": 284,
+     "wins": 88,
+     "pts": -1014.2,
+     "gross_inr": -197769.0,
+     "charges_inr": 367946.45,
+     "net_inr": -565715.45,
+     "max_dd_inr": -649492.3,
+     "pf": 0.77,
+     "t_stat": -1.77,
+     "weeks": 23,
+     "pos_weeks": 10,
+     "worst_week": [
+      "2026-W23",
+      -203381.4558877979
+     ]
+    },
+    "OOS": {
+     "trades": 109,
+     "wins": 40,
+     "pts": -835.8,
+     "gross_inr": -162981.0,
+     "charges_inr": 139456.81,
+     "net_inr": -302437.81,
+     "max_dd_inr": -311568.31,
+     "pf": 0.61,
+     "t_stat": -2.09,
+     "weeks": 13,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W36",
+      -91533.23321514744
+     ]
+    },
+    "ALL": {
+     "trades": 393,
+     "wins": 128,
+     "pts": -1850.0,
+     "gross_inr": -360750.0,
+     "charges_inr": 507403.25,
+     "net_inr": -868153.25,
+     "max_dd_inr": -932054.92,
+     "pf": 0.73,
+     "t_stat": -2.48,
+     "weeks": 35,
+     "pos_weeks": 13,
+     "worst_week": [
+      "2026-W23",
+      -203381.4558877979
+     ]
+    },
+    "signals": 6542,
+    "locked": 6149,
+    "exit_reasons": {
+     "stop_loss": 243,
+     "eod": 119,
+     "trail_stop": 28,
+     "expiry": 3
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "band",
+    "tf": "minute",
+    "IS": {
+     "trades": 671,
+     "wins": 110,
+     "pts": -8551.57,
+     "gross_inr": -1667556.84,
+     "charges_inr": 875232.47,
+     "net_inr": -2542789.31,
+     "max_dd_inr": -2542789.31,
+     "pf": 0.3,
+     "t_stat": -12.4,
+     "weeks": 23,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W05",
+      -225378.54385672265
+     ]
+    },
+    "OOS": {
+     "trades": 492,
+     "wins": 55,
+     "pts": -5803.23,
+     "gross_inr": -1131629.14,
+     "charges_inr": 630958.96,
+     "net_inr": -1762588.1,
+     "max_dd_inr": -1771446.01,
+     "pf": 0.2,
+     "t_stat": -14.85,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W33",
+      -196011.90724759625
+     ]
+    },
+    "ALL": {
+     "trades": 1163,
+     "wins": 165,
+     "pts": -14354.8,
+     "gross_inr": -2799185.98,
+     "charges_inr": 1506191.43,
+     "net_inr": -4305377.41,
+     "max_dd_inr": -4305377.41,
+     "pf": 0.26,
+     "t_stat": -18.18,
+     "weeks": 35,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W05",
+      -225378.54385672265
+     ]
+    },
+    "signals": 3674,
+    "locked": 2511,
+    "exit_reasons": {
+     "band_exit": 609,
+     "stop_loss": 541,
+     "eod": 13
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "s9",
+    "tf": "minute",
+    "IS": {
+     "trades": 828,
+     "wins": 322,
+     "pts": -6942.5,
+     "gross_inr": -451262.5,
+     "charges_inr": 384700.24,
+     "net_inr": -835962.74,
+     "max_dd_inr": -835962.74,
+     "pf": 0.61,
+     "t_stat": -6.42,
+     "weeks": 23,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W23",
+      -130858.6404840357
+     ]
+    },
+    "OOS": {
+     "trades": 336,
+     "wins": 138,
+     "pts": -2928.8,
+     "gross_inr": -190372.0,
+     "charges_inr": 154127.35,
+     "net_inr": -344499.35,
+     "max_dd_inr": -364561.04,
+     "pf": 0.53,
+     "t_stat": -5.11,
+     "weeks": 13,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W33",
+      -60367.248340009886
+     ]
+    },
+    "ALL": {
+     "trades": 1164,
+     "wins": 460,
+     "pts": -9871.3,
+     "gross_inr": -641634.5,
+     "charges_inr": 538827.59,
+     "net_inr": -1180462.09,
+     "max_dd_inr": -1180462.09,
+     "pf": 0.59,
+     "t_stat": -8.05,
+     "weeks": 35,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W23",
+      -130858.6404840357
+     ]
+    },
+    "signals": 3674,
+    "locked": 3286,
+    "exit_reasons": {
+     "stop_loss": 639,
+     "target 1R": 188,
+     "target 2R": 93,
+     "eod": 196,
+     "trail_stop": 42,
+     "expiry": 6
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "trail",
+    "tf": "minute",
+    "IS": {
+     "trades": 265,
+     "wins": 81,
+     "pts": -1396.3,
+     "gross_inr": -272278.5,
+     "charges_inr": 344695.05,
+     "net_inr": -616973.55,
+     "max_dd_inr": -627735.51,
+     "pf": 0.73,
+     "t_stat": -2.08,
+     "weeks": 23,
+     "pos_weeks": 7,
+     "worst_week": [
+      "2026-W23",
+      -139978.3029583037
+     ]
+    },
+    "OOS": {
+     "trades": 109,
+     "wins": 40,
+     "pts": -992.9,
+     "gross_inr": -193615.5,
+     "charges_inr": 139754.81,
+     "net_inr": -333370.31,
+     "max_dd_inr": -377201.67,
+     "pf": 0.56,
+     "t_stat": -2.44,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W33",
+      -65565.75577646487
+     ]
+    },
+    "ALL": {
+     "trades": 374,
+     "wins": 121,
+     "pts": -2389.2,
+     "gross_inr": -465894.0,
+     "charges_inr": 484449.86,
+     "net_inr": -950343.86,
+     "max_dd_inr": -957878.13,
+     "pf": 0.69,
+     "t_stat": -2.92,
+     "weeks": 35,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W23",
+      -139978.3029583037
+     ]
+    },
+    "signals": 3674,
+    "locked": 3300,
+    "exit_reasons": {
+     "stop_loss": 227,
+     "eod": 122,
+     "trail_stop": 22,
+     "expiry": 3
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "band",
+    "tf": "minute",
+    "IS": {
+     "trades": 622,
+     "wins": 104,
+     "pts": -8122.74,
+     "gross_inr": -1583934.83,
+     "charges_inr": 811661.67,
+     "net_inr": -2395596.5,
+     "max_dd_inr": -2395596.5,
+     "pf": 0.3,
+     "t_stat": -11.8,
+     "weeks": 23,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W05",
+      -226386.99164382226
+     ]
+    },
+    "OOS": {
+     "trades": 445,
+     "wins": 54,
+     "pts": -5154.63,
+     "gross_inr": -1005152.98,
+     "charges_inr": 570634.24,
+     "net_inr": -1575787.22,
+     "max_dd_inr": -1584645.12,
+     "pf": 0.21,
+     "t_stat": -13.31,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W31",
+      -174084.00337523877
+     ]
+    },
+    "ALL": {
+     "trades": 1067,
+     "wins": 158,
+     "pts": -13277.37,
+     "gross_inr": -2589087.81,
+     "charges_inr": 1382295.91,
+     "net_inr": -3971383.72,
+     "max_dd_inr": -3971383.72,
+     "pf": 0.27,
+     "t_stat": -16.9,
+     "weeks": 35,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W05",
+      -226386.99164382226
+     ]
+    },
+    "signals": 3448,
+    "locked": 2381,
+    "exit_reasons": {
+     "band_exit": 594,
+     "stop_loss": 461,
+     "eod": 12
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "s9",
+    "tf": "minute",
+    "IS": {
+     "trades": 810,
+     "wins": 315,
+     "pts": -6390.7,
+     "gross_inr": -415395.5,
+     "charges_inr": 376518.08,
+     "net_inr": -791913.58,
+     "max_dd_inr": -791913.58,
+     "pf": 0.62,
+     "t_stat": -6.12,
+     "weeks": 23,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W23",
+      -130859.24094745771
+     ]
+    },
+    "OOS": {
+     "trades": 327,
+     "wins": 138,
+     "pts": -2372.9,
+     "gross_inr": -154238.5,
+     "charges_inr": 149990.68,
+     "net_inr": -304229.18,
+     "max_dd_inr": -329491.79,
+     "pf": 0.57,
+     "t_stat": -4.55,
+     "weeks": 13,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W31",
+      -59610.66672671569
+     ]
+    },
+    "ALL": {
+     "trades": 1137,
+     "wins": 453,
+     "pts": -8763.6,
+     "gross_inr": -569634.0,
+     "charges_inr": 526508.75,
+     "net_inr": -1096142.75,
+     "max_dd_inr": -1096142.75,
+     "pf": 0.61,
+     "t_stat": -7.53,
+     "weeks": 35,
+     "pos_weeks": 7,
+     "worst_week": [
+      "2026-W23",
+      -130859.24094745771
+     ]
+    },
+    "signals": 3448,
+    "locked": 3069,
+    "exit_reasons": {
+     "stop_loss": 616,
+     "target 1R": 185,
+     "target 2R": 93,
+     "eod": 195,
+     "trail_stop": 42,
+     "expiry": 6
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "trail",
+    "tf": "minute",
+    "IS": {
+     "trades": 261,
+     "wins": 79,
+     "pts": -1237.0,
+     "gross_inr": -241215.0,
+     "charges_inr": 339581.72,
+     "net_inr": -580796.72,
+     "max_dd_inr": -597609.12,
+     "pf": 0.74,
+     "t_stat": -1.96,
+     "weeks": 23,
+     "pos_weeks": 7,
+     "worst_week": [
+      "2026-W23",
+      -139978.90342172573
+     ]
+    },
+    "OOS": {
+     "trades": 106,
+     "wins": 40,
+     "pts": -837.9,
+     "gross_inr": -163390.5,
+     "charges_inr": 135901.39,
+     "net_inr": -299291.89,
+     "max_dd_inr": -346142.99,
+     "pf": 0.58,
+     "t_stat": -2.23,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W36",
+      -60758.77040881243
+     ]
+    },
+    "ALL": {
+     "trades": 367,
+     "wins": 119,
+     "pts": -2074.9,
+     "gross_inr": -404605.5,
+     "charges_inr": 475483.12,
+     "net_inr": -880088.62,
+     "max_dd_inr": -893673.33,
+     "pf": 0.71,
+     "t_stat": -2.71,
+     "weeks": 35,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W23",
+      -139978.90342172573
+     ]
+    },
+    "signals": 3448,
+    "locked": 3081,
+    "exit_reasons": {
+     "stop_loss": 221,
+     "eod": 121,
+     "trail_stop": 22,
+     "expiry": 3
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "band",
+    "tf": "minute",
+    "IS": {
+     "trades": 2217,
+     "wins": 218,
+     "pts": -26322.26,
+     "gross_inr": -5132840.08,
+     "charges_inr": 2892303.97,
+     "net_inr": -8025144.06,
+     "max_dd_inr": -8025709.24,
+     "pf": 0.21,
+     "t_stat": -28.6,
+     "weeks": 23,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W25",
+      -665824.4982471968
+     ]
+    },
+    "OOS": {
+     "trades": 1819,
+     "wins": 93,
+     "pts": -23829.18,
+     "gross_inr": -4646690.21,
+     "charges_inr": 2331555.34,
+     "net_inr": -6978245.55,
+     "max_dd_inr": -7002711.53,
+     "pf": 0.08,
+     "t_stat": -51.35,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W37",
+      -745619.3163469693
+     ]
+    },
+    "ALL": {
+     "trades": 4036,
+     "wins": 311,
+     "pts": -50151.44,
+     "gross_inr": -9779530.29,
+     "charges_inr": 5223859.32,
+     "net_inr": -15003389.6,
+     "max_dd_inr": -15019562.85,
+     "pf": 0.16,
+     "t_stat": -48.12,
+     "weeks": 35,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W37",
+      -745619.3163469693
+     ]
+    },
+    "signals": 9153,
+    "locked": 5117,
+    "exit_reasons": {
+     "band_exit": 1295,
+     "stop_loss": 2722,
+     "eod": 19
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "s9",
+    "tf": "minute",
+    "IS": {
+     "trades": 930,
+     "wins": 370,
+     "pts": -6110.0,
+     "gross_inr": -397150.0,
+     "charges_inr": 431217.16,
+     "net_inr": -828367.16,
+     "max_dd_inr": -830467.66,
+     "pf": 0.65,
+     "t_stat": -5.7,
+     "weeks": 23,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W05",
+      -143111.37261487308
+     ]
+    },
+    "OOS": {
+     "trades": 375,
+     "wins": 135,
+     "pts": -5086.6,
+     "gross_inr": -330629.0,
+     "charges_inr": 171776.26,
+     "net_inr": -502405.26,
+     "max_dd_inr": -513384.78,
+     "pf": 0.44,
+     "t_stat": -7.07,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W38",
+      -97497.46951456594
+     ]
+    },
+    "ALL": {
+     "trades": 1305,
+     "wins": 505,
+     "pts": -11196.6,
+     "gross_inr": -727779.0,
+     "charges_inr": 602993.41,
+     "net_inr": -1330772.41,
+     "max_dd_inr": -1332872.92,
+     "pf": 0.59,
+     "t_stat": -8.23,
+     "weeks": 35,
+     "pos_weeks": 5,
+     "worst_week": [
+      "2026-W05",
+      -143111.37261487308
+     ]
+    },
+    "signals": 9153,
+    "locked": 8718,
+    "exit_reasons": {
+     "target 1R": 209,
+     "stop_loss": 733,
+     "target 2R": 108,
+     "eod": 194,
+     "trail_stop": 54,
+     "expiry": 7
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "trail",
+    "tf": "minute",
+    "IS": {
+     "trades": 287,
+     "wins": 89,
+     "pts": -1157.4,
+     "gross_inr": -225693.0,
+     "charges_inr": 373096.05,
+     "net_inr": -598789.05,
+     "max_dd_inr": -615929.29,
+     "pf": 0.76,
+     "t_stat": -1.84,
+     "weeks": 23,
+     "pos_weeks": 11,
+     "worst_week": [
+      "2026-W05",
+      -172663.96762444687
+     ]
+    },
+    "OOS": {
+     "trades": 122,
+     "wins": 38,
+     "pts": -1701.8,
+     "gross_inr": -331851.0,
+     "charges_inr": 156150.08,
+     "net_inr": -488001.08,
+     "max_dd_inr": -524774.48,
+     "pf": 0.46,
+     "t_stat": -3.5,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W36",
+      -98074.04995289158
+     ]
+    },
+    "ALL": {
+     "trades": 409,
+     "wins": 127,
+     "pts": -2859.2,
+     "gross_inr": -557544.0,
+     "charges_inr": 529246.13,
+     "net_inr": -1086790.13,
+     "max_dd_inr": -1103930.37,
+     "pf": 0.68,
+     "t_stat": -3.07,
+     "weeks": 35,
+     "pos_weeks": 13,
+     "worst_week": [
+      "2026-W05",
+      -172663.96762444687
+     ]
+    },
+    "signals": 9153,
+    "locked": 8744,
+    "exit_reasons": {
+     "stop_loss": 255,
+     "eod": 121,
+     "trail_stop": 30,
+     "expiry": 3
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "band",
+    "tf": "minute",
+    "IS": {
+     "trades": 1628,
+     "wins": 196,
+     "pts": -19644.3,
+     "gross_inr": -3830637.79,
+     "charges_inr": 2124458.23,
+     "net_inr": -5955096.03,
+     "max_dd_inr": -5955661.21,
+     "pf": 0.24,
+     "t_stat": -22.63,
+     "weeks": 23,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W25",
+      -443425.5178333145
+     ]
+    },
+    "OOS": {
+     "trades": 1292,
+     "wins": 83,
+     "pts": -16931.97,
+     "gross_inr": -3301734.03,
+     "charges_inr": 1656239.93,
+     "net_inr": -4957973.97,
+     "max_dd_inr": -4982439.95,
+     "pf": 0.11,
+     "t_stat": -37.37,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W37",
+      -513989.17077018874
+     ]
+    },
+    "ALL": {
+     "trades": 2920,
+     "wins": 279,
+     "pts": -36576.27,
+     "gross_inr": -7132371.83,
+     "charges_inr": 3780698.17,
+     "net_inr": -10913069.99,
+     "max_dd_inr": -10929243.24,
+     "pf": 0.19,
+     "t_stat": -37.03,
+     "weeks": 35,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W37",
+      -513989.17077018874
+     ]
+    },
+    "signals": 7230,
+    "locked": 4310,
+    "exit_reasons": {
+     "band_exit": 1168,
+     "stop_loss": 1734,
+     "eod": 18
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "s9",
+    "tf": "minute",
+    "IS": {
+     "trades": 927,
+     "wins": 374,
+     "pts": -5648.6,
+     "gross_inr": -367159.0,
+     "charges_inr": 429584.61,
+     "net_inr": -796743.61,
+     "max_dd_inr": -801447.62,
+     "pf": 0.66,
+     "t_stat": -5.54,
+     "weeks": 23,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W06",
+      -125788.59337129976
+     ]
+    },
+    "OOS": {
+     "trades": 342,
+     "wins": 137,
+     "pts": -3070.1,
+     "gross_inr": -199556.5,
+     "charges_inr": 156870.87,
+     "net_inr": -356427.37,
+     "max_dd_inr": -377564.89,
+     "pf": 0.53,
+     "t_stat": -5.07,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W36",
+      -88962.87639957912
+     ]
+    },
+    "ALL": {
+     "trades": 1269,
+     "wins": 511,
+     "pts": -8718.7,
+     "gross_inr": -566715.5,
+     "charges_inr": 586455.48,
+     "net_inr": -1153170.98,
+     "max_dd_inr": -1157874.99,
+     "pf": 0.63,
+     "t_stat": -7.21,
+     "weeks": 35,
+     "pos_weeks": 5,
+     "worst_week": [
+      "2026-W06",
+      -125788.59337129976
+     ]
+    },
+    "signals": 7230,
+    "locked": 6807,
+    "exit_reasons": {
+     "target 1R": 212,
+     "stop_loss": 695,
+     "target 2R": 107,
+     "eod": 193,
+     "trail_stop": 55,
+     "expiry": 7
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "trail",
+    "tf": "minute",
+    "IS": {
+     "trades": 277,
+     "wins": 90,
+     "pts": -185.2,
+     "gross_inr": -36114.0,
+     "charges_inr": 359839.99,
+     "net_inr": -395953.99,
+     "max_dd_inr": -444367.56,
+     "pf": 0.83,
+     "t_stat": -1.22,
+     "weeks": 23,
+     "pos_weeks": 11,
+     "worst_week": [
+      "2026-W06",
+      -154054.75918846176
+     ]
+    },
+    "OOS": {
+     "trades": 112,
+     "wins": 39,
+     "pts": -977.6,
+     "gross_inr": -190632.0,
+     "charges_inr": 143579.91,
+     "net_inr": -334211.91,
+     "max_dd_inr": -392864.71,
+     "pf": 0.57,
+     "t_stat": -2.38,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W36",
+      -97450.02399823615
+     ]
+    },
+    "ALL": {
+     "trades": 389,
+     "wins": 129,
+     "pts": -1162.8,
+     "gross_inr": -226746.0,
+     "charges_inr": 503419.9,
+     "net_inr": -730165.9,
+     "max_dd_inr": -778579.47,
+     "pf": 0.77,
+     "t_stat": -2.07,
+     "weeks": 35,
+     "pos_weeks": 13,
+     "worst_week": [
+      "2026-W06",
+      -154054.75918846176
+     ]
+    },
+    "signals": 7230,
+    "locked": 6841,
+    "exit_reasons": {
+     "stop_loss": 232,
+     "eod": 122,
+     "trail_stop": 32,
+     "expiry": 3
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "band",
+    "tf": "minute",
+    "IS": {
+     "trades": 670,
+     "wins": 110,
+     "pts": -8554.51,
+     "gross_inr": -1668129.97,
+     "charges_inr": 873979.74,
+     "net_inr": -2542109.71,
+     "max_dd_inr": -2542109.71,
+     "pf": 0.3,
+     "t_stat": -12.39,
+     "weeks": 23,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W05",
+      -225378.54385672265
+     ]
+    },
+    "OOS": {
+     "trades": 491,
+     "wins": 55,
+     "pts": -5787.26,
+     "gross_inr": -1128516.54,
+     "charges_inr": 629676.72,
+     "net_inr": -1758193.25,
+     "max_dd_inr": -1767051.16,
+     "pf": 0.2,
+     "t_stat": -14.82,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W33",
+      -196011.90724759625
+     ]
+    },
+    "ALL": {
+     "trades": 1161,
+     "wins": 165,
+     "pts": -14341.78,
+     "gross_inr": -2796646.51,
+     "charges_inr": 1503656.46,
+     "net_inr": -4300302.97,
+     "max_dd_inr": -4300302.97,
+     "pf": 0.26,
+     "t_stat": -18.15,
+     "weeks": 35,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W05",
+      -225378.54385672265
+     ]
+    },
+    "signals": 3670,
+    "locked": 2509,
+    "exit_reasons": {
+     "band_exit": 607,
+     "stop_loss": 541,
+     "eod": 13
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "s9",
+    "tf": "minute",
+    "IS": {
+     "trades": 828,
+     "wins": 322,
+     "pts": -6942.5,
+     "gross_inr": -451262.5,
+     "charges_inr": 384699.69,
+     "net_inr": -835962.19,
+     "max_dd_inr": -835962.19,
+     "pf": 0.61,
+     "t_stat": -6.42,
+     "weeks": 23,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W23",
+      -130858.6404840357
+     ]
+    },
+    "OOS": {
+     "trades": 336,
+     "wins": 138,
+     "pts": -2928.8,
+     "gross_inr": -190372.0,
+     "charges_inr": 154127.35,
+     "net_inr": -344499.35,
+     "max_dd_inr": -364561.04,
+     "pf": 0.53,
+     "t_stat": -5.11,
+     "weeks": 13,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W33",
+      -60367.248340009886
+     ]
+    },
+    "ALL": {
+     "trades": 1164,
+     "wins": 460,
+     "pts": -9871.3,
+     "gross_inr": -641634.5,
+     "charges_inr": 538827.04,
+     "net_inr": -1180461.54,
+     "max_dd_inr": -1180461.54,
+     "pf": 0.59,
+     "t_stat": -8.05,
+     "weeks": 35,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W23",
+      -130858.6404840357
+     ]
+    },
+    "signals": 3670,
+    "locked": 3282,
+    "exit_reasons": {
+     "stop_loss": 639,
+     "target 1R": 188,
+     "target 2R": 93,
+     "eod": 196,
+     "trail_stop": 42,
+     "expiry": 6
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "trail",
+    "tf": "minute",
+    "IS": {
+     "trades": 265,
+     "wins": 81,
+     "pts": -1396.3,
+     "gross_inr": -272278.5,
+     "charges_inr": 344694.5,
+     "net_inr": -616973.0,
+     "max_dd_inr": -627734.96,
+     "pf": 0.73,
+     "t_stat": -2.08,
+     "weeks": 23,
+     "pos_weeks": 7,
+     "worst_week": [
+      "2026-W23",
+      -139978.3029583037
+     ]
+    },
+    "OOS": {
+     "trades": 109,
+     "wins": 40,
+     "pts": -992.9,
+     "gross_inr": -193615.5,
+     "charges_inr": 139754.81,
+     "net_inr": -333370.31,
+     "max_dd_inr": -377201.67,
+     "pf": 0.56,
+     "t_stat": -2.44,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W33",
+      -65565.75577646487
+     ]
+    },
+    "ALL": {
+     "trades": 374,
+     "wins": 121,
+     "pts": -2389.2,
+     "gross_inr": -465894.0,
+     "charges_inr": 484449.31,
+     "net_inr": -950343.31,
+     "max_dd_inr": -957877.58,
+     "pf": 0.69,
+     "t_stat": -2.92,
+     "weeks": 35,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W23",
+      -139978.3029583037
+     ]
+    },
+    "signals": 3670,
+    "locked": 3296,
+    "exit_reasons": {
+     "stop_loss": 227,
+     "eod": 122,
+     "trail_stop": 22,
+     "expiry": 3
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "band",
+    "tf": "minute",
+    "IS": {
+     "trades": 620,
+     "wins": 104,
+     "pts": -8093.0,
+     "gross_inr": -1578134.88,
+     "charges_inr": 809131.2,
+     "net_inr": -2387266.08,
+     "max_dd_inr": -2387266.08,
+     "pf": 0.3,
+     "t_stat": -11.76,
+     "weeks": 23,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W05",
+      -226386.99164382226
+     ]
+    },
+    "OOS": {
+     "trades": 444,
+     "wins": 54,
+     "pts": -5138.67,
+     "gross_inr": -1002040.38,
+     "charges_inr": 569351.99,
+     "net_inr": -1571392.37,
+     "max_dd_inr": -1580250.28,
+     "pf": 0.21,
+     "t_stat": -13.27,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W31",
+      -174084.00337523877
+     ]
+    },
+    "ALL": {
+     "trades": 1064,
+     "wins": 158,
+     "pts": -13231.67,
+     "gross_inr": -2580175.26,
+     "charges_inr": 1378483.19,
+     "net_inr": -3958658.44,
+     "max_dd_inr": -3958658.44,
+     "pf": 0.27,
+     "t_stat": -16.84,
+     "weeks": 35,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W05",
+      -226386.99164382226
+     ]
+    },
+    "signals": 3444,
+    "locked": 2380,
+    "exit_reasons": {
+     "band_exit": 592,
+     "stop_loss": 460,
+     "eod": 12
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "s9",
+    "tf": "minute",
+    "IS": {
+     "trades": 810,
+     "wins": 315,
+     "pts": -6390.7,
+     "gross_inr": -415395.5,
+     "charges_inr": 376517.73,
+     "net_inr": -791913.23,
+     "max_dd_inr": -791913.23,
+     "pf": 0.62,
+     "t_stat": -6.12,
+     "weeks": 23,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W23",
+      -130859.24094745771
+     ]
+    },
+    "OOS": {
+     "trades": 327,
+     "wins": 138,
+     "pts": -2372.9,
+     "gross_inr": -154238.5,
+     "charges_inr": 149990.68,
+     "net_inr": -304229.18,
+     "max_dd_inr": -329491.79,
+     "pf": 0.57,
+     "t_stat": -4.55,
+     "weeks": 13,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W31",
+      -59610.66672671569
+     ]
+    },
+    "ALL": {
+     "trades": 1137,
+     "wins": 453,
+     "pts": -8763.6,
+     "gross_inr": -569634.0,
+     "charges_inr": 526508.41,
+     "net_inr": -1096142.41,
+     "max_dd_inr": -1096142.41,
+     "pf": 0.61,
+     "t_stat": -7.53,
+     "weeks": 35,
+     "pos_weeks": 7,
+     "worst_week": [
+      "2026-W23",
+      -130859.24094745771
+     ]
+    },
+    "signals": 3444,
+    "locked": 3065,
+    "exit_reasons": {
+     "stop_loss": 616,
+     "target 1R": 185,
+     "target 2R": 93,
+     "eod": 195,
+     "trail_stop": 42,
+     "expiry": 6
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "trail",
+    "tf": "minute",
+    "IS": {
+     "trades": 261,
+     "wins": 79,
+     "pts": -1237.0,
+     "gross_inr": -241215.0,
+     "charges_inr": 339581.38,
+     "net_inr": -580796.38,
+     "max_dd_inr": -597608.78,
+     "pf": 0.74,
+     "t_stat": -1.96,
+     "weeks": 23,
+     "pos_weeks": 7,
+     "worst_week": [
+      "2026-W23",
+      -139978.90342172573
+     ]
+    },
+    "OOS": {
+     "trades": 106,
+     "wins": 40,
+     "pts": -837.9,
+     "gross_inr": -163390.5,
+     "charges_inr": 135901.39,
+     "net_inr": -299291.89,
+     "max_dd_inr": -346142.99,
+     "pf": 0.58,
+     "t_stat": -2.23,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W36",
+      -60758.77040881243
+     ]
+    },
+    "ALL": {
+     "trades": 367,
+     "wins": 119,
+     "pts": -2074.9,
+     "gross_inr": -404605.5,
+     "charges_inr": 475482.77,
+     "net_inr": -880088.27,
+     "max_dd_inr": -893672.99,
+     "pf": 0.71,
+     "t_stat": -2.71,
+     "weeks": 35,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W23",
+      -139978.90342172573
+     ]
+    },
+    "signals": 3444,
+    "locked": 3077,
+    "exit_reasons": {
+     "stop_loss": 221,
+     "eod": 121,
+     "trail_stop": 22,
+     "expiry": 3
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "band",
+    "tf": "minute",
+    "IS": {
+     "trades": 1943,
+     "wins": 208,
+     "pts": -23215.06,
+     "gross_inr": -4526936.6,
+     "charges_inr": 2534902.98,
+     "net_inr": -7061839.58,
+     "max_dd_inr": -7062404.76,
+     "pf": 0.22,
+     "t_stat": -25.92,
+     "weeks": 23,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W25",
+      -566153.1843411403
+     ]
+    },
+    "OOS": {
+     "trades": 1549,
+     "wins": 88,
+     "pts": -20299.09,
+     "gross_inr": -3958323.33,
+     "charges_inr": 1985595.99,
+     "net_inr": -5943919.32,
+     "max_dd_inr": -5968385.3,
+     "pf": 0.09,
+     "t_stat": -43.95,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W37",
+      -646207.6008253384
+     ]
+    },
+    "ALL": {
+     "trades": 3492,
+     "wins": 296,
+     "pts": -43514.15,
+     "gross_inr": -8485259.93,
+     "charges_inr": 4520498.97,
+     "net_inr": -13005758.9,
+     "max_dd_inr": -13021932.15,
+     "pf": 0.17,
+     "t_stat": -42.75,
+     "weeks": 35,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W37",
+      -646207.6008253384
+     ]
+    },
+    "signals": 8472,
+    "locked": 4980,
+    "exit_reasons": {
+     "band_exit": 1232,
+     "stop_loss": 2241,
+     "eod": 19
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "s9",
+    "tf": "minute",
+    "IS": {
+     "trades": 918,
+     "wins": 375,
+     "pts": -4609.8,
+     "gross_inr": -299637.0,
+     "charges_inr": 425230.13,
+     "net_inr": -724867.13,
+     "max_dd_inr": -726967.64,
+     "pf": 0.68,
+     "t_stat": -5.1,
+     "weeks": 23,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W06",
+      -115695.58390390195
+     ]
+    },
+    "OOS": {
+     "trades": 372,
+     "wins": 136,
+     "pts": -4815.8,
+     "gross_inr": -313027.0,
+     "charges_inr": 170433.21,
+     "net_inr": -483460.21,
+     "max_dd_inr": -494439.73,
+     "pf": 0.45,
+     "t_stat": -6.8,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W38",
+      -97497.46951456594
+     ]
+    },
+    "ALL": {
+     "trades": 1290,
+     "wins": 511,
+     "pts": -9425.6,
+     "gross_inr": -612664.0,
+     "charges_inr": 595663.34,
+     "net_inr": -1208327.34,
+     "max_dd_inr": -1210427.85,
+     "pf": 0.62,
+     "t_stat": -7.6,
+     "weeks": 35,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W06",
+      -115695.58390390195
+     ]
+    },
+    "signals": 8472,
+    "locked": 8042,
+    "exit_reasons": {
+     "target 1R": 214,
+     "stop_loss": 709,
+     "target 2R": 110,
+     "eod": 195,
+     "trail_stop": 55,
+     "expiry": 7
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "trail",
+    "tf": "minute",
+    "IS": {
+     "trades": 278,
+     "wins": 90,
+     "pts": -283.8,
+     "gross_inr": -55341.0,
+     "charges_inr": 361075.4,
+     "net_inr": -416416.4,
+     "max_dd_inr": -435419.2,
+     "pf": 0.82,
+     "t_stat": -1.31,
+     "weeks": 23,
+     "pos_weeks": 11,
+     "worst_week": [
+      "2026-W06",
+      -139365.39823714487
+     ]
+    },
+    "OOS": {
+     "trades": 121,
+     "wins": 38,
+     "pts": -1615.8,
+     "gross_inr": -315081.0,
+     "charges_inr": 154901.5,
+     "net_inr": -469982.5,
+     "max_dd_inr": -506755.9,
+     "pf": 0.47,
+     "t_stat": -3.37,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W36",
+      -98074.04995289158
+     ]
+    },
+    "ALL": {
+     "trades": 399,
+     "wins": 128,
+     "pts": -1899.6,
+     "gross_inr": -370422.0,
+     "charges_inr": 515976.9,
+     "net_inr": -886398.9,
+     "max_dd_inr": -905401.7,
+     "pf": 0.73,
+     "t_stat": -2.56,
+     "weeks": 35,
+     "pos_weeks": 13,
+     "worst_week": [
+      "2026-W06",
+      -139365.39823714487
+     ]
+    },
+    "signals": 8472,
+    "locked": 8073,
+    "exit_reasons": {
+     "stop_loss": 243,
+     "eod": 122,
+     "trail_stop": 31,
+     "expiry": 3
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "band",
+    "tf": "minute",
+    "IS": {
+     "trades": 1516,
+     "wins": 191,
+     "pts": -18639.08,
+     "gross_inr": -3634620.0,
+     "charges_inr": 1978565.1,
+     "net_inr": -5613185.09,
+     "max_dd_inr": -5613750.27,
+     "pf": 0.24,
+     "t_stat": -21.99,
+     "weeks": 23,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W05",
+      -392469.0758113106
+     ]
+    },
+    "OOS": {
+     "trades": 1186,
+     "wins": 81,
+     "pts": -15471.18,
+     "gross_inr": -3016879.43,
+     "charges_inr": 1520327.95,
+     "net_inr": -4537207.38,
+     "max_dd_inr": -4561673.36,
+     "pf": 0.11,
+     "t_stat": -34.21,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W37",
+      -475622.5843784908
+     ]
+    },
+    "ALL": {
+     "trades": 2702,
+     "wins": 272,
+     "pts": -34110.25,
+     "gross_inr": -6651499.43,
+     "charges_inr": 3498893.05,
+     "net_inr": -10150392.48,
+     "max_dd_inr": -10166565.73,
+     "pf": 0.19,
+     "t_stat": -35.29,
+     "weeks": 35,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W37",
+      -475622.5843784908
+     ]
+    },
+    "signals": 6945,
+    "locked": 4243,
+    "exit_reasons": {
+     "band_exit": 1134,
+     "stop_loss": 1550,
+     "eod": 18
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "s9",
+    "tf": "minute",
+    "IS": {
+     "trades": 927,
+     "wins": 375,
+     "pts": -5784.8,
+     "gross_inr": -376012.0,
+     "charges_inr": 429448.02,
+     "net_inr": -805460.02,
+     "max_dd_inr": -810164.03,
+     "pf": 0.66,
+     "t_stat": -5.71,
+     "weeks": 23,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W06",
+      -125788.59337129976
+     ]
+    },
+    "OOS": {
+     "trades": 342,
+     "wins": 137,
+     "pts": -3070.1,
+     "gross_inr": -199556.5,
+     "charges_inr": 156870.87,
+     "net_inr": -356427.37,
+     "max_dd_inr": -377564.89,
+     "pf": 0.53,
+     "t_stat": -5.07,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W36",
+      -88962.87639957912
+     ]
+    },
+    "ALL": {
+     "trades": 1269,
+     "wins": 512,
+     "pts": -8854.9,
+     "gross_inr": -575568.5,
+     "charges_inr": 586318.88,
+     "net_inr": -1161887.38,
+     "max_dd_inr": -1166591.4,
+     "pf": 0.63,
+     "t_stat": -7.37,
+     "weeks": 35,
+     "pos_weeks": 5,
+     "worst_week": [
+      "2026-W06",
+      -125788.59337129976
+     ]
+    },
+    "signals": 6945,
+    "locked": 6522,
+    "exit_reasons": {
+     "target 1R": 212,
+     "stop_loss": 697,
+     "target 2R": 109,
+     "eod": 189,
+     "trail_stop": 55,
+     "expiry": 7
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "trail",
+    "tf": "minute",
+    "IS": {
+     "trades": 277,
+     "wins": 90,
+     "pts": -422.9,
+     "gross_inr": -82465.5,
+     "charges_inr": 359705.01,
+     "net_inr": -442170.51,
+     "max_dd_inr": -490584.07,
+     "pf": 0.81,
+     "t_stat": -1.42,
+     "weeks": 23,
+     "pos_weeks": 10,
+     "worst_week": [
+      "2026-W06",
+      -154054.75918846176
+     ]
+    },
+    "OOS": {
+     "trades": 112,
+     "wins": 39,
+     "pts": -977.6,
+     "gross_inr": -190632.0,
+     "charges_inr": 143579.91,
+     "net_inr": -334211.91,
+     "max_dd_inr": -392864.71,
+     "pf": 0.57,
+     "t_stat": -2.38,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W36",
+      -97450.02399823615
+     ]
+    },
+    "ALL": {
+     "trades": 389,
+     "wins": 129,
+     "pts": -1400.5,
+     "gross_inr": -273097.5,
+     "charges_inr": 503284.92,
+     "net_inr": -776382.42,
+     "max_dd_inr": -824795.98,
+     "pf": 0.75,
+     "t_stat": -2.27,
+     "weeks": 35,
+     "pos_weeks": 12,
+     "worst_week": [
+      "2026-W06",
+      -154054.75918846176
+     ]
+    },
+    "signals": 6945,
+    "locked": 6556,
+    "exit_reasons": {
+     "stop_loss": 233,
+     "eod": 121,
+     "trail_stop": 32,
+     "expiry": 3
+    }
+   }
+  ]
+ },
+ "5minute": {
+  "window": {
+   "from_": "2026-01-05",
+   "split": "2026-07-01",
+   "to": "2026-09-25"
+  },
+  "rule": ">= 30 IS positions, PF > 1, highest IS net",
+  "pick": {
+   "kind": "widner",
+   "trigger": "cross",
+   "fan": "full",
+   "osc_min": 25,
+   "exits": "trail",
+   "tf": "5minute",
+   "IS": {
+    "trades": 143,
+    "wins": 46,
+    "pts": -189.5,
+    "gross_inr": -36952.5,
+    "charges_inr": 186737.23,
+    "net_inr": -223689.73,
+    "max_dd_inr": -282637.95,
+    "pf": 0.81,
+    "t_stat": -1.01,
+    "weeks": 23,
+    "pos_weeks": 8,
+    "worst_week": [
+     "2026-W07",
+     -87152.420569541
+    ]
+   },
+   "OOS": {
+    "trades": 79,
+    "wins": 31,
+    "pts": -73.6,
+    "gross_inr": -14352.0,
+    "charges_inr": 101202.76,
+    "net_inr": -115554.76,
+    "max_dd_inr": -221021.15,
+    "pf": 0.75,
+    "t_stat": -0.95,
+    "weeks": 13,
+    "pos_weeks": 4,
+    "worst_week": [
+     "2026-W34",
+     -49605.44690281172
+    ]
+   },
+   "ALL": {
+    "trades": 222,
+    "wins": 77,
+    "pts": -263.1,
+    "gross_inr": -51304.5,
+    "charges_inr": 287939.98,
+    "net_inr": -339244.48,
+    "max_dd_inr": -392617.12,
+    "pf": 0.79,
+    "t_stat": -1.34,
+    "weeks": 35,
+    "pos_weeks": 12,
+    "worst_week": [
+     "2026-W07",
+     -87152.420569541
+    ]
+   },
+   "signals": 487,
+   "locked": 265,
+   "exit_reasons": {
+    "stop_loss": 116,
+    "eod": 94,
+    "trail_stop": 11,
+    "expiry": 1
+   },
+   "qualified": false,
+   "oos_rank": 1
+  },
+  "rows": [
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "band",
+    "tf": "5minute",
+    "IS": {
+     "trades": 257,
+     "wins": 61,
+     "pts": -1952.73,
+     "gross_inr": -380782.42,
+     "charges_inr": 336494.01,
+     "net_inr": -717276.43,
+     "max_dd_inr": -727382.19,
+     "pf": 0.44,
+     "t_stat": -4.89,
+     "weeks": 23,
+     "pos_weeks": 5,
+     "worst_week": [
+      "2026-W17",
+      -89195.84779517198
+     ]
+    },
+    "OOS": {
+     "trades": 171,
+     "wins": 30,
+     "pts": -1715.27,
+     "gross_inr": -334477.27,
+     "charges_inr": 219478.29,
+     "net_inr": -553955.56,
+     "max_dd_inr": -564048.96,
+     "pf": 0.28,
+     "t_stat": -6.07,
+     "weeks": 13,
+     "pos_weeks": 1,
+     "worst_week": [
+      "2026-W31",
+      -85622.37738061574
+     ]
+    },
+    "ALL": {
+     "trades": 428,
+     "wins": 91,
+     "pts": -3668.0,
+     "gross_inr": -715259.7,
+     "charges_inr": 555972.3,
+     "net_inr": -1271231.99,
+     "max_dd_inr": -1283159.09,
+     "pf": 0.38,
+     "t_stat": -7.36,
+     "weeks": 35,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W17",
+      -89195.84779517198
+     ]
+    },
+    "signals": 613,
+    "locked": 185,
+    "exit_reasons": {
+     "band_exit": 315,
+     "stop_loss": 108,
+     "eod": 4,
+     "expiry": 1
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "s9",
+    "tf": "5minute",
+    "IS": {
+     "trades": 519,
+     "wins": 205,
+     "pts": -3378.8,
+     "gross_inr": -219622.0,
+     "charges_inr": 242293.03,
+     "net_inr": -461915.03,
+     "max_dd_inr": -461915.03,
+     "pf": 0.65,
+     "t_stat": -4.42,
+     "weeks": 23,
+     "pos_weeks": 5,
+     "worst_week": [
+      "2026-W17",
+      -81310.39678953175
+     ]
+    },
+    "OOS": {
+     "trades": 261,
+     "wins": 113,
+     "pts": -1854.2,
+     "gross_inr": -120523.0,
+     "charges_inr": 119681.88,
+     "net_inr": -240204.88,
+     "max_dd_inr": -262214.5,
+     "pf": 0.53,
+     "t_stat": -4.27,
+     "weeks": 13,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W36",
+      -81601.75520021343
+     ]
+    },
+    "ALL": {
+     "trades": 780,
+     "wins": 318,
+     "pts": -5233.0,
+     "gross_inr": -340145.0,
+     "charges_inr": 361974.91,
+     "net_inr": -702119.91,
+     "max_dd_inr": -704368.1,
+     "pf": 0.62,
+     "t_stat": -5.93,
+     "weeks": 35,
+     "pos_weeks": 7,
+     "worst_week": [
+      "2026-W36",
+      -81601.75520021343
+     ]
+    },
+    "signals": 613,
+    "locked": 353,
+    "exit_reasons": {
+     "stop_loss": 394,
+     "target 1R": 124,
+     "target 2R": 58,
+     "eod": 177,
+     "trail_stop": 24,
+     "expiry": 3
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "trail",
+    "tf": "5minute",
+    "IS": {
+     "trades": 165,
+     "wins": 54,
+     "pts": -208.7,
+     "gross_inr": -40696.5,
+     "charges_inr": 215527.92,
+     "net_inr": -256224.42,
+     "max_dd_inr": -282273.93,
+     "pf": 0.81,
+     "t_stat": -1.1,
+     "weeks": 23,
+     "pos_weeks": 7,
+     "worst_week": [
+      "2026-W17",
+      -93599.6881531357
+     ]
+    },
+    "OOS": {
+     "trades": 86,
+     "wins": 34,
+     "pts": -560.1,
+     "gross_inr": -109219.5,
+     "charges_inr": 110190.06,
+     "net_inr": -219409.56,
+     "max_dd_inr": -279566.98,
+     "pf": 0.59,
+     "t_stat": -1.82,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W36",
+      -96904.15429771344
+     ]
+    },
+    "ALL": {
+     "trades": 251,
+     "wins": 88,
+     "pts": -768.8,
+     "gross_inr": -149916.0,
+     "charges_inr": 325717.98,
+     "net_inr": -475633.98,
+     "max_dd_inr": -501623.51,
+     "pf": 0.75,
+     "t_stat": -1.81,
+     "weeks": 35,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W36",
+      -96904.15429771344
+     ]
+    },
+    "signals": 613,
+    "locked": 362,
+    "exit_reasons": {
+     "stop_loss": 137,
+     "eod": 99,
+     "trail_stop": 13,
+     "expiry": 2
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "band",
+    "tf": "5minute",
+    "IS": {
+     "trades": 218,
+     "wins": 54,
+     "pts": -1549.91,
+     "gross_inr": -302232.35,
+     "charges_inr": 285766.5,
+     "net_inr": -587998.84,
+     "max_dd_inr": -611270.08,
+     "pf": 0.47,
+     "t_stat": -4.18,
+     "weeks": 23,
+     "pos_weeks": 5,
+     "worst_week": [
+      "2026-W07",
+      -74914.05337173803
+     ]
+    },
+    "OOS": {
+     "trades": 147,
+     "wins": 26,
+     "pts": -1523.44,
+     "gross_inr": -297070.48,
+     "charges_inr": 188577.5,
+     "net_inr": -485647.98,
+     "max_dd_inr": -494644.43,
+     "pf": 0.28,
+     "t_stat": -5.49,
+     "weeks": 13,
+     "pos_weeks": 1,
+     "worst_week": [
+      "2026-W29",
+      -76753.29854712555
+     ]
+    },
+    "ALL": {
+     "trades": 365,
+     "wins": 80,
+     "pts": -3073.35,
+     "gross_inr": -599302.83,
+     "charges_inr": 474344.0,
+     "net_inr": -1073646.83,
+     "max_dd_inr": -1098739.4,
+     "pf": 0.4,
+     "t_stat": -6.46,
+     "weeks": 35,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W29",
+      -76753.29854712555
+     ]
+    },
+    "signals": 487,
+    "locked": 122,
+    "exit_reasons": {
+     "band_exit": 269,
+     "stop_loss": 91,
+     "eod": 4,
+     "expiry": 1
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "s9",
+    "tf": "5minute",
+    "IS": {
+     "trades": 450,
+     "wins": 179,
+     "pts": -2920.9,
+     "gross_inr": -189858.5,
+     "charges_inr": 210080.56,
+     "net_inr": -399939.06,
+     "max_dd_inr": -407198.57,
+     "pf": 0.64,
+     "t_stat": -4.12,
+     "weeks": 23,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W07",
+      -87907.62056954096
+     ]
+    },
+    "OOS": {
+     "trades": 237,
+     "wins": 102,
+     "pts": -951.9,
+     "gross_inr": -61873.5,
+     "charges_inr": 108662.01,
+     "net_inr": -170535.51,
+     "max_dd_inr": -210961.25,
+     "pf": 0.62,
+     "t_stat": -3.12,
+     "weeks": 13,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W38",
+      -51034.16480887133
+     ]
+    },
+    "ALL": {
+     "trades": 687,
+     "wins": 281,
+     "pts": -3872.8,
+     "gross_inr": -251732.0,
+     "charges_inr": 318742.57,
+     "net_inr": -570474.57,
+     "max_dd_inr": -577734.07,
+     "pf": 0.64,
+     "t_stat": -5.12,
+     "weeks": 35,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W07",
+      -87907.62056954096
+     ]
+    },
+    "signals": 487,
+    "locked": 258,
+    "exit_reasons": {
+     "stop_loss": 330,
+     "target 1R": 109,
+     "target 2R": 50,
+     "eod": 173,
+     "trail_stop": 23,
+     "expiry": 2
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "trail",
+    "tf": "5minute",
+    "IS": {
+     "trades": 143,
+     "wins": 46,
+     "pts": -189.5,
+     "gross_inr": -36952.5,
+     "charges_inr": 186737.23,
+     "net_inr": -223689.73,
+     "max_dd_inr": -282637.95,
+     "pf": 0.81,
+     "t_stat": -1.01,
+     "weeks": 23,
+     "pos_weeks": 8,
+     "worst_week": [
+      "2026-W07",
+      -87152.420569541
+     ]
+    },
+    "OOS": {
+     "trades": 79,
+     "wins": 31,
+     "pts": -73.6,
+     "gross_inr": -14352.0,
+     "charges_inr": 101202.76,
+     "net_inr": -115554.76,
+     "max_dd_inr": -221021.15,
+     "pf": 0.75,
+     "t_stat": -0.95,
+     "weeks": 13,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W34",
+      -49605.44690281172
+     ]
+    },
+    "ALL": {
+     "trades": 222,
+     "wins": 77,
+     "pts": -263.1,
+     "gross_inr": -51304.5,
+     "charges_inr": 287939.98,
+     "net_inr": -339244.48,
+     "max_dd_inr": -392617.12,
+     "pf": 0.79,
+     "t_stat": -1.34,
+     "weeks": 35,
+     "pos_weeks": 12,
+     "worst_week": [
+      "2026-W07",
+      -87152.420569541
+     ]
+    },
+    "signals": 487,
+    "locked": 265,
+    "exit_reasons": {
+     "stop_loss": 116,
+     "eod": 94,
+     "trail_stop": 11,
+     "expiry": 1
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "band",
+    "tf": "5minute",
+    "IS": {
+     "trades": 1113,
+     "wins": 193,
+     "pts": -12708.37,
+     "gross_inr": -2478131.6,
+     "charges_inr": 1453396.7,
+     "net_inr": -3931528.3,
+     "max_dd_inr": -3931528.3,
+     "pf": 0.32,
+     "t_stat": -14.91,
+     "weeks": 23,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W09",
+      -277208.66314640956
+     ]
+    },
+    "OOS": {
+     "trades": 789,
+     "wins": 90,
+     "pts": -9374.76,
+     "gross_inr": -1828078.21,
+     "charges_inr": 1012810.51,
+     "net_inr": -2840888.72,
+     "max_dd_inr": -2867323.27,
+     "pf": 0.17,
+     "t_stat": -20.59,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W34",
+      -320511.39238646434
+     ]
+    },
+    "ALL": {
+     "trades": 1902,
+     "wins": 283,
+     "pts": -22083.13,
+     "gross_inr": -4306209.81,
+     "charges_inr": 2466207.2,
+     "net_inr": -6772417.01,
+     "max_dd_inr": -6788707.43,
+     "pf": 0.27,
+     "t_stat": -22.76,
+     "weeks": 35,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W34",
+      -320511.39238646434
+     ]
+    },
+    "signals": 3106,
+    "locked": 1204,
+    "exit_reasons": {
+     "band_exit": 769,
+     "stop_loss": 1122,
+     "eod": 10,
+     "expiry": 1
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "s9",
+    "tf": "5minute",
+    "IS": {
+     "trades": 891,
+     "wins": 320,
+     "pts": -10200.4,
+     "gross_inr": -663026.0,
+     "charges_inr": 413620.69,
+     "net_inr": -1076646.69,
+     "max_dd_inr": -1079826.81,
+     "pf": 0.55,
+     "t_stat": -7.94,
+     "weeks": 23,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W10",
+      -139433.98607803808
+     ]
+    },
+    "OOS": {
+     "trades": 339,
+     "wins": 132,
+     "pts": -3513.5,
+     "gross_inr": -228377.5,
+     "charges_inr": 155590.75,
+     "net_inr": -383968.25,
+     "max_dd_inr": -394388.41,
+     "pf": 0.5,
+     "t_stat": -5.69,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W36",
+      -98178.01625069058
+     ]
+    },
+    "ALL": {
+     "trades": 1230,
+     "wins": 452,
+     "pts": -13713.9,
+     "gross_inr": -891403.5,
+     "charges_inr": 569211.45,
+     "net_inr": -1460614.95,
+     "max_dd_inr": -1460614.95,
+     "pf": 0.54,
+     "t_stat": -9.65,
+     "weeks": 35,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W10",
+      -139433.98607803808
+     ]
+    },
+    "signals": 3106,
+    "locked": 2696,
+    "exit_reasons": {
+     "stop_loss": 700,
+     "target 1R": 191,
+     "target 2R": 94,
+     "eod": 191,
+     "trail_stop": 47,
+     "expiry": 7
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "trail",
+    "tf": "5minute",
+    "IS": {
+     "trades": 272,
+     "wins": 80,
+     "pts": -1279.4,
+     "gross_inr": -249483.0,
+     "charges_inr": 353881.63,
+     "net_inr": -603364.63,
+     "max_dd_inr": -603364.63,
+     "pf": 0.75,
+     "t_stat": -1.95,
+     "weeks": 23,
+     "pos_weeks": 7,
+     "worst_week": [
+      "2026-W05",
+      -148633.77273238156
+     ]
+    },
+    "OOS": {
+     "trades": 109,
+     "wins": 40,
+     "pts": -911.1,
+     "gross_inr": -177664.5,
+     "charges_inr": 139840.6,
+     "net_inr": -317505.1,
+     "max_dd_inr": -362948.97,
+     "pf": 0.58,
+     "t_stat": -2.3,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W36",
+      -107075.45583915629
+     ]
+    },
+    "ALL": {
+     "trades": 381,
+     "wins": 120,
+     "pts": -2190.5,
+     "gross_inr": -427147.5,
+     "charges_inr": 493722.23,
+     "net_inr": -920869.73,
+     "max_dd_inr": -928235.57,
+     "pf": 0.71,
+     "t_stat": -2.72,
+     "weeks": 35,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W05",
+      -148633.77273238156
+     ]
+    },
+    "signals": 3106,
+    "locked": 2725,
+    "exit_reasons": {
+     "stop_loss": 234,
+     "eod": 117,
+     "trail_stop": 26,
+     "expiry": 4
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "band",
+    "tf": "5minute",
+    "IS": {
+     "trades": 754,
+     "wins": 140,
+     "pts": -8191.8,
+     "gross_inr": -1597401.65,
+     "charges_inr": 985052.74,
+     "net_inr": -2582454.39,
+     "max_dd_inr": -2582454.39,
+     "pf": 0.36,
+     "t_stat": -11.11,
+     "weeks": 23,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W09",
+      -208263.94215652614
+     ]
+    },
+    "OOS": {
+     "trades": 505,
+     "wins": 63,
+     "pts": -5919.48,
+     "gross_inr": -1154298.12,
+     "charges_inr": 648174.57,
+     "net_inr": -1802472.69,
+     "max_dd_inr": -1827000.65,
+     "pf": 0.22,
+     "t_stat": -14.17,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W34",
+      -203157.00033363656
+     ]
+    },
+    "ALL": {
+     "trades": 1259,
+     "wins": 203,
+     "pts": -14111.28,
+     "gross_inr": -2751699.77,
+     "charges_inr": 1633227.31,
+     "net_inr": -4384927.08,
+     "max_dd_inr": -4399310.91,
+     "pf": 0.31,
+     "t_stat": -16.56,
+     "weeks": 35,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W09",
+      -208263.94215652614
+     ]
+    },
+    "signals": 1822,
+    "locked": 563,
+    "exit_reasons": {
+     "band_exit": 618,
+     "stop_loss": 630,
+     "eod": 10,
+     "expiry": 1
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "s9",
+    "tf": "5minute",
+    "IS": {
+     "trades": 768,
+     "wins": 290,
+     "pts": -5591.0,
+     "gross_inr": -363415.0,
+     "charges_inr": 356498.23,
+     "net_inr": -719913.23,
+     "max_dd_inr": -722642.11,
+     "pf": 0.64,
+     "t_stat": -5.5,
+     "weeks": 23,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W06",
+      -89347.45448616403
+     ]
+    },
+    "OOS": {
+     "trades": 327,
+     "wins": 130,
+     "pts": -3256.7,
+     "gross_inr": -211685.5,
+     "charges_inr": 150190.41,
+     "net_inr": -361875.91,
+     "max_dd_inr": -379091.77,
+     "pf": 0.5,
+     "t_stat": -5.58,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W34",
+      -70638.39606474042
+     ]
+    },
+    "ALL": {
+     "trades": 1095,
+     "wins": 420,
+     "pts": -8847.7,
+     "gross_inr": -575100.5,
+     "charges_inr": 506688.64,
+     "net_inr": -1081789.14,
+     "max_dd_inr": -1091313.72,
+     "pf": 0.6,
+     "t_stat": -7.41,
+     "weeks": 35,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W06",
+      -89347.45448616403
+     ]
+    },
+    "signals": 1822,
+    "locked": 1457,
+    "exit_reasons": {
+     "stop_loss": 582,
+     "target 1R": 171,
+     "target 2R": 93,
+     "eod": 205,
+     "trail_stop": 37,
+     "expiry": 7
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "trail",
+    "tf": "5minute",
+    "IS": {
+     "trades": 243,
+     "wins": 72,
+     "pts": -943.6,
+     "gross_inr": -184002.0,
+     "charges_inr": 315672.41,
+     "net_inr": -499674.41,
+     "max_dd_inr": -512095.48,
+     "pf": 0.76,
+     "t_stat": -1.72,
+     "weeks": 23,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W03",
+      -113488.73002005243
+     ]
+    },
+    "OOS": {
+     "trades": 108,
+     "wins": 39,
+     "pts": -1046.2,
+     "gross_inr": -204009.0,
+     "charges_inr": 138609.04,
+     "net_inr": -342618.04,
+     "max_dd_inr": -394686.35,
+     "pf": 0.54,
+     "t_stat": -2.61,
+     "weeks": 13,
+     "pos_weeks": 1,
+     "worst_week": [
+      "2026-W34",
+      -76289.06642574043
+     ]
+    },
+    "ALL": {
+     "trades": 351,
+     "wins": 111,
+     "pts": -1989.8,
+     "gross_inr": -388011.0,
+     "charges_inr": 454281.45,
+     "net_inr": -842292.45,
+     "max_dd_inr": -869359.11,
+     "pf": 0.7,
+     "t_stat": -2.65,
+     "weeks": 35,
+     "pos_weeks": 10,
+     "worst_week": [
+      "2026-W03",
+      -113488.73002005243
+     ]
+    },
+    "signals": 1822,
+    "locked": 1471,
+    "exit_reasons": {
+     "stop_loss": 205,
+     "eod": 118,
+     "trail_stop": 24,
+     "expiry": 4
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "band",
+    "tf": "5minute",
+    "IS": {
+     "trades": 257,
+     "wins": 61,
+     "pts": -1952.73,
+     "gross_inr": -380782.42,
+     "charges_inr": 336494.01,
+     "net_inr": -717276.43,
+     "max_dd_inr": -727382.19,
+     "pf": 0.44,
+     "t_stat": -4.89,
+     "weeks": 23,
+     "pos_weeks": 5,
+     "worst_week": [
+      "2026-W17",
+      -89195.84779517198
+     ]
+    },
+    "OOS": {
+     "trades": 171,
+     "wins": 30,
+     "pts": -1747.37,
+     "gross_inr": -340736.77,
+     "charges_inr": 219476.9,
+     "net_inr": -560213.68,
+     "max_dd_inr": -570307.07,
+     "pf": 0.28,
+     "t_stat": -6.13,
+     "weeks": 13,
+     "pos_weeks": 1,
+     "worst_week": [
+      "2026-W31",
+      -85622.37738061574
+     ]
+    },
+    "ALL": {
+     "trades": 428,
+     "wins": 91,
+     "pts": -3700.1,
+     "gross_inr": -721519.2,
+     "charges_inr": 555970.91,
+     "net_inr": -1277490.11,
+     "max_dd_inr": -1289417.2,
+     "pf": 0.38,
+     "t_stat": -7.4,
+     "weeks": 35,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W17",
+      -89195.84779517198
+     ]
+    },
+    "signals": 612,
+    "locked": 184,
+    "exit_reasons": {
+     "band_exit": 315,
+     "stop_loss": 108,
+     "eod": 4,
+     "expiry": 1
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "s9",
+    "tf": "5minute",
+    "IS": {
+     "trades": 519,
+     "wins": 205,
+     "pts": -3378.8,
+     "gross_inr": -219622.0,
+     "charges_inr": 242293.03,
+     "net_inr": -461915.03,
+     "max_dd_inr": -461915.03,
+     "pf": 0.65,
+     "t_stat": -4.42,
+     "weeks": 23,
+     "pos_weeks": 5,
+     "worst_week": [
+      "2026-W17",
+      -81310.39678953175
+     ]
+    },
+    "OOS": {
+     "trades": 264,
+     "wins": 110,
+     "pts": -2167.2,
+     "gross_inr": -140868.0,
+     "charges_inr": 121063.98,
+     "net_inr": -261931.98,
+     "max_dd_inr": -283941.6,
+     "pf": 0.51,
+     "t_stat": -4.65,
+     "weeks": 13,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W36",
+      -81601.75520021343
+     ]
+    },
+    "ALL": {
+     "trades": 783,
+     "wins": 315,
+     "pts": -5546.0,
+     "gross_inr": -360490.0,
+     "charges_inr": 363357.0,
+     "net_inr": -723847.0,
+     "max_dd_inr": -726095.2,
+     "pf": 0.61,
+     "t_stat": -6.11,
+     "weeks": 35,
+     "pos_weeks": 7,
+     "worst_week": [
+      "2026-W36",
+      -81601.75520021343
+     ]
+    },
+    "signals": 612,
+    "locked": 351,
+    "exit_reasons": {
+     "stop_loss": 397,
+     "target 1R": 123,
+     "target 2R": 58,
+     "eod": 178,
+     "trail_stop": 24,
+     "expiry": 3
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "trail",
+    "tf": "5minute",
+    "IS": {
+     "trades": 165,
+     "wins": 54,
+     "pts": -208.7,
+     "gross_inr": -40696.5,
+     "charges_inr": 215527.92,
+     "net_inr": -256224.42,
+     "max_dd_inr": -282273.93,
+     "pf": 0.81,
+     "t_stat": -1.1,
+     "weeks": 23,
+     "pos_weeks": 7,
+     "worst_week": [
+      "2026-W17",
+      -93599.6881531357
+     ]
+    },
+    "OOS": {
+     "trades": 87,
+     "wins": 33,
+     "pts": -661.1,
+     "gross_inr": -128914.5,
+     "charges_inr": 111477.91,
+     "net_inr": -240392.41,
+     "max_dd_inr": -300549.82,
+     "pf": 0.56,
+     "t_stat": -1.99,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W36",
+      -96904.15429771344
+     ]
+    },
+    "ALL": {
+     "trades": 252,
+     "wins": 87,
+     "pts": -869.8,
+     "gross_inr": -169611.0,
+     "charges_inr": 327005.82,
+     "net_inr": -496616.82,
+     "max_dd_inr": -522606.36,
+     "pf": 0.74,
+     "t_stat": -1.89,
+     "weeks": 35,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W36",
+      -96904.15429771344
+     ]
+    },
+    "signals": 612,
+    "locked": 360,
+    "exit_reasons": {
+     "stop_loss": 138,
+     "eod": 99,
+     "trail_stop": 13,
+     "expiry": 2
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "band",
+    "tf": "5minute",
+    "IS": {
+     "trades": 218,
+     "wins": 54,
+     "pts": -1549.91,
+     "gross_inr": -302232.35,
+     "charges_inr": 285766.5,
+     "net_inr": -587998.84,
+     "max_dd_inr": -611270.08,
+     "pf": 0.47,
+     "t_stat": -4.18,
+     "weeks": 23,
+     "pos_weeks": 5,
+     "worst_week": [
+      "2026-W07",
+      -74914.05337173803
+     ]
+    },
+    "OOS": {
+     "trades": 146,
+     "wins": 26,
+     "pts": -1514.54,
+     "gross_inr": -295334.98,
+     "charges_inr": 187289.58,
+     "net_inr": -482624.56,
+     "max_dd_inr": -491621.01,
+     "pf": 0.28,
+     "t_stat": -5.45,
+     "weeks": 13,
+     "pos_weeks": 1,
+     "worst_week": [
+      "2026-W29",
+      -76753.29854712555
+     ]
+    },
+    "ALL": {
+     "trades": 364,
+     "wins": 80,
+     "pts": -3064.45,
+     "gross_inr": -597567.33,
+     "charges_inr": 473056.07,
+     "net_inr": -1070623.41,
+     "max_dd_inr": -1095715.98,
+     "pf": 0.4,
+     "t_stat": -6.44,
+     "weeks": 35,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W29",
+      -76753.29854712555
+     ]
+    },
+    "signals": 486,
+    "locked": 122,
+    "exit_reasons": {
+     "band_exit": 268,
+     "stop_loss": 91,
+     "eod": 4,
+     "expiry": 1
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "s9",
+    "tf": "5minute",
+    "IS": {
+     "trades": 450,
+     "wins": 179,
+     "pts": -2920.9,
+     "gross_inr": -189858.5,
+     "charges_inr": 210080.56,
+     "net_inr": -399939.06,
+     "max_dd_inr": -407198.57,
+     "pf": 0.64,
+     "t_stat": -4.12,
+     "weeks": 23,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W07",
+      -87907.62056954096
+     ]
+    },
+    "OOS": {
+     "trades": 237,
+     "wins": 99,
+     "pts": -1084.9,
+     "gross_inr": -70518.5,
+     "charges_inr": 108663.02,
+     "net_inr": -179181.52,
+     "max_dd_inr": -218762.68,
+     "pf": 0.6,
+     "t_stat": -3.29,
+     "weeks": 13,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W38",
+      -51034.16480887133
+     ]
+    },
+    "ALL": {
+     "trades": 687,
+     "wins": 278,
+     "pts": -4005.8,
+     "gross_inr": -260377.0,
+     "charges_inr": 318743.58,
+     "net_inr": -579120.58,
+     "max_dd_inr": -586380.08,
+     "pf": 0.63,
+     "t_stat": -5.2,
+     "weeks": 35,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W07",
+      -87907.62056954096
+     ]
+    },
+    "signals": 486,
+    "locked": 257,
+    "exit_reasons": {
+     "stop_loss": 330,
+     "target 1R": 108,
+     "target 2R": 50,
+     "eod": 174,
+     "trail_stop": 23,
+     "expiry": 2
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "trail",
+    "tf": "5minute",
+    "IS": {
+     "trades": 143,
+     "wins": 46,
+     "pts": -189.5,
+     "gross_inr": -36952.5,
+     "charges_inr": 186737.23,
+     "net_inr": -223689.73,
+     "max_dd_inr": -282637.95,
+     "pf": 0.81,
+     "t_stat": -1.01,
+     "weeks": 23,
+     "pos_weeks": 8,
+     "worst_week": [
+      "2026-W07",
+      -87152.420569541
+     ]
+    },
+    "OOS": {
+     "trades": 79,
+     "wins": 30,
+     "pts": -114.6,
+     "gross_inr": -22347.0,
+     "charges_inr": 101203.91,
+     "net_inr": -123550.91,
+     "max_dd_inr": -229017.3,
+     "pf": 0.74,
+     "t_stat": -1.02,
+     "weeks": 13,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W34",
+      -49605.44690281172
+     ]
+    },
+    "ALL": {
+     "trades": 222,
+     "wins": 76,
+     "pts": -304.1,
+     "gross_inr": -59299.5,
+     "charges_inr": 287941.14,
+     "net_inr": -347240.64,
+     "max_dd_inr": -400613.28,
+     "pf": 0.79,
+     "t_stat": -1.38,
+     "weeks": 35,
+     "pos_weeks": 12,
+     "worst_week": [
+      "2026-W07",
+      -87152.420569541
+     ]
+    },
+    "signals": 486,
+    "locked": 264,
+    "exit_reasons": {
+     "stop_loss": 116,
+     "eod": 94,
+     "trail_stop": 11,
+     "expiry": 1
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "band",
+    "tf": "5minute",
+    "IS": {
+     "trades": 740,
+     "wins": 145,
+     "pts": -7946.32,
+     "gross_inr": -1549533.01,
+     "charges_inr": 966245.98,
+     "net_inr": -2515778.99,
+     "max_dd_inr": -2515778.99,
+     "pf": 0.34,
+     "t_stat": -11.8,
+     "weeks": 23,
+     "pos_weeks": 1,
+     "worst_week": [
+      "2026-W06",
+      -205110.86100738068
+     ]
+    },
+    "OOS": {
+     "trades": 545,
+     "wins": 65,
+     "pts": -6056.38,
+     "gross_inr": -1180993.85,
+     "charges_inr": 699348.05,
+     "net_inr": -1880341.9,
+     "max_dd_inr": -1890486.04,
+     "pf": 0.19,
+     "t_stat": -15.93,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W34",
+      -206880.4373735952
+     ]
+    },
+    "ALL": {
+     "trades": 1285,
+     "wins": 210,
+     "pts": -14002.7,
+     "gross_inr": -2730526.86,
+     "charges_inr": 1665594.03,
+     "net_inr": -4396120.89,
+     "max_dd_inr": -4396120.89,
+     "pf": 0.28,
+     "t_stat": -18.05,
+     "weeks": 35,
+     "pos_weeks": 1,
+     "worst_week": [
+      "2026-W34",
+      -206880.4373735952
+     ]
+    },
+    "signals": 2133,
+    "locked": 848,
+    "exit_reasons": {
+     "band_exit": 609,
+     "stop_loss": 668,
+     "eod": 7,
+     "expiry": 1
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "s9",
+    "tf": "5minute",
+    "IS": {
+     "trades": 786,
+     "wins": 305,
+     "pts": -5361.8,
+     "gross_inr": -348517.0,
+     "charges_inr": 365655.76,
+     "net_inr": -714172.76,
+     "max_dd_inr": -718339.44,
+     "pf": 0.65,
+     "t_stat": -5.41,
+     "weeks": 23,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W10",
+      -92429.58312702399
+     ]
+    },
+    "OOS": {
+     "trades": 318,
+     "wins": 132,
+     "pts": -2939.8,
+     "gross_inr": -191087.0,
+     "charges_inr": 145908.23,
+     "net_inr": -336995.23,
+     "max_dd_inr": -365437.66,
+     "pf": 0.51,
+     "t_stat": -5.28,
+     "weeks": 13,
+     "pos_weeks": 1,
+     "worst_week": [
+      "2026-W36",
+      -87755.7555299188
+     ]
+    },
+    "ALL": {
+     "trades": 1104,
+     "wins": 437,
+     "pts": -8301.6,
+     "gross_inr": -539604.0,
+     "charges_inr": 511563.99,
+     "net_inr": -1051167.99,
+     "max_dd_inr": -1059846.01,
+     "pf": 0.61,
+     "t_stat": -7.17,
+     "weeks": 35,
+     "pos_weeks": 7,
+     "worst_week": [
+      "2026-W10",
+      -92429.58312702399
+     ]
+    },
+    "signals": 2133,
+    "locked": 1765,
+    "exit_reasons": {
+     "stop_loss": 592,
+     "target 1R": 181,
+     "target 2R": 91,
+     "eod": 191,
+     "trail_stop": 42,
+     "expiry": 7
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "trail",
+    "tf": "5minute",
+    "IS": {
+     "trades": 244,
+     "wins": 77,
+     "pts": -71.9,
+     "gross_inr": -14020.5,
+     "charges_inr": 317818.06,
+     "net_inr": -331838.56,
+     "max_dd_inr": -336489.31,
+     "pf": 0.84,
+     "t_stat": -1.1,
+     "weeks": 23,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W03",
+      -95634.18037907545
+     ]
+    },
+    "OOS": {
+     "trades": 102,
+     "wins": 40,
+     "pts": -816.1,
+     "gross_inr": -159139.5,
+     "charges_inr": 130819.02,
+     "net_inr": -289958.52,
+     "max_dd_inr": -367520.07,
+     "pf": 0.57,
+     "t_stat": -2.25,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W36",
+      -95792.05537531745
+     ]
+    },
+    "ALL": {
+     "trades": 346,
+     "wins": 117,
+     "pts": -888.0,
+     "gross_inr": -173160.0,
+     "charges_inr": 448637.08,
+     "net_inr": -621797.08,
+     "max_dd_inr": -657698.13,
+     "pf": 0.78,
+     "t_stat": -1.89,
+     "weeks": 35,
+     "pos_weeks": 11,
+     "worst_week": [
+      "2026-W36",
+      -95792.05537531745
+     ]
+    },
+    "signals": 2133,
+    "locked": 1787,
+    "exit_reasons": {
+     "stop_loss": 202,
+     "eod": 117,
+     "trail_stop": 23,
+     "expiry": 4
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "band",
+    "tf": "5minute",
+    "IS": {
+     "trades": 501,
+     "wins": 103,
+     "pts": -5187.4,
+     "gross_inr": -1011542.62,
+     "charges_inr": 654694.05,
+     "net_inr": -1666236.67,
+     "max_dd_inr": -1666236.67,
+     "pf": 0.37,
+     "t_stat": -8.77,
+     "weeks": 23,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W06",
+      -165383.13770707682
+     ]
+    },
+    "OOS": {
+     "trades": 341,
+     "wins": 48,
+     "pts": -3442.71,
+     "gross_inr": -671328.84,
+     "charges_inr": 437755.5,
+     "net_inr": -1109084.34,
+     "max_dd_inr": -1119228.48,
+     "pf": 0.26,
+     "t_stat": -9.88,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W39",
+      -137139.45530466418
+     ]
+    },
+    "ALL": {
+     "trades": 842,
+     "wins": 151,
+     "pts": -8630.11,
+     "gross_inr": -1682871.46,
+     "charges_inr": 1092449.54,
+     "net_inr": -2775321.01,
+     "max_dd_inr": -2775321.01,
+     "pf": 0.33,
+     "t_stat": -12.58,
+     "weeks": 35,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W06",
+      -165383.13770707682
+     ]
+    },
+    "signals": 1202,
+    "locked": 360,
+    "exit_reasons": {
+     "band_exit": 471,
+     "stop_loss": 363,
+     "eod": 7,
+     "expiry": 1
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "s9",
+    "tf": "5minute",
+    "IS": {
+     "trades": 657,
+     "wins": 251,
+     "pts": -4092.4,
+     "gross_inr": -266006.0,
+     "charges_inr": 306375.39,
+     "net_inr": -572381.39,
+     "max_dd_inr": -572381.39,
+     "pf": 0.66,
+     "t_stat": -4.74,
+     "weeks": 23,
+     "pos_weeks": 8,
+     "worst_week": [
+      "2026-W06",
+      -89222.4659851722
+     ]
+    },
+    "OOS": {
+     "trades": 282,
+     "wins": 111,
+     "pts": -2325.2,
+     "gross_inr": -151138.0,
+     "charges_inr": 129458.91,
+     "net_inr": -280596.91,
+     "max_dd_inr": -297813.3,
+     "pf": 0.52,
+     "t_stat": -4.79,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W36",
+      -70476.8477238859
+     ]
+    },
+    "ALL": {
+     "trades": 939,
+     "wins": 362,
+     "pts": -6417.6,
+     "gross_inr": -417144.0,
+     "charges_inr": 435834.31,
+     "net_inr": -852978.31,
+     "max_dd_inr": -859774.54,
+     "pf": 0.62,
+     "t_stat": -6.36,
+     "weeks": 35,
+     "pos_weeks": 10,
+     "worst_week": [
+      "2026-W06",
+      -89222.4659851722
+     ]
+    },
+    "signals": 1202,
+    "locked": 889,
+    "exit_reasons": {
+     "stop_loss": 480,
+     "target 1R": 149,
+     "target 2R": 79,
+     "eod": 191,
+     "trail_stop": 32,
+     "expiry": 8
+    }
+   },
+   {
+    "kind": "widner",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "trail",
+    "tf": "5minute",
+    "IS": {
+     "trades": 209,
+     "wins": 63,
+     "pts": -232.9,
+     "gross_inr": -45415.5,
+     "charges_inr": 272673.03,
+     "net_inr": -318088.53,
+     "max_dd_inr": -318088.53,
+     "pf": 0.82,
+     "t_stat": -1.15,
+     "weeks": 23,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W03",
+      -91448.20964080715
+     ]
+    },
+    "OOS": {
+     "trades": 93,
+     "wins": 33,
+     "pts": -733.1,
+     "gross_inr": -142954.5,
+     "charges_inr": 119297.21,
+     "net_inr": -262251.71,
+     "max_dd_inr": -297066.22,
+     "pf": 0.56,
+     "t_stat": -2.16,
+     "weeks": 13,
+     "pos_weeks": 2,
+     "worst_week": [
+      "2026-W36",
+      -75264.66761981887
+     ]
+    },
+    "ALL": {
+     "trades": 302,
+     "wins": 96,
+     "pts": -966.0,
+     "gross_inr": -188370.0,
+     "charges_inr": 391970.25,
+     "net_inr": -580340.25,
+     "max_dd_inr": -597506.42,
+     "pf": 0.76,
+     "t_stat": -1.92,
+     "weeks": 35,
+     "pos_weeks": 11,
+     "worst_week": [
+      "2026-W03",
+      -91448.20964080715
+     ]
+    },
+    "signals": 1202,
+    "locked": 900,
+    "exit_reasons": {
+     "stop_loss": 169,
+     "eod": 110,
+     "trail_stop": 19,
+     "expiry": 4
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "band",
+    "tf": "5minute",
+    "IS": {
+     "trades": 142,
+     "wins": 41,
+     "pts": -884.99,
+     "gross_inr": -172572.52,
+     "charges_inr": 185525.58,
+     "net_inr": -358098.1,
+     "max_dd_inr": -394400.67,
+     "pf": 0.73,
+     "t_stat": -1.54,
+     "weeks": 23,
+     "pos_weeks": 8,
+     "worst_week": [
+      "2026-W16",
+      -61791.08053149972
+     ]
+    },
+    "OOS": {
+     "trades": 81,
+     "wins": 22,
+     "pts": -727.57,
+     "gross_inr": -141876.68,
+     "charges_inr": 104096.09,
+     "net_inr": -245972.77,
+     "max_dd_inr": -291513.41,
+     "pf": 0.45,
+     "t_stat": -2.4,
+     "weeks": 13,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W36",
+      -70044.80744733979
+     ]
+    },
+    "ALL": {
+     "trades": 223,
+     "wins": 63,
+     "pts": -1612.56,
+     "gross_inr": -314449.2,
+     "charges_inr": 289621.67,
+     "net_inr": -604070.87,
+     "max_dd_inr": -637274.67,
+     "pf": 0.66,
+     "t_stat": -2.38,
+     "weeks": 35,
+     "pos_weeks": 12,
+     "worst_week": [
+      "2026-W36",
+      -70044.80744733979
+     ]
+    },
+    "signals": 703,
+    "locked": 480,
+    "exit_reasons": {
+     "band_exit": 98,
+     "eod": 64,
+     "stop_loss": 59,
+     "expiry": 2
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "s9",
+    "tf": "5minute",
+    "IS": {
+     "trades": 492,
+     "wins": 182,
+     "pts": -4504.9,
+     "gross_inr": -292818.5,
+     "charges_inr": 229218.96,
+     "net_inr": -522037.46,
+     "max_dd_inr": -522463.59,
+     "pf": 0.59,
+     "t_stat": -5.26,
+     "weeks": 23,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W04",
+      -70208.56931795701
+     ]
+    },
+    "OOS": {
+     "trades": 219,
+     "wins": 85,
+     "pts": -2747.2,
+     "gross_inr": -178568.0,
+     "charges_inr": 100729.68,
+     "net_inr": -279297.68,
+     "max_dd_inr": -325032.88,
+     "pf": 0.4,
+     "t_stat": -6.09,
+     "weeks": 13,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W36",
+      -83203.41566495963
+     ]
+    },
+    "ALL": {
+     "trades": 711,
+     "wins": 267,
+     "pts": -7252.1,
+     "gross_inr": -471386.5,
+     "charges_inr": 329948.64,
+     "net_inr": -801335.14,
+     "max_dd_inr": -844862.3,
+     "pf": 0.54,
+     "t_stat": -7.33,
+     "weeks": 35,
+     "pos_weeks": 8,
+     "worst_week": [
+      "2026-W36",
+      -83203.41566495963
+     ]
+    },
+    "signals": 703,
+    "locked": 466,
+    "exit_reasons": {
+     "stop_loss": 361,
+     "target 1R": 105,
+     "eod": 180,
+     "target 2R": 44,
+     "trail_stop": 18,
+     "expiry": 3
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "trail",
+    "tf": "5minute",
+    "IS": {
+     "trades": 157,
+     "wins": 47,
+     "pts": -653.5,
+     "gross_inr": -127432.5,
+     "charges_inr": 204700.09,
+     "net_inr": -332132.59,
+     "max_dd_inr": -376842.09,
+     "pf": 0.75,
+     "t_stat": -1.47,
+     "weeks": 23,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W23",
+      -71407.7981687873
+     ]
+    },
+    "OOS": {
+     "trades": 73,
+     "wins": 25,
+     "pts": -1132.2,
+     "gross_inr": -220779.0,
+     "charges_inr": 93838.32,
+     "net_inr": -314617.32,
+     "max_dd_inr": -357212.08,
+     "pf": 0.35,
+     "t_stat": -3.84,
+     "weeks": 13,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W36",
+      -82402.71377243257
+     ]
+    },
+    "ALL": {
+     "trades": 230,
+     "wins": 72,
+     "pts": -1785.7,
+     "gross_inr": -348211.5,
+     "charges_inr": 298538.41,
+     "net_inr": -646749.91,
+     "max_dd_inr": -708111.31,
+     "pf": 0.65,
+     "t_stat": -2.69,
+     "weeks": 35,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W36",
+      -82402.71377243257
+     ]
+    },
+    "signals": 703,
+    "locked": 473,
+    "exit_reasons": {
+     "stop_loss": 129,
+     "eod": 90,
+     "trail_stop": 9,
+     "expiry": 2
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "band",
+    "tf": "5minute",
+    "IS": {
+     "trades": 135,
+     "wins": 40,
+     "pts": -816.12,
+     "gross_inr": -159143.01,
+     "charges_inr": 176281.8,
+     "net_inr": -335424.82,
+     "max_dd_inr": -342977.37,
+     "pf": 0.73,
+     "t_stat": -1.48,
+     "weeks": 23,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W23",
+      -53095.85350199282
+     ]
+    },
+    "OOS": {
+     "trades": 81,
+     "wins": 22,
+     "pts": -832.19,
+     "gross_inr": -162276.26,
+     "charges_inr": 104092.4,
+     "net_inr": -266368.66,
+     "max_dd_inr": -311909.3,
+     "pf": 0.4,
+     "t_stat": -2.65,
+     "weeks": 13,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W36",
+      -70044.80744733979
+     ]
+    },
+    "ALL": {
+     "trades": 216,
+     "wins": 62,
+     "pts": -1648.3,
+     "gross_inr": -321419.27,
+     "charges_inr": 280374.21,
+     "net_inr": -601793.48,
+     "max_dd_inr": -622437.41,
+     "pf": 0.64,
+     "t_stat": -2.43,
+     "weeks": 35,
+     "pos_weeks": 12,
+     "worst_week": [
+      "2026-W36",
+      -70044.80744733979
+     ]
+    },
+    "signals": 675,
+    "locked": 459,
+    "exit_reasons": {
+     "band_exit": 98,
+     "eod": 64,
+     "stop_loss": 52,
+     "expiry": 2
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "s9",
+    "tf": "5minute",
+    "IS": {
+     "trades": 468,
+     "wins": 175,
+     "pts": -4453.9,
+     "gross_inr": -289503.5,
+     "charges_inr": 218203.13,
+     "net_inr": -507706.63,
+     "max_dd_inr": -507706.63,
+     "pf": 0.58,
+     "t_stat": -5.28,
+     "weeks": 23,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W04",
+      -70208.56931795701
+     ]
+    },
+    "OOS": {
+     "trades": 219,
+     "wins": 83,
+     "pts": -3000.4,
+     "gross_inr": -195026.0,
+     "charges_inr": 100726.11,
+     "net_inr": -295752.11,
+     "max_dd_inr": -341487.32,
+     "pf": 0.37,
+     "t_stat": -6.58,
+     "weeks": 13,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W36",
+      -83203.41566495963
+     ]
+    },
+    "ALL": {
+     "trades": 687,
+     "wins": 258,
+     "pts": -7454.3,
+     "gross_inr": -484529.5,
+     "charges_inr": 318929.24,
+     "net_inr": -803458.74,
+     "max_dd_inr": -846920.09,
+     "pf": 0.52,
+     "t_stat": -7.57,
+     "weeks": 35,
+     "pos_weeks": 8,
+     "worst_week": [
+      "2026-W36",
+      -83203.41566495963
+     ]
+    },
+    "signals": 675,
+    "locked": 446,
+    "exit_reasons": {
+     "stop_loss": 349,
+     "target 1R": 102,
+     "eod": 177,
+     "target 2R": 41,
+     "trail_stop": 15,
+     "expiry": 3
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "trail",
+    "tf": "5minute",
+    "IS": {
+     "trades": 151,
+     "wins": 46,
+     "pts": -851.9,
+     "gross_inr": -166120.5,
+     "charges_inr": 196938.97,
+     "net_inr": -363059.47,
+     "max_dd_inr": -363059.47,
+     "pf": 0.72,
+     "t_stat": -1.7,
+     "weeks": 23,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W23",
+      -58459.56958743729
+     ]
+    },
+    "OOS": {
+     "trades": 73,
+     "wins": 24,
+     "pts": -1208.8,
+     "gross_inr": -235716.0,
+     "charges_inr": 93834.7,
+     "net_inr": -329550.7,
+     "max_dd_inr": -372145.46,
+     "pf": 0.33,
+     "t_stat": -4.05,
+     "weeks": 13,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W36",
+      -82402.71377243257
+     ]
+    },
+    "ALL": {
+     "trades": 224,
+     "wins": 70,
+     "pts": -2060.7,
+     "gross_inr": -401836.5,
+     "charges_inr": 290773.67,
+     "net_inr": -692610.17,
+     "max_dd_inr": -730662.73,
+     "pf": 0.61,
+     "t_stat": -3.03,
+     "weeks": 35,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W36",
+      -82402.71377243257
+     ]
+    },
+    "signals": 675,
+    "locked": 451,
+    "exit_reasons": {
+     "stop_loss": 125,
+     "eod": 89,
+     "trail_stop": 8,
+     "expiry": 2
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "band",
+    "tf": "5minute",
+    "IS": {
+     "trades": 363,
+     "wins": 74,
+     "pts": -2046.03,
+     "gross_inr": -398975.71,
+     "charges_inr": 474980.5,
+     "net_inr": -873956.21,
+     "max_dd_inr": -873956.21,
+     "pf": 0.66,
+     "t_stat": -2.78,
+     "weeks": 23,
+     "pos_weeks": 5,
+     "worst_week": [
+      "2026-W25",
+      -142859.9886205001
+     ]
+    },
+    "OOS": {
+     "trades": 219,
+     "wins": 42,
+     "pts": -2782.66,
+     "gross_inr": -542617.94,
+     "charges_inr": 280565.53,
+     "net_inr": -823183.47,
+     "max_dd_inr": -862940.97,
+     "pf": 0.33,
+     "t_stat": -6.05,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W38",
+      -124574.36273701908
+     ]
+    },
+    "ALL": {
+     "trades": 582,
+     "wins": 116,
+     "pts": -4828.69,
+     "gross_inr": -941593.65,
+     "charges_inr": 755546.04,
+     "net_inr": -1697139.68,
+     "max_dd_inr": -1697139.68,
+     "pf": 0.55,
+     "t_stat": -4.95,
+     "weeks": 35,
+     "pos_weeks": 5,
+     "worst_week": [
+      "2026-W25",
+      -142859.9886205001
+     ]
+    },
+    "signals": 1520,
+    "locked": 938,
+    "exit_reasons": {
+     "stop_loss": 282,
+     "band_exit": 206,
+     "eod": 89,
+     "expiry": 4,
+     "open": 1
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "s9",
+    "tf": "5minute",
+    "IS": {
+     "trades": 786,
+     "wins": 271,
+     "pts": -9644.5,
+     "gross_inr": -626892.5,
+     "charges_inr": 365520.31,
+     "net_inr": -992412.81,
+     "max_dd_inr": -992412.81,
+     "pf": 0.54,
+     "t_stat": -7.77,
+     "weeks": 23,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W16",
+      -96852.94373509807
+     ]
+    },
+    "OOS": {
+     "trades": 345,
+     "wins": 114,
+     "pts": -5937.3,
+     "gross_inr": -385924.5,
+     "charges_inr": 158150.53,
+     "net_inr": -544075.03,
+     "max_dd_inr": -554830.92,
+     "pf": 0.36,
+     "t_stat": -8.23,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W35",
+      -108186.04149743062
+     ]
+    },
+    "ALL": {
+     "trades": 1131,
+     "wins": 385,
+     "pts": -15581.8,
+     "gross_inr": -1012817.0,
+     "charges_inr": 523670.84,
+     "net_inr": -1536487.84,
+     "max_dd_inr": -1536487.84,
+     "pf": 0.49,
+     "t_stat": -10.68,
+     "weeks": 35,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W35",
+      -108186.04149743062
+     ]
+    },
+    "signals": 1520,
+    "locked": 1143,
+    "exit_reasons": {
+     "stop_loss": 655,
+     "target 1R": 164,
+     "target 2R": 76,
+     "eod": 200,
+     "trail_stop": 34,
+     "expiry": 2
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "trail",
+    "tf": "5minute",
+    "IS": {
+     "trades": 253,
+     "wins": 67,
+     "pts": -2401.0,
+     "gross_inr": -468195.0,
+     "charges_inr": 329038.22,
+     "net_inr": -797233.22,
+     "max_dd_inr": -797233.22,
+     "pf": 0.66,
+     "t_stat": -2.74,
+     "weeks": 23,
+     "pos_weeks": 5,
+     "worst_week": [
+      "2026-W06",
+      -118003.61319119475
+     ]
+    },
+    "OOS": {
+     "trades": 115,
+     "wins": 33,
+     "pts": -2046.7,
+     "gross_inr": -399106.5,
+     "charges_inr": 147285.09,
+     "net_inr": -546391.59,
+     "max_dd_inr": -589994.16,
+     "pf": 0.38,
+     "t_stat": -4.06,
+     "weeks": 13,
+     "pos_weeks": 1,
+     "worst_week": [
+      "2026-W35",
+      -113742.31185843056
+     ]
+    },
+    "ALL": {
+     "trades": 368,
+     "wins": 100,
+     "pts": -4447.7,
+     "gross_inr": -867301.5,
+     "charges_inr": 476323.32,
+     "net_inr": -1343624.82,
+     "max_dd_inr": -1343624.82,
+     "pf": 0.58,
+     "t_stat": -4.19,
+     "weeks": 35,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W06",
+      -118003.61319119475
+     ]
+    },
+    "signals": 1520,
+    "locked": 1152,
+    "exit_reasons": {
+     "stop_loss": 235,
+     "eod": 113,
+     "trail_stop": 18,
+     "expiry": 2
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "band",
+    "tf": "5minute",
+    "IS": {
+     "trades": 288,
+     "wins": 61,
+     "pts": -2011.86,
+     "gross_inr": -392313.08,
+     "charges_inr": 376786.3,
+     "net_inr": -769099.39,
+     "max_dd_inr": -769099.39,
+     "pf": 0.65,
+     "t_stat": -2.61,
+     "weeks": 23,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W25",
+      -123587.15941336348
+     ]
+    },
+    "OOS": {
+     "trades": 180,
+     "wins": 37,
+     "pts": -2488.4,
+     "gross_inr": -485238.59,
+     "charges_inr": 230649.87,
+     "net_inr": -715888.46,
+     "max_dd_inr": -755645.96,
+     "pf": 0.32,
+     "t_stat": -5.57,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W35",
+      -112175.73296252446
+     ]
+    },
+    "ALL": {
+     "trades": 468,
+     "wins": 98,
+     "pts": -4500.27,
+     "gross_inr": -877551.68,
+     "charges_inr": 607436.17,
+     "net_inr": -1484987.85,
+     "max_dd_inr": -1484987.85,
+     "pf": 0.55,
+     "t_stat": -4.62,
+     "weeks": 35,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W25",
+      -123587.15941336348
+     ]
+    },
+    "signals": 1282,
+    "locked": 814,
+    "exit_reasons": {
+     "stop_loss": 191,
+     "band_exit": 190,
+     "eod": 83,
+     "expiry": 3,
+     "open": 1
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "s9",
+    "tf": "5minute",
+    "IS": {
+     "trades": 735,
+     "wins": 261,
+     "pts": -8051.4,
+     "gross_inr": -523341.0,
+     "charges_inr": 341904.48,
+     "net_inr": -865245.48,
+     "max_dd_inr": -865245.48,
+     "pf": 0.56,
+     "t_stat": -6.98,
+     "weeks": 23,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W11",
+      -87768.454037332
+     ]
+    },
+    "OOS": {
+     "trades": 336,
+     "wins": 111,
+     "pts": -5720.8,
+     "gross_inr": -371852.0,
+     "charges_inr": 154151.95,
+     "net_inr": -526003.95,
+     "max_dd_inr": -536759.84,
+     "pf": 0.36,
+     "t_stat": -8.13,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W35",
+      -108186.20572674261
+     ]
+    },
+    "ALL": {
+     "trades": 1071,
+     "wins": 372,
+     "pts": -13772.2,
+     "gross_inr": -895193.0,
+     "charges_inr": 496056.43,
+     "net_inr": -1391249.43,
+     "max_dd_inr": -1391249.43,
+     "pf": 0.5,
+     "t_stat": -9.94,
+     "weeks": 35,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W35",
+      -108186.20572674261
+     ]
+    },
+    "signals": 1282,
+    "locked": 925,
+    "exit_reasons": {
+     "stop_loss": 602,
+     "target 1R": 156,
+     "eod": 203,
+     "target 2R": 71,
+     "trail_stop": 33,
+     "expiry": 6
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "cross",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "trail",
+    "tf": "5minute",
+    "IS": {
+     "trades": 237,
+     "wins": 66,
+     "pts": -2096.8,
+     "gross_inr": -408876.0,
+     "charges_inr": 308376.17,
+     "net_inr": -717252.17,
+     "max_dd_inr": -717252.17,
+     "pf": 0.66,
+     "t_stat": -2.6,
+     "weeks": 23,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W23",
+      -82276.46939235099
+     ]
+    },
+    "OOS": {
+     "trades": 112,
+     "wins": 32,
+     "pts": -1944.7,
+     "gross_inr": -379216.5,
+     "charges_inr": 143570.58,
+     "net_inr": -522787.08,
+     "max_dd_inr": -566389.64,
+     "pf": 0.38,
+     "t_stat": -3.93,
+     "weeks": 13,
+     "pos_weeks": 1,
+     "worst_week": [
+      "2026-W35",
+      -113742.47608774257
+     ]
+    },
+    "ALL": {
+     "trades": 349,
+     "wins": 98,
+     "pts": -4041.5,
+     "gross_inr": -788092.5,
+     "charges_inr": 451946.74,
+     "net_inr": -1240039.24,
+     "max_dd_inr": -1240039.24,
+     "pf": 0.58,
+     "t_stat": -4.05,
+     "weeks": 35,
+     "pos_weeks": 7,
+     "worst_week": [
+      "2026-W35",
+      -113742.47608774257
+     ]
+    },
+    "signals": 1282,
+    "locked": 933,
+    "exit_reasons": {
+     "stop_loss": 215,
+     "eod": 110,
+     "trail_stop": 21,
+     "expiry": 3
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "band",
+    "tf": "5minute",
+    "IS": {
+     "trades": 142,
+     "wins": 41,
+     "pts": -884.99,
+     "gross_inr": -172572.52,
+     "charges_inr": 185525.58,
+     "net_inr": -358098.1,
+     "max_dd_inr": -394400.67,
+     "pf": 0.73,
+     "t_stat": -1.54,
+     "weeks": 23,
+     "pos_weeks": 8,
+     "worst_week": [
+      "2026-W16",
+      -61791.08053149972
+     ]
+    },
+    "OOS": {
+     "trades": 81,
+     "wins": 22,
+     "pts": -727.57,
+     "gross_inr": -141876.68,
+     "charges_inr": 104096.09,
+     "net_inr": -245972.77,
+     "max_dd_inr": -291513.41,
+     "pf": 0.45,
+     "t_stat": -2.4,
+     "weeks": 13,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W36",
+      -70044.80744733979
+     ]
+    },
+    "ALL": {
+     "trades": 223,
+     "wins": 63,
+     "pts": -1612.56,
+     "gross_inr": -314449.2,
+     "charges_inr": 289621.67,
+     "net_inr": -604070.87,
+     "max_dd_inr": -637274.67,
+     "pf": 0.66,
+     "t_stat": -2.38,
+     "weeks": 35,
+     "pos_weeks": 12,
+     "worst_week": [
+      "2026-W36",
+      -70044.80744733979
+     ]
+    },
+    "signals": 703,
+    "locked": 480,
+    "exit_reasons": {
+     "band_exit": 98,
+     "eod": 64,
+     "stop_loss": 59,
+     "expiry": 2
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "s9",
+    "tf": "5minute",
+    "IS": {
+     "trades": 492,
+     "wins": 182,
+     "pts": -4504.9,
+     "gross_inr": -292818.5,
+     "charges_inr": 229218.96,
+     "net_inr": -522037.46,
+     "max_dd_inr": -522463.59,
+     "pf": 0.59,
+     "t_stat": -5.26,
+     "weeks": 23,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W04",
+      -70208.56931795701
+     ]
+    },
+    "OOS": {
+     "trades": 219,
+     "wins": 85,
+     "pts": -2747.2,
+     "gross_inr": -178568.0,
+     "charges_inr": 100729.68,
+     "net_inr": -279297.68,
+     "max_dd_inr": -325032.88,
+     "pf": 0.4,
+     "t_stat": -6.09,
+     "weeks": 13,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W36",
+      -83203.41566495963
+     ]
+    },
+    "ALL": {
+     "trades": 711,
+     "wins": 267,
+     "pts": -7252.1,
+     "gross_inr": -471386.5,
+     "charges_inr": 329948.64,
+     "net_inr": -801335.14,
+     "max_dd_inr": -844862.3,
+     "pf": 0.54,
+     "t_stat": -7.33,
+     "weeks": 35,
+     "pos_weeks": 8,
+     "worst_week": [
+      "2026-W36",
+      -83203.41566495963
+     ]
+    },
+    "signals": 703,
+    "locked": 466,
+    "exit_reasons": {
+     "stop_loss": 361,
+     "target 1R": 105,
+     "eod": 180,
+     "target 2R": 44,
+     "trail_stop": 18,
+     "expiry": 3
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 0,
+    "exits": "trail",
+    "tf": "5minute",
+    "IS": {
+     "trades": 157,
+     "wins": 47,
+     "pts": -653.5,
+     "gross_inr": -127432.5,
+     "charges_inr": 204700.09,
+     "net_inr": -332132.59,
+     "max_dd_inr": -376842.09,
+     "pf": 0.75,
+     "t_stat": -1.47,
+     "weeks": 23,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W23",
+      -71407.7981687873
+     ]
+    },
+    "OOS": {
+     "trades": 73,
+     "wins": 25,
+     "pts": -1132.2,
+     "gross_inr": -220779.0,
+     "charges_inr": 93838.32,
+     "net_inr": -314617.32,
+     "max_dd_inr": -357212.08,
+     "pf": 0.35,
+     "t_stat": -3.84,
+     "weeks": 13,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W36",
+      -82402.71377243257
+     ]
+    },
+    "ALL": {
+     "trades": 230,
+     "wins": 72,
+     "pts": -1785.7,
+     "gross_inr": -348211.5,
+     "charges_inr": 298538.41,
+     "net_inr": -646749.91,
+     "max_dd_inr": -708111.31,
+     "pf": 0.65,
+     "t_stat": -2.69,
+     "weeks": 35,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W36",
+      -82402.71377243257
+     ]
+    },
+    "signals": 703,
+    "locked": 473,
+    "exit_reasons": {
+     "stop_loss": 129,
+     "eod": 90,
+     "trail_stop": 9,
+     "expiry": 2
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "band",
+    "tf": "5minute",
+    "IS": {
+     "trades": 135,
+     "wins": 40,
+     "pts": -816.12,
+     "gross_inr": -159143.01,
+     "charges_inr": 176281.8,
+     "net_inr": -335424.82,
+     "max_dd_inr": -342977.37,
+     "pf": 0.73,
+     "t_stat": -1.48,
+     "weeks": 23,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W23",
+      -53095.85350199282
+     ]
+    },
+    "OOS": {
+     "trades": 81,
+     "wins": 22,
+     "pts": -832.19,
+     "gross_inr": -162276.26,
+     "charges_inr": 104092.4,
+     "net_inr": -266368.66,
+     "max_dd_inr": -311909.3,
+     "pf": 0.4,
+     "t_stat": -2.65,
+     "weeks": 13,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W36",
+      -70044.80744733979
+     ]
+    },
+    "ALL": {
+     "trades": 216,
+     "wins": 62,
+     "pts": -1648.3,
+     "gross_inr": -321419.27,
+     "charges_inr": 280374.21,
+     "net_inr": -601793.48,
+     "max_dd_inr": -622437.41,
+     "pf": 0.64,
+     "t_stat": -2.43,
+     "weeks": 35,
+     "pos_weeks": 12,
+     "worst_week": [
+      "2026-W36",
+      -70044.80744733979
+     ]
+    },
+    "signals": 675,
+    "locked": 459,
+    "exit_reasons": {
+     "band_exit": 98,
+     "eod": 64,
+     "stop_loss": 52,
+     "expiry": 2
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "s9",
+    "tf": "5minute",
+    "IS": {
+     "trades": 468,
+     "wins": 175,
+     "pts": -4453.9,
+     "gross_inr": -289503.5,
+     "charges_inr": 218203.13,
+     "net_inr": -507706.63,
+     "max_dd_inr": -507706.63,
+     "pf": 0.58,
+     "t_stat": -5.28,
+     "weeks": 23,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W04",
+      -70208.56931795701
+     ]
+    },
+    "OOS": {
+     "trades": 219,
+     "wins": 83,
+     "pts": -3000.4,
+     "gross_inr": -195026.0,
+     "charges_inr": 100726.11,
+     "net_inr": -295752.11,
+     "max_dd_inr": -341487.32,
+     "pf": 0.37,
+     "t_stat": -6.58,
+     "weeks": 13,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W36",
+      -83203.41566495963
+     ]
+    },
+    "ALL": {
+     "trades": 687,
+     "wins": 258,
+     "pts": -7454.3,
+     "gross_inr": -484529.5,
+     "charges_inr": 318929.24,
+     "net_inr": -803458.74,
+     "max_dd_inr": -846920.09,
+     "pf": 0.52,
+     "t_stat": -7.57,
+     "weeks": 35,
+     "pos_weeks": 8,
+     "worst_week": [
+      "2026-W36",
+      -83203.41566495963
+     ]
+    },
+    "signals": 675,
+    "locked": 446,
+    "exit_reasons": {
+     "stop_loss": 349,
+     "target 1R": 102,
+     "eod": 177,
+     "target 2R": 41,
+     "trail_stop": 15,
+     "expiry": 3
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "full",
+    "osc_min": 25,
+    "exits": "trail",
+    "tf": "5minute",
+    "IS": {
+     "trades": 151,
+     "wins": 46,
+     "pts": -851.9,
+     "gross_inr": -166120.5,
+     "charges_inr": 196938.97,
+     "net_inr": -363059.47,
+     "max_dd_inr": -363059.47,
+     "pf": 0.72,
+     "t_stat": -1.7,
+     "weeks": 23,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W23",
+      -58459.56958743729
+     ]
+    },
+    "OOS": {
+     "trades": 73,
+     "wins": 24,
+     "pts": -1208.8,
+     "gross_inr": -235716.0,
+     "charges_inr": 93834.7,
+     "net_inr": -329550.7,
+     "max_dd_inr": -372145.46,
+     "pf": 0.33,
+     "t_stat": -4.05,
+     "weeks": 13,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W36",
+      -82402.71377243257
+     ]
+    },
+    "ALL": {
+     "trades": 224,
+     "wins": 70,
+     "pts": -2060.7,
+     "gross_inr": -401836.5,
+     "charges_inr": 290773.67,
+     "net_inr": -692610.17,
+     "max_dd_inr": -730662.73,
+     "pf": 0.61,
+     "t_stat": -3.03,
+     "weeks": 35,
+     "pos_weeks": 9,
+     "worst_week": [
+      "2026-W36",
+      -82402.71377243257
+     ]
+    },
+    "signals": 675,
+    "locked": 451,
+    "exit_reasons": {
+     "stop_loss": 125,
+     "eod": 89,
+     "trail_stop": 8,
+     "expiry": 2
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "band",
+    "tf": "5minute",
+    "IS": {
+     "trades": 326,
+     "wins": 70,
+     "pts": -1700.17,
+     "gross_inr": -331533.83,
+     "charges_inr": 426751.84,
+     "net_inr": -758285.67,
+     "max_dd_inr": -758285.67,
+     "pf": 0.68,
+     "t_stat": -2.44,
+     "weeks": 23,
+     "pos_weeks": 5,
+     "worst_week": [
+      "2026-W09",
+      -131461.05736985215
+     ]
+    },
+    "OOS": {
+     "trades": 202,
+     "wins": 41,
+     "pts": -2560.02,
+     "gross_inr": -499204.03,
+     "charges_inr": 258856.25,
+     "net_inr": -758060.28,
+     "max_dd_inr": -803939.61,
+     "pf": 0.34,
+     "t_stat": -5.66,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W38",
+      -105293.91035669584
+     ]
+    },
+    "ALL": {
+     "trades": 528,
+     "wins": 111,
+     "pts": -4260.19,
+     "gross_inr": -830737.86,
+     "charges_inr": 685608.09,
+     "net_inr": -1516345.95,
+     "max_dd_inr": -1516345.95,
+     "pf": 0.57,
+     "t_stat": -4.48,
+     "weeks": 35,
+     "pos_weeks": 5,
+     "worst_week": [
+      "2026-W09",
+      -131461.05736985215
+     ]
+    },
+    "signals": 1447,
+    "locked": 919,
+    "exit_reasons": {
+     "stop_loss": 245,
+     "band_exit": 192,
+     "eod": 86,
+     "expiry": 4,
+     "open": 1
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "s9",
+    "tf": "5minute",
+    "IS": {
+     "trades": 771,
+     "wins": 264,
+     "pts": -9250.3,
+     "gross_inr": -601269.5,
+     "charges_inr": 358695.69,
+     "net_inr": -959965.19,
+     "max_dd_inr": -959965.19,
+     "pf": 0.54,
+     "t_stat": -7.52,
+     "weeks": 23,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W16",
+      -96852.94373509807
+     ]
+    },
+    "OOS": {
+     "trades": 333,
+     "wins": 110,
+     "pts": -5502.5,
+     "gross_inr": -357662.5,
+     "charges_inr": 152670.44,
+     "net_inr": -510332.94,
+     "max_dd_inr": -521088.84,
+     "pf": 0.37,
+     "t_stat": -7.84,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W35",
+      -108186.04149743062
+     ]
+    },
+    "ALL": {
+     "trades": 1104,
+     "wins": 374,
+     "pts": -14752.8,
+     "gross_inr": -958932.0,
+     "charges_inr": 511366.13,
+     "net_inr": -1470298.13,
+     "max_dd_inr": -1470298.13,
+     "pf": 0.49,
+     "t_stat": -10.26,
+     "weeks": 35,
+     "pos_weeks": 4,
+     "worst_week": [
+      "2026-W35",
+      -108186.04149743062
+     ]
+    },
+    "signals": 1447,
+    "locked": 1079,
+    "exit_reasons": {
+     "stop_loss": 634,
+     "target 1R": 161,
+     "target 2R": 76,
+     "eod": 198,
+     "trail_stop": 33,
+     "expiry": 2
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 0,
+    "exits": "trail",
+    "tf": "5minute",
+    "IS": {
+     "trades": 248,
+     "wins": 65,
+     "pts": -2280.9,
+     "gross_inr": -444775.5,
+     "charges_inr": 322689.62,
+     "net_inr": -767465.12,
+     "max_dd_inr": -767465.12,
+     "pf": 0.66,
+     "t_stat": -2.65,
+     "weeks": 23,
+     "pos_weeks": 5,
+     "worst_week": [
+      "2026-W06",
+      -98793.78639007159
+     ]
+    },
+    "OOS": {
+     "trades": 111,
+     "wins": 31,
+     "pts": -1943.0,
+     "gross_inr": -378885.0,
+     "charges_inr": 142181.24,
+     "net_inr": -521066.24,
+     "max_dd_inr": -566574.44,
+     "pf": 0.38,
+     "t_stat": -3.92,
+     "weeks": 13,
+     "pos_weeks": 1,
+     "worst_week": [
+      "2026-W35",
+      -113742.31185843056
+     ]
+    },
+    "ALL": {
+     "trades": 359,
+     "wins": 96,
+     "pts": -4223.9,
+     "gross_inr": -823660.5,
+     "charges_inr": 464870.85,
+     "net_inr": -1288531.35,
+     "max_dd_inr": -1288531.35,
+     "pf": 0.58,
+     "t_stat": -4.04,
+     "weeks": 35,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W35",
+      -113742.31185843056
+     ]
+    },
+    "signals": 1447,
+    "locked": 1088,
+    "exit_reasons": {
+     "stop_loss": 228,
+     "eod": 111,
+     "trail_stop": 18,
+     "expiry": 2
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "band",
+    "tf": "5minute",
+    "IS": {
+     "trades": 275,
+     "wins": 58,
+     "pts": -2015.08,
+     "gross_inr": -392940.82,
+     "charges_inr": 359879.74,
+     "net_inr": -752820.56,
+     "max_dd_inr": -752820.56,
+     "pf": 0.65,
+     "t_stat": -2.57,
+     "weeks": 23,
+     "pos_weeks": 5,
+     "worst_week": [
+      "2026-W09",
+      -119066.6624451602
+     ]
+    },
+    "OOS": {
+     "trades": 171,
+     "wins": 36,
+     "pts": -2366.95,
+     "gross_inr": -461555.01,
+     "charges_inr": 219221.49,
+     "net_inr": -680776.5,
+     "max_dd_inr": -726655.83,
+     "pf": 0.32,
+     "t_stat": -5.39,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W35",
+      -112175.73296252446
+     ]
+    },
+    "ALL": {
+     "trades": 446,
+     "wins": 94,
+     "pts": -4382.03,
+     "gross_inr": -854495.82,
+     "charges_inr": 579101.24,
+     "net_inr": -1433597.06,
+     "max_dd_inr": -1433597.06,
+     "pf": 0.55,
+     "t_stat": -4.49,
+     "weeks": 35,
+     "pos_weeks": 5,
+     "worst_week": [
+      "2026-W09",
+      -119066.6624451602
+     ]
+    },
+    "signals": 1253,
+    "locked": 807,
+    "exit_reasons": {
+     "stop_loss": 178,
+     "band_exit": 183,
+     "eod": 81,
+     "expiry": 3,
+     "open": 1
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "s9",
+    "tf": "5minute",
+    "IS": {
+     "trades": 726,
+     "wins": 252,
+     "pts": -8477.4,
+     "gross_inr": -551031.0,
+     "charges_inr": 337832.6,
+     "net_inr": -888863.6,
+     "max_dd_inr": -888863.6,
+     "pf": 0.55,
+     "t_stat": -7.22,
+     "weeks": 23,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W11",
+      -87768.454037332
+     ]
+    },
+    "OOS": {
+     "trades": 324,
+     "wins": 110,
+     "pts": -5137.8,
+     "gross_inr": -333957.0,
+     "charges_inr": 148615.93,
+     "net_inr": -482572.93,
+     "max_dd_inr": -493328.82,
+     "pf": 0.37,
+     "t_stat": -7.57,
+     "weeks": 13,
+     "pos_weeks": 0,
+     "worst_week": [
+      "2026-W35",
+      -108186.20572674261
+     ]
+    },
+    "ALL": {
+     "trades": 1050,
+     "wins": 362,
+     "pts": -13615.2,
+     "gross_inr": -884988.0,
+     "charges_inr": 486448.53,
+     "net_inr": -1371436.53,
+     "max_dd_inr": -1371436.53,
+     "pf": 0.5,
+     "t_stat": -9.89,
+     "weeks": 35,
+     "pos_weeks": 3,
+     "worst_week": [
+      "2026-W35",
+      -108186.20572674261
+     ]
+    },
+    "signals": 1253,
+    "locked": 903,
+    "exit_reasons": {
+     "stop_loss": 590,
+     "target 1R": 153,
+     "eod": 199,
+     "target 2R": 69,
+     "trail_stop": 33,
+     "expiry": 6
+    }
+   },
+   {
+    "kind": "ema",
+    "trigger": "pullback",
+    "fan": "none",
+    "osc_min": 25,
+    "exits": "trail",
+    "tf": "5minute",
+    "IS": {
+     "trades": 234,
+     "wins": 64,
+     "pts": -2151.7,
+     "gross_inr": -419581.5,
+     "charges_inr": 304588.49,
+     "net_inr": -724169.99,
+     "max_dd_inr": -724169.99,
+     "pf": 0.65,
+     "t_stat": -2.63,
+     "weeks": 23,
+     "pos_weeks": 6,
+     "worst_week": [
+      "2026-W06",
+      -79510.233731627
+     ]
+    },
+    "OOS": {
+     "trades": 108,
+     "wins": 31,
+     "pts": -1802.9,
+     "gross_inr": -351565.5,
+     "charges_inr": 138410.29,
+     "net_inr": -489975.79,
+     "max_dd_inr": -535483.99,
+     "pf": 0.39,
+     "t_stat": -3.73,
+     "weeks": 13,
+     "pos_weeks": 1,
+     "worst_week": [
+      "2026-W35",
+      -113742.47608774257
+     ]
+    },
+    "ALL": {
+     "trades": 342,
+     "wins": 95,
+     "pts": -3954.6,
+     "gross_inr": -771147.0,
+     "charges_inr": 442998.78,
+     "net_inr": -1214145.78,
+     "max_dd_inr": -1214145.78,
+     "pf": 0.58,
+     "t_stat": -3.99,
+     "weeks": 35,
+     "pos_weeks": 7,
+     "worst_week": [
+      "2026-W35",
+      -113742.47608774257
+     ]
+    },
+    "signals": 1253,
+    "locked": 911,
+    "exit_reasons": {
+     "stop_loss": 211,
+     "eod": 107,
+     "trail_stop": 21,
+     "expiry": 3
+    }
+   }
+  ]
+ }
+}

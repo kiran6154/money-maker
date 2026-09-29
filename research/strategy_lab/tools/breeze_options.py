@@ -67,11 +67,62 @@ def plan(expiries):
     return need, days, sessions
 
 
+# --research: the C2C research programme's option set (studies/c2c/LEDGER.md), independent of the strategy files.
+# Strikes from the long NIFTY 5-minute index file at every candle (decision-time spot, no hindsight); the expiries a
+# session can trade: nearest weekly, the weekly after it, nearest monthly >= 15 days (the DTE buckets 0-30). 5-minute only.
+# Recorded in research_chain.json beside manifest.json - never as manifest "full_chain", so no lab strategy treats these
+# expiries as complete for its own strike choices and no stored lab result is invalidated.
+RESEARCH_CHOICES = ("ATM", "ITM1", "ITM2", "OTM1", "OTM2")
+RESEARCH_EXPIRIES = (("WEEKLY", 0), ("WEEKLY", 7), ("MONTHLY", 15))
+
+
+def research_spot():
+    import glob
+    root = os.path.dirname(os.path.normpath(lab.DATA["options"]["weekly_dir"]))
+    fs = [f for f in glob.glob(os.path.join(root, "nifty50_5minute_*.csv")) if " - Copy" not in f and "kite" not in f]
+    if len(fs) != 1: sys.exit(f"--research needs exactly one long index file nifty50_5minute_*.csv under {root}; found {fs}")
+    return fs[0]
+
+
+def plan_research(frm, to):
+    """({expiry: {(right, strike): first session}}, {expiry: [sessions]}, every known session) for sessions frm..to."""
+    specs = [s for _, s in lab.load_strategies()]
+    step = specs[0]["options"]["strike_step"]
+    chain = lab.OptionChain(dict(lab.type_rows(specs[0])[1], timeframe="5minute"))
+    allsess = sorted(lab.known_sessions())
+    want = {d for d in allsess if frm <= d <= to}
+    spot = lab.Series.get(research_spot())
+    need, days, exp_of = {}, {}, {}
+    for d in sorted(want):                        # the expiries per session, looked up once
+        exp_of[d] = [e for e in (chain.expiry_for(d, md, kind) for kind, md in RESEARCH_EXPIRIES) if e]
+    for i, t in enumerate(spot.t):
+        d = t[:10]
+        if d not in want: continue
+        for e in exp_of[d]:
+            if d not in days.setdefault(e, []): days[e].append(d)
+            for c in RESEARCH_CHOICES:
+                for right in ("CE", "PE"):
+                    need.setdefault(e, {}).setdefault((right, int(lab.pick_strike(c, right, spot.c[i], 0, step))), d)
+    return need, days, allsess
+
+
 def existing(e, interval, right):
     folder = os.path.join(lab.DATA["options"]["weekly_dir"], INTERVALS[interval][0], e[:4], e)
     f = os.path.join(folder, f"NIFTY_{e}_{right}_{interval}.csv")
     if not os.path.exists(f): return folder, set()
     return folder, {int(float(r["strike_price"])) for r in csv.DictReader(open(f))}
+
+
+def existing_first(e, interval, right):
+    """{strike: first session} in the expiry's combined file."""
+    folder = os.path.join(lab.DATA["options"]["weekly_dir"], INTERVALS[interval][0], e[:4], e)
+    f = os.path.join(folder, f"NIFTY_{e}_{right}_{interval}.csv")
+    out = {}
+    if os.path.exists(f):
+        for r in csv.DictReader(open(f)):
+            k = int(float(r["strike_price"])); d = r["datetime"][:10]
+            if d < out.get(k, "9999"): out[k] = d
+    return out
 
 
 def chunks(sessions, first, last, per):
@@ -82,16 +133,25 @@ def chunks(sessions, first, last, per):
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     opts = sys.argv[1:]
-    expiries = [a for a in args if len(a) == 10]
-    intervals = [opts[opts.index("--interval") + 1]] if "--interval" in opts else list(INTERVALS)
-    if not expiries: sys.exit(__doc__)
-    need, days, sessions = plan(expiries)
+    research = "--research" in opts
+    if research:                                  # python tools/breeze_options.py --research FROM TO [--plan]
+        if len(args) != 2: sys.exit("--research FROM TO (session dates, YYYY-MM-DD)")
+        need, days, sessions = plan_research(*args)
+        expiries, intervals = sorted(need), ["5minute"]
+    else:
+        expiries = [a for a in args if len(a) == 10]
+        intervals = [opts[opts.index("--interval") + 1]] if "--interval" in opts else list(INTERVALS)
+        if not expiries: sys.exit(__doc__)
+        need, days, sessions = plan(expiries)
     jobs = []
     for e in expiries:
         if not days[e]: print(f"{e}: no session in the data uses this expiry"); continue
         for iv in intervals:
             for right in ("CE", "PE"):
                 folder, have = existing(e, iv, right)
+                if research:                      # a strike in the combined file counts only if it starts early enough
+                    first = existing_first(e, iv, right)
+                    have = {k for k in have if first.get(k, "9999") <= need[e].get((right, k), "")}
                 ks = sorted(k for (r, k) in need[e] if r == right and k not in have)
                 for k in ks:
                     for a, b in chunks(sessions, need[e][(right, k)], e, INTERVALS[iv][1]):
@@ -142,6 +202,20 @@ def main():
         time.sleep(PAUSE)
 
     stamp = D.datetime.now().isoformat(timespec="seconds")
+    if research:                                  # the research record only; manifest.json is left alone
+        fetched = {(e, r, k) for (e, iv, r, k, a, b, out) in jobs[:DAY_CAP]}
+        complete = {e for e in expiries if not any(j[0] == e for j in jobs[DAY_CAP:])}
+        for e in expiries:
+            folder, _ = existing(e, "5minute", "CE")
+            os.makedirs(folder, exist_ok=True)
+            json.dump(dict(source="ICICI Breeze get_historical_data_v2", tool="research/strategy_lab/tools/breeze_options.py --research",
+                           updated_at=stamp, complete=e in complete, choices=list(RESEARCH_CHOICES),
+                           expiries=[list(x) for x in RESEARCH_EXPIRIES], spot=os.path.basename(research_spot()),
+                           strikes={r: sorted(k for (rr, k) in need[e] if rr == r) for r in ("CE", "PE")},
+                           sessions=[days[e][0], days[e][-1]]),
+                      open(os.path.join(folder, "research_chain.json"), "w", encoding="utf-8"), indent=2)
+        print(f"done: {done} requests, {empty} with no candles; research_chain.json written ({len(complete)} of {len(expiries)} expiries complete)")
+        return
     for e in expiries:
         for iv in intervals:
             folder, _ = existing(e, iv, "CE")

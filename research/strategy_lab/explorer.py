@@ -13,6 +13,7 @@ import bisect, csv, json, os
 from collections import OrderedDict
 import engine
 import lab
+import rainbow
 
 TFS = ("minute", "3minute", "5minute", "15minute", "30minute")
 CHARGES = json.load(open(lab.CHARGECFG, encoding="utf-8"))
@@ -139,6 +140,13 @@ def chart(date, inst, code, tf="minute", expiry=None, strike=None, right=None, d
     p = dict(break_mode=row["break_mode"], choch_mode=row.get("choch_mode") or row["break_mode"],
              avwap_weight="equal" if inst == "INDEX" else row["avwap_weight"], sl_rule=row["sl_rule"])
     r = engine.run(bars, p)
+    rule = spec["rules"].get("entry_rule")
+    X, RB, rule_note = r["trades"], None, ""
+    if rule in rainbow.RULES:                    # the ribbon and its trades on these candles; the engine's overlays stay for context
+        rcfg = rainbow.config_of(spec); Rr = rainbow.ribbon(bars, rcfg)
+        X, RB = rainbow.trades_of(bars, rainbow.signals(bars, rcfg, Rr), rcfg, Rr), Rr["lines"]
+    elif rule not in lab.ENTRY_RULES:
+        rule_note = f"; NOTE: this strategy's entries come from its own module ({rule}) - the trades shown are the engine's Foundation SETUPs, not the strategy's"
     t = bars["t"]
     i0 = bisect.bisect_left(t, f"{show} 00:00:00"); i1 = len(t) - 1
     cs = dict(CHARGES[row["charge_code"] if inst == "OPT" else spec["types"]["FUT"]["charge_code"]])
@@ -146,7 +154,7 @@ def chart(date, inst, code, tf="minute", expiry=None, strike=None, right=None, d
     by, clast = lab.fut_contracts()
     pmode, lock = lab.position_mode(st), lab.StrikeLock(st)
     trades, skipped, marks = [], [], []
-    for x in r["trades"]:
+    for x in X:
         if x["entry"] < i0: continue
         lng = x["dir"] == "up"
         inst_name = name or by.get(t[x["entry"]], ("NIFTY FUT", None))[0]
@@ -186,10 +194,11 @@ def chart(date, inst, code, tf="minute", expiry=None, strike=None, right=None, d
                                     "exit_time", "exit_px", "exit_reason", "pts", "gross", "net", "mfe", "mae")}
                           | {"charges": round(tr["chg"]["total"], 2)})
     payload = lab.chart(bars, r, i0, i1, marks)
+    if RB: payload["RB"] = [[[lab.ts(t[i]), round(ln[i], 2)] for i in range(i0, i1 + 1) if ln[i] is not None] for ln in RB]
     return dict(meta=dict(date=date, first_shown=show, inst=inst, instrument=name or by.get(f"{date} 09:15:00", ("NIFTY FUT",))[0],
                           expiry=expiry, strike=strike, right=right, tf=tf, code=code, strategy=spec["name"],
                           position=lab.position_cfg(st), rules=spec["rules"], lot_size=spec["lot_size"],
                           slippage_pts=st["slippage_pts"], warmup_from=first,
-                          note="visualization only: the strategy applied to this instrument's own candles; FZ gates are not applied"),
+                          note="visualization only: the strategy applied to this instrument's own candles; FZ gates are not applied" + rule_note),
                 chart=payload, trades=trades, skipped=skipped,
                 net=round(sum(x["net"] for x in trades), 2))

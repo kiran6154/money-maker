@@ -208,7 +208,7 @@ const SDESC=(m,s)=>m.variant==='FUT'?{BOTH:'long and short futures (total)',LONG
   :m.variant==='OPT_FUT_SIGNAL'?{BOTH:'both legs of every signal: long one option, short the other',LONG:'CE on future long, PE on future short',SHORT:'PE on future long, CE on future short',CE:'CE: long on future long, short on future short',PE:'PE: short on future long, long on future short'}[s]
   :{BOTH:'bullish and bearish setups on the CE and PE charts',LONG:'bullish setups, CE and PE charts',SHORT:'bearish setups, CE and PE charts',CE:'CE chart, both directions',PE:'PE chart, both directions'}[s];
 const inSch=(t,s)=>s==='BOTH'||(s==='LONG'||s==='SHORT'?t.pos===s:t.otype===s);
-const on={trades:true,avwap:true,prot:true,struct:true,swings:true,vol:true,zones:true,rlevels:true};
+const on={trades:true,avwap:true,prot:true,struct:true,swings:true,vol:true,zones:true,rlevels:true,rainbow:true};
 const cache={};let ch=null,eqch=null,uwch=null,mcch=null,D=null,cur=null,curChoice=null;
 const load_=k=>{try{return JSON.parse(localStorage.getItem(k)||'null');}catch(e){return null;}};
 const save_=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}};
@@ -403,7 +403,8 @@ const merge=parts=>{const seen=new Set(),M=[];for(const c of parts)for(const m o
   const cat=k=>parts.flatMap(c=>c[k]||[]),ZN=new Map();
   for(const c of parts){const e=c.C&&c.C.length?c.C[c.C.length-1][0]:null;
     for(const z of c.ZONES||[]){const r=ZN.get(z[0])||[...z.slice(0,5),null];if(!/^[AB]\d{4}-/.test(z[0]))r[5]=e;ZN.set(z[0],r);}}
-  return {C:cat('C'),S:cat('S'),E:cat('E'),PR:cat('PR'),PAIR:cat('PAIR'),M,Z:cat('Z'),ZONES:[...ZN.values()]};};
+  const nrb=Math.max(0,...parts.map(c=>(c.RB||[]).length)),RB=[];for(let k=0;k<nrb;k++)RB.push(parts.flatMap(c=>(c.RB||[])[k]||[]));
+  return {C:cat('C'),S:cat('S'),E:cat('E'),PR:cat('PR'),PAIR:cat('PAIR'),M,Z:cat('Z'),ZONES:[...ZN.values()],RB};};
 async function renderWin(range){const parts=[];for(let k=WIN.lo;k<=WIN.hi;k++)parts.push(await getJSON(D.base+D.charts[k].file));const c=merge(parts);drawChart(c,!range,range);return c;}
 const inView=()=>D.charts.map((c,i)=>i).filter(i=>(D.charts[i].kind||'signal')===VIEW);
 async function showChunk(k){if(k==null||isNaN(k))return;$('series').value=k;busy(true,'Loading chart…');
@@ -451,7 +452,7 @@ const inScheme=lbl=>{const [pos,ot]=(lbl||'').split(' ');return inSch({pos,otype
 
 // ================= chart
 function drawChart(CH_,single,range,tgt){
-  const {C,S:SW,E,PR,PAIR,M,Z=[],ZONES=[]}=CH_;
+  const {C,S:SW,E,PR,PAIR,M,Z=[],ZONES=[],RB=[]}=CH_;
   const OPT=tgt==='opt',EL=$(OPT?'chart2':'chart');
   if(OPT){if(ch2){ch2.remove();ch2=null;}}else if(ch){ch.remove();ch=null;}
   const cx=LightweightCharts.createChart(EL,{autoSize:true,layout:{background:{color:'#fff'},textColor:'#4b5563',fontFamily:'system-ui'},
@@ -473,7 +474,7 @@ function drawChart(CH_,single,range,tgt){
   cs.priceScale().applyOptions({scaleMargins:{top:0.06,bottom:0.2}});
   cs.setData(C.map(r=>({time:r[0],open:r[1],high:r[2],low:r[3],close:r[4]})));
   const base={lastValueVisible:false,priceLineVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null};
-  const L={vol:[],swings:[],avwap:[],prot:[],trades:[],zones:ZS,rlevels:[]};
+  const L={vol:[],swings:[],avwap:[],prot:[],trades:[],zones:ZS,rlevels:[],rainbow:[]};
   const line=(layer,opt,data)=>{const s=cx.addLineSeries({...base,...opt,visible:on[layer]});s.setData(data);L[layer].push(s);};
   const vs=cx.addHistogramSeries({priceScaleId:'vol',priceFormat:{type:'volume'},lastValueVisible:false,priceLineVisible:false,visible:on.vol});
   cx.priceScale('vol').applyOptions({scaleMargins:{top:0.84,bottom:0}});
@@ -486,6 +487,8 @@ function drawChart(CH_,single,range,tgt){
     MK.swings.push({time:ct,position:hi?'aboveBar':'belowBar',color:col,shape:hi?'arrowDown':'arrowUp',size:0.5});
     line('swings',{color:col,lineWidth:1},t===ct?[{time:t,value:p}]:[{time:t,value:p},{time:ct,value:p}]);}
   {const pm=new Map(PR);line('prot',{color:'#7b1fa2',lineWidth:1,lineStyle:2,lineType:1},C.map(r=>pm.has(r[0])?{time:r[0],value:pm.get(r[0])}:{time:r[0]}));}
+  // the rainbow ribbon (Strategies 29-30): the fastest line red through violet for the slowest
+  RB.forEach((ln,k)=>{const hue=Math.round(k*270/Math.max(1,RB.length-1));line('rainbow',{color:`hsl(${hue},85%,45%)`,lineWidth:1},ln.map(([x,v])=>({time:x,value:v})));});
   for(const a of PAIR){const col=a.side==='H'?'#ff6d00':'#2962ff';
     line('avwap',{color:col,lineWidth:2},a.live.map(([x,v])=>({time:x,value:v})));
     if(a.back.length>1)line('avwap',{color:col,lineWidth:1,lineStyle:1},a.back.map(([x,v])=>({time:x,value:v})));}
@@ -494,7 +497,7 @@ function drawChart(CH_,single,range,tgt){
   for(const [et0,ep,xt,xp,d,pts,open,sl,why,label] of M){const lbl=label||(d==='up'?'LONG':'SHORT');if(!inScheme(lbl))continue;
     const up=d==='up',win=pts>0,xe=Math.min(xt,tmax),et=Math.max(et0,tmin);
     if(et0>=tmin)MK.trades.push({time:et0,position:up?'belowBar':'aboveBar',color:'#111',shape:up?'arrowUp':'arrowDown',size:1.5,text:lbl});
-    if(xt<=tmax)MK.trades.push({time:xt,position:up?'aboveBar':'belowBar',color:win?'#089981':'#f23645',shape:'circle',size:0.9,text:(why==='stop_loss'?'SL ':why==='trail_stop'?'TRAIL ':why==='eod'?'EOD ':/^target /.test(why||'')?'T'+why.slice(7)+' ':why==='expiry'?'EXPIRY ':why==='band_reclaim'?'BAND ':open?'OPEN* ':'')+fmt(pts)});
+    if(xt<=tmax)MK.trades.push({time:xt,position:up?'aboveBar':'belowBar',color:win?'#089981':'#f23645',shape:'circle',size:0.9,text:(why==='stop_loss'?'SL ':why==='trail_stop'?'TRAIL ':why==='eod'?'EOD ':/^target /.test(why||'')?'T'+why.slice(7)+' ':why==='expiry'?'EXPIRY ':why==='band_reclaim'||why==='band_exit'?'BAND ':open?'OPEN* ':'')+fmt(pts)});
     line('trades',{color:win?'#089981':'#f23645',lineWidth:2,lineStyle:2},et===xe?[{time:et,value:ep}]:[{time:et,value:ep},{time:xe,value:xp}]);
     if(sl!=null)line('trades',{color:'#d32f2f',lineWidth:1,lineStyle:1},et===xe?[{time:et,value:sl}]:[{time:et,value:sl},{time:xe,value:sl}]);}
   // managed exits (position.exit "position", Strategies 9-10): each position's stop, its target levels (1R, 2R ...) and the level
@@ -521,7 +524,7 @@ function drawChart(CH_,single,range,tgt){
     for(const r of rows){if(G[r[iG]])put(r[iT],r[iD],G[r[iG]]);if(later(r))put(r[iF],r[iD],G.REENTER);}}
   const markers=()=>{const m=[];if(on.swings)m.push(...MK.swings);if(on.struct)m.push(...MK.struct);if(on.trades)m.push(...MK.trades,...MK.fz);m.sort((a,b)=>a.time-b.time);cs.setMarkers(m);};
   markers();
-  const chips=[['trades','Trades','#111'],...(MANAGED(cur)?[['rlevels','1R / 2R / 3R','#089981']]:[]),['avwap','AVWAP','#ff6d00'],['prot','Protected','#7b1fa2'],['struct','CHoCH/BOS','#9e9e9e'],['swings','Swings','#089981'],['vol','Volume','#c3c7cf']].concat(ZONES.length?[['zones','Zones','#2962ff']]:[]);
+  const chips=[['trades','Trades','#111'],...(MANAGED(cur)?[['rlevels','1R / 2R / 3R','#089981']]:[]),...(RB.length?[['rainbow','Rainbow','#ff9800']]:[]),['avwap','AVWAP','#ff6d00'],['prot','Protected','#7b1fa2'],['struct','CHoCH/BOS','#9e9e9e'],['swings','Swings','#089981'],['vol','Volume','#c3c7cf']].concat(ZONES.length?[['zones','Zones','#2962ff']]:[]);
   if(!OPT){$('layers').innerHTML='';
   for(const [k,lbl,col] of chips){const b=document.createElement('span');b.className='chip'+(on[k]?' on':'');b.innerHTML=`<i style="background:${col}"></i>${lbl}`;
     b.onclick=()=>{on[k]=!on[k];b.classList.toggle('on',on[k]);(L[k]||[]).forEach(s=>s.applyOptions({visible:on[k]}));markers();};$('layers').appendChild(b);}}
