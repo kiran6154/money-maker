@@ -1434,7 +1434,7 @@ def side_of(res, positions):
         head = " · ".join(c["label"].split(" · ")[:2])
         label = head + (f" · {len(inday)} trade{'s' * (len(inday) > 1)} · {sum(m[5] for m in inday):+.1f} pts" if inday else "")
         charts.append(dict(c, M=M, label=label))
-    return dict(res, trades=trades, skipped=skipped, charts=charts)   # extra payloads (rl, fz) survive the side cut
+    return dict(trades=trades, skipped=skipped, signals=res["signals"], charts=charts)
 
 
 # ---------------------------------------------------------------- persistence + output
@@ -1803,7 +1803,7 @@ def main():
             fresh = len(stored) < len(choices)
             if fresh:                                  # one run per code and backtest; freed once written (memory)
                 runner = _rl.run_variant if rlr else run_variant
-                res = {ch: side_of(rr, st["positions"]) for ch, rr in runner(dict(stp, positions="BOTH"), cs).items()}
+                res = {ch: dict(rr, **side_of(rr, st["positions"])) for ch, rr in runner(dict(stp, positions="BOTH"), cs).items()}   # the side cut keeps rr's extra payloads (rl, fz)
             for ch in choices:
                 if fresh:
                     rr = res[ch]
