@@ -188,16 +188,28 @@ trade with which exit profile, which stop and how many lots** — the strategy f
   `r` = net points per lot ÷ stop, `pf` = net with losses × 1.5. Skip earns 0.
 - **Window:** the learner starts empty at the futures file's first session (Oct 2021) and learns to its end once per
   strategy; each backtest is a window cut from that run, so a 2026 window is out of sample for the weights it starts with
-  (not for the action set: the three profiles came from the 2026 exit study, S50 — the `notes` say so). A position still
-  open at a window's end is valued at its last candle.
-- **Journal tab** (dashboard, learner strategies only): tiles (SETUPs, taken / skipped / locked, learner net, the base book =
-  Strategy 9's rule run as its own book under the same one-position lock, the random book = a seeded uniformly random action
-  per SETUP under the same lock, the oracle = the best action per SETUP in hindsight — a bound, not a book),
-  the action mix, month by month (scored and learning months), the learned weights, and every scored SETUP with its
-  features, decision, predicted reward, outcome, base and oracle. `summary.json['rl']` carries all of it.
-- **Scope v1:** near-month futures only (option types and index signals are refused with the reason). Costs, strike lock
-  and fill rules are the lab's. `lab.py` touches the learner only from its exempt functions (loader, dispatch in `main`,
-  `cache_key` adds `rl.py`), so the other strategies' stored results are unaffected by learner changes.
+  (not for the action set: the three profiles came from the 2026 exit study, S50 — the `notes` say so). Every book is
+  valued at the window's last candle for positions still open there; a month straddling the window's start is two rows
+  (learning, scored).
+- **Journal tab** (dashboard, learner strategies only): tiles — SETUPs, taken / skipped / locked; learner net with its t;
+  the base book = Strategy 9's rule run as its own book under the same one-position lock; **random books** = the learner's
+  percentile among 200 seeded books of a uniformly random action per SETUP (skip is 1 action in 28, so they trade almost
+  every free SETUP: necessary to beat, not sufficient); the oracle = the best net per SETUP in hindsight (never below 0, an
+  upper bound); **seed spread** = the same learner run from empty on 4 more seeds (`spread_seeds`), this window's net per
+  seed; **matched permutations** = the learner's own window decisions shuffled 200 times across the same SETUPs under the
+  same lock (same take rate and sizes), the learner's percentile and the share at or above it — the test of *where* it chose
+  to trade; pred vs realised (correlation and gap); clipped outcomes per action — then the action mix, month by month (a
+  month straddling the window start is a learning row and a scored row; the scored rows sum to the tiles), the learned
+  weights ranked by |weight| × the feature's spread, and every scored SETUP with its features, decision, predicted reward,
+  outcome, base and oracle. `summary.json['rl']` carries all of it (`summary`, `months`, `seeds`, `random`, `permutation`,
+  `prediction`, `clipped_by_arm`, `feature_sd`, `weights`, `journal`). Read the seed spread and the permutation percentile
+  before any single net. Known bias, not yet priced in (S51 (9)): an action's reward is its own outcome, but a long-held
+  position also costs the book the SETUPs it locks out — so the learner leans to the positional profiles.
+- **Scope v1:** near-month futures only (option types, index signals and a backtest's square-off override are refused with
+  the reason — each exit profile carries its own square-off). Costs, strike lock and fill rules are the lab's; a contract
+  whose candles end before its expiry date closes its lots there (`expiry`). `lab.py` touches the learner only from its
+  exempt functions (loader, dispatch in `main`, `cache_key` and the `results/history` version id add `rl.py`), so the other
+  strategies' stored results are unaffected by learner changes.
 
 ## FZ: the Foundation-Zone gate (Strategies 5 and 6)
 > Builder's reference with every rule as coded, the lab wiring, the tests and the open decisions: [`FZ.md`](FZ.md).

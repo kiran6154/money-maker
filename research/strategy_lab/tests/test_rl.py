@@ -119,5 +119,31 @@ for bad in (dict(CFG, stops_pts=[35, 75]), dict(CFG, profiles={"p": {"scale_out"
 jb = [j for j in full["journal"] if j["base_taken"]]
 check("base book has taken SETUPs", len(jb) > 10, True)
 check("no infeasible intraday base after 15:25", any(j["base_taken"] and j["hour"] >= "15:25" for j in full["journal"]), False)
-print("\n".join(fails) if fails else "OK - rl (no look-ahead on 4 random cuts + 8 SETUP-candle cuts, determinism, learning, outcomes, books)")
+# 6. a window of the run: every book cut at the window's last candle and the tiles, the month rows and the trades agree;
+#    the seed spread, the random books and the matched permutations are the sizes the config says
+WP = rl.window_payload(full, st, cs, CFG, "2026-08-12", "2026-09-04")
+W, S = WP["rl"], WP["rl"]["summary"]
+check("window trades sum to the learner tile", round(sum(x["net"] for x in WP["trades"]), 2), S["rl_net"])
+scored_m = [m for m in W["months"] if m["scored"]]
+for k in ("rl_net", "base_net", "control_net"):
+    check(f"scored month rows sum to the tile ({k})", round(sum(m[k] for m in scored_m), 2), S[k])
+check("a straddling month is two rows", [(m["month"], m["scored"]) for m in W["months"] if m["month"] == "2026-08"], [("2026-08", False), ("2026-08", True)])
+check("month keys unique", len({(m["month"], m["scored"]) for m in W["months"]}), len(W["months"]))
+check("seed spread: the primary seed first, with the tile's net", (W["seeds"]["runs"][0]["seed"], W["seeds"]["runs"][0]["net"], len(W["seeds"]["runs"])), (CFG["seed"], S["rl_net"], 5))
+check("random books: 200 draws, draw 0 is the journal's Random column", (W["random"]["draws"], W["random"]["draw0"]), (200, S["control_net"]))
+check("random percentile in range", 0 <= W["random"]["learner_pct"] <= 100, True)
+check("permutations: the learner's free-SETUP decisions, 200 shuffles", (W["permutation"]["actions"], W["permutation"]["n"]), (S["taken"] + S["skipped"], 200))
+check("prediction pairs bounded by taken", W["prediction"]["taken_n"] <= S["taken"], True)
+check("feature sd per feature, bias constant", (len(W["feature_sd"]), W["feature_sd"][0]), (len(rl.FEATURES), 0.0))
+check("clipped outcomes bounded", 0 <= S["clipped"] <= S["outcomes"], True)
+check("locked + taken + skipped = scored SETUPs", S["taken"] + S["skipped"] + S["locked"], S["setups"])
+# 7. a contract whose candles end before its expiry date closes at its last candle; at the data's end the calendar expiry stands
+tl = ["2022-03-01 09:15:00", "2026-09-25 15:25:00"]
+check("contract end before expiry = its last candle", rl.contract_end(tl, "MAR22", "2022-03-31", {"MAR22": "2022-03-28 15:25:00"}), ("2022-03-28 15:25:00", "2022-03-28"))
+check("contract end at the data end keeps the expiry", rl.contract_end(tl, "SEP26", "2026-09-29", {"SEP26": "2026-09-25 15:25:00"}), ("2026-09-25 15:25:00", "2026-09-29"))
+for bad in (dict(CFG, spread_seeds=[7, 11]), dict(CFG, control_draws=0)):
+    try: rl.config_of({"rl": bad}); fails.append(f"config accepted {[k for k in bad if k not in CFG]}")
+    except ValueError: pass
+check("default spread seeds", rl.spread_seeds_of(CFG), [1007, 2007, 3007, 4007])
+print(chr(10).join(fails) if fails else "OK - rl (no look-ahead on 4 random cuts + 8 SETUP-candle cuts, determinism, learning, outcomes, books, window, spread, controls)")
 sys.exit(1 if fails else 0)

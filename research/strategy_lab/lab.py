@@ -1434,7 +1434,7 @@ def side_of(res, positions):
         head = " · ".join(c["label"].split(" · ")[:2])
         label = head + (f" · {len(inday)} trade{'s' * (len(inday) > 1)} · {sum(m[5] for m in inday):+.1f} pts" if inday else "")
         charts.append(dict(c, M=M, label=label))
-    return dict(trades=trades, skipped=skipped, signals=res["signals"], charts=charts)
+    return dict(res, trades=trades, skipped=skipped, charts=charts)   # extra payloads (rl, fz) survive the side cut
 
 
 # ---------------------------------------------------------------- persistence + output
@@ -1569,7 +1569,10 @@ def record_history(specs, index):
     for path, spec in specs:
         fam = spec["code"]; metas = [m for m in index if m["family"] == fam]
         if not metas: continue
-        dv, ch = def_view(spec), code_hash(str(spec["rules"].get("entry_rule", "")).startswith("fz"))
+        import rl as _rl
+        rule = str(spec["rules"].get("entry_rule", ""))
+        dv = def_view(spec)
+        ch = code_hash(rule.startswith("fz")) + (f"+rl:{_rl.code_hash()}" if rule in _rl.RULES else "")   # learner rows: rl.py too
         vid = hashlib.sha1(json.dumps([dv, ch], sort_keys=True).encode()).hexdigest()[:12]
         res = {m["code"]: {rk: {c: {k: v.get(k) for k in BRIEF} for c, v in info["choices"].items()}
                            for rk, info in m["runs"].items() if info["choices"]} for m in metas}
@@ -1587,7 +1590,9 @@ def record_history(specs, index):
                 prov = lambda k: k.rsplit(".", 1)[-1] in ("source", "statistic", "note")     # provenance, not a rule
                 changes = [f"{k}: {json.dumps(a.get(k))} -> {json.dumps(b.get(k))}" for k in sorted(set(a) | set(b))
                            if a.get(k) != b.get(k) and not prov(k)]
-                if V[-1]["code_hash"] != ch: changes.append("code (engine.py / lab.py pricing / FZ modules) changed")
+                old_ch = V[-1]["code_hash"]
+                if old_ch.split("+rl:")[0] != ch.split("+rl:")[0]: changes.append("code (engine.py / lab.py pricing / FZ modules) changed")
+                if "+rl:" in ch and old_ch.split("+rl:")[-1] != ch.split("+rl:")[-1]: changes.append("code (rl.py, the learner) changed")
             V.append({"version": len(V) + 1, "vid": vid, "at": now, "updated": now, "code_hash": ch, "def": dv,
                       "changes": changes, "results": res})
         json.dump(H, open(f, "w", encoding="utf-8"), indent=1, ensure_ascii=False)
@@ -1747,6 +1752,10 @@ def main():
             rk = (f"{slug(bt['label'])}_{TF_LABEL[tf]}" + ("_idx" if und == "INDEX" else "")
                   + ("" if sq == sq0 else "_pos" if sq is None else "_intra"))
             frm, to, status, reason = resolve_backtest(bt, st["warmup_days"])
+            if status == "ok" and rlr and (st["variant"] != "FUT" or und == "INDEX"):
+                status, reason = "refused", _rl.FUT_WHY
+            if status == "ok" and rlr and sq != sq0:        # each exit profile carries its own square-off; an override changes nothing
+                status, reason = "refused", _rl.SQUARE_OFF_WHY
             if status == "ok" and st["variant"] != "FUT":   # options: only where a full option chain exists (no hindsight strikes)
                 cov = option_coverage(st)
                 if cov is None:
@@ -1757,8 +1766,6 @@ def main():
                     else:
                         status, reason = "refused", (f"options have full-chain data from {cov} (earlier expiries hold only the five "
                                                      f"strikes around settlement); fill them with tools/breeze_options.py")
-            if status == "ok" and rlr and (st["variant"] != "FUT" or und == "INDEX"):
-                status, reason = "refused", _rl.FUT_WHY
             if status == "ok" and und == "INDEX":
                 if fzr: status, reason = "refused", INDEX_WHY_FZ
                 elif st["variant"] == "OPT_NATIVE": status, reason = "refused", INDEX_WHY_NATIVE
