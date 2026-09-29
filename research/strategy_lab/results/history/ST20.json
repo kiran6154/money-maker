@@ -229,6 +229,237 @@
     "ST20_FB": {},
     "ST20_NB": {}
    }
+  },
+  {
+   "version": 2,
+   "vid": "2ee0bb7f1ed5",
+   "at": "2026-09-29T08:53:46",
+   "updated": "2026-09-29T08:53:46",
+   "code_hash": "e6992b5fb2b4fbd6+rl:bd1f07e27ecf4a9e",
+   "def": {
+    "code": "ST20",
+    "timeframe": "5minute",
+    "underlying": "FUT",
+    "warmup_days": 5,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "rl_v1",
+     "exit_rule": "next_choch"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 3,
+     "lock": "strike",
+     "scale_out": [
+      {
+       "lots": 1,
+       "target_r": 1
+      },
+      {
+       "lots": 1,
+       "target_r": 2
+      }
+     ],
+     "exit": "position",
+     "stop": {
+      "futures_pts": 50,
+      "option_pct": 5
+     },
+     "trail": {
+      "start_r": 3,
+      "lag_r": 1
+     },
+     "square_off": null,
+     "reverse": null
+    },
+    "rl": {
+     "reward": "net",
+     "seed": 7,
+     "ridge": 1.0,
+     "explore": 0.3,
+     "stops_pts": [
+      35,
+      50,
+      75
+     ],
+     "lots": [
+      1,
+      2,
+      3
+     ],
+     "notes": "Fixed 2026-09-29 before any learner result was seen: features, ridge prior, exploration scale, reward scaling, stops, lots. The three exit profiles are the 2026 exit study's candidates (STRATEGY_ANALYSIS_TODO S50), i.e. the action set was chosen with 2026 in view: a 2026 window is out of sample for the learned weights, not for the action set. Control = a seeded uniformly random action per SETUP.",
+     "profiles": {
+      "intraday 1R/2R trail 3R-1": {
+       "scale_out": [
+        {
+         "lots": 1,
+         "target_r": 1
+        },
+        {
+         "lots": 1,
+         "target_r": 2
+        }
+       ],
+       "trail": {
+        "start_r": 3,
+        "lag_r": 1
+       },
+       "square_off": "15:25"
+      },
+      "positional trail 3R-2": {
+       "scale_out": [],
+       "trail": {
+        "start_r": 3,
+        "lag_r": 2
+       },
+       "square_off": null
+      },
+      "positional 2R/4R trail 4R-2": {
+       "scale_out": [
+        {
+         "lots": 1,
+         "target_r": 2
+        },
+        {
+         "lots": 1,
+         "target_r": 4
+        }
+       ],
+       "trail": {
+        "start_r": 4,
+        "lag_r": 2
+       },
+       "square_off": null
+      }
+     }
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM2",
+      "ITM1",
+      "OTM1",
+      "OTM2",
+      "OTM3",
+      "OTM4"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14,
+     "native_scan": {
+      "choices": [
+       "ATR2",
+       "ATM",
+       "ITM1",
+       "OTM1"
+      ],
+      "every_minutes": 5,
+      "one_per_side": true
+     }
+    }
+   },
+   "changes": [
+    "code (rl.py, the learner) changed"
+   ],
+   "results": {
+    "ST20": {
+     "this-month_5m": {
+      "-": {
+       "trades": 4,
+       "wins": 2,
+       "pts": 635.0,
+       "net_inr": 54730.81,
+       "pf": 3.3,
+       "max_dd_inr": -23839.19,
+       "t_stat": 0.91
+      }
+     },
+     "all-data_5m": {
+      "-": {
+       "trades": 86,
+       "wins": 23,
+       "pts": -208.2,
+       "net_inr": 60000.77,
+       "pf": 1.1,
+       "max_dd_inr": -308012.06,
+       "t_stat": 0.27
+      }
+     },
+     "design-period_5m": {
+      "-": {
+       "trades": 7,
+       "wins": 3,
+       "pts": 693.3,
+       "net_inr": 75585.64,
+       "pf": 3.47,
+       "max_dd_inr": -23839.19,
+       "t_stat": 1.2
+      }
+     },
+     "unseen-test_5m": {
+      "-": {
+       "trades": 4,
+       "wins": 2,
+       "pts": -186.2,
+       "net_inr": -41452.05,
+       "pf": 0.1,
+       "max_dd_inr": -46250.18,
+       "t_stat": -1.14
+      }
+     },
+     "1m_5m": {
+      "-": {
+       "trades": 7,
+       "wins": 3,
+       "pts": 693.3,
+       "net_inr": 75585.64,
+       "pf": 3.47,
+       "max_dd_inr": -23839.19,
+       "t_stat": 1.2
+      }
+     },
+     "3m_5m": {
+      "-": {
+       "trades": 13,
+       "wins": 7,
+       "pts": 783.8,
+       "net_inr": 85525.1,
+       "pf": 2.11,
+       "max_dd_inr": -48225.43,
+       "t_stat": 1.03
+      }
+     }
+    },
+    "ST20_FB": {},
+    "ST20_NB": {}
+   }
   }
  ]
 }
