@@ -1,7 +1,7 @@
 {
   "code": "ST30",
   "name": "Strategy 30",
-  "description": "Rainbow ribbon intraday on 5-minute near-month futures: Widner's Rainbow Charts (10 recursive 2-period simple averages of the close); a fresh close outside the ribbon with every faster line beyond the next, oscillator at least 25 (lookback 10) enters at that close (09:20–14:30), one position per contract; exits: 3 lots, stop 50 pts = 1R; from 3R every lot's stop steps up 2R behind the best R reached (no targets); every position flat by 15:25. The variant is the pre-registered grid's pick on Jan 5 – Jun 30 2026 (STRATEGY_ANALYSIS_TODO S53) — every one of the 48 variants lost in that window; this is the one that lost least, kept as the measured answer, not as a recommendation.",
+  "description": "Rainbow ribbon intraday on 5-minute near-month futures: Widner's Rainbow Charts (10 recursive 2-period simple averages of the close); a fresh close outside the ribbon with every faster line beyond the next, oscillator at least 25 (lookback 10), as a re-emergence (price had closed outside on that side within the last 5 candles, came back, and the ribbon's far edge kept its slope) enters at that close (09:20–14:30), one position per contract; exits: 3 lots, stop 50 pts = 1R; from 3R every lot's stop steps up 2R behind the best R reached (no targets); every position flat by 15:25. The variant is the pre-registered grid's pick on Jan 5 – Jun 30 2026 (STRATEGY_ANALYSIS_TODO S53) — every one of the 48 variants lost in that window; this is the one that lost least, kept as the measured answer, not as a recommendation.",
   "timeframe": "5minute",
   "underlying": "FUT",
   "warmup_days": 5,
@@ -64,11 +64,11 @@
     "atr_period": 14
   },
   "rainbow": {
-    "notes": "Picked 2026-09-29 by the pre-registered grid in studies/rainbow_grid.py (S53): 48 variants, in sample Jan 5 - Jun 30 2026, out of sample Jul 1 - Sep 25 2026; rule = highest in-sample net among variants with >= 30 positions and PF > 1, which none met: the highest in-sample net was taken. Every number here is the grid's; the exit block is the lab's position handling.",
+    "notes": "Picked 2026-09-30 by the pre-registered grid (corrected after review) in studies/rainbow_grid.py (S53): 48 variants, in sample Jan 5 - Jun 30 2026, out of sample Jul 1 - Sep 25 2026; rule = highest in-sample net among variants with >= 30 positions and PF > 1, which none met: the highest in-sample net was taken. Every number here is the grid's; the exit block is the lab's position handling.",
     "kind": "widner",
     "levels": 10,
     "period": 2,
-    "trigger": "cross",
+    "trigger": "pullback",
     "fan": "full",
     "osc_min": 25,
     "lookback": 10,

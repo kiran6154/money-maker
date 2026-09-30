@@ -37,10 +37,17 @@ def build_bars(year: int, tf: int) -> pd.DataFrame:
                              r.strike_set_hindsight, r.spot_ref))
     pick = pd.DataFrame(pick, columns=["date", "expiry", "strike", "right", "money", "role", "dte", "hindsight", "spot_ref"])
     keys = pick[["expiry", "strike", "right"]].drop_duplicates()
-    sub = raw.merge(keys, on=["expiry", "strike", "right"], how="inner")
-    bars = DA.resample(sub, tf, base)
-    fwd = DA.forward(DA.resample(raw[raw.strike % DA.GRID == 0], tf, base))
-    bars = bars.merge(fwd, on=["expiry", "dt"], how="left")
+    # one expiry at a time (memory; same arithmetic as the whole-year version)
+    parts = []
+    for e, raw_e in raw.groupby("expiry", sort=True):
+        sub = raw_e.merge(keys, on=["expiry", "strike", "right"], how="inner")
+        if len(sub) == 0:
+            continue
+        be = DA.resample(sub, tf, base)
+        fwd = DA.forward(DA.resample(raw_e[raw_e.strike % DA.GRID == 0], tf, base))
+        parts.append(be.merge(fwd, on=["expiry", "dt"], how="left"))
+    del raw
+    bars = pd.concat(parts, ignore_index=True)
     bars["date"] = bars.dt.dt.normalize()
     bars = bars.merge(pick, on=["date", "expiry", "strike", "right"], how="left")
     bars = bars.sort_values(["expiry", "strike", "right", "dt"]).reset_index(drop=True)

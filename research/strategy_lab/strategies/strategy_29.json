@@ -64,7 +64,7 @@
     "atr_period": 14
   },
   "rainbow": {
-    "notes": "Picked 2026-09-29 by the pre-registered grid in studies/rainbow_grid.py (S53): 48 variants, in sample Jan 5 - Jun 30 2026, out of sample Jul 1 - Sep 25 2026; rule = highest in-sample net among variants with >= 30 positions and PF > 1, which none met: the highest in-sample net was taken. Every number here is the grid's; the exit block is the lab's position handling.",
+    "notes": "Picked 2026-09-30 by the pre-registered grid (corrected after review) in studies/rainbow_grid.py (S53): 48 variants, in sample Jan 5 - Jun 30 2026, out of sample Jul 1 - Sep 25 2026; rule = highest in-sample net among variants with >= 30 positions and PF > 1, which none met: the highest in-sample net was taken. Every number here is the grid's; the exit block is the lab's position handling.",
     "kind": "ema",
     "periods": [5, 8, 13, 21, 34, 55],
     "trigger": "cross",

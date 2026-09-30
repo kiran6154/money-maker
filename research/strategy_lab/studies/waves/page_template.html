@@ -1,0 +1,187 @@
+<title>Option Wave Lifecycle Test</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --ground:#F3F5F2; --panel:#FFFFFF; --ink:#18221E; --muted:#5B6862; --rule:#D3D9D3; --soft:#E7ECE7;
+  --seen:#1F4E79; --unseen:#B4541E; --box:#8FA89A;
+  --m-linear:#6B5CA5; --m-log:#2E8B7A; --m-power:#B08A1E; --m-geo:#C23B5A; --m-exp:#4A7BB7;
+  --good:#2F7D4F; --bad:#B23A3A; --warn:#A66A12;
+  --display:"Archivo Narrow","Arial Narrow",Arial,sans-serif;
+  --body:"Source Sans 3","Segoe UI",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#121816; --panel:#19211E; --ink:#E4EAE6; --muted:#9AA8A1; --rule:#2E3A35; --soft:#222C28;
+    --seen:#7FB2E5; --unseen:#E8925A; --box:#6F8C7D;
+    --m-linear:#A99BE0; --m-log:#5CC7B2; --m-power:#E0BC52; --m-geo:#EE7A93; --m-exp:#86B1E8;
+    --good:#6CC58F; --bad:#EE7B7B; --warn:#E3A857; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#121816; --panel:#19211E; --ink:#E4EAE6; --muted:#9AA8A1; --rule:#2E3A35; --soft:#222C28;
+  --seen:#7FB2E5; --unseen:#E8925A; --box:#6F8C7D;
+  --m-linear:#A99BE0; --m-log:#5CC7B2; --m-power:#E0BC52; --m-geo:#EE7A93; --m-exp:#86B1E8;
+  --good:#6CC58F; --bad:#EE7B7B; --warn:#E3A857; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font:16px/1.55 var(--body);margin:0}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:20px;padding-block:28px 64px;display:flex;flex-direction:column;gap:36px}
+h1,h2,h3{font-family:var(--display);letter-spacing:.01em;text-wrap:balance;margin:0}
+h1{font-size:clamp(30px,5vw,44px);line-height:1.05;font-weight:700}
+h2{font-size:26px;font-weight:600;display:flex;gap:12px;align-items:baseline}
+h2 .tag{font:600 13px var(--mono);color:var(--muted);letter-spacing:.06em}
+h3{font-size:18px;font-weight:600}
+p{margin:0;max-width:68ch}
+.lede{display:flex;flex-direction:column;gap:14px}
+.eyebrow{font:600 12px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.verdict{border:1px solid var(--rule);background:var(--panel);border-radius:6px;padding:20px 22px;display:grid;grid-template-columns:auto 1fr;gap:6px 22px;align-items:start}
+.verdict .num{font:700 56px/1 var(--display);color:var(--warn)}
+.verdict .choice{font:600 20px/1.25 var(--display)}
+.verdict p{color:var(--ink)}
+.scale{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;grid-column:1/-1;margin-top:10px}
+.scale div{font:12px/1.3 var(--body);color:var(--muted);border-top:3px solid var(--rule);padding-top:6px}
+.scale div.on{color:var(--ink);border-top-color:var(--warn);font-weight:600}
+section{display:flex;flex-direction:column;gap:14px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+.note{font-size:14px;color:var(--muted)}
+.tbl{overflow-x:auto;border:1px solid var(--rule);border-radius:6px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:7px 10px;text-align:right;border-bottom:1px solid var(--soft);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font:600 12px var(--mono);letter-spacing:.04em;color:var(--muted);background:var(--soft)}
+td{font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:13px}
+td.l{font-family:var(--body);font-size:14px;white-space:normal}
+tr:last-child td{border-bottom:none}
+.pos{color:var(--good)} .neg{color:var(--bad)} .dim{color:var(--muted)}
+.pill{display:inline-block;font:600 11px var(--mono);letter-spacing:.05em;padding:2px 7px;border-radius:99px;border:1px solid currentColor}
+ul.plain{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;max-width:72ch}
+/* event browser */
+.browser{border:1px solid var(--rule);border-radius:6px;background:var(--panel);display:flex;flex-direction:column}
+.controls{display:flex;flex-wrap:wrap;gap:10px;padding:12px 14px;border-bottom:1px solid var(--rule);align-items:center}
+.controls label{font:600 12px var(--mono);color:var(--muted);display:flex;gap:6px;align-items:center}
+select,button{font:14px var(--body);color:var(--ink);background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:5px 8px}
+button{cursor:pointer}
+button:focus-visible,select:focus-visible{outline:2px solid var(--seen);outline-offset:1px}
+.count{font:13px var(--mono);color:var(--muted);margin-left:auto}
+.charts{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:0}
+.charts>div{padding:10px 12px}
+.charts>div+div{border-left:1px solid var(--rule)}
+svg text{fill:var(--muted);font:11px var(--mono)}
+.meta{display:flex;flex-wrap:wrap;gap:6px 18px;padding:10px 14px;border-top:1px solid var(--rule);font:13px var(--mono);color:var(--muted)}
+.meta b{color:var(--ink);font-weight:600}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font:12px var(--mono);color:var(--muted);padding:0 14px 12px}
+.legend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:5px}
+@media (max-width:720px){
+  .charts{grid-template-columns:1fr}
+  .charts>div+div{border-left:none;border-top:1px solid var(--rule)}
+  .verdict{grid-template-columns:1fr}
+  .scale{grid-template-columns:1fr 1fr}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+__BODY__
+
+<section id="events">
+  <h2><span class="tag">EVENTS</span> Every wave-2 and wave-3 signal, drawn</h2>
+  <p>Each chart is one front-weekly contract on one session, strike-set-clean. Blue is what was on screen at the signal; rust is what came after and was not used. The right panel shows the levels known at the signal (P0 = the compression box's top, R1, R2 … = confirmed wave peaks), each model's curve through them, and where the next peak actually landed.</p>
+  <div class="browser">
+    <div class="controls">
+      <label for="f-period">Period <select id="f-period"><option value="">all</option><option value="dev">2024 development</option><option value="val">2025 validation</option><option value="blind">2026 blind</option></select></label>
+      <label for="f-code">Signal <select id="f-code"><option value="">all</option><option value="I">wave 2 (I)</option><option value="I3">wave 3 (I3)</option></select></label>
+      <label for="f-side">Side <select id="f-side"><option value="">both</option><option value="CE">CE</option><option value="PE">PE</option></select></label>
+      <label for="f-money">Strike <select id="f-money"><option value="">all</option><option value="ATM">ATM</option><option value="OTM1">OTM1</option><option value="OTM2">OTM2</option><option value="ITM1">ITM1</option></select></label>
+      <button id="prev" type="button" aria-label="Previous event">◀</button>
+      <select id="f-event" aria-label="Event"></select>
+      <button id="next" type="button" aria-label="Next event">▶</button>
+      <span class="count" id="count"></span>
+    </div>
+    <div class="charts">
+      <div><svg id="price" viewBox="0 0 640 300" width="100%" role="img" aria-label="Option price path"></svg></div>
+      <div><svg id="levels" viewBox="0 0 320 300" width="100%" role="img" aria-label="Wave levels and fitted models"></svg></div>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--seen)"></i>seen</span><span><i style="background:var(--unseen)"></i>unseen</span>
+      <span><i style="background:var(--m-linear)"></i>linear</span><span><i style="background:var(--m-log)"></i>log</span>
+      <span><i style="background:var(--m-power)"></i>power</span><span><i style="background:var(--m-geo)"></i>geometric</span>
+      <span><i style="background:var(--m-exp)"></i>exponential</span>
+    </div>
+    <div class="meta" id="meta"></div>
+  </div>
+</section>
+</div>
+
+<script>
+const EV = __PLOTS__;
+const $ = id => document.getElementById(id);
+const MC = {linear:"--m-linear",log:"--m-log",power:"--m-power",geometric:"--m-geo",exponential:"--m-exp"};
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+let list = [], pos = 0;
+function filt(){
+  const p=$("f-period").value,c=$("f-code").value,s=$("f-side").value,m=$("f-money").value;
+  list = EV.filter(e=>(!p||e.period===p)&&(!c||e.code===c)&&(!s||e.side===s)&&(!m||e.money===m));
+  const sel=$("f-event"); sel.innerHTML="";
+  list.forEach((e,i)=>{const o=document.createElement("option");o.value=i;o.textContent=`${e.date} ${e.side}${e.strike} ${e.code}`;sel.appendChild(o);});
+  pos=0; draw();
+}
+function el(tag,attrs,parent){const n=document.createElementNS("http://www.w3.org/2000/svg",tag);for(const k in attrs)n.setAttribute(k,attrs[k]);parent.appendChild(n);return n;}
+function hhmm(t0,i,tf){const [h,m]=t0.split(":").map(Number);const x=h*60+m+i*tf;return String(Math.floor(x/60)).padStart(2,"0")+":"+String(x%60).padStart(2,"0");}
+function draw(){
+  $("count").textContent = list.length ? `${pos+1} / ${list.length}` : "no events";
+  $("f-event").value = pos;
+  const P=$("price"),L=$("levels"); P.innerHTML=""; L.innerHTML=""; $("meta").innerHTML="";
+  if(!list.length) return;
+  const e=list[pos], n=e.c.length, W=640,H=300,ml=46,mr=10,mt=12,mb=26;
+  const lo=Math.min(...e.l), hi=Math.max(...e.h, ...Object.values(e.fits).map(v=>v[e.known.length]).filter(x=>x>0&&x<Math.max(...e.h)*1.6));
+  const y=v=>mt+(H-mt-mb)*(1-(Math.log(v)-Math.log(lo*0.97))/(Math.log(hi*1.03)-Math.log(lo*0.97)));
+  const x=i=>ml+(W-ml-mr)*(i+0.5)/n;
+  // grid + axis
+  const ticks=5; for(let k=0;k<=ticks;k++){const v=Math.exp(Math.log(lo*0.97)+(Math.log(hi*1.03)-Math.log(lo*0.97))*k/ticks);
+    el("line",{x1:ml,x2:W-mr,y1:y(v),y2:y(v),stroke:css("--soft"),"stroke-width":1},P);
+    el("text",{x:ml-6,y:y(v)+4,"text-anchor":"end"},P).textContent=v.toFixed(v<20?1:0);}
+  for(let i=0;i<n;i+=Math.ceil(n/7)){el("text",{x:x(i),y:H-8,"text-anchor":"middle"},P).textContent=hhmm(e.t0,i,e.tf);}
+  // base box
+  el("rect",{x:x(e.box[0])-2,y:y(e.base[1]),width:Math.max(4,x(e.box[1])-x(e.box[0])),height:Math.max(2,y(e.base[0])-y(e.base[1])),fill:css("--box"),opacity:.22,stroke:css("--box")},P);
+  // wicks
+  for(let i=0;i<n;i++) el("line",{x1:x(i),x2:x(i),y1:y(e.h[i]),y2:y(e.l[i]),stroke:i<=e.sig?css("--seen"):css("--unseen"),opacity:.35,"stroke-width":Math.max(1,(W-ml-mr)/n*.5)},P);
+  const path=(a,b,col,dash)=>{let d="";for(let i=a;i<=b;i++)d+=(i===a?"M":"L")+x(i).toFixed(1)+","+y(e.c[i]).toFixed(1);el("path",{d,fill:"none",stroke:col,"stroke-width":2,"stroke-dasharray":dash||""},P);};
+  path(0,e.sig,css("--seen")); if(e.sig<n-1) path(e.sig,n-1,css("--unseen"),"5 3");
+  // model predictions of the next peak, drawn from the signal to the session end
+  const k=e.known.length;
+  for(const m in e.fits){const v=e.fits[m][k]; if(!(v>0)||v>hi*1.03||v<lo) continue;
+    el("line",{x1:x(e.sig),x2:W-mr,y1:y(v),y2:y(v),stroke:css(MC[m]),"stroke-width":1.5,"stroke-dasharray":"2 3"},P);}
+  // peaks and lows
+  e.peaks.forEach((p,j)=>{const seen=p[2]<=e.sig; el("circle",{cx:x(p[0]),cy:y(p[1]),r:4,fill:seen?css("--seen"):css("--unseen")},P);
+    el("text",{x:x(p[0]),y:y(p[1])-8,"text-anchor":"middle"},P).textContent="R"+(j+1);});
+  e.lows.forEach((p,j)=>{if(p[0]<0)return; el("rect",{x:x(p[0])-3,y:y(p[1])-3,width:6,height:6,fill:"none",stroke:p[0]<=e.sig?css("--seen"):css("--unseen")},P);});
+  el("line",{x1:x(e.sig),x2:x(e.sig),y1:mt,y2:H-mb,stroke:css("--ink"),"stroke-width":1,opacity:.5},P);
+  el("text",{x:x(e.sig)+4,y:mt+10},P).textContent="signal";
+  // levels panel: n on x, level on y (log)
+  const nn=k+1; const real = e.peaks.length>=k ? e.peaks[k-1] : null; // next peak, if confirmed
+  const after=Math.max(...e.h.slice(e.sig+1).concat([0]));
+  const nextv = (real && real[2]>e.sig) ? real[1] : after;
+  const vals=e.known.concat([nextv]).concat(Object.values(e.fits).map(v=>v[k]).filter(v=>v>0));
+  const lo2=Math.min(...vals)*0.95, hi2=Math.max(...vals)*1.05, W2=320,ml2=44,mr2=10;
+  const y2=v=>mt+(H-mt-mb)*(1-(Math.log(v)-Math.log(lo2))/(Math.log(hi2)-Math.log(lo2)));
+  const x2=i=>ml2+(W2-ml2-mr2)*i/(nn);
+  for(let q=0;q<=4;q++){const v=Math.exp(Math.log(lo2)+(Math.log(hi2)-Math.log(lo2))*q/4);
+    el("line",{x1:ml2,x2:W2-mr2,y1:y2(v),y2:y2(v),stroke:css("--soft")},L); el("text",{x:ml2-6,y:y2(v)+4,"text-anchor":"end"},L).textContent=v.toFixed(v<20?1:0);}
+  for(let i=0;i<=nn;i++){el("text",{x:x2(i),y:H-8,"text-anchor":"middle"},L).textContent=i===0?"P0":"R"+i;}
+  for(const m in e.fits){let d="";e.fits[m].slice(0,k+1).forEach((v,i)=>{if(v>0)d+=(d?"L":"M")+x2(i).toFixed(1)+","+y2(Math.min(Math.max(v,lo2),hi2)).toFixed(1);});
+    el("path",{d,fill:"none",stroke:css(MC[m]),"stroke-width":1.6},L);}
+  e.known.forEach((v,i)=>el("circle",{cx:x2(i),cy:y2(v),r:4.5,fill:css("--seen")},L));
+  el("circle",{cx:x2(k),cy:y2(nextv),r:5,fill:"none",stroke:css("--unseen"),"stroke-width":2},L);
+  el("text",{x:x2(k)-8,y:y2(nextv)+4,"text-anchor":"end"},L).textContent="actual";
+  const pct=v=>v==null?"n/a":(100*(Math.exp(v)-1)).toFixed(1)+"%";
+  $("meta").innerHTML=`<span><b>${e.date}</b> ${e.side} ${e.strike} (${e.money} at 09:20)</span><span>DTE <b>${e.dte}</b></span><span>signal <b>${hhmm(e.t0,e.sig+1,e.tf)}</b> · wave <b>${e.wave}</b></span><span>30-min return <b>${pct(e.r30)}</b></span><span>vs matched <b>${e.x30==null?"n/a":(100*e.x30).toFixed(1)+" pts"}</b></span><span>next wave <b>${e.nxt?"yes":"no"}</b></span>`;
+}
+["f-period","f-code","f-side","f-money"].forEach(id=>$(id).addEventListener("change",filt));
+$("f-event").addEventListener("change",ev=>{pos=+ev.target.value;draw();});
+$("prev").addEventListener("click",()=>{if(list.length){pos=(pos-1+list.length)%list.length;draw();}});
+$("next").addEventListener("click",()=>{if(list.length){pos=(pos+1)%list.length;draw();}});
+filt();
+</script>

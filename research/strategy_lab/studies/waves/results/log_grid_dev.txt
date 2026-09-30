@@ -1,10 +1,6 @@
-Traceback (most recent call last):
-  File "D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\stages.py", line 665, in <module>
-    import json
-  File "D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\stages.py", line 39, in stage_grid
-    sig = P.run_cell(b, f, L, c, k, m, st)[0]
-  File "D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\pipeline.py", line 264, in run_cell
-    w = waves.copy()
-  File "D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\pipeline.py", line 263, in <lambda>
-    LC.append(lcs)
-numpy._core._exceptions._ArrayMemoryError: Unable to allocate 26.0 MiB for an array with shape (28385, 12, 10) and data type float64
+dev L 8 done
+dev L 10 done
+dev L 12 done
+dev L 14 done
+dev L 16 done
+grid done 622 s

@@ -317,6 +317,10 @@ def stage_null(years, tf=5):
 def stage_geometry(years, tf=5, dev_g=None):
     prm = S.PRIMARY
     out = {}
+    devf = S.OUT / f"geometry_tf{tf}_2024.json"
+    if dev_g is None and 2024 not in years and devf.exists():
+        import json
+        dev_g = json.load(open(devf))["results"]["dev"]["front_clean"]["median_g2"]  # fixed on development only
     for y in years:
         per = DA.PERIOD[y]
         b, f, o, el = S.panel(y, tf, prm["L"], prm["k"])
