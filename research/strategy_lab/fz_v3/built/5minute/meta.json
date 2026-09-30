@@ -1,0 +1,315 @@
+{
+ "timeframe": "5minute",
+ "tf_min": 5,
+ "data_file": "D:/nifty/niftyfut_nearmonth_5minute_2021-10-01_to_2026-09-25.csv",
+ "data_sha1_16": "f44e4e37986fe826",
+ "first_bar": "2021-10-01 09:15:00",
+ "last_bar": "2026-09-25 15:25:00",
+ "bars": 88771,
+ "sessions": 1188,
+ "is_window": [
+  "2021-10-01",
+  "2025-12-31"
+ ],
+ "oos_window": [
+  "2026-01-01",
+  "2026-09-25"
+ ],
+ "warmup_sessions_flagged": 5,
+ "engine_rules": {
+  "break_mode": "touch",
+  "choch_mode": "touch",
+  "avwap_weight": "volume",
+  "sl_rule": "choch_candle"
+ },
+ "engine_source": "strategies/strategy_2.json rules (ST2)",
+ "fz_block_source": "strategies/strategy_8.json fz.5minute (ST8)",
+ "fz_cfg": {
+  "band_half_width": 10,
+  "birth_a_source": "none",
+  "birth_b": "band",
+  "cluster_bars": 4,
+  "cluster_width": 20,
+  "merge_overlap": 0.5,
+  "zone_max_age_sessions": null,
+  "room_model": "rooms",
+  "drift_birth": false,
+  "room_overlap": "supersede",
+  "room_max_age_sessions": 3,
+  "visit_min_bars": 1,
+  "accept_bars": 2,
+  "accept_vol_ratio": 0.8,
+  "thin_ratio": 0.5,
+  "first_print_min_bars": 3,
+  "hunt_form": "wick",
+  "hunt_max_bars": 1,
+  "hunt_min_depth_atr": 0.5,
+  "hunt_burst": 1.5,
+  "reject_tol": 2,
+  "leave_closes": 2,
+  "leave_ttl_bars": 3,
+  "leave_far_side": "block_list",
+  "fade_block_bars": 3,
+  "fade_scope": "ref_band",
+  "defend_window_bars": 3,
+  "open_bars": 2,
+  "open_quiet_bars": 2,
+  "open_sit_closes": 3,
+  "open_window_until": "09:25",
+  "no_entry_from": "15:20",
+  "cancel_inside_bars": 1,
+  "edge_watch": "ref_band",
+  "volume_base": "first",
+  "reenter_fill": "confirm_bar",
+  "control_draws": 2000,
+  "control_seed": "fz",
+  "same_session_overlap": "keep_older",
+  "session_visit_rule": "sit",
+  "adjacent_birth": "block_half_width",
+  "defend_half": "away_half",
+  "room_edges": "sit_range",
+  "absorb_rule": "mid_inside",
+  "defend_direction": "one_per_visit",
+  "same_day_replace": "replace_unaccepted"
+ },
+ "lot": 65,
+ "slippage_pts_per_side": 5.0,
+ "charge_code": "ZERODHA_NFO_FUT",
+ "charges": {
+  "segment": "NSE F&O futures",
+  "effective_from": "2024-10-01",
+  "brokerage_pct": 0.03,
+  "brokerage_cap": 20.0,
+  "brokerage_flat": 0,
+  "stt_buy_pct": 0.0,
+  "stt_sell_pct": 0.02,
+  "exchange_pct": 0.00173,
+  "sebi_pct": 0.0001,
+  "stamp_buy_pct": 0.002,
+  "gst_pct": 18.0,
+  "notes": "brokerage 0.03% or Rs20/order (lower); STT 0.02% sell; NSE txn 0.00173%; SEBI Rs10/crore; stamp 0.002% buy; GST 18% on brokerage+txn+SEBI."
+ },
+ "atr_period": 14,
+ "code_sha1_16": {
+  "engine.py": "55c54202fc74d0de",
+  "fz.py": "6e976aaaf954cef0",
+  "fz_exec.py": "7266da923d072dc1",
+  "fz_report.py": "6700d5a3658c344a",
+  "lab.py": "45ce8e551c935ff0"
+ },
+ "script_sha1_16": "799cfe0889ad894a",
+ "built_at": "2026-09-29T01:37:14",
+ "python": "3.10.6",
+ "pandas": "2.3.3",
+ "run_times_s": {
+  "load": 5.83,
+  "engine.run": 56.72,
+  "price trades": 56.85,
+  "fz.run": 68.16,
+  "fz build_trades": 68.28,
+  "features": 88.76,
+  "write": 124.2,
+  "total": 124.41
+ },
+ "counts": {
+  "IS": {
+   "sessions": 1026,
+   "bars": 76621,
+   "setups": 832,
+   "engine_skipped": 0,
+   "foundation": {
+    "n": 832,
+    "net_inr": -230262.16,
+    "mean_net_inr": -276.76,
+    "wins": 184,
+    "pts": 9896.25,
+    "open_at_end": 0,
+    "exit_reasons": {
+     "next_choch": 403,
+     "stop_loss": 429,
+     "open": 0
+    },
+    "median_cost_inr": 1033.595
+   },
+   "gate_at_setup": {
+    "TAKE": 228,
+    "WATCH": 384,
+    "BLOCK": 219,
+    "REENTER": 1
+   },
+   "outcome_gate": {
+    "TAKE": 228,
+    "WATCH": 288,
+    "BLOCK": 219,
+    "REENTER": 97
+   },
+   "fz_positions": {
+    "TAKE": 228,
+    "REENTER": 97,
+    "book": {
+     "n": 325,
+     "net_inr": -140291.26,
+     "mean_net_inr": -431.67,
+     "wins": 67,
+     "pts": 3091.15,
+     "open_at_end": 0,
+     "exit_reasons": {
+      "next_choch": 143,
+      "stop_loss": 153,
+      "open": 0
+     },
+     "median_cost_inr": 1032.66
+    }
+   },
+   "block_reasons": {
+    "new": 159,
+    "open_pierce": 31,
+    "clock": 11,
+    "hunt_fade": 18
+   },
+   "reads": {
+    "LEAVE": 469,
+    "THIN": 49,
+    "NEW": 84,
+    "PENDING": 195,
+    "FIRST_PRINT": 7,
+    "REJECT": 7,
+    "RECYCLE": 11,
+    "ACCEPTED": 5,
+    "HUNT": 5
+   }
+  },
+  "OOS": {
+   "sessions": 162,
+   "bars": 12150,
+   "setups": 180,
+   "engine_skipped": 0,
+   "foundation": {
+    "n": 180,
+    "net_inr": -190752.78,
+    "mean_net_inr": -1059.74,
+    "wins": 37,
+    "pts": 157.0,
+    "open_at_end": 1,
+    "exit_reasons": {
+     "next_choch": 87,
+     "stop_loss": 92,
+     "open": 1
+    },
+    "median_cost_inr": 1112.2649999999999
+   },
+   "gate_at_setup": {
+    "TAKE": 41,
+    "WATCH": 92,
+    "BLOCK": 47,
+    "REENTER": 0
+   },
+   "outcome_gate": {
+    "TAKE": 41,
+    "WATCH": 65,
+    "BLOCK": 47,
+    "REENTER": 27
+   },
+   "fz_positions": {
+    "TAKE": 41,
+    "REENTER": 27,
+    "book": {
+     "n": 68,
+     "net_inr": -105763.6,
+     "mean_net_inr": -1555.35,
+     "wins": 12,
+     "pts": -459.7,
+     "open_at_end": 0,
+     "exit_reasons": {
+      "next_choch": 30,
+      "stop_loss": 27,
+      "open": 0
+     },
+     "median_cost_inr": 1112.835
+    }
+   },
+   "block_reasons": {
+    "new": 39,
+    "open_pierce": 3,
+    "hunt_fade": 1,
+    "clock": 4
+   },
+   "reads": {
+    "PENDING": 52,
+    "LEAVE": 99,
+    "THIN": 9,
+    "NEW": 12,
+    "REJECT": 1,
+    "FIRST_PRINT": 3,
+    "RECYCLE": 4
+   }
+  },
+  "ALL": {
+   "sessions": 1188,
+   "bars": 88771,
+   "setups": 1012,
+   "engine_skipped": 0,
+   "foundation": {
+    "n": 1012,
+    "net_inr": -421014.94,
+    "mean_net_inr": -416.02,
+    "wins": 221,
+    "pts": 10053.25,
+    "open_at_end": 1,
+    "exit_reasons": {
+     "next_choch": 490,
+     "stop_loss": 521,
+     "open": 1
+    },
+    "median_cost_inr": 1075.455
+   },
+   "gate_at_setup": {
+    "TAKE": 269,
+    "WATCH": 476,
+    "BLOCK": 266,
+    "REENTER": 1
+   },
+   "outcome_gate": {
+    "TAKE": 269,
+    "WATCH": 353,
+    "BLOCK": 266,
+    "REENTER": 124
+   },
+   "fz_positions": {
+    "TAKE": 269,
+    "REENTER": 124,
+    "book": {
+     "n": 393,
+     "net_inr": -246054.86,
+     "mean_net_inr": -626.09,
+     "wins": 79,
+     "pts": 2631.45,
+     "open_at_end": 0,
+     "exit_reasons": {
+      "next_choch": 173,
+      "stop_loss": 180,
+      "open": 0
+     },
+     "median_cost_inr": 1076.51
+    }
+   },
+   "block_reasons": {
+    "new": 198,
+    "open_pierce": 34,
+    "clock": 15,
+    "hunt_fade": 19
+   },
+   "reads": {
+    "LEAVE": 568,
+    "THIN": 58,
+    "NEW": 96,
+    "PENDING": 247,
+    "FIRST_PRINT": 10,
+    "REJECT": 8,
+    "RECYCLE": 15,
+    "ACCEPTED": 5,
+    "HUNT": 5
+   }
+  }
+ }
+}

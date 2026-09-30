@@ -1,0 +1,76 @@
+01:59:22 bars 443826, volume baselines written; hv3 bars (ratio20 >= 3): 30956 [rss 293.1 MB]
+01:59:23 swings 130843, events 39608, setups 5326, trades 5326, skipped 0, rooms 6802 [rss 369.2 MB]
+01:59:29 card / ledger rows at SETUP bars joined [rss 343.7 MB]
+01:59:48 per-SETUP features: 5326 rows x 118 cols [rss 414.4 MB]
+01:59:51 done [rss 344.4 MB]
+{
+ "bars_volume_s": 15.3,
+ "card_ledger_s": 6.3,
+ "setup_loop_s": 18.8,
+ "rows": 5326,
+ "cols": 185,
+ "by_split": {
+  "IS": {
+   "setups": 4502,
+   "traded": 4502,
+   "net": -4150085.95,
+   "pts": 8719.05,
+   "wins": 684,
+   "win_rate": 0.1519,
+   "mean_net": -921.83,
+   "mean_cost_inr": 1047.72,
+   "exit_reasons": {
+    "next_choch": 3081,
+    "stop_loss": 1421
+   },
+   "st7_gate_at_setup": {
+    "WATCH": 2251,
+    "BLOCK": 1517,
+    "TAKE": 605,
+    "REENTER": 129
+   },
+   "st7_outcome_gate": {
+    "WATCH": 2251,
+    "BLOCK": 1506,
+    "TAKE": 605,
+    "REENTER": 140
+   },
+   "st7_traded": 745,
+   "sessions": 579
+  },
+  "OOS": {
+   "setups": 824,
+   "traded": 824,
+   "net": -741841.63,
+   "pts": 2740.3,
+   "wins": 128,
+   "win_rate": 0.1553,
+   "mean_net": -900.29,
+   "mean_cost_inr": 1116.46,
+   "exit_reasons": {
+    "next_choch": 533,
+    "stop_loss": 290,
+    "open": 1
+   },
+   "st7_gate_at_setup": {
+    "WATCH": 393,
+    "BLOCK": 304,
+    "TAKE": 106,
+    "REENTER": 21
+   },
+   "st7_outcome_gate": {
+    "WATCH": 393,
+    "BLOCK": 301,
+    "TAKE": 106,
+    "REENTER": 24
+   },
+   "st7_traded": 130,
+   "sessions": 106
+  }
+ },
+ "peak_rss_mb": 622.6,
+ "touch_lookback": 60,
+ "touch_verdict_bars": 15,
+ "break_atr": 0.5,
+ "med_min_bars": 5
+}

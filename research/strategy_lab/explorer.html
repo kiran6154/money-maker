@@ -1,0 +1,123 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chart explorer</title>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#111827;--sub:#6b7280;--line:#e5e7eb;--pos:#067d5f;--neg:#c0392b;--acc:#2954d9}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:1400px;margin:0 auto;padding:12px 16px}h1{font-size:18px;margin:0}a{color:var(--acc)}
+.sub{color:var(--sub);font-size:12.5px}.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:10px}
+.bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}.bar label{display:inline-flex;gap:6px;align-items:center;font-size:13px;color:var(--sub)}
+select,input[type=date]{font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}.seg button{border:0;background:#fff;padding:4px 10px;font:inherit;cursor:pointer;color:var(--ink)}
+.seg button.on{background:var(--acc);color:#fff}.seg button:disabled{opacity:.4;cursor:default}
+.panel h2{font-size:14px;margin:0 0 6px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.chart{height:420px;width:100%;position:relative}
+.chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-size:12px;cursor:pointer;user-select:none}
+.chip i{width:9px;height:9px;border-radius:50%;display:inline-block}.chip.off{opacity:.4}
+table{border-collapse:collapse;width:100%;font-size:12px}th,td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{background:#fafafa;font-weight:600;position:sticky;top:0}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}.scroll{overflow:auto;max-height:260px;margin-top:6px}
+.pos{color:var(--pos)}.neg{color:var(--neg)}tr.z{cursor:pointer}tr.z:hover{background:#f3f6ff}.msg{padding:30px;text-align:center;color:var(--sub)}
+.busy{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(255,255,255,.6);z-index:5;color:var(--sub)}
+</style></head><body><main>
+<div class="bar"><h1>Chart explorer</h1><span class="sub">Visualization, not a backtest: the strategy is applied to each instrument's own candles for the chosen date. <a href="dashboard.html">Dashboard</a></span></div>
+<div class="card bar" id="controls">
+  <label>Date <input type="date" id="date"></label>
+  <label>Strategy <select id="code"></select></label>
+  <label>Candles <span class="seg" id="tfSeg"></span></label>
+  <label>Holding <span class="seg" id="holdSeg"></span></label>
+  <label>Sessions before <span class="seg" id="dbSeg"></span></label>
+</div>
+<div class="card panel"><h2>Underlying <span class="seg" id="undSeg"></span><span class="sub" id="topInfo"></span></h2>
+  <div class="bar" id="topLayers"></div><div class="sub" id="topOhlc"></div>
+  <div class="chart" id="top"><div class="busy" id="topBusy">Loading…</div></div>
+  <div class="scroll"><table id="topTrades"></table></div><div class="sub" id="topSkip"></div></div>
+<div class="card panel"><h2>Option <label>Expiry <select id="exp"></select></label><span class="seg" id="rightSeg"></span><label>Strike <select id="strike"></select></label><span class="sub" id="botInfo"></span></h2>
+  <div class="bar" id="botLayers"></div><div class="sub" id="botOhlc"></div>
+  <div class="chart" id="bot"><div class="busy" id="botBusy">Loading…</div></div>
+  <div class="scroll"><table id="botTrades"></table></div><div class="sub" id="botSkip"></div></div>
+</main>
+<script>
+const $=id=>document.getElementById(id),fmt=(v,d=1)=>v==null?'—':(+v).toFixed(d),inr=v=>(v<0?'−':'')+'₹'+Math.abs(Math.round(v)).toLocaleString('en-IN');
+const iso=t=>new Date(t*1000).toISOString().replace('T',' ').slice(0,16);
+const S={date:null,code:null,tf:'minute',hold:'own',db:1,und:'FUT',exp:null,right:'CE',strike:null};
+const CH={top:null,bot:null},DATA={top:null,bot:null},ON={trades:true,rlevels:true,avwap:true,prot:true,struct:true,swings:true,vol:true};let SYNC=false,INS=null;
+try{Object.assign(S,JSON.parse(localStorage.getItem('explorer')||'{}'));}catch(e){}
+const save=()=>{try{localStorage.setItem('explorer',JSON.stringify(S));}catch(e){}};
+async function api(path,q){const r=await fetch(path+'?'+new URLSearchParams(q));const j=await r.json();if(!r.ok)throw new Error(j.error||r.status);return j;}
+function seg(id,items,val,set){$(id).innerHTML=items.map(([v,l])=>`<button data-v="${v}" class="${String(v)===String(val)?'on':''}">${l}</button>`).join('');
+  $(id).querySelectorAll('button').forEach(b=>b.onclick=()=>{set(b.dataset.v);});}
+const WHY={stop_loss:'Stop',trail_stop:'Trail stop',eod:'Square-off',next_choch:'Next CHoCH',open:'Open at end*',expiry:'Expiry'};
+function draw(which,res){
+  const el=$(which),C=res.chart.C;if(CH[which]){CH[which].remove();CH[which]=null;}
+  el.querySelectorAll('.msg').forEach(x=>x.remove());
+  if(!C.length){el.insertAdjacentHTML('beforeend','<div class="msg">No candles.</div>');return;}
+  const ch=LightweightCharts.createChart(el,{autoSize:true,layout:{background:{color:'#fff'},textColor:'#4b5563',fontFamily:'system-ui'},grid:{vertLines:{color:'#f3f4f6'},horzLines:{color:'#f3f4f6'}},
+    timeScale:{timeVisible:true,secondsVisible:false,rightOffset:4},crosshair:{mode:0},handleScroll:{mouseWheel:false,pressedMouseMove:true,horzTouchDrag:true,vertTouchDrag:false},
+    handleScale:{mouseWheel:false,pinch:true,axisPressedMouseMove:true},localization:{timeFormatter:t=>iso(t).slice(5)}});CH[which]=ch;
+  const {S:SW,E,PR,PAIR,M}=res.chart,cs=ch.addCandlestickSeries({upColor:'#089981',downColor:'#f23645',wickUpColor:'#089981',wickDownColor:'#f23645',borderVisible:false});
+  cs.priceScale().applyOptions({scaleMargins:{top:0.06,bottom:0.2}});cs.setData(C.map(r=>({time:r[0],open:r[1],high:r[2],low:r[3],close:r[4]})));
+  const base={lastValueVisible:false,priceLineVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null},L={vol:[],swings:[],avwap:[],prot:[],trades:[],rlevels:[]};
+  const line=(layer,opt,data)=>{const s=ch.addLineSeries({...base,...opt,visible:ON[layer]});s.setData(data);L[layer].push(s);};
+  const vs=ch.addHistogramSeries({priceScaleId:'vol',priceFormat:{type:'volume'},lastValueVisible:false,priceLineVisible:false,visible:ON.vol});ch.priceScale('vol').applyOptions({scaleMargins:{top:0.84,bottom:0}});
+  vs.setData(C.map(r=>({time:r[0],value:r[7],color:r[4]>=r[1]?'rgba(8,153,129,.35)':'rgba(242,54,69,.35)'})));L.vol.push(vs);
+  const MK={swings:[],struct:[],trades:[]};
+  for(const [k,t,p,ct] of SW){const hi=k==='H',col=hi?'#089981':'#f23645';MK.swings.push({time:ct,position:hi?'aboveBar':'belowBar',color:col,shape:hi?'arrowDown':'arrowUp',size:0.5});line('swings',{color:col,lineWidth:1},t===ct?[{time:t,value:p}]:[{time:t,value:p},{time:ct,value:p}]);}
+  {const pm=new Map(PR);line('prot',{color:'#7b1fa2',lineWidth:1,lineStyle:2,lineType:1},C.map(r=>pm.has(r[0])?{time:r[0],value:pm.get(r[0])}:{time:r[0]}));}
+  for(const a of PAIR){const col=a.side==='H'?'#ff6d00':'#2962ff';line('avwap',{color:col,lineWidth:2},a.live.map(([x,v])=>({time:x,value:v})));if(a.back.length>1)line('avwap',{color:col,lineWidth:1,lineStyle:1},a.back.map(([x,v])=>({time:x,value:v})));}
+  for(const [x,kind,dir] of E)MK.struct.push({time:x,position:dir==='up'?'aboveBar':'belowBar',color:kind==='BOS'?'#9e9e9e':'#7b1fa2',shape:'circle',size:kind==='BOS'?0.2:0.5,text:kind==='BOS'?'':'CHoCH'});
+  const tmin=C[0][0],tmax=C[C.length-1][0],P=res.meta.position,seen=new Set(),b0=l=>(l||'').split(' · ')[0];
+  for(const [et0,ep,xt,xp,d,pts,open,sl,why,label] of M){const up=d==='up',win=pts>0,xe=Math.min(xt,tmax),et=Math.max(et0,tmin);
+    if(et0>=tmin)MK.trades.push({time:et0,position:up?'belowBar':'aboveBar',color:'#111',shape:up?'arrowUp':'arrowDown',size:1.3,text:label});
+    if(xt<=tmax)MK.trades.push({time:xt,position:up?'aboveBar':'belowBar',color:win?'#089981':'#f23645',shape:'circle',size:0.9,text:(why==='stop_loss'?'SL ':why==='trail_stop'?'TRAIL ':why==='eod'?'EOD ':/^target /.test(why||'')?'T'+why.slice(7)+' ':open?'OPEN* ':'')+fmt(pts)});
+    line('trades',{color:win?'#089981':'#f23645',lineWidth:2,lineStyle:2},et===xe?[{time:et,value:ep}]:[{time:et,value:ep},{time:xe,value:xp}]);
+    if(P&&P.exit==='position'&&sl!=null){const key=et0+'|'+d+'|'+b0(label).split(' ')[0]+(label.includes('REV')?'R':'');if(seen.has(key))continue;seen.add(key);
+      const end=Math.min(Math.max(...M.filter(z=>z[0]===et0&&z[4]===d).map(z=>z[2])),tmax),a=Math.max(et0,tmin),R=Math.abs(ep-sl),sg=up?1:-1;
+      const lv=[['SL',-1,'#d32f2f'],...(P.scale_out||[]).filter(x=>x.target_r!=null).map(x=>[x.target_r+'R',x.target_r,'#089981']),...(P.trail?[[P.trail.start_r+'R trail',P.trail.start_r,'#2962ff']]:[])];
+      if(R&&a<=end)for(const [nm,k,col] of lv){const y=+(ep+sg*k*R).toFixed(2);line('rlevels',{color:col,lineWidth:1,lineStyle:k<0?0:2,title:nm,lastValueVisible:true},a===end?[{time:a,value:y}]:[{time:a,value:y},{time:end,value:y}]);}}}
+  const markers=()=>{const m=[];if(ON.swings)m.push(...MK.swings);if(ON.struct)m.push(...MK.struct);if(ON.trades)m.push(...MK.trades);m.sort((a,b)=>a.time-b.time);cs.setMarkers(m);};markers();
+  const lay=$(which+'Layers');lay.innerHTML='';for(const [k,lbl,col] of [['trades','Trades','#111'],['rlevels','Stop / 1R / 2R / 3R','#089981'],['avwap','AVWAP pair','#ff6d00'],['prot','Protected level','#7b1fa2'],['struct','CHoCH / BOS','#9e9e9e'],['swings','Swings','#089981'],['vol','Volume','#c3c7cf']]){
+    const b=document.createElement('span');b.className='chip'+(ON[k]?'':' off');b.innerHTML=`<i style="background:${col}"></i>${lbl}`;b.onclick=()=>{ON[k]=!ON[k];b.classList.toggle('off',!ON[k]);(L[k]||[]).forEach(s=>s.applyOptions({visible:ON[k]}));markers();};lay.appendChild(b);}
+  const byT=new Map(C.map(r=>[r[0],r])),bar=r=>{if(r)$(which+'Ohlc').textContent=`${iso(r[0])} · O ${r[1]} H ${r[2]} L ${r[3]} C ${r[4]} · V ${(r[7]||0).toLocaleString('en-IN')}`;};
+  bar(C[C.length-1]);ch.subscribeCrosshairMove(p=>bar(p.time?byT.get(p.time):C[C.length-1]));
+  el.onwheel=e=>{if(!e.ctrlKey)return;e.preventDefault();const ts=ch.timeScale(),r=ts.getVisibleLogicalRange();if(!r)return;const x=ts.coordinateToLogical(e.offsetX)??(r.from+r.to)/2,k=e.deltaY>0?1.15:1/1.15;ts.setVisibleLogicalRange({from:x-(x-r.from)*k,to:x+(r.to-x)*k});};
+  ch.timeScale().fitContent();
+  ch.timeScale().subscribeVisibleTimeRangeChange(r=>{if(SYNC||!r)return;const o=CH[which==='top'?'bot':'top'];if(!o)return;SYNC=true;try{o.timeScale().setVisibleRange(r);}catch(e){}setTimeout(()=>SYNC=false,0);});
+  const other=CH[which==='top'?'bot':'top'];if(other){try{const r=other.timeScale().getVisibleRange();if(r)ch.timeScale().setVisibleRange(r);}catch(e){}}
+  table(which,res);}
+function table(which,res){let cum=0;const T=res.trades;
+  $(which+'Trades').innerHTML=T.length?'<thead><tr><th>#</th><th>Position</th><th>Lot group</th><th class="n">Lots</th><th>CHoCH</th><th>Entry</th><th class="n">Entry px</th><th class="n">Stop</th><th>Exit</th><th class="n">Exit px</th><th>Reason</th><th class="n">Points</th><th class="n">Best</th><th class="n">Worst</th><th class="n">Net ₹</th><th class="n">Cum. ₹</th></tr></thead><tbody>'+
+    T.map((t,i)=>{cum+=t.net;return `<tr class="z" data-a="${t.entry_time}" data-b="${t.exit_time}"><td>${i+1}</td><td class="${t.position==='LONG'?'pos':'neg'}">${t.position}</td><td>${t.tranche||'—'}</td><td class="n">${t.lots}</td><td>${t.choch_time.slice(5,16)}</td><td>${t.entry_time.slice(5,16)}</td><td class="n">${t.entry_px}</td><td class="n">${t.sl??'—'}</td><td>${t.exit_time.slice(5,16)}</td><td class="n">${t.exit_px}</td><td>${WHY[t.exit_reason]||t.exit_reason}</td><td class="n ${t.pts>=0?'pos':'neg'}">${fmt(t.pts)}</td><td class="n">${fmt(t.mfe)}</td><td class="n">${fmt(t.mae)}</td><td class="n ${t.net>=0?'pos':'neg'}">${inr(t.net)}</td><td class="n ${cum>=0?'pos':'neg'}">${inr(cum)}</td></tr>`;}).join('')+'</tbody>'
+    :'<tbody><tr><td class="sub">No trades on the shown sessions.</td></tr></tbody>';
+  $(which+'Trades').querySelectorAll('tr.z').forEach(r=>r.onclick=()=>{const a=Date.parse(r.dataset.a.replace(' ','T')+'Z')/1000,b=Date.parse(r.dataset.b.replace(' ','T')+'Z')/1000;
+    try{CH[which].timeScale().setVisibleRange({from:a-40*60,to:b+40*60});}catch(e){}});
+  $(which+'Skip').textContent=res.skipped.length?`Not taken: `+res.skipped.map(s=>`${s.entry_time.slice(11,16)} ${s.position} — ${s.why}`).join(' · '):'';
+  $(which+'Info').textContent=`${res.meta.instrument||''} · ${res.meta.strategy} · net ${inr(res.net)} (${T.length} lot exits) · lot ${res.meta.lot_size}, slippage ${res.meta.slippage_pts} pts/side`;}
+async function load(which){
+  const q={date:S.date,code:S.code,tf:S.tf,holding:S.hold,days_before:S.db};
+  if(which==='top')Object.assign(q,{inst:S.und});else{if(!S.exp||!S.strike){if(CH.bot){CH.bot.remove();CH.bot=null;}$('botTrades').innerHTML='';$('botInfo').textContent='no option contract with data on this date';return;}Object.assign(q,{inst:'OPT',expiry:S.exp,strike:S.strike,right:S.right});}
+  $(which+'Busy').style.display='flex';
+  try{draw(which,await api('api/explorer/chart',q));}catch(e){if(CH[which]){CH[which].remove();CH[which]=null;}$(which).insertAdjacentHTML('beforeend',`<div class="msg">${e.message}</div>`);$(which+'Trades').innerHTML='';}
+  finally{$(which+'Busy').style.display='none';}}
+function optionPickers(){const os=INS?INS.options:[];
+  if(!os.some(o=>o.expiry===S.exp))S.exp=os.length?os[0].expiry:null;
+  $('exp').innerHTML=os.map(o=>`<option value="${o.expiry}" ${o.expiry===S.exp?'selected':''}>${o.expiry}${o.monthly?' (monthly)':''}</option>`).join('')||'<option>—</option>';
+  seg('rightSeg',[['CE','CE'],['PE','PE']],S.right,v=>{S.right=v;save();optionPickers();load('bot');});
+  const o=os.find(x=>x.expiry===S.exp),ks=o?o.strikes[S.right]:[];
+  if(!ks.includes(+S.strike)){const ref=INS&&INS.index_open||0;S.strike=ks.length?ks.reduce((a,b)=>Math.abs(b-ref)<Math.abs(a-ref)?b:a):null;}
+  $('strike').innerHTML=ks.map(k=>`<option value="${k}" ${k===+S.strike?'selected':''}>${k}</option>`).join('')||'<option>—</option>';}
+async function loadDate(){save();$('botBusy').style.display='flex';
+  try{INS=await api('api/explorer/instruments',{date:S.date,tf:S.tf});}catch(e){INS=null;}finally{$('botBusy').style.display='none';}
+  optionPickers();await load('top');await load('bot');}
+function controls(){
+  seg('tfSeg',[['minute','1m'],['3minute','3m'],['5minute','5m'],['15minute','15m']],S.tf,v=>{S.tf=v;save();controls();load('top');load('bot');});
+  seg('holdSeg',[['own','Strategy\'s own'],['15:25','Intraday 15:25'],['positional','Positional']],S.hold,v=>{S.hold=v;save();controls();load('top');load('bot');});
+  seg('dbSeg',[[0,'0'],[1,'1'],[2,'2']],S.db,v=>{S.db=+v;save();controls();load('top');load('bot');});
+  seg('undSeg',[['FUT','Near-month futures'],['INDEX','NIFTY index']],S.und,v=>{S.und=v;save();controls();load('top');});}
+(async()=>{
+  let meta;try{meta=await api('api/explorer/meta',{});}catch(e){document.querySelector('main').insertAdjacentHTML('beforeend','<div class="card msg">Open this page through <code>python serve.py</code> (it computes the charts).</div>');return;}
+  $('code').innerHTML=meta.strategies.map(s=>`<option value="${s.code}" title="${s.description.replace(/"/g,'&quot;')}">${s.name} · ${s.timeframe==='minute'?'1m':'5m'}</option>`).join('');
+  if(!meta.strategies.some(s=>s.code===S.code))S.code=meta.strategies[0].code;$('code').value=S.code;
+  $('date').min=meta.range.first;$('date').max=meta.range.last;if(!S.date||S.date<meta.range.first||S.date>meta.range.last)S.date=meta.range.last;$('date').value=S.date;
+  $('date').onchange=e=>{S.date=e.target.value;loadDate();};$('code').onchange=e=>{S.code=e.target.value;save();load('top');load('bot');};
+  $('exp').onchange=e=>{S.exp=e.target.value;save();optionPickers();load('bot');};$('strike').onchange=e=>{S.strike=+e.target.value;save();load('bot');};
+  controls();await loadDate();})();
+</script></body></html>

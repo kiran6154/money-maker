@@ -1,0 +1,170 @@
+{
+ "code": "ST29",
+ "versions": [
+  {
+   "version": 1,
+   "vid": "22dd4f8fd0b9",
+   "at": "2026-09-30T23:41:24",
+   "updated": "2026-09-30T23:47:04",
+   "code_hash": "e6992b5fb2b4fbd6+rb:6d3e33bb4ceda07f",
+   "def": {
+    "code": "ST29",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 2,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "rainbow_v1",
+     "exit_rule": "next_choch"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 3,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "position",
+     "stop": {
+      "futures_pts": 50,
+      "option_pct": 5
+     },
+     "trail": {
+      "start_r": 3,
+      "lag_r": 2
+     },
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM1",
+      "OTM1"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14
+    },
+    "rainbow": {
+     "notes": "Picked 2026-09-30 by the pre-registered grid (corrected after review) in studies/rainbow_grid.py (S53): 48 variants, in sample Jan 5 - Jun 30 2026, out of sample Jul 1 - Sep 25 2026; rule = highest in-sample net among variants with >= 30 positions and PF > 1, which none met: the highest in-sample net was taken. Every number here is the grid's; the exit block is the lab's position handling.",
+     "kind": "ema",
+     "periods": [
+      5,
+      8,
+      13,
+      21,
+      34,
+      55
+     ],
+     "trigger": "cross",
+     "fan": "none",
+     "osc_min": 25,
+     "lookback": 10,
+     "pullback_bars": 5,
+     "entry_from": "09:20",
+     "entry_until": "14:30",
+     "exit": "none"
+    }
+   },
+   "changes": [],
+   "results": {
+    "ST29": {
+     "this-month_1m": {
+      "-": {
+       "trades": 37,
+       "wins": 12,
+       "pts": -384.7,
+       "net_inr": -121526.04,
+       "pf": 0.54,
+       "max_dd_inr": -121526.04,
+       "t_stat": -1.49
+      }
+     },
+     "design-period_1m": {
+      "-": {
+       "trades": 277,
+       "wins": 90,
+       "pts": -185.2,
+       "net_inr": -395953.99,
+       "pf": 0.83,
+       "max_dd_inr": -444367.56,
+       "t_stat": -1.22
+      }
+     },
+     "unseen-test_1m": {
+      "-": {
+       "trades": 112,
+       "wins": 39,
+       "pts": -977.6,
+       "net_inr": -334211.91,
+       "pf": 0.57,
+       "max_dd_inr": -392864.71,
+       "t_stat": -2.38
+      }
+     },
+     "all-data_1m": {
+      "-": {
+       "trades": 389,
+       "wins": 129,
+       "pts": -1162.8,
+       "net_inr": -730165.9,
+       "pf": 0.77,
+       "max_dd_inr": -778579.47,
+       "t_stat": -2.07
+      }
+     },
+     "1m_1m": {
+      "-": {
+       "trades": 46,
+       "wins": 14,
+       "pts": -646.4,
+       "net_inr": -184220.62,
+       "pf": 0.47,
+       "max_dd_inr": -191332.95,
+       "t_stat": -2.11
+      }
+     },
+     "3m_1m": {
+      "-": {
+       "trades": 119,
+       "wins": 40,
+       "pts": -1262.6,
+       "net_inr": -398727.99,
+       "pf": 0.53,
+       "max_dd_inr": -398727.99,
+       "t_stat": -2.78
+      }
+     }
+    },
+    "ST29_FB": {},
+    "ST29_NB": {}
+   }
+  }
+ ]
+}
