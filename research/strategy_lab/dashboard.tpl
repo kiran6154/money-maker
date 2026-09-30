@@ -214,14 +214,19 @@ const load_=k=>{try{return JSON.parse(localStorage.getItem(k)||'null');}catch(e)
 const save_=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}};
 const fams=[...new Set(INDEX.map(m=>m.family))];
 const rowsOf=f=>INDEX.filter(m=>m.family===f).sort((a,b)=>ORDER.indexOf(a.variant)-ORDER.indexOf(b.variant));
-const runsOf=f=>rowsOf(f)[0].runs;
+// a strategy's backtests across its types: a backtest counts as run when any type ran it (the c2c strategies refuse the
+// Futures type in every backtest, so the first type alone would show every backtest as not available)
+const runsOf=f=>{const out={};for(const m of rowsOf(f))for(const [k,x] of Object.entries(m.runs||{}))if(!out[k]||(out[k].status!=='ok'&&x.status==='ok'))out[k]=x;return out;};
+const hasRun=(m,k)=>{const x=m&&m.runs&&m.runs[k];return !!(x&&x.status==='ok'&&x.choices&&Object.keys(x.choices).length);};
+const typeFor=(f,k)=>(rowsOf(f).find(m=>hasRun(m,k))||rowsOf(f)[0]).code;
 const designTf=f=>rowsOf(f)[0].timeframe;
 let ST=Object.assign({fam:fams[0],board:true},load_('st2')||{});
 const SEL=load_('sel2')||{};   // per strategy: run, type, scheme per type, option expiry and strike
 fams.forEach(f=>{const rs=runsOf(f),ok=Object.entries(rs).filter(([k,r])=>r.status==='ok'),o=rowsOf(f).find(m=>m.variant!=='FUT');
-  const def=(ok.find(([k,r])=>r.is_default&&r.design)||ok.find(([k,r])=>r.design)||ok[0]||[null])[0];
-  SEL[f]=Object.assign({run:def,type:rowsOf(f)[0].code,scheme:{},exp:'W',strike:o?o.strike_default:'ATR2'},SEL[f]||{});
-  if(!rs[SEL[f].run]||rs[SEL[f].run].status!=='ok')SEL[f].run=def;});
+  const def=(ok.find(([k,r])=>r.is_default&&r.design)||ok.find(([k,r])=>r.design)||ok[0]||Object.entries(rs)[0]||[null])[0];
+  SEL[f]=Object.assign({run:def,type:typeFor(f,def),scheme:{},exp:'W',strike:o?o.strike_default:'ATR2'},SEL[f]||{});
+  if(!rs[SEL[f].run]||rs[SEL[f].run].status!=='ok')SEL[f].run=def;
+  if(!hasRun(rowsOf(f).find(m=>m.code===SEL[f].type),SEL[f].run))SEL[f].type=typeFor(f,SEL[f].run);});
 const saveAll=()=>{save_('st2',ST);save_('sel2',SEL);};
 const S=()=>SEL[ST.fam];
 const runOf=m=>m.runs[SEL[m.family].run];
@@ -283,6 +288,7 @@ function renderHeader(){
   const switchStrat=nf=>{if(nf===f)return;const T=SEL[nf],m2=rowsOf(nf).find(x=>x.variant===cur.variant);
     if(m2){T.type=m2.code;T.scheme[m2.code]=schemeOf(cur);}
     const e=Object.entries(runsOf(nf)).filter(([k,x])=>x.label===r.label&&x.status==='ok'),pick=e.find(([k,x])=>x.design)||e[0];if(pick)T.run=pick[0];
+    if(!hasRun(rowsOf(nf).find(x=>x.code===T.type),T.run))T.type=typeFor(nf,T.run);
     T.exp=S().exp;T.strike=S().strike;ST.fam=nf;go();};
   document.querySelectorAll('#stratSeg button').forEach(b=>b.onclick=()=>switchStrat(b.dataset.f));
   if($('stratSel'))$('stratSel').onchange=e=>switchStrat(e.target.value);
@@ -426,8 +432,13 @@ $('all').onclick=async()=>{const ix=inView(),n=ix.length;for(let j=0;j<n;j++){bu
 async function openStrategy(){await openType();}
 async function openType(keepDay){
   const keep=keepDay&&D&&$('series').value!==''?(D.charts[+$('series').value]||{}).day:null;
-  const f=ST.fam;cur=rowsOf(f).find(m=>m.code===S().type)||rowsOf(f)[0];S().type=cur.code;curChoice=choiceOf(cur);
-  const r=runOf(cur);if(!r.choices[curChoice])curChoice=Object.keys(r.choices)[0];
+  const f=ST.fam;cur=rowsOf(f).find(m=>m.code===S().type)||rowsOf(f)[0];
+  if(!hasRun(cur,S().run))cur=rowsOf(f).find(m=>m.code===typeFor(f,S().run));   // this type did not run this backtest
+  S().type=cur.code;curChoice=choiceOf(cur);
+  const r=runOf(cur);
+  if(!hasRun(cur,S().run)){renderHeader();const why=(r&&r.reason)||'no type of this strategy has a result for this backtest';
+    $('opennote').innerHTML=`<div class="note"><b>Not available:</b> ${esc(why)}</div>`;return;}   // the trades panel keeps its structure
+  if(!r.choices[curChoice])curChoice=Object.keys(r.choices)[0];
   renderHeader();
   const file=r.choices[curChoice].file;busy(true,'Loading…');
   try{D=await getJSON(file);D.base=file.slice(0,file.lastIndexOf('/')+1);}finally{busy(false);}
