@@ -44,7 +44,9 @@ h1{font-size:16px;font-weight:600;margin:0}.sub{color:var(--muted);font-size:12p
 .hmstats{display:grid;grid-template-columns:repeat(3,auto);gap:4px 18px;font-size:12px;font-variant-numeric:tabular-nums;align-content:start}
 .hmstats div{color:var(--muted)}.hmstats b{display:block;color:var(--ink);font-size:13px}
 .warn{color:var(--warn-star);font-weight:700;cursor:help;margin-left:1px}
-.chartcard{display:flex;flex-direction:column;height:max(460px,calc(100vh - 60px));overflow:hidden}
+.chartcard{display:flex;flex-direction:column;height:max(720px,calc(100vh - 16px));min-height:360px;overflow:hidden;resize:vertical}
+/* with the option chart stacked below, the card grows so each chart keeps most of a screen; drag the bottom-right corner for any height */
+.chartcard:has(> #optWrap:not([style*="none"])){height:max(1080px,calc(175vh - 60px))}
 .ctop{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 10px;border-bottom:1px solid var(--line)}
 .crumb{font-size:13px;font-weight:600}.crumb span{color:var(--muted);font-weight:400;margin:0 4px}
 .cbody{position:relative;flex:1;min-height:0}#chart{position:absolute;inset:0}
@@ -935,6 +937,14 @@ function renderRobust(T){
       Object.entries(r.choices).map(([c,x])=>`<tr class="z" data-c="${c}" style="${c===curChoice?'background:var(--sel-bg)':''}"><td>${EXP[ck(c)[0]]}</td><td>${ck(c)[1]}</td><td class="num">${x.trades}${x.skipped?`<span class="warn" title="${x.skipped} skipped">*</span>`:''}</td><td class="num ${cl(x.long?.net_inr)}">${inr(x.long?.net_inr)}</td><td class="num ${cl(x.short?.net_inr)}">${inr(x.short?.net_inr)}</td><td class="num ${cl(x.ce?.net_inr)}">${inr(x.ce?.net_inr)}</td><td class="num ${cl(x.pe?.net_inr)}">${inr(x.pe?.net_inr)}</td><td class="num">${x.pf??'—'}</td></tr>`).join('')+'</tbody></table></div></div>':'');
   document.querySelectorAll('#p-robust tr.z').forEach(tr=>tr.onclick=()=>{const [e,k]=ck(tr.dataset.c);S().exp=e;S().strike=k;saveAll();openType();});
 }
+
+// the chart card's height: drag its bottom-right corner; the dragged height is remembered per viewer, separately for the
+// single chart and for the futures + option stack (clear it by dragging back, or remove chartH / chartH2 from site data)
+(()=>{const card=document.querySelector('.chartcard'),key=()=>$('optWrap').style.display==='none'?'chartH':'chartH2';
+  const apply=()=>{const h=load_(key());card.style.height=h?h+'px':'';};
+  new MutationObserver(apply).observe($('optWrap'),{attributes:true,attributeFilter:['style']});apply();
+  let h0=null;card.addEventListener('mousedown',()=>{h0=card.offsetHeight;});
+  document.addEventListener('mouseup',()=>{if(h0!=null&&Math.abs(card.offsetHeight-h0)>4)save_(key(),card.offsetHeight);h0=null;});})();
 
 // ================= start
 if(!fams.includes(ST.fam))ST.fam=fams[0];
