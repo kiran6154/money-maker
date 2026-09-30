@@ -50,9 +50,16 @@ h1{font-size:16px;font-weight:600;margin:0}.sub{color:var(--muted);font-size:12p
 .ctop{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 10px;border-bottom:1px solid var(--line)}
 .crumb{font-size:13px;font-weight:600}.crumb span{color:var(--muted);font-weight:400;margin:0 4px}
 .cbody{position:relative;flex:1;min-height:0}#chart{position:absolute;inset:0}
-.optwrap{flex:0 0 46%;display:flex;flex-direction:column;border-top:2px solid var(--line);min-height:0}
-.optwrap .ctop{padding:4px 10px}.cbody2{position:relative;flex:1;min-height:0}#chart2{position:absolute;inset:0}
-#optNone{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+/* the option charts: CE on the left, PE on the right (stacked on narrow screens) */
+.optwrap{flex:0 0 46%;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);border-top:2px solid var(--line);min-height:0}
+/* one header row shared by both panes, so the CE and PE charts start at the same height and their time axes line up */
+.optpane{display:contents}#optPaneCE>*{grid-column:1}#optPanePE>*{grid-column:2;border-left:2px solid var(--line)}
+.optpane>.ctop{grid-row:1}.optpane>.cbody2{grid-row:2}
+.optwrap .ctop{padding:4px 10px}.optwrap .crumb{font-size:12px}.cbody2{position:relative;flex:1;min-height:0}.cbody2>.och{position:absolute;inset:0}
+.optnone{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+@media (max-width:900px){.optwrap{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto minmax(0,1fr)}
+  #optPanePE>*{grid-column:1;border-left:0}#optPanePE>.ctop{grid-row:3;border-top:2px solid var(--line)}#optPanePE>.cbody2{grid-row:4}
+  .chartcard:has(> #optWrap:not([style*="none"])){height:max(1400px,calc(240vh - 60px))}}
 .ohlc{font:12px ui-monospace,Consolas,monospace;color:var(--muted);white-space:nowrap}.ohlc b{color:var(--ink);font-weight:500}
 .nav{display:inline-flex;align-items:center;gap:4px}
 .nav button,.nav select{font:12px system-ui;border:1px solid var(--line);background:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;color:var(--ink)}
@@ -136,8 +143,14 @@ svg text{font:10px system-ui;fill:#6b7280}
   </div>
   <div class="cbody"><div id="chart"></div><div class="loading" id="loading">Loading…</div></div>
   <div class="optwrap" id="optWrap" style="display:none">
-    <div class="ctop"><span class="crumb" id="optLbl">Option</span><span class="seg sm" id="optSeg"></span><div class="ohlc" id="ohlc2"></div></div>
-    <div class="cbody2"><div id="chart2"></div><div class="hint" id="optNone" style="display:none">No option position in this session.</div></div>
+    <div class="optpane" id="optPaneCE">
+      <div class="ctop"><span class="crumb" id="optLblCE">CE</span><span class="seg sm" id="optSegCE"></span><div class="ohlc" id="ohlcCE"></div></div>
+      <div class="cbody2"><div class="och" id="chartCE"></div><div class="hint optnone" id="optNoneCE" style="display:none">No CE position in this session.</div></div>
+    </div>
+    <div class="optpane" id="optPanePE">
+      <div class="ctop"><span class="crumb" id="optLblPE">PE</span><span class="seg sm" id="optSegPE"></span><div class="ohlc" id="ohlcPE"></div></div>
+      <div class="cbody2"><div class="och" id="chartPE"></div><div class="hint optnone" id="optNonePE" style="display:none">No PE position in this session.</div></div>
+    </div>
   </div>
 </div>
 
@@ -374,11 +387,12 @@ async function pollJobs(expect){
 function saveChart(fmt){
   if(typeof ch==='undefined'||!ch||!ch.takeScreenshot)return;
   const shot=ch.takeScreenshot(),title=($('crumb').innerText||'').replace(/\s+/g,' ').trim(),day=($('series').selectedOptions[0]||{}).text||'';
-  const low=ch2&&$('optWrap').style.display!=='none'?ch2.takeScreenshot():null,lowT=low?$('optLbl').textContent:'';
-  const H=26,c=document.createElement('canvas');c.width=Math.max(shot.width,low?low.width:0);c.height=shot.height+H+(low?low.height+H:0);
+  const lows=$('optWrap').style.display!=='none'?['CE','PE'].filter(R=>OCH[R]).map(R=>[OCH[R].takeScreenshot(),$('optLbl'+R).textContent]):[];
+  const lw=lows.reduce((a,[s])=>a+s.width,0),lh=Math.max(0,...lows.map(([s])=>s.height));
+  const H=26,c=document.createElement('canvas');c.width=Math.max(shot.width,lw);c.height=shot.height+H+(lows.length?lh+H:0);
   const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);
   g.fillStyle='#111';g.font='13px system-ui, sans-serif';g.fillText((title+(day?'  ·  '+day:'')).slice(0,220),8,17);g.drawImage(shot,0,H);
-  if(low){g.fillText(lowT.slice(0,220),8,shot.height+H+17);g.drawImage(low,0,shot.height+2*H);}
+  let x0=0;for(const [s,t] of lows){g.fillText(t.slice(0,Math.max(20,Math.floor(s.width/7))),x0+8,shot.height+H+17);g.drawImage(s,x0,shot.height+2*H);x0+=s.width;}
   const name=(title+' '+day).replace(/[^\w.-]+/g,'_').replace(/_+/g,'_').slice(0,120)+(fmt==='jpeg'?'.jpg':'.png');
   c.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();
     setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);},fmt==='jpeg'?'image/jpeg':'image/png',fmt==='jpeg'?0.85:undefined);}
@@ -387,23 +401,33 @@ $('snapPng').onclick=()=>saveChart('png');$('snapJpg').onclick=()=>saveChart('jp
 // ================= data + chart chunks
 const getJSON=async f=>{if(!cache[f])cache[f]=fetch(f).then(r=>{if(!r.ok)throw new Error(f+' '+r.status);return r.json();});return cache[f];};
 const busy=(v,txt)=>{$('loading').style.display=v?'flex':'none';if(txt)$('loading').textContent=txt;};
-let WIN=null,extending=false,VIEW='signal',ch2=null,SYNC=false;
-// option types with an underlying chart: that chart on top (index or futures, whichever the signals came from) and the traded
-// option's own chart below it, from the session before; both keep the same time window
+let WIN=null,extending=false,VIEW='signal',SYNC=false;
+const OCH={CE:null,PE:null},OPICK={CE:null,PE:null},OFILE={CE:null,PE:null};   // the option panes: chart, picked chunk, drawn file
+const rightOf=c=>{const n=(c.label||'').split(' · ')[1]||'';return / CE$/.test(n)?'CE':/ PE$/.test(n)?'PE':null;};
+const dropOpt=R=>{for(const x of R?[R]:['CE','PE']){if(OCH[x]){OCH[x].remove();OCH[x]=null;}OFILE[x]=null;}};
+// option types with an underlying chart: that chart on top (index or futures, whichever the signals came from) and below it the
+// traded options' own charts, from the session before - CE on the left, PE on the right; all three keep the same time window
 const STACK=()=>!!(D&&cur&&cur.variant!=='FUT'&&D.charts.some(c=>(c.kind||'signal')==='signal')&&D.charts.some(c=>c.kind==='option'));
-function syncCharts(from,r){if(SYNC||!r)return;const other=from==='opt'?ch:ch2;if(!other)return;SYNC=true;
-  try{other.timeScale().setVisibleRange(r);}catch(e){}finally{setTimeout(()=>SYNC=false,0);}}
+function syncCharts(from,r){if(SYNC||!r)return;const others=[['top',ch],['CE',OCH.CE],['PE',OCH.PE]].filter(([k,c])=>k!==from&&c);if(!others.length)return;
+  SYNC=true;try{for(const [,c] of others)try{c.timeScale().setVisibleRange(r);}catch(e){}}finally{setTimeout(()=>SYNC=false,0);}}
+// one pane per right: the session's contracts of that right (a picker when there are several; `pick` = a chunk to show, e.g. the
+// contract of a clicked trade, which also decides its right's pane), the other pane keeps its pick when it is still that session's
 async function showOpt(day,pick){
-  const box=$('optWrap');if(!STACK()){box.style.display='none';if(ch2){ch2.remove();ch2=null;}return;}
+  const box=$('optWrap');if(!STACK()){box.style.display='none';dropOpt();return;}
   box.style.display='';const ix=D.charts.map((c,i)=>i).filter(i=>D.charts[i].kind==='option'&&D.charts[i].day===day);
-  const k=pick!=null&&ix.includes(pick)?pick:ix[0];
-  $('optSeg').innerHTML=ix.length>1?ix.map(i=>`<button data-k="${i}" class="${i===k?'on':''}">${esc(D.charts[i].label.split(' · ').slice(1,2).join(''))}</button>`).join(''):'';
-  $('optSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>showOpt(day,+b.dataset.k));
-  if(k==null){$('optLbl').textContent='Option';$('optNone').style.display='flex';$('ohlc2').innerHTML='';if(ch2){ch2.remove();ch2=null;}return null;}
-  $('optNone').style.display='none';$('optLbl').textContent=D.charts[k].label.split(' · ').slice(1).join(' · ')+' · from the session before';
-  const c=await getJSON(D.base+D.charts[k].file);drawChart(c,true,null,'opt');
-  try{const r=ch&&ch.timeScale().getVisibleRange();if(r)ch2.timeScale().setVisibleRange(r);}catch(e){}
-  return c;}
+  const pr=pick!=null&&ix.includes(pick)?rightOf(D.charts[pick]):null;let out=null;
+  for(const R of ['CE','PE']){
+    const rx=ix.filter(i=>rightOf(D.charts[i])===R);
+    const k=pr===R?pick:OPICK[R]!=null&&rx.includes(OPICK[R])?OPICK[R]:rx.length?rx[0]:null;OPICK[R]=k;
+    $('optSeg'+R).innerHTML=rx.length>1?rx.map(i=>`<button data-k="${i}" class="${i===k?'on':''}">${esc((D.charts[i].label.split(' · ')[1]||'').replace(/^NIFTY /,''))}</button>`).join(''):'';
+    $('optSeg'+R).querySelectorAll('button').forEach(b=>b.onclick=()=>showOpt(day,+b.dataset.k));
+    if(k==null){$('optLbl'+R).textContent=R;$('optNone'+R).style.display='flex';$('ohlc'+R).innerHTML='';dropOpt(R);continue;}
+    $('optNone'+R).style.display='none';$('optLbl'+R).textContent=D.charts[k].label.split(' · ').slice(1).join(' · ')+' · from the session before';
+    const f=D.base+D.charts[k].file,c=await getJSON(f);
+    if(!(OCH[R]&&OFILE[R]===f)){drawChart(c,true,null,R);OFILE[R]=f;}         // redraw only a pane whose contract changed
+    try{const r=ch&&ch.timeScale().getVisibleRange();if(r)OCH[R].timeScale().setVisibleRange(r);}catch(e){}
+    if(k===pick||!out)out=c;}
+  return out;}
 const merge=parts=>{const seen=new Set(),M=[];for(const c of parts)for(const m of c.M)if(!seen.has(m[0]+'|'+m[9])){seen.add(m[0]+'|'+m[9]);M.push(m);}
   // FZ: Z rows per bar, ZONES by id (option chunks have neither). A room (FZ v2 id, not 'A/B<yyyy-mm-dd ...>') is drawn only to the
   // end of the last merged chunk that lists it: lab leaves a room out of every chunk that starts after it retired, so a merged
@@ -448,7 +472,8 @@ async function openType(keepDay){
   $('viewSeg').style.display=kinds.length>1&&!STACK()?'':'none';
   const und=(runOf(cur).underlying||'FUT')==='INDEX'||cur.variant==='OPT_NATIVE'?'index':'futures';
   $('viewSeg').innerHTML=kinds.map(k=>`<button data-v="${k}">${k==='option'?'Option chart':`Signal chart (${und})`}</button>`).join('');
-  if(!STACK()){$('optWrap').style.display='none';if(ch2){ch2.remove();ch2=null;}}
+  OPICK.CE=OPICK.PE=null;dropOpt();                     // a new result: the panes start from its own contracts
+  if(!STACK())$('optWrap').style.display='none';
   $('viewSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
   CALM=null;schemeChanged(true);let k0;
   if(keep){const ix=D.charts.map((c,i)=>i).filter(i=>(D.charts[i].kind||'signal')===VIEW&&D.charts[i].day);   // same day, else the nearest one
@@ -466,14 +491,14 @@ const inScheme=lbl=>{const [pos,ot]=(lbl||'').split(' ');return inSch({pos,otype
 // ================= chart
 function drawChart(CH_,single,range,tgt){
   const {C,S:SW,E,PR,PAIR,M,Z=[],ZONES=[],RB=[]}=CH_;
-  const OPT=tgt==='opt',EL=$(OPT?'chart2':'chart');
-  if(OPT){if(ch2){ch2.remove();ch2=null;}}else if(ch){ch.remove();ch=null;}
+  const OPT=tgt==='CE'||tgt==='PE',EL=$(OPT?'chart'+tgt:'chart');
+  if(OPT){if(OCH[tgt]){OCH[tgt].remove();OCH[tgt]=null;}}else if(ch){ch.remove();ch=null;}
   const cx=LightweightCharts.createChart(EL,{autoSize:true,layout:{background:{color:'#fff'},textColor:'#4b5563',fontFamily:'system-ui'},
     grid:{vertLines:{color:'#f3f4f6'},horzLines:{color:'#f3f4f6'}},rightPriceScale:{borderColor:'#e6e8ec'},
     timeScale:{timeVisible:true,secondsVisible:false,rightOffset:4,borderColor:'#e6e8ec'},crosshair:{mode:0},
     handleScroll:{mouseWheel:false,pressedMouseMove:true,horzTouchDrag:true,vertTouchDrag:false},
     handleScale:{mouseWheel:false,pinch:true,axisPressedMouseMove:true},localization:{timeFormatter:t=>iso(t).slice(5,16).replace('T',' ')}});
-  if(OPT)ch2=cx;else ch=cx;
+  if(OPT)OCH[tgt]=cx;else ch=cx;
   // FZ bands / rooms (Strategies 5-8): one translucent lo-hi box per remembered band from its birth (or the first bar) to the last bar
   // (a room: to the end of the last merged chunk that lists it, see merge()),
   // added before the candles so it sits under them; A = protected-level band (chart purple), B = cluster-sit band (chart blue)
@@ -549,7 +574,7 @@ function drawChart(CH_,single,range,tgt){
   const zcard=z=>{if(!z)return '';const [,id,vn,tb,tv,fb,fv,rc,left,,vna,,,,,fvna]=z,b=id&&ZI.get(id),rd=RD[rc]||'';
     const band=id?`Z ${zn(id)}${b?` ${b[2]}–${b[3]}`:''} · visit ${vn} · ${tb}/${fb??'—'} bars · vol ${!vna&&!fvna&&tv!=null&&fv?(tv/fv).toFixed(2):'NA'}`:'no band';
     return `<span class="pipe">|</span>${band} · <b>${rd}</b>${rd==='LEAVE'&&left?` from ${zn(left)}`:''}`;};
-  const showBar=r=>{if(!r)return;$(OPT?'ohlc2':'ohlc').innerHTML=`${iso(r[0]).slice(5,16).replace('T',' ')} O <b>${r[1]}</b> H <b>${r[2]}</b> L <b>${r[3]}</b> C <b class="${r[4]>=r[1]?'pos':'neg'}">${r[4]}</b> V <b>${r[7].toLocaleString('en-IN')}</b>${zcard(byZ.get(r[0]))}`;};
+  const showBar=r=>{if(!r)return;$(OPT?'ohlc'+tgt:'ohlc').innerHTML=`${iso(r[0]).slice(5,16).replace('T',' ')} O <b>${r[1]}</b> H <b>${r[2]}</b> L <b>${r[3]}</b> C <b class="${r[4]>=r[1]?'pos':'neg'}">${r[4]}</b> V <b>${r[7].toLocaleString('en-IN')}</b>${zcard(byZ.get(r[0]))}`;};
   showBar(C[C.length-1]);cx.subscribeCrosshairMove(p=>showBar(p.time?byT.get(p.time):C[C.length-1]));
   EL.onwheel=e=>{if(!e.ctrlKey)return;e.preventDefault();const ts=cx.timeScale(),r=ts.getVisibleLogicalRange();if(!r)return;
     const x=ts.coordinateToLogical(e.offsetX)??(r.from+r.to)/2,k=e.deltaY>0?1.15:1/1.15;ts.setVisibleLogicalRange({from:x-(x-r.from)*k,to:x+(r.to-x)*k});};
@@ -557,7 +582,7 @@ function drawChart(CH_,single,range,tgt){
   if(range)cx.timeScale().setVisibleLogicalRange(range);
   else if(single)cx.timeScale().fitContent();else cx.timeScale().setVisibleLogicalRange({from:C.length-per-2,to:C.length+2});
   if(WIN&&!OPT)cx.timeScale().subscribeVisibleLogicalRangeChange(r=>{if(!r||extending)return;if(r.from<5&&WIN.lo>0)extend(-1,r);else if(r.to>C.length+2&&WIN.hi<D.charts.length-1)extend(1,r);});
-  cx.timeScale().subscribeVisibleTimeRangeChange(r=>syncCharts(OPT?'opt':'top',r));
+  cx.timeScale().subscribeVisibleTimeRangeChange(r=>syncCharts(OPT?tgt:'top',r));
   CH_.zoom=(a,b)=>{const idx=t=>{let lo=0,hi=C.length-1;while(lo<hi){const m=(lo+hi)>>1;if(C[m][0]<t)lo=m+1;else hi=m;}return lo;};cx.timeScale().setVisibleLogicalRange({from:idx(a)-20,to:idx(b)+20});};
 }
 async function openTrade(et,xt){

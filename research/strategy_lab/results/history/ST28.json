@@ -5,7 +5,7 @@
    "version": 1,
    "vid": "e504733f5385",
    "at": "2026-09-29T22:01:33",
-   "updated": "2026-09-29T22:01:33",
+   "updated": "2026-09-30T23:47:04",
    "code_hash": "e6992b5fb2b4fbd6+c2c:0bbfe32e4e4d78a6",
    "def": {
     "code": "ST28",
@@ -105,24 +105,24 @@
      },
      "all-data_5m_idx": {
       "M-ITM1": {
-       "trades": 47,
-       "wins": 14,
-       "pts": -46.82,
-       "net_inr": -6893.86,
-       "pf": 0.52,
-       "max_dd_inr": -10247.66,
-       "t_stat": -1.79
+       "trades": 114,
+       "wins": 46,
+       "pts": 174.88,
+       "net_inr": 1619.52,
+       "pf": 1.05,
+       "max_dd_inr": -11007.32,
+       "t_stat": 0.21
       }
      },
      "all-data_5m": {
       "M-ITM1": {
-       "trades": 65,
-       "wins": 27,
-       "pts": 88.74,
-       "net_inr": 539.82,
-       "pf": 1.03,
+       "trades": 133,
+       "wins": 56,
+       "pts": 176.17,
+       "net_inr": 171.95,
+       "pf": 1.0,
        "max_dd_inr": -7747.85,
-       "t_stat": 0.1
+       "t_stat": 0.02
       }
      },
      "this-month_5m_idx": {

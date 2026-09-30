@@ -435,9 +435,12 @@ which moved two 1m positions; the permutation now splits by the SETUPs FZ traded
 - **This month** (`preset: "MTD"`, from the 1st of the latest data month) is the default backtest of Strategies 1–4 and 9–10;
   All data (five years for futures), 1Y, 3M, 1M, Design and Unseen stay one click away.
 - **Charts for option types:** the underlying chart on top (the index when the run's signals come from the index or for
-  Options (standalone), else the near-month futures) and the traded option's own chart below it, from the session before
-  the trade; both keep the same time window when either is scrolled or zoomed. A session with several contracts shows a
-  button per contract; clicking a trade opens its session and its contract, zoomed to it. *PNG* / *JPG* save both charts.
+  Options (standalone), else the near-month futures) and below it the traded options' own charts from the session before
+  the trade, **CE on the left and PE on the right** (stacked on a narrow screen; a side with no position that session says
+  so); all three keep the same time window when any of them is scrolled or zoomed. A session with several contracts of one
+  right shows a button per contract in that pane; clicking a trade opens its session and its contract, zoomed to it. The
+  chart card grows when the option panes are shown and can be dragged to any height at its bottom-right corner (remembered
+  per viewer, single and stacked views separately). *PNG* / *JPG* save the main chart with both option panes under it.
 - **Strategy files keep their layout:** adding a backtest from the terminal or the dashboard inserts one line after the last
   backtest in the style of the others (`lab.insert_backtest`); nothing else in the file is rewritten.
 - **Backtests are per strategy** (listed in the strategy's file, synced to `strategy_backtest`): each is one independent run over its own dates (plus warm-up) —

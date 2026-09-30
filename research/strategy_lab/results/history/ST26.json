@@ -5,7 +5,7 @@
    "version": 1,
    "vid": "8b20f006115a",
    "at": "2026-09-29T22:01:33",
-   "updated": "2026-09-29T22:01:33",
+   "updated": "2026-09-30T23:47:04",
    "code_hash": "e6992b5fb2b4fbd6+c2c:0bbfe32e4e4d78a6",
    "def": {
     "code": "ST26",
@@ -105,24 +105,24 @@
      },
      "all-data_5m_idx": {
       "M-ITM1": {
-       "trades": 44,
-       "wins": 13,
-       "pts": 48.65,
-       "net_inr": -447.24,
-       "pf": 0.98,
+       "trades": 108,
+       "wins": 42,
+       "pts": 198.4,
+       "net_inr": 3648.55,
+       "pf": 1.07,
        "max_dd_inr": -15919.47,
-       "t_stat": -0.03
+       "t_stat": 0.2
       }
      },
      "all-data_5m": {
       "M-ITM1": {
-       "trades": 58,
-       "wins": 25,
-       "pts": 265.6,
-       "net_inr": 12557.27,
-       "pf": 1.53,
+       "trades": 124,
+       "wins": 56,
+       "pts": 415.75,
+       "net_inr": 16441.98,
+       "pf": 1.28,
        "max_dd_inr": -12261.24,
-       "t_stat": 0.75
+       "t_stat": 0.79
       }
      },
      "this-month_5m_idx": {
