@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S58. Lab Foundation engine (Strategies 1–4 and every strategy built on their SETUPs) goes silent in a sustained trend: no CHoCH, so no SETUP, while the protected level stays far behind price
+
+| | |
+|---|---|
+| Where | `research/strategy_lab/engine.py` `run()` (v1) and its port `research/strategy_lab_v2/core.py` `_engine` (v2, trade-for-trade identical). Noticed 2026-10-01 while building lab v2. |
+| What | Strategy 1 (1-minute futures) has its last CHoCH on 2026-09-04 15:20 (a bearish flip) and its last trade at 15:22 the same day. The data runs to 2026-09-25: 13 more sessions, with no CHoCH and no trade. Over that stretch NIFTY futures fell from 24,045 to 23,186 (low 23,056). The protected high stayed at 24,058 / 24,070 (later 23,923) and was never broken. BOS events kept printing (366 after 09-04), but entries need a SETUP and a SETUP needs a CHoCH. v1 gives the same result (parity test on 2026-08-26 → 09-25). |
+| Why it matters | Foundation only re-enters after a protected-level break. In a one-way trend the protected level is the swing that started the leg, so the strategy stays flat through the trend's continuation, which is the move it is supposed to be aligned with. Whether this is intended (trade only reversals / retests) has not been decided. |
+| Impact | **Unquantified.** To measure it: count the sessions with no SETUP per strategy over All data (v2: `python backtest.py ST1 all --type FUT`, then group trades by session), and compare with the sessions' net NIFTY move. Then decide whether a BOS-continuation entry is worth a pre-registered test on a frozen window. |
+| Fix sketch | None proposed. Any change (for example a SETUP after a BOS in the trend's direction, or re-anchoring the protected level after N BOS) changes what trades get taken. It needs the user's go-ahead and a before / after run on the same window (rule 3). |
+| Effort | Measurement **S**; any rule change **M**. |
+| Priority | _Open; noticed, not measured._ Related: S57 (a touch that uses up the protected level without a CHoCH under `choch_mode close`). |
+
+---
+
 ### S54. Option "wave lifecycle" study (compression → expansion → higher base → expansion …): is it real, and is its geometry exponential?
 
 | | |
