@@ -40,6 +40,15 @@ CASES = [
     ("ST26", "2026-06-23", "2026-09-14", None, None, "keep"),
     ("ST27", "2026-06-23", "2026-09-14", None, None, "keep"),
     ("ST28", "2026-01-05", "2026-09-25", None, "FUT", "keep"),
+    # Foundation-Zone gate: bands (ST5, ST6) and rooms (ST7, ST8); memory from 2026-01-01
+    ("ST5", "2026-08-26", "2026-09-25", None, None, "keep"),
+    ("ST6", "2026-07-08", "2026-08-25", None, None, "keep"),
+    ("ST7", "2026-08-26", "2026-09-25", None, None, "keep"),
+    ("ST8", "2026-07-08", "2026-09-25", None, None, "keep"),
+    # the learner: one learning run over the whole futures file, windows cut from it (rewards net / r / pf)
+    ("ST19", "2026-08-26", "2026-09-25", None, None, "keep"),
+    ("ST22", "2026-07-08", "2026-08-25", None, None, "keep"),
+    ("ST23", "2026-01-05", "2026-09-25", None, None, "keep"),
 ]
 FIELDS = ("position", "opt_type", "instrument", "strike", "expiry", "entry_time", "entry_px", "exit_time", "exit_px",
           "exit_reason", "open", "lots", "tranche", "sl", "pts", "gross", "net", "mfe", "mae")
@@ -65,7 +74,12 @@ def v1_run(lab, code, typ, frm, to, tf, und, sq):
     stp = dict(row, id=0, timeframe=tf, data_file=lab.tf_file("fut", tf), spot_file=lab.tf_file("spot", tf), underlying=und,
                signal_file=lab.tf_file("spot" if und == "INDEX" else "fut", tf), date_from=frm, date_to=to, period="t",
                warmup_days=spec["warmup_days"], positions="BOTH", position_json=json.dumps(pos, sort_keys=True))
+    if spec["rules"]["entry_rule"].startswith("fz"):       # FZ memory: every session from v1's history start
+        stp["warmup_days"] = lab.sessions().index(frm)
     cs = json.load(open(os.path.join(V1, "config", "charges.json"), encoding="utf-8"))[row["charge_code"]]
+    if spec["rules"]["entry_rule"] == "rl_v1":
+        import rl
+        return rl.run_variant(stp, cs)
     if spec["rules"]["entry_rule"] == "c2c_v1":
         import c2c
         return c2c.run_variant(stp, cs)
@@ -75,13 +89,24 @@ def v1_run(lab, code, typ, frm, to, tf, und, sq):
     return lab.run_variant(stp, cs)
 
 
+def own_modules():
+    """v2 must run its own copies of v1's FZ / learner modules, never v1's (same process): a name clash would make the
+    comparison v1 against v1. Fails loudly if any v2 family module resolves outside this folder."""
+    for fam, attrs in (("foundation_zone", ("fz", "fz_exec", "fz_report")), ("learner", ("rl",))):
+        m = core.family(fam)
+        for a in attrs:
+            f = os.path.abspath(getattr(m, a).__file__)
+            assert f.startswith(HERE), f"v2 {fam}.{a} resolves to {f}, not v2's copy"
+
+
 def v2_run(code, typ, frm, to, tf, und, sq):
+    own_modules()
     mod = core.load_strategies()[code]
     if core.allowed(mod, typ, und or mod.SPEC.get("underlying", "FUT"), tf or mod.SPEC["timeframe"]): return None
     spec = mod.SPEC
     tf = tf or spec["timeframe"]; und = und or spec.get("underlying", "FUT")
     s = core.position_of(spec)["square_off"] if sq == "keep" else sq
-    return core.run_type(core.context(mod, typ, tf, und, s, frm, to))
+    return core.run_type(core.context(mod, typ, tf, und, s, frm, to, "t"))
 
 
 def norm2(x):
@@ -112,6 +137,13 @@ def compare(code, typ, frm, to, tf=None, und=None, sq="keep", lab=None):
             k = next((i for i, (p, q) in enumerate(zip(ta, tb)) if p != q), min(len(ta), len(tb)))
             bad.append(f"{ch}: {len(ta)} vs {len(tb)} trades; first difference at {k}:\n  v1 {ta[k] if k < len(ta) else None}\n"
                        f"  v2 {tb[k] if k < len(tb) else None}")
+        for key in ("fz", "rl"):                      # a family's whole payload (FZ report, learner journal), not just trades
+            if key not in a[ch]: continue
+            norm = lambda d: json.loads(json.dumps({k: v for k, v in d.items() if k != "fz_hash"}, default=str))
+            pa, pb = norm(a[ch][key]), norm(b[ch].get(key) or {})
+            if pa != pb:
+                diff = sorted(k for k in set(pa) | set(pb) if pa.get(k) != pb.get(k))
+                bad.append(f"{ch}: {key} payload differs in {diff}")
         wa = sorted(str(x.get("why")) for x in a[ch]["skipped"])
         wb = sorted(str(x.get("why")) for x in b[ch]["skipped"])
         if wa != wb: bad.append(f"{ch}: skipped differ ({len(wa)} vs {len(wb)}): {sorted(set(wa) ^ set(wb))[:3]}")

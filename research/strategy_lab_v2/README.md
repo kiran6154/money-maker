@@ -20,7 +20,8 @@ What changed from v1:
 `tests/test_parity.py` runs v1's `lab.run_variant` and v2's `core.run_type` for the same strategy, window and type, and
 compares every priced trade: times, prices, exit reason, points, gross, charges, net, MFE / MAE. It also compares the
 reasons for skipped signals. Covered: ST1–ST4, ST9–ST12, ST15–ST18 × Futures / Options (via futures) / Options (standalone), and
-ST25–ST28 (options via futures, index and futures signals), ST29–ST30 (futures); 1-minute, 5-minute and 15-minute candles; signals on the index; positional holding; stop and reverse.
+ST5–ST8 (futures and options via futures, with the whole FZ payload), ST19 / ST22 / ST23 (the learner, with its whole
+payload), ST25–ST28 (options via futures, index and futures signals), ST29–ST30 (futures); 1-minute, 5-minute and 15-minute candles; signals on the index; positional holding; stop and reverse.
 
 ```
 python tests/test_parity.py            # all cases (v1 is the slow side: several minutes)
@@ -77,13 +78,28 @@ pricing, lock, square-off and option rule in `core.run_type` then applies unchan
 |---|---|---|
 | ST1–ST4 | Foundation: every SETUP, exit at the stop (`sl_rule`) or the next CHoCH | `strategies/st01.py` … `st04.py` → `core.foundation` |
 | ST9–ST12, ST15–ST18 | Foundation entries with managed exits (`position.exit: "position"`): stop in points / % of premium = 1R, targets in R, trail, stop and reverse (ST11, ST12), positional (ST15–ST18) | `core.manage`, `core.managed_with_reversals` |
+| ST5–ST8 | Foundation-Zone gate (`fz_v1` bands, `fz_v2` rooms) on Foundation SETUPs; futures and options via futures; the whole FZ report (ledger, cross-tabs, controls) | `strategies/foundation_zone.py` + v1's `fz.py` / `fz_exec.py` / `fz_report.py` copied to `strategies/fz_lib/lib_*.py` |
+| ST19–ST24 | The learner (`rl_v1`): contextual bandit over Foundation SETUPs, learning once over the whole futures file; journal, base / random books, permutations, seed spread | `strategies/learner.py` + v1's `rl.py` copied to `strategies/rl_lib/lib_rl.py` |
 | ST25–ST28 | CHoCH to CHoCH put retest (`c2c_v1`): options via futures, 5-minute, PCR from open interest, premium stop / trail, 15:15 ladder | `strategies/c2c.py` (family module with its own `run`) |
 | ST29, ST30 | Rainbow ribbon intraday (`rainbow_v1`), futures only; the ribbon is drawn on the day chart | `strategies/rainbow.py` (family module) |
 
-Not ported yet: the FZ gate (ST5–ST8) and the learner (ST19–ST24). `core.validate` refuses a strategy
-file whose entry rule or position block needs a feature that is not ported, so nothing runs silently with the wrong
-rules. Each port gets parity cases in `tests/test_parity.py` before its numbers are trusted. v1's result history
+All 28 v1 strategies are ported (ST1–ST12, ST15–ST30; ST13 / ST14 are reserved numbers in v1 too). `core.validate` refuses a strategy file
+whose entry rule or position block needs a feature v2 does not have, so nothing runs silently with the wrong rules. Each port gets parity cases in `tests/test_parity.py` before its numbers are trusted. v1's result history
 (`results/history`), the SQLite tables and the chart explorer are not carried over.
+
+### Copied v1 modules (FZ and the learner)
+
+FZ and the learner are large, reviewed rule sets; v2 runs v1's own modules rather than a rewrite, so their decisions
+cannot drift. The copies differ from v1 only where noted at the edit, never in a decision:
+- `fz_lib/lib_fz.py` (v1 `fz.py`): the live zones are indexed by price (`near_lo` / `near_mid`), so a bar tests the zones near its close
+  instead of every zone ever born (bands are never retired, so v1 scanned thousands per bar); a zone's run of inside
+  closes is kept lazily. Same output; FZ over Jan–Sep 2026 on 1-minute bars: ~7 s instead of ~45 s.
+- `rl_lib/lib_rl.py` (v1 `rl.py`): imports `rl_engine` / `rl_lab` (v1's engine API over v2's engine; the v1 lab functions it calls,
+  copied); `manage()`'s candle loop runs in numba; the books that do not learn skip the feature fill they never read;
+  the per-day charts are not built (v2 draws charts on request).
+FZ's memory starts at `config/data.json` `fz_memory_from` (2026-01-01, v1's `history_from`): every FZ window is a slice
+of one run from there and FZ backtests resolve against the sessions from that date, as in v1. The learner always
+learns over the whole futures file (Oct 2021 on), as in v1.
 
 A family of strategies that shares rules beyond the Foundation engine (rainbow today) keeps them in
 `strategies/<family>.py`, loaded with `core.family("<family>")`; the numbered files stay one per strategy. A strategy

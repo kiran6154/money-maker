@@ -58,7 +58,7 @@ def dnum(s):
 
 
 def tstrs(arr):
-    return np.datetime_as_string(np.asarray(arr, dtype="datetime64[s]")).astype("U19")
+    return np.char.replace(np.datetime_as_string(np.asarray(arr, dtype="datetime64[s]")).astype("U19"), "T", " ")
 
 
 def hhmm_sec(s):
@@ -682,6 +682,7 @@ def family(name):
 
 def allowed(mod, typ, und, tf=None):
     """None if the strategy runs this type on this signal source and timeframe, else the reason it does not."""
+    if hasattr(mod, "refuse"): return mod.refuse(typ, und, tf, mod.SPEC)
     if typ not in getattr(mod, "TYPES", (typ,)) or und not in getattr(mod, "UNDERLYINGS", (und,)):
         return getattr(mod, "REFUSED_WHY", "not supported by this strategy")
     if tf and tf not in getattr(mod, "TIMEFRAMES", (tf,)):
@@ -719,9 +720,11 @@ def slug(label):
     return re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
 
 
-def resolve_backtest(bt, warmup):
-    """(date_from, date_to, status, reason) as 'YYYY-MM-DD'. Refused when the data does not cover it plus its warm-up."""
+def resolve_backtest(bt, warmup, first=None):
+    """(date_from, date_to, status, reason) as 'YYYY-MM-DD'. Refused when the data does not cover it plus its warm-up.
+    `first`: a strategy whose memory starts at a fixed session (FZ) resolves against the sessions from it."""
     ss = sessions(); last = dstr(ss[-1])
+    if first: ss = ss[ss >= dnum(first)]
     kind = bt["kind"]
     if kind == "all":
         if len(ss) <= warmup: return None, None, "refused", "not enough data for the warm-up"
@@ -997,12 +1000,16 @@ def split_choice(key):
     return ("MONTHLY" if kind == "M" else "WEEKLY"), strike
 
 
-def context(mod, typ, tf, und, sq, frm, to):
-    """Everything one (strategy, backtest, type) run reads."""
+def context(mod, typ, tf, und, sq, frm, to, period=None):
+    """Everything one (strategy, backtest, type) run reads. `period` is the run key (FZ seeds its controls with it). A
+    strategy with FIRST_SESSION (FZ) warms up on every session from that date, so each window is a slice of one run."""
     spec = mod.SPEC
     t = spec["types"][typ]
-    return dict(mod=mod, spec=spec, type=typ, tf=tf, underlying=und, square_off=sq, date_from=frm, date_to=to,
-                warmup=spec["warmup_days"], rules=spec["rules"], lot_size=spec["lot_size"],
+    warm = spec["warmup_days"]
+    if getattr(mod, "FIRST_SESSION", None):
+        warm = int(np.count_nonzero((sessions() >= dnum(mod.FIRST_SESSION)) & (sessions() < dnum(frm))))
+    return dict(mod=mod, spec=spec, type=typ, tf=tf, underlying=und, square_off=sq, date_from=frm, date_to=to, period=period,
+                warmup=warm, rules=spec["rules"], lot_size=spec["lot_size"],
                 charges=CHARGES[t["charge_code"]], charge_code=t["charge_code"], slippage_pts=t["slippage_pts"],
                 position=dict(position_of(spec), square_off=sq), options=spec["options"])
 
@@ -1037,6 +1044,9 @@ def run_type(ctx):
     out = {}
     if typ in ("FUT", "OPT_FUT_SIGNAL"):
         r = strategy_signals(ctx, fut)
+        F = None
+        if hasattr(ctx["mod"], "gate"):           # FZ: the gate's positions replace the engine's SETUP trades
+            r, F = ctx["mod"].gate(ctx, fut, s0, r)
         t = fut.t
         sig = [x for x in r.trades() if x["entry"] >= s0]
         setup_at = {int(ch): int(t[i]) for i, ch in zip(r.ui, r.uch)}
@@ -1055,12 +1065,20 @@ def run_type(ctx):
             ekind, sc = split_choice(ch) if ch != "-" else (None, None)
             trs, skipped = [], []
 
-            def legs_of(x):
+            def legs_of(x, skipped):
+                """The priced legs one signal opens under this choice; unpriceable legs go to `skipped`."""
+                legs = _legs_of(x, skipped)
+                for rec, _ in legs:                   # which position a leg belongs to (FZ's report groups by it)
+                    rec.update(_entry=x["entry"], _setup=x.get("setup_i", x["entry"]), _gate=x.get("gate") or "RAW")
+                return legs
+
+            def _legs_of(x, skipped):
                 bull = x["dir"] == "up"
                 te, tx = int(t[x["entry"]]), int(t[x["exit"]])
                 base = dict(dir=x["dir"], signal="BULLISH" if bull else "BEARISH", choch_time=int(t[x["choch"]]),
                             entry_time=te, exit_time=tx, exit_reason=x["exit_reason"], open=x["open"], sl=x["sl"],
                             und_entry=float(fut.c[x["entry"]]), und_exit=x["exit_px"], expiry=None)
+                if F is not None: base.update({k: x.get(k) for k in ("gate", "reenter_reason", "zone_id", "fill_used")})
                 if typ == "FUT":
                     ci = int(np.searchsorted(ct_t, te))
                     if ci < len(ct_t) and ct_t[ci] == te: c_, e_ = str(ct_con[ci]), (str(ct_exp[ci]) or None)
@@ -1153,7 +1171,7 @@ def run_type(ctx):
 
             lock = StrikeLock(lock_on)
             for x in sig:
-                legs = legs_of(x)
+                legs = legs_of(x, skipped)
                 for inst in dict.fromkeys(rec["instrument"] for rec, _ in legs):
                     mine = [lg for lg in legs if lg[0]["instrument"] == inst]
                     u = lock.held(inst, mine[0][0]["entry_time"])
@@ -1168,6 +1186,9 @@ def run_type(ctx):
                 for rec, lbl in legs:
                     rec["label"] = lbl; trs.append(rec)
             out[ch] = dict(trades=trs, skipped=skipped, signals=signals)
+            if F is not None:                         # Foundation's own trades priced the same way, for FZ's bridge
+                raw = [leg[0] for x in F["raw"] if x["entry"] >= s0 for leg in legs_of(x, [])]
+                out[ch]["fz"] = ctx["mod"].payload(ctx, fut, s0, F, trs, raw)
         return out
 
     # OPT_NATIVE: the engine on each option's own candles. Every native_scan.every_minutes the strike of each scan choice
@@ -1263,7 +1284,7 @@ def run_type(ctx):
 # ================================================================ backtest + results
 TRADE_COLS = ("position", "opt_type", "instrument", "strike", "expiry", "signal", "choch_time", "entry_time", "entry_px", "sl",
               "exit_time", "exit_px", "exit_reason", "pts", "gross", "charges", "net", "open", "lots", "tranche", "label",
-              "und_entry", "und_exit", "stale", "mfe", "mae", "scan")
+              "und_entry", "und_exit", "stale", "mfe", "mae", "scan", "gate", "zone_id", "reenter_reason", "fill_used")
 
 
 def _r2(v):
@@ -1307,7 +1328,7 @@ def backtest(code, bt, types=None, log=print):
     if code not in mods: raise ValueError(f"unknown strategy {code}")
     mod = mods[code]; spec = mod.SPEC
     rk, tf, und, sq = run_key(bt, spec)
-    frm, to, status, reason = resolve_backtest(bt, spec["warmup_days"])
+    frm, to, status, reason = resolve_backtest(bt, spec["warmup_days"], getattr(mod, "FIRST_SESSION", None))
     folder = os.path.join(RESULTS, code, rk)
     os.makedirs(folder, exist_ok=True)
     meta = dict(code=code, run=rk, label=bt["label"], kind=bt["kind"], preset=bt.get("preset"), notes=bt.get("notes"),
@@ -1323,6 +1344,8 @@ def backtest(code, bt, types=None, log=print):
         meta["types"][typ] = tm
         if status != "ok": continue
         why = allowed(mod, typ, und, tf)
+        if not why and getattr(mod, "FIXED_HOLDING", None) and sq != position_of(spec).get("square_off"):
+            why = mod.FIXED_HOLDING                   # the strategy's own exits carry their square-off (the learner)
         if why:
             tm.update(status="refused", reason=why); continue
         f_ = frm
@@ -1338,7 +1361,7 @@ def backtest(code, bt, types=None, log=print):
             tm.update(status="refused", reason=INDEX_WHY_NATIVE); continue
         tm["date_from"] = f_
         t1 = _time.time()
-        res = run_type(context(mod, typ, tf, und, sq, f_, to))
+        res = run_type(context(mod, typ, tf, und, sq, f_, to, rk))
         os.makedirs(os.path.join(folder, typ), exist_ok=True)
         for f in glob.glob(os.path.join(folder, typ, "*.json")): os.remove(f)
         for ch, rr in res.items():
@@ -1354,12 +1377,16 @@ def backtest(code, bt, types=None, log=print):
                         signals=[dict(g, time=tstr(g["time"]), setup=g["setup"] and tstr(g["setup"]),
                                       hi=g["hi"] and [tstr(g["hi"][0]), g["hi"][1]], lo=g["lo"] and [tstr(g["lo"][0]), g["lo"][1]])
                                  for g in rr["signals"]])
+            for k in ("fz", "rl"):                    # a strategy family's own payload (FZ report, learner journal)
+                if rr.get(k): body[k] = rr[k]
             fn = f"{ch}.json"
             with open(os.path.join(folder, typ, fn), "w", encoding="utf-8") as fh:
                 json.dump(_jsonable(body), fh, separators=(",", ":"))
             brief = lambda z: {k: z[k] for k in ("trades", "wins", "pts", "net_inr", "pf")}
             tm["choices"][ch] = dict(file=f"{typ}/{fn}", skipped=len(skl) - n_lock, locked=n_lock, **s,
-                                     **{k: brief(v) for k, v in sides.items()})
+                                     **{k: brief(v) for k, v in sides.items()},
+                                     **({"fz": rr["fz"]["headline"]} if rr.get("fz") else {}),
+                                     **({"rl": rr["rl"]["summary"]} if rr.get("rl") else {}))
         tm["seconds"] = round(_time.time() - t1, 2)
         log(f"{code} {rk} {typ:<15} {len(res)} choice(s) in {tm['seconds']:.2f}s")
     meta["seconds"] = round(_time.time() - t0, 2)

@@ -172,6 +172,7 @@ async function selectChoice(ch) {
   S.result = await api("/api/result?" + q);
   const C = {}; S.result.cols.forEach((k, i) => C[k] = i); S.C = C;
   renderResult();
+  renderReport();
   const first = S.result.trades[S.result.trades.length - 1];
   if (first) openChart(first[C.entry_time].slice(0, 10), "");
   else $("#chart-card").hidden = true;
@@ -234,7 +235,42 @@ function renderTrades() {
   });
 }
 
+// a strategy family's own report: the FZ gate (fz) or the learner (rl)
+function renderReport() {
+  const R = S.result, card = $("#report-card");
+  const kp = (rows) => rows.map(([k, v, c]) => `<div class="kpi"><div class="k">${esc(k)}</div><div class="v ${c || ""}">${v}</div></div>`).join("");
+  const table = (cols, rows, max) => `<div class="tablewrap"><table class="tbl"><tr>${cols.map((c) => `<th class="l">${esc(c)}</th>`).join("")}</tr>` +
+    rows.slice(0, max || 500).map((r) => `<tr>${r.map((v) => `<td class="l">${esc(typeof v === "number" ? Math.round(v * 100) / 100 : v)}</td>`).join("")}</tr>`).join("") + "</table></div>";
+  if (R.fz) {
+    const h = R.fz.headline, b = R.fz.books;
+    $("#rep-title").textContent = "Foundation-Zone gate";
+    $("#rep-kpis").innerHTML = kp([["SETUPs", h.setups], ["Take", h.take], ["Re-enter", h.reenter], ["Watch", h.watch], ["Block", h.block],
+      ["FZ net", inr(b.fz.net), cls(b.fz.net)], ["Foundation net", inr(b.raw.net), cls(b.raw.net)],
+      ["Random-gate pct", h.control_pct ?? "–"], ["Permutation p", h.perm_p ?? "–"], ["Active sessions", h.active_sessions]]);
+    const L = R.fz.ledger;
+    $("#rep-body").innerHTML = `<div class="sub">SETUP ledger (${L.rows.length}): the gate's read at each Foundation SETUP and both outcomes</div>` +
+      table(["time", "dir", "gate", "outcome_gate", "read", "block_reason", "take_why", "zone_id", "fnd_net", "fz_kind", "fz_net"],
+            L.rows.map((r) => ["time", "dir", "gate", "outcome_gate", "read", "block_reason", "take_why", "zone_id", "fnd_net", "fz_kind", "fz_net"].map((c) => r[L.cols.indexOf(c)])));
+    card.hidden = false;
+  } else if (R.rl) {
+    const s = R.rl.summary, rd = R.rl.random, pm = R.rl.permutation, sd = R.rl.seeds;
+    $("#rep-title").textContent = `Learner · reward ${R.rl.reward} · learned from ${R.rl.learn_from}`;
+    $("#rep-kpis").innerHTML = kp([["SETUPs", s.setups], ["Taken", s.taken], ["Skipped", s.skipped], ["Locked", s.locked],
+      ["Learner net", inr(s.rl_net), cls(s.rl_net)], ["Base book", inr(s.base_net), cls(s.base_net)], ["Random draw 0", inr(s.control_net), cls(s.control_net)],
+      ["Oracle", inr(s.oracle_net), "pos"], ["Pct vs random", rd.learner_pct ?? "–"], ["Pct vs permutations", pm.learner_pct ?? "–"],
+      ["Seeds positive", `${sd.positive}/${sd.runs.length}`]]);
+    const J = R.rl.journal.filter((j) => j.scored);
+    $("#rep-body").innerHTML = `<div class="sub">Months (learning rows and scored rows)</div>` +
+      table(["month", "scored", "setups", "taken", "locked", "learner", "base", "random", "oracle"],
+            R.rl.months.map((m) => [m.month, m.scored ? "scored" : "learning", m.setups, m.taken, m.locked, m.rl_net, m.base_net, m.control_net, m.oracle_net])) +
+      `<div class="sub" style="margin-top:10px">Journal of the scored window (${J.length} SETUPs)</div>` +
+      table(["time", "dir", "decision", "pred", "net", "base_net", "oracle_net", "oracle_arm"], J.map((j) => [j.time, j.dir, j.decision, j.pred, j.net, j.base_net, j.oracle_net, j.oracle_arm]));
+    card.hidden = false;
+  } else card.hidden = true;
+}
+
 function clearResult() {
+  $("#report-card").hidden = true;
   $("#kpis").innerHTML = ""; $("#trades").innerHTML = ""; $("#skipped").innerHTML = ""; $("#t-count").textContent = "";
   $("#chart-card").hidden = true; drawEquity([]);
 }
@@ -298,8 +334,11 @@ function drawPrice(d) {
     const m = new Map(d.prot.map(([t, v]) => [t, v]));
     line(times.map((t) => m.has(t) ? { time: t, value: m.get(t) } : { time: t }), mut, 2);
   }
-  (d.lines || []).forEach((ln, k, all) => {      // a strategy's own lines (rainbow ribbon): fastest red .. slowest violet
-    if (ln.length > 1) line(ln.map(([t, v]) => ({ time: t, value: v })), `hsl(${Math.round(270 * k / Math.max(1, all.length - 1))} 75% 55%)`, 0);
+  // a strategy's own lines (rainbow ribbon): fastest red .. slowest violet (hex: the chart library parses no hsl())
+  const RIBBON = ["#e5484d", "#f76b15", "#f5a524", "#e2c93a", "#7ac943", "#30a46c", "#12a594", "#0090ff", "#3e63dd", "#8e4ec6"];
+  (d.lines || []).forEach((ln, k, all) => {
+    const j = all.length > 1 ? Math.round((RIBBON.length - 1) * k / (all.length - 1)) : 0;
+    if (ln.length > 1) line(ln.map(([t, v]) => ({ time: t, value: v })), RIBBON[j], 0);
   });
   for (const p of d.pair || []) if (p.live.length > 1) line(p.live.map(([t, v]) => ({ time: t, value: v })), p.side === "H" ? dn : up, 1);
   for (const s of d.swings || []) { nS++; markers.push({ time: s[1], position: s[0] === "H" ? "aboveBar" : "belowBar", color: mut, shape: "circle", size: 0.4, text: s[0] === "H" ? "SH" : "SL" }); }

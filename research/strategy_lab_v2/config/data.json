@@ -2,6 +2,8 @@
   "_about": "Input candle files shared by every strategy (read only; v2 caches them as numpy files under cache/). Other timeframes are built from the 1-minute files.",
   "history_from": null,
   "_history_from": "sessions before this date are ignored (All data = from here); null = the whole files",
+  "fz_memory_from": "2026-01-01",
+  "_fz_memory_from": "the FZ strategies (5-8) remember bands from this session on and resolve their backtests against the sessions from it (v1: its history_from); every FZ window is a date slice of one run from here",
   "futures": {
     "minute": "D:/nifty/niftyfut_nearmonth_minute_2021-10-01_to_2026-09-25.csv",
     "5minute": "D:/nifty/niftyfut_nearmonth_5minute_2021-10-01_to_2026-09-25.csv"

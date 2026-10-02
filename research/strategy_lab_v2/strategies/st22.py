@@ -1,0 +1,94 @@
+"""ST22 - Strategy 22: Learner (rl_v1) on Strategy 2's 5-minute SETUPs, reward = R multiples (net points per lot over the stop distance). At each SETUP a contextual bandit (linear Thompson sampling over time-of-day, ATR, distance from the AVWAP pair, trend flip, bars since the CHoCH, the day's CHoCH count, the session's results and recent form) decides: skip, or trade with one of three exit profiles (intraday 1R/2R trail 3R-1, positional trail 3R-2, positional 2R/4R trail 4R-2) x stop 35/50/75 pts x 1-3 lots. After every closed trade it learns the outcome of every action it could have taken (full information, applied in time order). It starts empty at the first session of the futures file (Oct 2021) and keeps learning through the backtest; only the backtest window is scored. Near-month futures only; every trade is journaled (Journal tab).
+
+Ported from v1 strategies/strategy_22.json; the learner is strategies/learner.py (v1 rl.py in strategies/rl_lib/),
+shared by ST19-ST24; v2 reproduces v1's trades and journal (tests/test_parity.py).
+"""
+import core
+
+lrn = core.family("learner")
+ENTRY_RULES, TYPES, UNDERLYINGS, TIMEFRAMES = lrn.ENTRY_RULES, lrn.TYPES, lrn.UNDERLYINGS, lrn.TIMEFRAMES
+REFUSED_WHY, TF_WHY, FIXED_HOLDING = lrn.REFUSED_WHY, lrn.TF_WHY, lrn.FIXED_HOLDING
+signals, run = lrn.signals, lrn.run
+
+SPEC = {'code': 'ST22',
+ 'name': 'Strategy 22',
+ 'description': "Learner (rl_v1) on Strategy 2's 5-minute SETUPs, reward = R multiples (net points per lot over the "
+                'stop distance). At each SETUP a contextual bandit (linear Thompson sampling over time-of-day, ATR, '
+                "distance from the AVWAP pair, trend flip, bars since the CHoCH, the day's CHoCH count, the session's "
+                'results and recent form) decides: skip, or trade with one of three exit profiles (intraday 1R/2R '
+                'trail 3R-1, positional trail 3R-2, positional 2R/4R trail 4R-2) x stop 35/50/75 pts x 1-3 lots. After '
+                'every closed trade it learns the outcome of every action it could have taken (full information, '
+                'applied in time order). It starts empty at the first session of the futures file (Oct 2021) and keeps '
+                'learning through the backtest; only the backtest window is scored. Near-month futures only; every '
+                'trade is journaled (Journal tab).',
+ 'timeframe': '5minute',
+ 'underlying': 'FUT',
+ 'warmup_days': 5,
+ 'rules': {'break_mode': 'touch',
+           'choch_mode': 'touch',
+           'avwap_weight': 'volume',
+           'sl_rule': 'none',
+           'entry_rule': 'rl_v1',
+           'exit_rule': 'next_choch'},
+ 'lot_size': 65,
+ 'position': {'lots': 3,
+              'square_off': None,
+              'lock': 'strike',
+              'exit': 'position',
+              'stop': {'futures_pts': 50, 'option_pct': 5},
+              'scale_out': [{'lots': 1, 'target_r': 1}, {'lots': 1, 'target_r': 2}],
+              'trail': {'start_r': 3, 'lag_r': 1}},
+ 'rl': {'reward': 'r',
+        'seed': 7,
+        'ridge': 1.0,
+        'explore': 0.3,
+        'stops_pts': [35, 50, 75],
+        'lots': [1, 2, 3],
+        'notes': 'Fixed 2026-09-29 before any learner result was seen: features, ridge prior, exploration scale, '
+                 "reward scaling, stops, lots. The three exit profiles are the 2026 exit study's candidates "
+                 '(STRATEGY_ANALYSIS_TODO S50), i.e. the action set was chosen with 2026 in view: a 2026 window is out '
+                 'of sample for the learned weights, not for the action set. Control = a seeded uniformly random '
+                 'action per SETUP.',
+        'profiles': {'intraday 1R/2R trail 3R-1': {'scale_out': [{'lots': 1, 'target_r': 1},
+                                                                 {'lots': 1, 'target_r': 2}],
+                                                   'trail': {'start_r': 3, 'lag_r': 1},
+                                                   'square_off': '15:25'},
+                     'positional trail 3R-2': {'scale_out': [],
+                                               'trail': {'start_r': 3, 'lag_r': 2},
+                                               'square_off': None},
+                     'positional 2R/4R trail 4R-2': {'scale_out': [{'lots': 1, 'target_r': 2},
+                                                                   {'lots': 1, 'target_r': 4}],
+                                                     'trail': {'start_r': 4, 'lag_r': 2},
+                                                     'square_off': None}}},
+ 'types': {'FUT': {'charge_code': 'ZERODHA_NFO_FUT', 'slippage_pts': 5.0},
+           'OPT_FUT_SIGNAL': {'charge_code': 'ZERODHA_NFO_OPT', 'slippage_pts': 0.5},
+           'OPT_NATIVE': {'charge_code': 'ZERODHA_NFO_OPT', 'slippage_pts': 0.5}},
+ 'options': {'expiry_types': ['WEEKLY', 'MONTHLY'],
+             'expiry_min_days': 1,
+             'strike_step': 50,
+             'strike_choices': ['ATR2', 'ATM', 'ITM2', 'ITM1', 'OTM1', 'OTM2', 'OTM3', 'OTM4'],
+             'strike_default': 'ATR2',
+             'atr_period': 14,
+             'native_scan': {'choices': ['ATR2', 'ATM', 'ITM1', 'OTM1'], 'every_minutes': 5, 'one_per_side': True}},
+ 'backtests': [{'label': 'All data', 'kind': 'all', 'notes': 'every session with data, after the warm-up'},
+               {'label': 'Design period',
+                'kind': 'named',
+                'from': '2026-08-26',
+                'to': '2026-09-25',
+                'notes': "Strategy 2's entry design window; the three exit profiles and the stop grid were chosen on "
+                         "2026 (S50), so this window is in sample for the learner's action set"},
+               {'label': 'Unseen test',
+                'kind': 'named',
+                'from': '2026-07-08',
+                'to': '2026-08-25',
+                'notes': "unseen by Strategy 2's entry rules; inside S50's 2026 exit-study window, so not unseen by "
+                         "the learner's action set"},
+               {'label': '1M', 'kind': 'preset', 'preset': '1M'},
+               {'label': '3M', 'kind': 'preset', 'preset': '3M'},
+               {'label': '1Y', 'kind': 'preset', 'preset': '1Y'},
+               {'label': 'This month',
+                'kind': 'preset',
+                'preset': 'MTD',
+                'default': True,
+                'notes': "the current month; exits per the learner's chosen profile (two of the three hold "
+                         'overnight)'}]}
