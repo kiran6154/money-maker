@@ -34,6 +34,12 @@ CASES = [
     ("ST29", "2026-07-01", "2026-09-25", None, None, "keep"),
     ("ST30", "2026-01-05", "2026-06-30", None, None, "keep"),
     ("ST29", "2026-09-01", "2026-09-25", None, None, None),
+    # CHoCH to CHoCH put retest (options via futures, 5-minute): PCR on / off x stops on close / touch, index or futures signals
+    ("ST25", "2026-06-23", "2026-09-14", None, None, "keep"),
+    ("ST25", "2026-06-23", "2026-09-14", None, "FUT", "keep"),
+    ("ST26", "2026-06-23", "2026-09-14", None, None, "keep"),
+    ("ST27", "2026-06-23", "2026-09-14", None, None, "keep"),
+    ("ST28", "2026-01-05", "2026-09-25", None, "FUT", "keep"),
 ]
 FIELDS = ("position", "opt_type", "instrument", "strike", "expiry", "entry_time", "entry_px", "exit_time", "exit_px",
           "exit_reason", "open", "lots", "tranche", "sl", "pts", "gross", "net", "mfe", "mae")
@@ -60,6 +66,9 @@ def v1_run(lab, code, typ, frm, to, tf, und, sq):
                signal_file=lab.tf_file("spot" if und == "INDEX" else "fut", tf), date_from=frm, date_to=to, period="t",
                warmup_days=spec["warmup_days"], positions="BOTH", position_json=json.dumps(pos, sort_keys=True))
     cs = json.load(open(os.path.join(V1, "config", "charges.json"), encoding="utf-8"))[row["charge_code"]]
+    if spec["rules"]["entry_rule"] == "c2c_v1":
+        import c2c
+        return c2c.run_variant(stp, cs)
     if spec["rules"]["entry_rule"] == "rainbow_v1":
         import rainbow
         return rainbow.run_variant(stp, cs)
@@ -68,7 +77,7 @@ def v1_run(lab, code, typ, frm, to, tf, und, sq):
 
 def v2_run(code, typ, frm, to, tf, und, sq):
     mod = core.load_strategies()[code]
-    if core.allowed(mod, typ, und or mod.SPEC.get("underlying", "FUT")): return None
+    if core.allowed(mod, typ, und or mod.SPEC.get("underlying", "FUT"), tf or mod.SPEC["timeframe"]): return None
     spec = mod.SPEC
     tf = tf or spec["timeframe"]; und = und or spec.get("underlying", "FUT")
     s = core.position_of(spec)["square_off"] if sq == "keep" else sq

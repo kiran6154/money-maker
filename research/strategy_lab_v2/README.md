@@ -20,7 +20,7 @@ What changed from v1:
 `tests/test_parity.py` runs v1's `lab.run_variant` and v2's `core.run_type` for the same strategy, window and type, and
 compares every priced trade: times, prices, exit reason, points, gross, charges, net, MFE / MAE. It also compares the
 reasons for skipped signals. Covered: ST1–ST4, ST9–ST12, ST15–ST18 × Futures / Options (via futures) / Options (standalone), and
-ST29–ST30 (futures); 1-minute, 5-minute and 15-minute candles; signals on the index; positional holding; stop and reverse.
+ST25–ST28 (options via futures, index and futures signals), ST29–ST30 (futures); 1-minute, 5-minute and 15-minute candles; signals on the index; positional holding; stop and reverse.
 
 ```
 python tests/test_parity.py            # all cases (v1 is the slow side: several minutes)
@@ -77,14 +77,16 @@ pricing, lock, square-off and option rule in `core.run_type` then applies unchan
 |---|---|---|
 | ST1–ST4 | Foundation: every SETUP, exit at the stop (`sl_rule`) or the next CHoCH | `strategies/st01.py` … `st04.py` → `core.foundation` |
 | ST9–ST12, ST15–ST18 | Foundation entries with managed exits (`position.exit: "position"`): stop in points / % of premium = 1R, targets in R, trail, stop and reverse (ST11, ST12), positional (ST15–ST18) | `core.manage`, `core.managed_with_reversals` |
+| ST25–ST28 | CHoCH to CHoCH put retest (`c2c_v1`): options via futures, 5-minute, PCR from open interest, premium stop / trail, 15:15 ladder | `strategies/c2c.py` (family module with its own `run`) |
 | ST29, ST30 | Rainbow ribbon intraday (`rainbow_v1`), futures only; the ribbon is drawn on the day chart | `strategies/rainbow.py` (family module) |
 
-Not ported yet: c2c (ST25–ST28), the FZ gate (ST5–ST8) and the learner (ST19–ST24). `core.validate` refuses a strategy
+Not ported yet: the FZ gate (ST5–ST8) and the learner (ST19–ST24). `core.validate` refuses a strategy
 file whose entry rule or position block needs a feature that is not ported, so nothing runs silently with the wrong
 rules. Each port gets parity cases in `tests/test_parity.py` before its numbers are trusted. v1's result history
 (`results/history`), the SQLite tables and the chart explorer are not carried over.
 
 A family of strategies that shares rules beyond the Foundation engine (rainbow today) keeps them in
 `strategies/<family>.py`, loaded with `core.family("<family>")`; the numbered files stay one per strategy. A strategy
-module can also declare `ENTRY_RULES`, `TYPES`, `UNDERLYINGS` and `REFUSED_WHY` (types it does not run are refused with
-that reason).
+module can also declare `ENTRY_RULES`, `TYPES`, `UNDERLYINGS`, `TIMEFRAMES` (+ `REFUSED_WHY` / `TF_WHY`: what it does
+not run is refused with that reason), `OWN_COVERAGE` (it checks full-chain option data per trade instead of per window)
+and `run(ctx)` (it builds its own trades for a type; pricing, stats and results stay in `core`).

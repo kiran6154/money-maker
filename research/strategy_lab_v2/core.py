@@ -680,10 +680,12 @@ def family(name):
     return _FAM[name]
 
 
-def allowed(mod, typ, und):
-    """None if the strategy runs this type on this signal source, else the reason it does not."""
+def allowed(mod, typ, und, tf=None):
+    """None if the strategy runs this type on this signal source and timeframe, else the reason it does not."""
     if typ not in getattr(mod, "TYPES", (typ,)) or und not in getattr(mod, "UNDERLYINGS", (und,)):
         return getattr(mod, "REFUSED_WHY", "not supported by this strategy")
+    if tf and tf not in getattr(mod, "TIMEFRAMES", (tf,)):
+        return getattr(mod, "TF_WHY", f"not run on {tf} candles")
     return None
 
 
@@ -1018,7 +1020,9 @@ def strategy_signals(ctx, bars):
 
 
 def run_type(ctx):
-    """{choice: dict(trades, skipped, signals)} for one strategy type over one window (v1 run_variant, strategy exits)."""
+    """{choice: dict(trades, skipped, signals)} for one strategy type over one window (v1 run_variant). A strategy module
+    with its own run(ctx) (c2c) produces the trades itself; pricing, stats and results stay here."""
+    if hasattr(ctx["mod"], "run"): return ctx["mod"].run(ctx)
     typ, spec, P = ctx["type"], ctx["spec"], ctx["position"]
     sq = P["square_off"]
     pmode = P["exit"] == "position"
@@ -1318,11 +1322,11 @@ def backtest(code, bt, types=None, log=print):
         tm = dict(label=label, status=status, reason=reason, date_from=frm, choices={})
         meta["types"][typ] = tm
         if status != "ok": continue
-        why = allowed(mod, typ, und)
+        why = allowed(mod, typ, und, tf)
         if why:
             tm.update(status="refused", reason=why); continue
         f_ = frm
-        if typ != "FUT":
+        if typ != "FUT" and not getattr(mod, "OWN_COVERAGE", False):
             cov = option_coverage(tf, spec["options"]["expiry_types"], spec["options"]["expiry_min_days"])
             if cov is None:
                 tm.update(status="refused", reason="no full-chain option data"); continue
