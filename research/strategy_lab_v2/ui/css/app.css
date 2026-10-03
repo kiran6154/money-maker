@@ -161,3 +161,8 @@ details.skipped { margin-top: 10px; } details.skipped summary { cursor: pointer;
 @keyframes flash { 0% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
 #run-none h3 { margin-top: 0; }
 @media (max-width: 760px) { .status { top: 45px; } }
+
+/* edge buttons: shown when the view reaches the first / last candle; loading is always a click, never automatic */
+.ch-box { position: relative; }
+.edge { position: absolute; top: 8px; z-index: 3; font-size: 12px; padding: 3px 9px; border-radius: 999px; background: var(--card); border: 1px solid var(--accent); color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+.edge.l { left: 8px; } .edge.r { right: 70px; }

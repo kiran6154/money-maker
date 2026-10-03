@@ -22,8 +22,8 @@ export class ChartView {
           <input type="date" class="ch-day" aria-label="Day">
           <button class="icon" data-k="next" title="Next trading day">›</button>
           <select class="ch-days" aria-label="Days with trades"></select>
-          <button data-k="more-prev" title="Add the previous session to this chart (or drag past the left edge)">+ earlier</button>
-          <button data-k="more-next" title="Add the next session to this chart (or drag past the right edge)">+ later</button>
+          <button data-k="more-prev" title="Add the previous session to this chart">+ earlier</button>
+          <button data-k="more-next" title="Add the next session to this chart">+ later</button>
           <button data-k="full" title="Every session of the run (heavy on long 1-minute runs)">Full period</button>
           <button data-k="snap" title="Save the chart as a PNG">PNG</button>
         </div>
@@ -31,13 +31,17 @@ export class ChartView {
       </div>
       <div class="ch-legend muted small"></div>
       <div class="ch-read mono small"></div>
-      <div class="ch-box"><div class="ch-main"></div></div>
+      <div class="ch-box"><div class="ch-main"></div>
+        <button class="edge l" hidden title="Add the previous session to this chart">‹ previous session</button>
+        <button class="edge r" hidden title="Add the next session to this chart">next session ›</button></div>
       <div class="ch-panes"></div>`;
     $('[data-k="prev"]', root).onclick = () => this.step(-1);
     $('[data-k="next"]', root).onclick = () => this.step(1);
     $('[data-k="full"]', root).onclick = () => this.open(this.ctx.result.date_from || this.ctx.run.date_from, this.ctx.run.date_to);
     $('[data-k="more-prev"]', root).onclick = () => this.extend(-1);
     $('[data-k="more-next"]', root).onclick = () => this.extend(1);
+    $('.edge.l', root).onclick = () => this.extend(-1);
+    $('.edge.r', root).onclick = () => this.extend(1);
     $('[data-k="snap"]', root).onclick = () => this.snapshot();
     $(".ch-day", root).onchange = (e) => this.open(e.target.value);
     $(".ch-days", root).onchange = (e) => e.target.value && this.open(e.target.value);
@@ -175,7 +179,9 @@ export class ChartView {
   opts(el) {
     return { autoSize: true, layout: { background: { color: css("--card") }, textColor: css("--muted"), fontSize: 11 },
              grid: { vertLines: { color: css("--line") }, horzLines: { color: css("--line") } },
-             timeScale: { timeVisible: true, secondsVisible: false, borderColor: css("--line"), minBarSpacing: 0.001, rightOffset: 3 },
+             // fixed edges: zooming out stops at the first / last candle (no empty space, nothing to "reach")
+             timeScale: { timeVisible: true, secondsVisible: false, borderColor: css("--line"), minBarSpacing: 0.001, rightOffset: 0,
+                          fixLeftEdge: true, fixRightEdge: true },
              rightPriceScale: { borderColor: css("--line") }, crosshair: { mode: 0 },
              handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
              handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: true } };
@@ -369,14 +375,17 @@ export class ChartView {
         const t = this.focusTime; this.focusTime = null;
         try { ch.timeScale().setVisibleRange({ from: t - 3600, to: t + 3600 }); } catch (e) { ch.timeScale().fitContent(); }
       } else ch.timeScale().fitContent();
-      // reaching an edge (dragging into the empty space past the first / last candle) loads the next session that way
-      if (main && !this.hooks.static) setTimeout(() => {
-        ch.timeScale().subscribeVisibleLogicalRangeChange((r) => {
-          if (!r || this.extending) return;
-          if (r.from < -3) this.extend(-1);
-          else if (r.to > C0.length + 6) this.extend(1);
-        });
-      }, 400);
+      // at an edge of the data, offer the neighbouring session (a button on that edge); nothing loads by itself, so
+      // zooming or scrolling never changes the data under the reader
+      if (main && !this.hooks.static) {
+        const L = $(".edge.l", this.root), R = $(".edge.r", this.root), n = C0.length;
+        const edges = (r) => {
+          L.hidden = !(r && r.from <= 0.5) || this.extending;
+          R.hidden = !(r && r.to >= n - 1.5) || this.extending;
+        };
+        ch.timeScale().subscribeVisibleLogicalRangeChange(edges);
+        edges(ch.timeScale().getVisibleLogicalRange());
+      }
     });
     return ch;
   }
@@ -396,7 +405,7 @@ export class ChartView {
       `${d.candles.length} candles · ${n} trade${n === 1 ? "" : "s"} <span class="${net > 0 ? "pos" : net < 0 ? "neg" : ""}">${inr(net)}</span>` +
       ` · arrow = entry, dot = exit (reason, pts), dashed = path, dotted red = stop` + (d.fz ? " · purple / blue boxes = FZ bands (A / B), T W B R = gate" : "") +
       (d.pair && d.pair.length ? " · orange / blue = AVWAP from SH / SL (dotted: back to the anchor)" : "") +
-      (this.hooks.static ? "" : " · drag past the left / right edge to load the previous / next session") + " · Ctrl/⌘ + wheel zooms · drag the bottom edge to resize";
+      (this.hooks.static ? "" : " · at the first / last candle a button adds the previous / next session") + " · Ctrl/⌘ + wheel zooms · drag the bottom edge to resize";
   }
 
   async snapshot() {
