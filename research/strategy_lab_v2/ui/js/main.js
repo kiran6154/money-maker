@@ -72,7 +72,13 @@ function renderCards() {
         : `<div class="sc-foot muted">${h ? "last run refused: " + esc(h.m.reason || Object.values(h.m.types)[0]?.reason || "") : "not run yet — open it and press Run"}</div>`}
     </button>`;
   }).join("") || `<div class="muted">No strategy matches.</div>`;
-  $$("#cards .scard").forEach((b) => b.onclick = () => { const was = S.expanded; S.expanded = false; select(b.dataset.code, true); if (was) renderCards(); });
+  $$("#cards .scard").forEach((b) => b.onclick = () => {
+    // from the strip: stay put (the details are right below); from the full grid: collapse it, then go to the details once
+    const fromGrid = S.expanded || !S.code;
+    S.expanded = false;
+    if (fromGrid) { select(b.dataset.code, false); renderCards(); requestAnimationFrame(() => $("#detail").scrollIntoView({ block: "start" })); }
+    else keepScroll(() => { select(b.dataset.code, false); renderCards(); });
+  });
   const sel = $("#cards .scard.sel");
   if (compact && sel) sel.scrollIntoView({ block: "nearest", inline: "center" });
 }
@@ -96,8 +102,10 @@ function select(code, scroll) {
   S.label = want.label; S.run = want.run; S.resultKey = null;
   Object.assign(S, { type: saved.type || null, exp: saved.exp || "W", strike: saved.strike || item.spec.options.strike_default, side: saved.side || "all" });
   $("#detail").hidden = false;
+  const busy = Object.values(S.jobs).some((j) => j.code === code && (j.state === "running" || j.state === "queued"));
+  if (!busy) status("");
   renderDetail();
-  if (scroll) $("#detail").scrollIntoView({ behavior: "smooth", block: "start" });
+  if (scroll) $("#detail").scrollIntoView({ block: "start" });
 }
 
 function save() { pref("sel." + S.code, { run: S.run, type: S.type, exp: S.exp, strike: S.strike, side: S.side }); }
@@ -122,11 +130,11 @@ function renderBacktests() {
     const ok = ran && Object.values(ran.meta.types).some((t) => t.status === "ok");
     return `<button class="tab ${l === S.label ? "on" : ""} ${ran ? "" : "dim"}" data-l="${esc(l)}" title="${esc(any[0].bt?.notes || "")}">${esc(l)}${ran && !ok ? " ⊘" : ""}</button>`;
   }).join("");
-  $$("#bt-tabs button").forEach((b) => b.onclick = () => {
+  $$("#bt-tabs button").forEach((b) => b.onclick = () => keepScroll(() => {
     S.label = b.dataset.l;
     const vsl = variants(cur()).filter((v) => v.label === S.label);
     S.run = (vsl.find((v) => v.meta) || vsl[0]).run; save(); renderBacktests(); renderRunPanel(); showRun();
-  });
+  }));
   const same = vs.filter((v) => v.label === S.label);
   $("#bt-vars").innerHTML = same.map((v) => {
     const m = v.meta, b = v.bt || {};
@@ -134,7 +142,7 @@ function renderBacktests() {
     const hold = m ? m.holding : ("square_off" in b ? (b.square_off ? `intraday ${b.square_off}` : "positional") : (item.spec.position?.square_off ? `intraday ${item.spec.position.square_off}` : "positional"));
     return `<button class="seg-b ${v.run === S.run ? "on" : ""} ${m ? "" : "dim"}" data-r="${esc(v.run)}" title="${esc(b.notes || "")}">${TF_LABEL[tf]} candles · ${und === "INDEX" ? "index" : "futures"} signals · ${esc(hold)}${m ? "" : " · not run"}</button>`;
   }).join("");
-  $$("#bt-vars button").forEach((b) => b.onclick = () => { S.run = b.dataset.r; save(); renderBacktests(); renderRunPanel(); showRun(); });
+  $$("#bt-vars button").forEach((b) => b.onclick = () => keepScroll(() => { S.run = b.dataset.r; save(); renderBacktests(); renderRunPanel(); showRun(); }));
 }
 
 function renderRunPanel() {
@@ -165,8 +173,10 @@ async function submit(q, keepVariant) {
     const j = await post("/api/backtest", q);
     S.jobs[j.id] = { state: j.state, code: j.code };
     $("#rp-msg").textContent = `Queued: ${j.code} · ${j.label}`;
+    status(`<span class="spin"></span> Queued <b>${esc(j.code)} · ${esc(j.label)}</b> — the results appear here when it finishes`, "busy");
+    $("#status").scrollIntoView({ block: "nearest" });
     poll();
-  } catch (e) { $("#rp-msg").textContent = "Refused: " + e.message; }
+  } catch (e) { $("#rp-msg").textContent = "Refused: " + e.message; status(`Not run: ${esc(e.message)}`, "bad"); }
 }
 
 // ------------------------------------------------------------------ a run: types, KPIs, chart, tabs
@@ -175,7 +185,18 @@ function meta() { return cur().byRun[S.run] || null; }
 function showRun() {
   const m = meta();
   $("#run-none").hidden = !!m; $("#run-body").hidden = !m;
-  if (!m) { $("#run-none").innerHTML = `This backtest has not been run yet. Press <b>Run this backtest</b> (it runs ${esc(S.code)} only).`; return; }
+  if (!m) {
+    // an empty state that says what this backtest is and runs it in place (no search for the button above)
+    const item = cur(), v = variants(item).find((x) => x.run === S.run), b = v?.bt || {};
+    const tf = b.timeframe || item.spec.timeframe, und = b.underlying || item.spec.underlying || "FUT";
+    const hold = "square_off" in b ? (b.square_off ? `intraday ${b.square_off}` : "positional") : (item.spec.position?.square_off ? `intraday ${item.spec.position.square_off}` : "positional");
+    const period = b.kind === "named" ? `${b.from} → ${b.to}` : b.kind === "preset" ? `the last ${b.preset}` : b.kind === "all" ? "all the data" : "";
+    $("#run-none").innerHTML = `<h3>${esc(S.label)} has not been run yet</h3>
+      <p class="muted">${esc(S.code)} over ${esc(period)} · ${TF_LABEL[tf]} candles · ${und === "INDEX" ? "index" : "futures"} signals · ${esc(hold)}${b.notes ? " — " + esc(b.notes) : ""}</p>
+      <button class="primary" id="run-now">Run it now</button> <span class="muted small">only ${esc(S.code)} runs; usually a few seconds (the learner strategies take 1–2 minutes)</span>`;
+    $("#run-now").onclick = () => $("#rp-this").click();
+    return;
+  }
   $("#run-meta").textContent = `${m.date_from || "?"} → ${m.date_to || "?"} · ${TF_LABEL[m.timeframe]} candles · signals on ${m.underlying === "INDEX" ? "the index" : "futures"} · ${m.holding} · run ${m.at.replace("T", " ")} in ${m.seconds}s` +
     (m.status !== "ok" ? ` · refused: ${m.reason}` : "");
   const ok = Object.keys(m.types).filter((t) => m.types[t].status === "ok");
@@ -373,19 +394,50 @@ function renderTrades(el) {
   });
 }
 
+// ------------------------------------------------------------------ status + stable scrolling
+// One status line at the top of the details says what is happening (running / done / failed / refused), so a change
+// below never comes unannounced; re-renders keep the reader's scroll position.
+function status(text, kind) {
+  const el = $("#status");
+  el.hidden = !text; el.className = "status " + (kind || ""); el.innerHTML = text || "";
+}
+function keepScroll(fn) {
+  const y = window.scrollY;
+  const r = fn();
+  requestAnimationFrame(() => window.scrollTo(0, y));
+  return r;
+}
+function flash(el) {
+  if (!el) return;
+  el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
+}
+
 // ------------------------------------------------------------------ jobs
 let pollT = null;
 async function poll() {
   clearTimeout(pollT);
   let st; try { st = await api("/api/status"); } catch (e) { pollT = setTimeout(poll, 5000); return; }
   $("#jobs").innerHTML = st.jobs.slice(0, 4).map((j) => `<span class="job ${j.state}" title="${esc((j.log || []).join("\n") || j.error || "")}">${esc(j.code)} ${esc(j.label)} · ${j.state}${j.seconds != null ? " " + j.seconds + "s" : ""}</span>`).join("");
+  const mine = st.jobs.find((j) => j.code === S.code && (j.state === "running" || j.state === "queued"));
+  if (mine) status(`<span class="spin"></span> ${mine.state === "running" ? "Running" : "Queued"} <b>${esc(mine.code)} · ${esc(mine.label)}</b> — the results appear here when it finishes (usually a few seconds; the learner takes 1–2 minutes)`, "busy");
   for (const j of st.jobs) {
     const was = S.jobs[j.id];
     if (was && was.state !== j.state && (j.state === "done" || j.state === "failed")) {
-      if (j.code === S.code) $("#rp-msg").textContent = j.state === "done" ? `${j.code} ${j.label}: done in ${j.seconds}s` : `${j.code} ${j.label}: failed — ${j.error}`;
+      if (j.code === S.code) {
+        if (j.state === "failed") status(`<b>${esc(j.code)} · ${esc(j.label)}</b> failed: ${esc(j.error || "")}`, "bad");
+        $("#rp-msg").textContent = j.state === "done" ? `${j.code} ${j.label}: done in ${j.seconds}s` : `${j.code} ${j.label}: failed — ${j.error}`;
+      }
       if (j.state === "done") {
-        await load(); renderFilters(); renderCards();
-        if (j.code === S.code) { S.run = j.run; S.label = cur().byRun[j.run]?.label || S.label; S.resultKey = null; save(); renderDetail(); }
+        await load(); keepScroll(() => { renderFilters(); renderCards(); });
+        if (j.code === S.code) {
+          S.run = j.run; S.label = cur().byRun[j.run]?.label || S.label; S.resultKey = null; save();
+          keepScroll(() => renderDetail());
+          const m = meta(), ok = m && Object.values(m.types).some((t) => t.status === "ok");
+          status(ok ? `<b>${esc(j.code)} · ${esc(j.label)}</b> done in ${j.seconds}s — showing its results below`
+                    : `<b>${esc(j.code)} · ${esc(j.label)}</b> finished, but every type was refused: ${esc(m?.reason || Object.values(m?.types || {})[0]?.reason || "")}`, ok ? "good" : "bad");
+          const target = ok ? $("#run-body") : $("#run-none");
+          setTimeout(() => { target.scrollIntoView({ behavior: "smooth", block: "start" }); flash(target); }, 150);
+        }
       }
     }
     S.jobs[j.id] = { state: j.state, code: j.code };

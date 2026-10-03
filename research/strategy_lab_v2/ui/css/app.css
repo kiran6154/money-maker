@@ -151,3 +151,13 @@ details.skipped { margin-top: 10px; } details.skipped summary { cursor: pointer;
 .chip-t.lay i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: 0; }
 .chip-t.lay:not(.on) { opacity: .45; background: none; border-color: var(--line); color: var(--muted); }
 .chip-t.lay.on { background: var(--chip); border-color: var(--line); color: var(--ink); }
+
+/* the details status line (running / done / failed) and the brief highlight of what just changed */
+.status { position: sticky; top: 49px; z-index: 6; margin-bottom: 10px; padding: 8px 12px; border-radius: 8px; font-size: 13px; background: var(--sel); color: var(--ink); border: 1px solid var(--accent); }
+.status.good { border-color: var(--up); } .status.bad { border-color: var(--down); background: var(--card); }
+.spin { display: inline-block; width: 10px; height: 10px; border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; margin-right: 4px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.flash { animation: flash 1.6s ease-out; border-radius: 10px; }
+@keyframes flash { 0% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
+#run-none h3 { margin-top: 0; }
+@media (max-width: 760px) { .status { top: 45px; } }
