@@ -27,8 +27,8 @@ CHARGES = {k: v for k, v in json.load(open(os.path.join(HERE, "config", "charges
 FUT1, FUT5 = DATA["futures"]["minute"], DATA["futures"]["5minute"]
 SPOT1, SPOT5 = DATA["spot"]["minute"], DATA["spot"]["5minute"]
 
-TF_MIN = {"minute": 1, "3minute": 3, "5minute": 5, "15minute": 15, "30minute": 30}
-TF_LABEL = {"minute": "1m", "3minute": "3m", "5minute": "5m", "15minute": "15m", "30minute": "30m"}
+TF_MIN = {"minute": 1, "3minute": 3, "5minute": 5, "15minute": 15, "30minute": 30, "60minute": 60}
+TF_LABEL = {"minute": "1m", "3minute": "3m", "5minute": "5m", "15minute": "15m", "30minute": "30m", "60minute": "1h"}
 # (type, v1 code suffix, label)
 TYPES = (("FUT", "", "Futures"), ("OPT_FUT_SIGNAL", "_FB", "Options (via futures)"), ("OPT_NATIVE", "_NB", "Options (standalone)"))
 PRESETS = ("MTD", "1M", "3M", "6M", "YTD", "1Y", "5Y")

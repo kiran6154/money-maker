@@ -29,7 +29,7 @@ export function pref(k, v) {            // per-viewer conveniences only; the pag
 }
 
 export const TYPE_LABEL = { FUT: "Futures", OPT_FUT_SIGNAL: "Options (via futures)", OPT_NATIVE: "Options (standalone)" };
-export const TF_LABEL = { minute: "1m", "3minute": "3m", "5minute": "5m", "15minute": "15m", "30minute": "30m" };
+export const TF_LABEL = { minute: "1m", "3minute": "3m", "5minute": "5m", "15minute": "15m", "30minute": "30m", "60minute": "1h" };
 
 // a short label for an exit reason, used on chart markers and pills
 export function reasonTag(r) {

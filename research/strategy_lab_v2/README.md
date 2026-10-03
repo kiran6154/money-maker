@@ -104,6 +104,7 @@ pricing, lock, square-off and option rule in `core.run_type` then applies unchan
 | ST5–ST8 | Foundation-Zone gate (`fz_v1` bands, `fz_v2` rooms) on Foundation SETUPs; futures and options via futures; the whole FZ report (ledger, cross-tabs, controls) | `strategies/foundation_zone.py` + v1's `fz.py` / `fz_exec.py` / `fz_report.py` copied to `strategies/fz_lib/lib_*.py` |
 | ST19–ST24 | The learner (`rl_v1`): contextual bandit over Foundation SETUPs, learning once over the whole futures file; journal, base / random books, permutations, seed spread | `strategies/learner.py` + v1's `rl.py` copied to `strategies/rl_lib/lib_rl.py` |
 | ST25–ST28 | CHoCH to CHoCH put retest (`c2c_v1`): options via futures, 5-minute, PCR from open interest, premium stop / trail, 15:15 ladder | `strategies/c2c.py` (family module with its own `run`) |
+| ST31 (new in v2) | Strategy 1's 1-minute Foundation trades taken only in the direction of the latest 1-hour CHoCH (1-hour candles closed by the entry); futures and options via futures. First numbers: STRATEGY_ANALYSIS_TODO S59 | `strategies/st31.py`; look-ahead test `tests/test_st31_causal.py` |
 | ST29, ST30 | Rainbow ribbon intraday (`rainbow_v1`), futures only; the ribbon is drawn on the day chart | `strategies/rainbow.py` (family module) |
 
 All 28 v1 strategies are ported (ST1–ST12, ST15–ST30; ST13 / ST14 are reserved numbers in v1 too). `core.validate` refuses a strategy file

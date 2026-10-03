@@ -457,6 +457,19 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S59. Lab v2 Strategy 31 (`htf_v1`): Foundation's 1-minute trades taken only in the 1-hour CHoCH direction. Measured: the filter halves the trades but does not improve them
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/st31.py`. Built 2026-10-03 at the user's request ("look at the CHoCH in 1 hour, trade 1-minute Foundation in that direction only"). Look-ahead test: `tests/test_st31_causal.py`. |
+| Build choices (the request did not specify these) | (1) The direction is the latest 1-hour CHoCH (`htf.mode: last_choch`); the engine's trend (`trend`, which changes only on flips) is the alternative. On these data the two are identical: every 1-hour CHoCH in the futures file flipped the trend. (2) The 1-hour candles are 09:15-aligned and built from the 1-minute futures. A 1-hour candle is known at start + 60 min (the session's last one at 15:30), and a 1-minute entry uses only the 1-hour candles closed by its own close. (3) The 1-hour engine warms up on 20 sessions before the window. (4) The 1-minute rules are Strategy 1's unchanged (prev-swing stop, exit at the stop or the next 1-minute CHoCH, flat by 15:25). Nothing is taken before the first 1-hour CHoCH. (5) Futures and options via futures only; standalone options and index signals are refused. |
+| Impact | **Measured 2026-10-03.** Futures, all data (2021-10 → 2026-09): ST31 2,560 trades, net ₹-26,17,341, PF 0.33. ST1 has 5,242 trades, net ₹-53,98,316, PF 0.33. Same PF: half the trades, the same loss per trade. Before slippage and charges, ST1's trades with the 1-hour direction average +2.66 pts (n 2,589, t +1.66) and those against it +1.57 pts (n 2,643, t +0.97). The difference is +1.09 pts per trade (Welch t +0.48, not significant). It is positive in 5 of 6 years; 2025 reverses (with -1.14, against +3.27). The futures round trip costs about 10 pts of slippage plus charges, so neither group clears costs. Options via futures, Jun 30 → Sep 25 2026 (the full-chain window), W-ATR2: ST31 274 trades, net +₹2,001, PF 1.02, t 0.09; ST1 566 trades, net ₹-42,856, PF 0.76. One short window, t near 0: not evidence. |
+| Fix sketch | None proposed. Open options: a stricter 1-hour definition (e.g. only within N 1-hour candles of a flip); the 15-minute or 30-minute candle as the higher timeframe; a pre-registered window before reading any of them, so the choice is not fitted to the numbers above. Each needs the user's go-ahead. |
+| Effort | **S** per variant (the parameters are in `SPEC["htf"]`). |
+| Priority | _Open; first numbers recorded._ |
+
+---
+
 ### S58. Lab Foundation engine (Strategies 1–4 and every strategy built on their SETUPs) goes silent in a sustained trend: no CHoCH, so no SETUP, while the protected level stays far behind price
 
 | | |
