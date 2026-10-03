@@ -99,6 +99,10 @@ export function algorithm(spec) {
       ...(rb.trigger === "pullback" ? [S(`Pullback: within the last ${rb.pullback_bars} candles price had already closed outside on that side, and the far edge kept its slope.`)] : []),
       S("Above the band → LONG, below → SHORT; enter at that close; one position per contract.")]));
   }
+  if (spec.sma_filter) {                           // Strategy 32: each option leg checked against the option's own SMA
+    const f = spec.sma_filter;
+    steps[steps.length - 1].sub.push(S(`Option-leg filter: on the option's own candles, its SMA ${f.period} at the entry candle versus the candle before — a LONG leg (buying the option) needs it rising, a SHORT leg (selling it) needs it falling; otherwise the leg is not taken (listed with the reason). Futures are not traded.`));
+  }
   const skip = [S("The entry time is at or after the square-off time" + (p.square_off ? ` (${p.square_off})` : "") + "."),
                 S("The same instrument (option strike + expiry + right, or the futures contract) already has an open position (strike lock)."),
                 S("Options: no candle for the picked strike at the entry (strike from the index: " + (o.strike_default || "") + ", " + (o.expiry_types || []).join(" / ").toLowerCase() + " expiry ≥ " + (o.expiry_min_days ?? 1) + " day out).")];

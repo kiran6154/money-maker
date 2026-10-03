@@ -1040,6 +1040,9 @@ def run_type(ctx):
     step = spec["options"]["strike_step"]
     chain = OptionChain(ctx["tf"]) if typ != "FUT" else None
     lock_on = P["lock"] == "strike"
+    # a strategy may veto single option legs (e.g. a trend filter on the option's own candles): leg_filter(ctx, rec, series)
+    # returns None to take the leg, or the reason it is not taken
+    leg_filter = getattr(ctx["mod"], "leg_filter", None)
     sq_txt = f"entry at or after the square-off time ({sq})"
     out = {}
     if typ in ("FUT", "OPT_FUT_SIGNAL"):
@@ -1120,6 +1123,9 @@ def run_type(ctx):
                         skipped.append(dict(base, position=pos, opt_type=right, why=f"{nm} has no candle at entry")); continue
                     rec = dict(base, kind="OPT", position=pos, opt_type=right, instrument=nm, strike=k, expiry=exp,
                                entry_px=en, exit_px=None, stale=st1)
+                    why = leg_filter(ctx, rec, os_) if leg_filter else None
+                    if why:
+                        skipped.append(dict(base, position=pos, opt_type=right, instrument=nm, expiry=exp, why=why, filtered=True)); continue
                     e = square_off_at(sq, te)
                     if e and te >= e:
                         skipped.append(dict(base, position=pos, opt_type=right, instrument=nm, why=sq_txt)); continue
@@ -1255,6 +1261,11 @@ def run_type(ctx):
                            choch_time=int(t_[x["choch"]]), entry_time=int(t_[x["entry"]]), exit_time=int(t_[x["exit"]]),
                            exit_reason=x["exit_reason"], open=x["open"], sl=x["sl"], entry_px=float(ob.c[x["entry"]]),
                            exit_px=x["exit_px"], und_entry=None, und_exit=None)
+                why = leg_filter(ctx, rec, chain.get(exp, k, right)) if leg_filter else None
+                if why:                                    # vetoed before the lock: a refused leg holds nothing
+                    skipped.append(dict(signal=rec["signal"], position=rec["position"], opt_type=right, instrument=nm,
+                                        expiry=exp, entry_time=rec["entry_time"], why=why, filtered=True))
+                    continue
                 held = (side_free if NS["one_per_side"] and rec["entry_time"] < side_free else None) or lock.held(nm, rec["entry_time"])
                 if held:
                     skipped.append(dict(signal=rec["signal"], position=rec["position"], opt_type=right, instrument=nm,
@@ -1373,6 +1384,7 @@ def backtest(code, bt, types=None, log=print):
                          ce=part(lambda x: x["opt_type"] == "CE"), pe=part(lambda x: x["opt_type"] == "PE"))
             skl = rr["skipped"]
             n_lock = sum(str(k.get("why", "")).startswith("strike locked") for k in skl)
+            n_filt = sum(1 for k in skl if k.get("filtered"))           # refused by the strategy's own leg filter
             body = dict(code=code, run=rk, type=typ, choice=ch, date_from=f_, date_to=to, lot_size=spec["lot_size"],
                         slippage_pts=spec["types"][typ]["slippage_pts"], capital=spec.get("capital") or {},
                         stats=s, sides=sides, charges=CHARGES[spec["types"][typ]["charge_code"]],
@@ -1386,7 +1398,7 @@ def backtest(code, bt, types=None, log=print):
             with open(os.path.join(folder, typ, fn), "w", encoding="utf-8") as fh:
                 json.dump(_jsonable(body), fh, separators=(",", ":"))
             brief = lambda z: {k: z[k] for k in ("trades", "wins", "pts", "net_inr", "pf")}
-            tm["choices"][ch] = dict(file=f"{typ}/{fn}", skipped=len(skl) - n_lock, locked=n_lock, **s,
+            tm["choices"][ch] = dict(file=f"{typ}/{fn}", skipped=len(skl) - n_lock - n_filt, locked=n_lock, filtered=n_filt, **s,
                                      **{k: brief(v) for k, v in sides.items()},
                                      **({"fz": rr["fz"]["headline"]} if rr.get("fz") else {}),
                                      **({"rl": rr["rl"]["summary"]} if rr.get("rl") else {}))
@@ -1614,6 +1626,9 @@ def chart(code, run, typ, choice, day, inst=None, to=None):
                sessions=int(len(np.unique(b.day[i0:i1 + 1]))))
     if sg is not None: out.update(_overlays(b, sg, i0, i1, pair=out["sessions"] <= 10))
     if zones: out["fz"] = zones
+    if inst and hasattr(mod, "option_lines"):         # a strategy's own lines on an option's chart (e.g. its SMA filter)
+        out["olines"] = [dict(name=nm_, pts=[[int(b.t[i]), round(float(v[i]), 2)] for i in range(i0, i1 + 1) if not np.isnan(v[i])])
+                         for nm_, v in mod.option_lines(b)]
     return _jsonable(out)
 
 

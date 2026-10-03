@@ -457,6 +457,19 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S60. Lab v2 Strategy 32: Strategy 1's option legs taken only with the option's own SMA-200 slope. Measured: the kept legs lose less, not significantly, and the design month reverses
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/st32.py` (`leg_filter`; hook `leg_filter` in `core.run_type`). Built 2026-10-03 at the user's request ("buy only when the 200 SMA on options is uptrend, entry Strategy 1 Foundation; long with an uptrend, short with a downtrend"). |
+| Build choices (the request did not specify these) | (1) "Uptrend" is the instantaneous slope: SMA[entry candle] > SMA[the candle before] (the user's standing definition of SMA slope). Downtrend is the mirror; a flat SMA refuses both. (2) The SMA is on the option's own candles at the backtest's timeframe, over the contract's whole series, so it is formed from the contract's 200th candle. Before that the leg is refused. (3) Options via futures: each leg is filtered on its own. A bullish SETUP is long CE (needs the CE's SMA rising) plus short PE (needs the PE's SMA falling). Options standalone: the engine's long / short on the option's chart, filtered the same way. A refused leg locks nothing. (4) Futures are refused (the rule is about the options' own trend). Every number is in `SPEC["sma_filter"]`. |
+| Impact | **Measured 2026-10-03, options via futures, full-chain window Jun 30 → Sep 25 2026, net after costs per leg.** ST1's legs split by ST32's filter. W-ATR2: kept n 292, mean ₹-42.8 (t -0.60); refused n 274, mean ₹-110.8 (t -2.29); kept − refused +₹68.0 (Welch t +0.79). M-ATR2: kept −55.0 vs refused −124.6, +69.6 (t +0.84). W-ATM: kept −24.3 vs refused −126.1, +101.8 (t +1.15). Books: ST32 W-ATR2 292 trades, net ₹-12,501, PF 0.86; ST1 566 trades, net ₹-42,856, PF 0.76. Standalone W-SCAN: ST32 626 trades, ₹-76,547, PF 0.65; ST1 1,022 trades, ₹-1,15,591, PF 0.67 (the same loss per trade). **ST1's design month (Aug 26 → Sep 25) reverses:** ST32 W-ATR2 48 trades, ₹-11,783, PF 0.27; ST1 92 trades, ₹-4,123, PF 0.86. The direction is consistent across three strike choices but no difference is significant, every kept book still loses, and the window is one quarter. Not evidence of an edge. |
+| Fix sketch | None proposed. To read it properly: a longer full-chain window (fill earlier expiries with `tools/breeze_options.py`), and a pre-registered alternative definition (close above / below the SMA instead of its slope, or a slope over N candles) chosen before looking at its numbers. |
+| Effort | **S** per variant. |
+| Priority | _Open; first numbers recorded._ |
+
+---
+
 ### S59. Lab v2 Strategy 31 (`htf_v1`): Foundation's 1-minute trades taken only in the 1-hour CHoCH direction. Measured: the filter halves the trades but does not improve them
 
 | | |

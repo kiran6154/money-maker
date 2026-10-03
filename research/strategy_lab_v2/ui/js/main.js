@@ -265,10 +265,11 @@ function renderTypes() {
     if (!s) return `<div class="tcol off" data-t="${t}">${head}<div class="muted small">no ${esc(ch)} result</div></div>`;
     const cov = t === "FUT" ? (s.rl ? `learner: ${s.trades} lot exits · ${s.rl.skipped} declined · ${s.rl.locked} locked` : "exchange futures · every signal priced")
       : t === "OPT_NATIVE" ? `rescans strikes from the index · ${s.trades} priced${s.skipped ? ` · ${s.skipped} without data` : ""}${s.locked ? ` · ${s.locked} locked` : ""}`
-      : (s.skipped ? `<span class="warn">${s.trades} priced · ${s.skipped} without option data</span>` : `all ${s.trades} priced`) + (s.locked ? ` · ${s.locked} strike-locked` : "");
+      : (s.skipped ? `<span class="warn">${s.trades} priced · ${s.skipped} without option data</span>` : `${s.trades} priced`) + (s.locked ? ` · ${s.locked} strike-locked` : "");
+    const filt = s.filtered ? ` · ${s.filtered} refused by the strategy's filter` : "";
     const row = (side, lbl, st) => `<button class="srow ${S.type === t && S.side === side ? "on" : ""}" data-t="${t}" data-s="${side}">
         <span>${lbl}</span><span class="${cls(st?.net_inr)}">${inr(st?.net_inr)}</span><span class="muted">${st ? st.trades + " · " + pct(st.wins, st.trades) : ""}</span></button>`;
-    return `<div class="tcol ${S.type === t ? "cur" : ""}" data-t="${t}">${head}<div class="muted small cov">${cov}</div>
+    return `<div class="tcol ${S.type === t ? "cur" : ""}" data-t="${t}">${head}<div class="muted small cov">${cov}${t === "FUT" ? "" : filt}</div>
       ${row("all", "Long + short", s)}${row("LONG", "Long", s.long)}${row("SHORT", "Short", s.short)}
       ${t !== "FUT" ? row("CE", "CE side", s.ce) + row("PE", "PE side", s.pe) : ""}</div>`;
   };
@@ -345,7 +346,7 @@ function renderKPIs() {
     const reasons = {};
     for (const x of sk) {
       const w = String(x.why || "");
-      const k = w.startsWith("strike locked") ? "an open position on the same instrument (strike lock)" : w.startsWith("learner skipped") ? "the learner declined them"
+      const k = x.filtered ? "the strategy's filter refused them" : w.startsWith("strike locked") ? "an open position on the same instrument (strike lock)" : w.startsWith("learner skipped") ? "the learner declined them"
         : w.startsWith("entry at or after") ? "they came at or after the square-off time" : w.startsWith("no data") || w.includes("no candle") ? "no option data for the strike" : w;
       reasons[k] = (reasons[k] || 0) + 1;
     }
