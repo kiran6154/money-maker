@@ -1,0 +1,128 @@
+{
+ "code": "ST37",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-04T00:59:06",
+   "key": "407932fd0ab2",
+   "code": "248790de0b24",
+   "definition": {
+    "code": "ST37",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 2,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "choch_candle",
+     "entry_rule": "trail_flip_short_v1",
+     "exit_rule": "next_choch"
+    },
+    "imaginary": {
+     "lots": 1,
+     "square_off": "15:25",
+     "lock": "strike",
+     "exit": "position",
+     "stop": {
+      "from": "signal"
+     },
+     "scale_out": [],
+     "trail": {
+      "start_r": 3,
+      "lag_r": 1
+     },
+     "reverse": null,
+     "notes": "Strategy 34's long: the CHoCH candle's low is the stop and 1R; never traded"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "position",
+     "stop": {
+      "futures_pts": 50,
+      "option_pct": 30
+     },
+     "trail": null,
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM2",
+      "ITM1",
+      "OTM1",
+      "OTM2",
+      "OTM3",
+      "OTM4"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14,
+     "native_scan": {
+      "choices": [
+       "ATR2",
+       "ATM",
+       "ITM1",
+       "OTM1"
+      ],
+      "every_minutes": 5,
+      "one_per_side": true
+     }
+    }
+   },
+   "changes": [],
+   "results": {
+    "all-data_1m": {
+     "OPT_NATIVE": {
+      "W-SCAN": {
+       "trades": 110,
+       "wins": 68,
+       "pts": 469.32,
+       "net_inr": 23757.8,
+       "pf": 1.29,
+       "max_dd_inr": -10074.94,
+       "t_stat": 1.09
+      },
+      "M-SCAN": {
+       "trades": 98,
+       "wins": 56,
+       "pts": 8.55,
+       "net_inr": -6691.18,
+       "pf": 0.93,
+       "max_dd_inr": -20162.87,
+       "t_stat": -0.28
+      }
+     }
+    }
+   }
+  }
+ ]
+}
