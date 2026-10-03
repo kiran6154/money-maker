@@ -279,7 +279,7 @@ function clearResult() {
 function chartOpts() {
   return { autoSize: true, layout: { background: { color: css("--card") }, textColor: css("--muted") },
            grid: { vertLines: { color: css("--line") }, horzLines: { color: css("--line") } },
-           timeScale: { timeVisible: true, secondsVisible: false, borderColor: css("--line") },
+           timeScale: { timeVisible: true, secondsVisible: false, borderColor: css("--line"), minBarSpacing: 0.001 },
            rightPriceScale: { borderColor: css("--line") }, crosshair: { mode: 0 } };
 }
 let eqChart = null;
@@ -291,7 +291,7 @@ function drawEquity(curve) {
   const last = curve[curve.length - 1].value;
   eqChart.addAreaSeries({ lineColor: last >= 0 ? css("--up") : css("--down"), topColor: "transparent", bottomColor: "transparent", lineWidth: 2 })
     .setData(curve);
-  eqChart.timeScale().fitContent();
+  const ec = eqChart; requestAnimationFrame(() => ec.timeScale().fitContent());   // after autoSize has the width
 }
 
 let pxChart = null;
@@ -341,25 +341,32 @@ function drawPrice(d) {
     if (ln.length > 1) line(ln.map(([t, v]) => ({ time: t, value: v })), RIBBON[j], 0);
   });
   for (const p of d.pair || []) if (p.live.length > 1) line(p.live.map(([t, v]) => ({ time: t, value: v })), p.side === "H" ? dn : up, 1);
-  for (const s of d.swings || []) { nS++; markers.push({ time: s[1], position: s[0] === "H" ? "aboveBar" : "belowBar", color: mut, shape: "circle", size: 0.4, text: s[0] === "H" ? "SH" : "SL" }); }
-  for (const e of d.events || []) { nE++; markers.push({ time: e[0], position: e[2] === "up" ? "belowBar" : "aboveBar", color: e[1] === "CHoCH" ? acc : mut, shape: "square", size: 0.6, text: e[1] }); }
-  for (const s of d.setups || []) markers.push({ time: s[0], position: s[1] === "up" ? "belowBar" : "aboveBar", color: css("--warn"), shape: "circle", size: 0.8, text: "SETUP" });
+  // swings: small unlabelled dots; BOS: a small square; CHoCH and SETUP: labelled (the chart stays readable on busy days)
+  for (const s of d.swings || []) { nS++; markers.push({ time: s[1], position: s[0] === "H" ? "aboveBar" : "belowBar", color: mut, shape: "circle", size: 0.1 }); }
+  for (const e of d.events || []) {
+    nE++;
+    markers.push(e[1] === "CHoCH" ? { time: e[0], position: e[2] === "up" ? "belowBar" : "aboveBar", color: acc, shape: "square", size: 0.6, text: "CHoCH" }
+                                  : { time: e[0], position: e[2] === "up" ? "belowBar" : "aboveBar", color: mut, shape: "square", size: 0.1 });
+  }
+  for (const s of d.setups || []) markers.push({ time: s[0], position: s[1] === "up" ? "belowBar" : "aboveBar", color: css("--warn"), shape: "circle", size: 0.6, text: "S" });
   const C = {}; d.cols.forEach((k, i) => C[k] = i);
   const ownPrices = S.inst || (S.type === "FUT" && S.run.underlying !== "INDEX");
   for (const r of d.trades) {
     const te = snap(tsOf(r[C.entry_time])), tx = snap(tsOf(r[C.exit_time]));
     const lng = r[C.position] === "LONG", win = r[C.net] > 0;
     const tag = r[C.label] || r[C.position];
-    if (te != null) markers.push({ time: te, position: lng ? "belowBar" : "aboveBar", color: lng ? up : dn, shape: lng ? "arrowUp" : "arrowDown", text: tag });
-    if (tx != null) markers.push({ time: tx, position: lng ? "aboveBar" : "belowBar", color: win ? up : dn, shape: "circle", size: 0.7, text: `${r[C.exit_reason]} ${num(r[C.pts], 1)}` });
+    if (te != null) markers.push({ time: te, position: lng ? "belowBar" : "aboveBar", color: lng ? up : dn, shape: lng ? "arrowUp" : "arrowDown", text: lng ? "L" : "S" });
+    if (tx != null) markers.push({ time: tx, position: lng ? "aboveBar" : "belowBar", color: win ? up : dn, shape: "circle", size: 0.6, text: num(r[C.pts], 0) });
     if (ownPrices && te != null && tx != null && te < tx)
       line([{ time: te, value: r[C.entry_px] }, { time: tx, value: r[C.exit_px] }], win ? up : dn, 2, 2);
   }
   markers.sort((a, b) => a.time - b.time);
   cs.setMarkers(markers);
-  pxChart.timeScale().fitContent();
-  $("#c-legend").textContent = `${d.candles.length} candles · ${nS} swings · ${nE} CHoCH/BOS · ${d.trades.length} trade(s)` +
-    (d.prot ? " · grey dashes = protected level · red/green = AVWAP pair from SH / SL" : "");
+  const pc = pxChart; requestAnimationFrame(() => pc.timeScale().fitContent());
+  $("#c-legend").textContent = `${d.candles.length} candles` + (d.swings ? ` · ${nS} swings (dots) · ${nE} CHoCH/BOS` : " · the option's own candles") +
+    ` · ${d.trades.length} trade(s): ` +
+    "arrow L / S = entry, circle = exit with its points" + (d.prot ? " · grey dashes = protected level · red / green lines = AVWAP pair from SH / SL" : "") +
+    (d.lines ? " · rainbow = the ribbon" : "") + " · click a trade in the table to open its day";
 }
 
 function stepDay(k) {
