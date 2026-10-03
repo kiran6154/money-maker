@@ -43,11 +43,33 @@ python backtest.py ST1 1Y --tf 5minute --underlying INDEX --square-off none
 python backtest.py ST1 --defined # every backtest listed in the strategy file
 ```
 
-On the page: pick a strategy on the left, then choose a defined backtest or an ad hoc period and press **Run**. Only that
-strategy runs, and its results show when the job finishes. Each run has a tab per type (Futures, Options via futures,
-Options standalone), a choice per expiry type × strike, KPI tiles, an equity curve, a table comparing the choices, the
-trade list (click a trade to open its day) and a chart. The chart shows the signal candles with swings, CHoCH / BOS,
-SETUPs, the protected level and the AVWAP pair, or the traded option's own candles.
+### The page (`ui/index.html`)
+
+1. **Strategy cards** across the top: code, family (Foundation · Managed exits · FZ gate · Learner · CHoCH to CHoCH ·
+   Rainbow), description, key rules and the default backtest's net / PF / trades / win rate. Filter by family, search,
+   sort by net, PF or recency. Once a strategy is open the cards shrink to one scrolling strip ("Show all as cards"
+   brings the grid back).
+2. **The selected strategy below:** its rules sentence and version; **Backtests** tabs (every backtest in the strategy
+   file plus ad hoc runs) with their candle / signal-source / holding variants; **Run** (this backtest, a preset, custom
+   dates, other candles, index or futures signals, positional or intraday; only this strategy runs).
+3. **The three types side by side** (Futures · Options via futures · Options standalone) with Long + short / Long /
+   Short / CE side / PE side rows and how many signals were priced; the expiry and strike bar.
+4. **KPIs** for the selected type and side, and the **vs version N** tile (the same backtest on the strategy's previous
+   version, from `history/<CODE>.json`).
+5. **Chart:** the signal candles with layers you can switch (trades, 1R/2R/3R, AVWAP pair with its back-extension,
+   protected level, CHoCH / BOS, swings and candidates, volume, FZ zone bands and gate letters, rainbow ribbon), a
+   crosshair readout (with the FZ zone card), CE and PE panes with each traded option on its own candles, day / range
+   navigation, "Full period", PNG snapshot, drag to resize.
+6. **Tabs:** Trades (sortable, filterable, charges breakdown, signals not taken) · Performance · Cumulative P&L ·
+   Drawdowns · Distribution · Monte Carlo · Robustness (slippage / charges sensitivity by repricing every trade, month by
+   month, other timeframes, expiry × strike) · Breakdown · Daily P&L with the heatmap calendar · Signals · Zone gate
+   (FZ) · Journal (learner) · Config · Rules.
+
+`ui/explorer.html` — any session, any instrument (near-month futures, the index, any option contract with candles that
+day), a strategy's rules applied to that instrument's own candles: a visualization, nothing stored.
+
+Every run appends to `history/<CODE>.json` (versioned): a new version whenever the strategy's definition or the code
+its results come from changes, with the headline numbers of each run made on it.
 
 The first run after a data change is slower. The CSVs are parsed into `cache/` once and numba compiles the engine once
 (also cached).
@@ -59,7 +81,8 @@ core.py              data cache · numba engine · option chain · positions / p
 strategies/stNN.py   SPEC + signals(); file order = the order on the page
 backtest.py          CLI: one strategy per call
 server.py            JSON API + static ui/; backtests queue and run one at a time in-process
-ui/                  index.html, app.css, app.js (lightweight-charts from jsdelivr)
+ui/                  index.html + explorer.html, css/, js/ (main, chart, tabs + analytics, explorer, util); lightweight-charts from jsdelivr
+history/             per-strategy versions and their results (versioned)
 config/data.json     candle files (same as v1; history_from null = the whole files, so 1Y / 5Y presets work)
 config/charges.json  charge schedules (copy of v1's)
 tests/test_parity.py v2 against v1, trade for trade

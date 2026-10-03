@@ -1284,7 +1284,8 @@ def run_type(ctx):
 # ================================================================ backtest + results
 TRADE_COLS = ("position", "opt_type", "instrument", "strike", "expiry", "signal", "choch_time", "entry_time", "entry_px", "sl",
               "exit_time", "exit_px", "exit_reason", "pts", "gross", "charges", "net", "open", "lots", "tranche", "label",
-              "und_entry", "und_exit", "stale", "mfe", "mae", "scan", "gate", "zone_id", "reenter_reason", "fill_used")
+              "und_entry", "und_exit", "stale", "mfe", "mae", "scan", "gate", "zone_id", "reenter_reason", "fill_used", "kind",
+              "chg_parts")
 
 
 def _r2(v):
@@ -1295,7 +1296,7 @@ def trade_rows(trs):
     rows = []
     for x in trs:
         d = dict(x, charges=x["chg"]["total"], entry_time=tstr(x["entry_time"]), exit_time=tstr(x["exit_time"]),
-                 choch_time=tstr(x["choch_time"]))
+                 choch_time=tstr(x["choch_time"]), chg_parts={k: round(v, 2) for k, v in x["chg"].items() if k != "total"})
         rows.append([_r2(d.get(k)) if k not in ("entry_px", "exit_px", "sl") else d.get(k) for k in TRADE_COLS])
     return rows
 
@@ -1372,7 +1373,9 @@ def backtest(code, bt, types=None, log=print):
                          ce=part(lambda x: x["opt_type"] == "CE"), pe=part(lambda x: x["opt_type"] == "PE"))
             skl = rr["skipped"]
             n_lock = sum(str(k.get("why", "")).startswith("strike locked") for k in skl)
-            body = dict(code=code, run=rk, type=typ, choice=ch, stats=s, sides=sides, charges=CHARGES[spec["types"][typ]["charge_code"]],
+            body = dict(code=code, run=rk, type=typ, choice=ch, date_from=f_, date_to=to, lot_size=spec["lot_size"],
+                        slippage_pts=spec["types"][typ]["slippage_pts"], capital=spec.get("capital") or {},
+                        stats=s, sides=sides, charges=CHARGES[spec["types"][typ]["charge_code"]],
                         cols=TRADE_COLS, trades=trade_rows(trs), skipped=_skipped_out(skl),
                         signals=[dict(g, time=tstr(g["time"]), setup=g["setup"] and tstr(g["setup"]),
                                       hi=g["hi"] and [tstr(g["hi"][0]), g["hi"][1]], lo=g["lo"] and [tstr(g["lo"][0]), g["lo"][1]])
@@ -1390,6 +1393,12 @@ def backtest(code, bt, types=None, log=print):
         tm["seconds"] = round(_time.time() - t1, 2)
         log(f"{code} {rk} {typ:<15} {len(res)} choice(s) in {tm['seconds']:.2f}s")
     meta["seconds"] = round(_time.time() - t0, 2)
+    try:
+        cur, prev = record_history(mod, rk, meta)
+        meta["version"] = dict(version=cur["version"], at=cur["at"], changes=cur["changes"])
+        meta["baseline"] = prev and dict(version=prev["version"], at=prev["at"], results=prev["results"].get(rk))
+    except (OSError, ValueError) as e:                 # history is a convenience: a run never fails on it
+        log(f"history not recorded: {e}")
     with open(os.path.join(folder, "meta.json"), "w", encoding="utf-8") as fh:
         json.dump(_jsonable(meta), fh, indent=1)
     return meta
@@ -1399,6 +1408,65 @@ def _old_type(folder, typ):
     f = os.path.join(folder, "meta.json")
     if not os.path.exists(f): return None
     return json.load(open(f, encoding="utf-8")).get("types", {}).get(typ)
+
+
+# ================================================================ version history (history/<CODE>.json, versioned in git)
+HISTORY = os.path.join(HERE, "history")
+BRIEF = ("trades", "wins", "pts", "net_inr", "pf", "max_dd_inr", "t_stat")
+
+
+def _flat(d, pre=""):
+    out = {}
+    for k, v in (d.items() if isinstance(d, dict) else []):
+        if isinstance(v, dict): out.update(_flat(v, f"{pre}{k}."))
+        else: out[f"{pre}{k}"] = v
+    return out
+
+
+def _code_hash(mod):
+    """sha1[:12] of the code a strategy's results come from: core.py, its strategy file and its family modules."""
+    h = hashlib.sha1()
+    files = [os.path.join(HERE, "core.py"), mod.PATH]
+    d = os.path.join(STRATDIR)
+    for name in ("rainbow", "c2c", "foundation_zone", "learner"):
+        if name in open(mod.PATH, encoding="utf-8").read(): files.append(os.path.join(d, f"{name}.py"))
+    for f in files: h.update(open(f, "rb").read().replace(b"\r\n", b"\n"))
+    return h.hexdigest()[:12]
+
+
+def record_history(mod, rk, meta):
+    """history/<CODE>.json: a new version whenever the strategy's definition (SPEC without name, description and backtests)
+    or the code its results come from changes; each version keeps the headline numbers of every run made on it. Returns
+    (current version, previous version or None) so a run is read against the strategy's previous version."""
+    spec = mod.SPEC
+    definition = {k: v for k, v in spec.items() if k not in ("name", "description", "backtests")}
+    definition["position"] = position_of(spec)
+    code = _code_hash(mod)
+    key = hashlib.sha1(json.dumps([definition, code], sort_keys=True, default=str).encode()).hexdigest()[:12]
+    os.makedirs(HISTORY, exist_ok=True)
+    path = os.path.join(HISTORY, f"{spec['code']}.json")
+    hist = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else dict(code=spec["code"], versions=[])
+    vs = hist["versions"]
+    if not vs or vs[-1]["key"] != key:
+        changes = []
+        if vs:
+            a, b = _flat(vs[-1]["definition"]), _flat(json.loads(json.dumps(definition, default=str)))
+            changes = [f"{k}: {a.get(k)!r} -> {b.get(k)!r}" for k in sorted(set(a) | set(b)) if a.get(k) != b.get(k)]
+            if not changes: changes = ["code changed (core.py, the strategy file or its family module)"]
+        vs.append(dict(version=len(vs) + 1, at=meta["at"], key=key, code=code, definition=json.loads(json.dumps(definition, default=str)),
+                       changes=changes, results={}))
+    cur = vs[-1]
+    cur["results"][rk] = {t: {ch: {k: v.get(k) for k in BRIEF} for ch, v in tm.get("choices", {}).items()}
+                          for t, tm in meta["types"].items() if tm.get("status") == "ok"}
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh: json.dump(hist, fh, indent=1)
+    os.replace(tmp, path)
+    return cur, (vs[-2] if len(vs) > 1 else None)
+
+
+def history(code):
+    path = os.path.join(HISTORY, f"{code}.json")
+    return json.load(open(path, encoding="utf-8")) if os.path.exists(path) else dict(code=code, versions=[])
 
 
 def list_runs(code):
@@ -1428,53 +1496,60 @@ def _chart_bars(b, i0, i1):
     return [[int(b.t[i]), float(b.o[i]), float(b.h[i]), float(b.l[i]), float(b.c[i]), float(b.v[i])] for i in range(i0, i1 + 1)]
 
 
-def chart(code, run, typ, choice, day, inst=None):
-    """One session's chart of a stored run: the signal candles (futures or index) with the engine's swings, CHoCH / BOS,
-    protected level and AVWAP pair, and this choice's trades; with `inst`, that option contract's own candles (from the
-    session before) with its trades and, for standalone options, the engine on its candles."""
-    mods = load_strategies(); mod = mods[code]
-    folder = os.path.join(RESULTS, code, run)
-    meta = json.load(open(os.path.join(folder, "meta.json"), encoding="utf-8"))
-    body = json.load(open(os.path.join(folder, typ, f"{choice}.json"), encoding="utf-8"))
-    tm = meta["types"][typ]
-    ctx = context(mod, typ, meta["timeframe"], meta["underlying"], meta["square_off"], tm["date_from"], meta["date_to"])
-    cols = {k: i for i, k in enumerate(body["cols"])}
-    d = dnum(day)
-    trades = [r for r in body["trades"]]
-    if inst:
-        mine = [r for r in trades if r[cols["instrument"]] == inst]
-        if not mine: raise ValueError("no trades on that instrument in this run")
-        r0 = mine[0]
-        chain = OptionChain(meta["timeframe"])
-        s = chain.get(r0[cols["expiry"]], r0[cols["strike"]], r0[cols["opt_type"]])
-        if typ == "OPT_NATIVE":
-            ob, _ = window(s, ctx["date_from"], ctx["date_to"], ctx["warmup"])
-            sg = strategy_signals(dict(ctx, underlying="FUT"), ob); b = ob
-        else:
-            b, sg = s, None
-        i1 = int(np.searchsorted(b.day, d, "right")) - 1
-        di = int(np.searchsorted(b.day, d))
-        i0 = di
-        if di > 0: i0 = int(np.searchsorted(b.day, b.day[di - 1]))       # from the session before
-        exits = [ts(r[cols["exit_time"]]) for r in mine if r[cols["entry_time"]][:10] == day]
-        if exits: i1 = max(i1, int(np.searchsorted(b.t, max(exits), "right")) - 1)
-        marks = [r for r in mine if r[cols["entry_time"]][:10] == day]
-    else:
-        b, s0 = signal_bars(ctx)
-        sg = strategy_signals(ctx, b)
-        i0 = int(np.searchsorted(b.day, d)); i1 = int(np.searchsorted(b.day, d, "right")) - 1
-        lo, hi = (int(b.t[i0]), int(b.t[i1])) if i1 >= i0 else (0, -1)
-        marks = [r for r in trades if ts(r[cols["entry_time"]]) <= hi and ts(r[cols["exit_time"]]) >= lo]
-    if i1 < i0: raise ValueError(f"no candles on {day}")
-    out = dict(day=day, inst=inst, candles=_chart_bars(b, i0, i1), cols=body["cols"], trades=marks)
-    if sg is not None:
-        t = b.t
-        out["swings"] = [["H" if sg.sk[k] == 1 else "L", int(t[sg.sb[k]]), float(sg.sp[k]), int(t[sg.sc[k]])]
-                         for k in range(len(sg.sk)) if i0 <= sg.sc[k] <= i1]
-        out["events"] = [[int(t[sg.ei[k]]), "BOS" if sg.ek[k] == 0 else "CHoCH", "up" if sg.ed[k] == 1 else "down"]
-                         for k in range(len(sg.ei)) if i0 <= sg.ei[k] <= i1]
-        out["prot"] = [[int(t[i]), float(sg.prot[i])] for i in range(i0, i1 + 1) if not np.isnan(sg.prot[i])]
-        pair = []
+_FZC = {}                     # (code, run, type) -> (bars, F): the FZ gate of a stored run, for its chart's zone layer
+
+
+def _fz_layers(b, F, i0, i1):
+    """FZ layers of b[i0..i1] (v1 lab.fz_chart): Z = the as-of zone card per bar, ZONES = the bands to draw (every band born
+    by then holding a close of the range, every band a card row names, the 3 nearest the first close that are not too old;
+    rooms retired before the range are not drawn unless a card row names them)."""
+    fz = F["mod"]
+    t, c, card, zs = b.t, b.c, F["out"]["card"], F["out"]["zones"]
+    byid = {z["id"]: z for z in zs}
+    zs = [z for z in zs if z.get("retired_bar") is None or z["retired_bar"] > i0]
+    code = {x: k for k, x in enumerate(fz.READS)}
+    iv = lambda x: None if x is None else int(round(x))
+    Z = [[int(t[i]), d["zone_id"], d["visit_n"], d["this_bars"], iv(d["this_vol"]), d["first_bars"], iv(d["first_vol"]),
+          code[d["read"]], d["left_id"], d["out_run"], int(bool(d["vol_na"])), d["gap_pts"], d["session_bar"],
+          d["wick_depth"], d["in_id"], int(bool(d["first_vol_na"]))] for i in range(i0, i1 + 1) for d in (card[i],)]
+    lo, hi = float(c[i0:i1 + 1].min()), float(c[i0:i1 + 1].max())
+    keep = {}
+    for z in zs:
+        if z["birth_bar"] > i1 or z["hi"] + fz.EPS < lo or z["lo"] - fz.EPS > hi: continue
+        a = max(i0, z["birth_bar"])
+        if a <= i1 and np.any((c[a:i1 + 1] >= z["lo"] - fz.EPS) & (c[a:i1 + 1] <= z["hi"] + fz.EPS)): keep[z["id"]] = z
+    age, sess = F["cfg"]["zone_max_age_sessions"], F["sess"]
+
+    def fresh(z):
+        if age is None: return True
+        ends = [V["end"] for V in z["visits"] if V["start"] < i0]
+        last = z["birth_bar"] if not ends else (i0 if ends[-1] is None or ends[-1] >= i0 else ends[-1])
+        return sess[i0] - sess[last] <= age
+    near = sorted((z for z in zs if z["birth_bar"] <= i0 and fresh(z)), key=lambda z: abs(z["mid"] - float(c[i0])))[:3]
+    for z in near: keep.setdefault(z["id"], z)
+    for row in Z:
+        for zid in (row[1], row[8], row[14]):
+            if zid is not None and zid in byid: keep.setdefault(zid, byid[zid])
+    ZONES = [[z["id"], z["kind"], z["lo"], z["hi"], ts(z["born_ts"])] for z in sorted(keep.values(), key=lambda z: z["birth_bar"])]
+    return dict(Z=Z, ZONES=ZONES, Z_COLS=list(F["Z_COLS"]), READS=list(fz.READS))
+
+
+def _overlays(b, sg, i0, i1, pair=True):
+    """The engine's layers over b[i0..i1]: candidate swing levels, swings, CHoCH / BOS, protected level, SETUPs, the AVWAP
+    pair (live from the CHoCH, and back to its anchor), and a strategy's own lines (the rainbow ribbon)."""
+    t = b.t
+    rng = range(i0, i1 + 1)
+    out = dict(
+        cand=[[int(t[i]), None if np.isnan(sg.candh[i]) else float(sg.candh[i]), None if np.isnan(sg.candl[i]) else float(sg.candl[i])] for i in rng],
+        swings=[["H" if sg.sk[k] == 1 else "L", int(t[sg.sb[k]]), float(sg.sp[k]), int(t[sg.sc[k]])]
+                for k in range(len(sg.sk)) if i0 <= sg.sc[k] <= i1],
+        events=[[int(t[sg.ei[k]]), "BOS" if sg.ek[k] == 0 else "CHoCH", "up" if sg.ed[k] == 1 else "down"]
+                for k in range(len(sg.ei)) if i0 <= sg.ei[k] <= i1],
+        flips=[int(t[sg.qi[j]]) for j in range(len(sg.qi)) if sg.qflip[j] and i0 <= sg.qi[j] <= i1],
+        prot=[[int(t[i]), float(sg.prot[i])] for i in rng if not np.isnan(sg.prot[i])],
+        setups=[[int(t[k]), "up" if dd == 1 else "down"] for k, dd in zip(sg.ui, sg.ud) if i0 <= k <= i1])
+    P = []
+    if pair:
         for j in range(len(sg.qi)):
             ci, end = int(sg.qi[j]), int(sg.qend[j])
             if end < i0 or ci > i1: continue
@@ -1482,9 +1557,174 @@ def chart(code, run, typ, choice, day, inst=None):
                 if s_ < 0: continue
                 a = int(sg.sb[s_])
                 live = [[int(t[k]), round(sg.av(a, k), 2)] for k in range(max(ci, i0), min(end, i1) + 1)]
-                pair.append(dict(side=side, anchor=tstr(t[a]), live=live))
-        out["pair"] = pair
-        out["setups"] = [[int(t[k]), "up" if dd == 1 else "down"] for k, dd in zip(sg.ui, sg.ud) if i0 <= k <= i1]
-        if sg.lines is not None:              # a strategy's own overlay lines (the rainbow ribbon), fastest first
-            out["lines"] = [[[int(t[i]), round(float(ln[i]), 2)] for i in range(i0, i1 + 1) if not np.isnan(ln[i])] for ln in sg.lines]
+                back = [[int(t[k]), round(sg.av(a, k), 2)] for k in range(max(a, i0), min(ci, i1) + 1)] if ci >= i0 else []
+                P.append(dict(side=side, anchor=tstr(t[a]), p=float(sg.sp[s_]), live=live, back=back))
+    out["pair"] = P
+    if sg.lines is not None:
+        out["lines"] = [[[int(t[i]), round(float(ln[i]), 2)] for i in rng if not np.isnan(ln[i])] for ln in sg.lines]
+    return out
+
+
+def chart(code, run, typ, choice, day, inst=None, to=None):
+    """Sessions day .. to (default: day) of a stored run: the signal candles (futures or index) with the engine's layers, the
+    FZ zones for FZ strategies, and this choice's trades; with `inst`, that option contract's own candles (from the session
+    before) with its trades and, for standalone options, the engine on its candles."""
+    mods = load_strategies(); mod = mods[code]
+    folder = os.path.join(RESULTS, code, run)
+    meta = json.load(open(os.path.join(folder, "meta.json"), encoding="utf-8"))
+    body = json.load(open(os.path.join(folder, typ, f"{choice}.json"), encoding="utf-8"))
+    tm = meta["types"][typ]
+    ctx = context(mod, typ, meta["timeframe"], meta["underlying"], meta["square_off"], tm["date_from"], meta["date_to"], run)
+    cols = {k: i for i, k in enumerate(body["cols"])}
+    d0, d1 = dnum(day), dnum(to or day)
+    trades = body["trades"]
+    zones = None
+    if inst:
+        mine = [r for r in trades if r[cols["instrument"]] == inst]
+        if not mine: raise ValueError("no trades on that instrument in this run")
+        r0 = mine[0]
+        s = OptionChain(meta["timeframe"]).get(r0[cols["expiry"]], r0[cols["strike"]], r0[cols["opt_type"]])
+        if typ == "OPT_NATIVE":
+            ob, _ = window(s, ctx["date_from"], ctx["date_to"], ctx["warmup"])
+            sg = strategy_signals(dict(ctx, underlying="FUT"), ob); b = ob
+        else:
+            b, sg = s, None
+        i1 = int(np.searchsorted(b.day, d1, "right")) - 1
+        di = int(np.searchsorted(b.day, d0)); i0 = di
+        if 0 < di < len(b): i0 = int(np.searchsorted(b.day, b.day[di - 1]))       # from the session before
+        sel = [r for r in mine if d0 <= dnum(r[cols["entry_time"]]) <= d1]
+        if sel: i1 = max(i1, int(np.searchsorted(b.t, max(ts(r[cols["exit_time"]]) for r in sel), "right")) - 1)
+        marks = sel
+    else:
+        b, s0 = signal_bars(ctx)
+        sg = strategy_signals(ctx, b)
+        i0 = int(np.searchsorted(b.day, d0)); i1 = int(np.searchsorted(b.day, d1, "right")) - 1
+        lo, hi = (int(b.t[i0]), int(b.t[i1])) if 0 <= i0 <= i1 < len(b) else (0, -1)
+        marks = [r for r in trades if ts(r[cols["entry_time"]]) <= hi and ts(r[cols["exit_time"]]) >= lo]
+        if hasattr(mod, "gate") and i1 >= i0:                 # FZ: the zone card and bands of this range
+            key = (code, run, typ)
+            if key not in _FZC:
+                _FZC.clear()
+                _, F = mod.gate(ctx, b, s0, sg)
+                fzm = sys.modules.get("lib_fz")
+                _FZC[key] = dict(F, mod=fzm, Z_COLS=family("foundation_zone").Z_COLS)
+            zones = _fz_layers(b, _FZC[key], i0, i1)
+    if not (0 <= i0 <= i1 < len(b)): raise ValueError(f"no candles from {day}" + (f" to {to}" if to else ""))
+    out = dict(day=day, to=to or day, inst=inst, candles=_chart_bars(b, i0, i1), cols=body["cols"], trades=marks,
+               sessions=int(len(np.unique(b.day[i0:i1 + 1]))))
+    if sg is not None: out.update(_overlays(b, sg, i0, i1, pair=out["sessions"] <= 10))
+    if zones: out["fz"] = zones
+    return _jsonable(out)
+
+
+# ================================================================ explorer (any day, any instrument; computed on request)
+def explorer_meta():
+    mods = load_strategies(); ss = sessions()
+    return dict(strategies=[dict(code=c, name=m.SPEC["name"], timeframe=m.SPEC["timeframe"], description=m.SPEC["description"],
+                                 entry_rule=m.SPEC["rules"].get("entry_rule"), managed=position_of(m.SPEC)["exit"] == "position")
+                            for c, m in mods.items()],
+                first=dstr(ss[0]), last=dstr(ss[-1]), tfs=list(TF_MIN))
+
+
+def explorer_instruments(date, tf="minute"):
+    """What can be shown on `date`: the futures contract, the index, and the option contracts with candles that day
+    (the next three expiries and the month's expiry; strikes per right)."""
+    d = dnum(date)
+    if d not in set(sessions().tolist()): raise ValueError(f"{date} is not a session in the data")
+    ct, con, exp, _ = fut_contracts()
+    j = int(np.searchsorted(ct, d * DAY))
+    fut = dict(contract=str(con[j]) if j < len(ct) and ct[j] // DAY == d else "NIFTY FUT",
+               expiry=(str(exp[j]) or None) if j < len(ct) and ct[j] // DAY == d else None)
+    ch = OptionChain("minute" if tf in ("minute", "3minute") else "5minute")
+    exps = [e for e in ch.calendar if dnum(e) >= d][:3]
+    mo = ch.expiry_for(d, 0, "MONTHLY")
+    if mo and mo not in exps: exps.append(mo)
+    opts = []
+    for e in exps:
+        strikes = {}
+        for right in ("CE", "PE"):
+            if e == ch.kite_exp:
+                folder = os.path.join(ch.kite, ch.base)
+                ks = sorted({int(f[len(ch.pre):-6]) for f in os.listdir(folder) if f.startswith(ch.pre) and f.endswith(right + ".csv")}) \
+                    if os.path.isdir(folder) else []
+                ks = [k for k in ks if (s := ch.get(e, k, right)) is not None and np.any(s.day == d)]
+            else:
+                tab, idx = ch._local_right(e, right)
+                ks = sorted(k for k, (a, b_) in idx.items() if np.any(tab["t"][a:b_] // DAY == d))
+            strikes[right] = ks
+        if strikes["CE"] or strikes["PE"]: opts.append(dict(expiry=e, monthly=e == mo, strikes=strikes))
+    sp = series("spot", "minute"); k = int(np.searchsorted(sp.day, d))
+    return dict(date=date, futures=fut, index_open=float(sp.o[k]) if k < len(sp) and sp.day[k] == d else None, options=opts)
+
+
+def explorer_chart(date, inst, code, tf="minute", expiry=None, strike=None, right=None, days_before=1, holding="own"):
+    """One instrument's candles around `date` with the engine's layers and the strategy's trades computed on those candles
+    (a visualization, not a backtest: nothing stored). FUT = the near-month futures, INDEX = the index (equal-weight
+    AVWAP), OPT = one option contract, the strategy applied to its own chart. The engine warms up on the strategy's
+    warm-up sessions before the date; `days_before` sessions are shown before it."""
+    if tf not in TF_MIN: raise ValueError(f"tf must be one of {tuple(TF_MIN)}")
+    if inst not in ("FUT", "INDEX", "OPT"): raise ValueError("inst is FUT, INDEX or OPT")
+    days_before = max(0, min(int(days_before), 5))
+    mod = load_strategies()[code]; spec = mod.SPEC
+    ss = sessions(); d = dnum(date)
+    k = int(np.searchsorted(ss, d))
+    if k >= len(ss) or ss[k] != d: raise ValueError(f"{date} is not a session in the data")
+    first, show = int(ss[max(0, k - max(spec["warmup_days"], days_before))]), int(ss[max(0, k - days_before)])
+    typ = "OPT_NATIVE" if inst == "OPT" else "FUT"
+    sq = position_of(spec)["square_off"] if holding == "own" else (None if holding in ("none", "positional", "") else holding)
+    ctx = context(mod, typ, tf, "INDEX" if inst == "INDEX" else "FUT", sq, dstr(show), date)
+    if inst == "OPT":
+        if not (expiry and strike and right in ("CE", "PE")): raise ValueError("an option needs expiry, strike and right")
+        src = OptionChain(tf).get(expiry, int(strike), right)
+        if src is None: raise ValueError(f"no candles for {expiry} {strike} {right}")
+        name = OptionChain.name(expiry, int(strike), right)
+    else:
+        src = series("spot" if inst == "INDEX" else "fut", tf); name = None
+    a, z = int(np.searchsorted(src.day, first)), int(np.searchsorted(src.day, d, "right"))
+    b = src.slice(a, z)
+    if not len(b) or not np.any(b.day == d): raise ValueError("no candles on that date")
+    sg = strategy_signals(ctx, b)
+    i0 = int(np.searchsorted(b.day, show)); i1 = len(b) - 1
+    P = ctx["position"]; pmode = P["exit"] == "position"
+    ct, con, exps, clast = fut_contracts()
+    lock = StrikeLock(P["lock"] == "strike")
+    trades, skipped = [], []
+    for x in sg.trades():
+        if x["entry"] < i0: continue
+        te = int(b.t[x["entry"]]); lng = x["dir"] == "up"
+        if inst == "FUT":
+            j = int(np.searchsorted(ct, te)); ok = j < len(ct) and ct[j] == te
+            iname, e_ = (str(con[j]), str(exps[j]) or None) if ok else ("NIFTY FUT", None)
+        else:
+            iname, e_ = (name or "NIFTY index"), (expiry if inst == "OPT" else None)
+        rec = dict(dir=x["dir"], signal="BULLISH" if lng else "BEARISH", position="LONG" if lng else "SHORT",
+                   opt_type=right or inst, kind="OPT" if inst == "OPT" else "FUT", instrument=iname, strike=strike, expiry=e_,
+                   choch_time=int(b.t[x["choch"]]), entry_time=te, exit_time=int(b.t[x["exit"]]), exit_reason=x["exit_reason"],
+                   open=x["open"], sl=x["sl"], entry_px=float(b.c[x["entry"]]), exit_px=x["exit_px"], und_entry=None, und_exit=None)
+        e = square_off_at(sq, te)
+        if e and te >= e:
+            skipped.append(dict(entry_time=tstr(te), position=rec["position"], why="entry at or after the square-off time")); continue
+        u = lock.held(iname, te)
+        if u:
+            skipped.append(dict(entry_time=tstr(te), position=rec["position"], why=f"strike locked: open until {tstr(u)}")); continue
+        cap = int(b.t[-1])
+        if inst == "FUT" and e_ and iname in clast: cap = min(cap, clast[iname])
+        if pmode: parts = managed_with_reversals(P, rec, b, cap, e_)
+        else:
+            eod_cut(sq, rec, b); parts = tranches(P, rec, b)
+        lock.hold(iname, max(q["exit_time"] for q in parts), any(q["open"] for q in parts))
+        for tr in parts:
+            excursion(b, tr, tr["position"] == "LONG")
+            tr["label"] = tr["position"] + (f" · {tr['tranche']}" if tr.get("tranche") else "")
+            trades.append(price_trade(ctx, tr))
+    out = dict(meta=dict(date=date, first_shown=dstr(show), inst=inst, instrument=name or (trades[0]["instrument"] if trades else inst),
+                         expiry=expiry, strike=strike, right=right, tf=tf, code=code, strategy=spec["name"], position=P,
+                         rules=spec["rules"], lot_size=spec["lot_size"], slippage_pts=ctx["slippage_pts"], warmup_from=dstr(first),
+                         note="visualization only: the strategy's signals() on this instrument's own candles, priced with its "
+                              "position rules; FZ gates, the learner and c2c's put rule are not applied here (their trades are "
+                              "the Foundation engine's)" if getattr(mod, "gate", None) or getattr(mod, "run", None) else
+                              "visualization only: the strategy's signals() on this instrument's own candles, priced with its position rules"),
+               candles=_chart_bars(b, i0, i1), cols=list(TRADE_COLS), trades=trade_rows(trades), skipped=skipped,
+               net=round(sum(x["net"] for x in trades), 2))
+    out.update(_overlays(b, sg, i0, i1))
     return _jsonable(out)

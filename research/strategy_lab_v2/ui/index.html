@@ -4,123 +4,96 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Strategy Lab v2</title>
-<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/tabs.css">
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
 <header class="top">
-  <button id="menu" class="icon" aria-label="Strategies">☰</button>
   <h1>Strategy Lab <span class="muted">v2</span></h1>
+  <a class="toplink" href="explorer.html">Chart explorer</a>
   <div id="jobs" class="jobs"></div>
 </header>
-<div class="layout">
-  <nav id="side" class="side">
-    <div class="side-h">Strategies</div>
-    <ul id="strategies"></ul>
-  </nav>
-  <main id="main">
-    <section id="empty" class="card">Pick a strategy on the left.</section>
-    <section id="strategy" hidden>
-      <div class="card">
-        <div class="row between">
-          <div>
-            <h2 id="s-title"></h2>
-            <div id="s-chips" class="chips"></div>
-          </div>
-        </div>
-        <p id="s-desc" class="desc"></p>
-      </div>
 
-      <div class="card">
-        <h3>Run a backtest <span class="muted">— this strategy only</span></h3>
-        <div class="form">
-          <label>Period
-            <select id="f-what"></select>
-          </label>
-          <label class="custom">From <input type="date" id="f-from"></label>
-          <label class="custom">To <input type="date" id="f-to"></label>
-          <label class="adhoc">Timeframe
-            <select id="f-tf"><option value="">strategy's</option><option value="minute">1m</option><option value="3minute">3m</option>
-              <option value="5minute">5m</option><option value="15minute">15m</option><option value="30minute">30m</option></select>
-          </label>
-          <label class="adhoc">Signals on
-            <select id="f-und"><option value="">strategy's</option><option value="FUT">Futures</option><option value="INDEX">Index</option></select>
-          </label>
-          <label class="adhoc">Holding
-            <select id="f-sq"><option value="keep">strategy's</option><option value="none">positional</option><option value="15:25">intraday 15:25</option></select>
-          </label>
-          <fieldset class="types">
-            <legend>Types</legend>
-            <label><input type="checkbox" value="FUT" checked> Futures</label>
-            <label><input type="checkbox" value="OPT_FUT_SIGNAL" checked> Options (via futures)</label>
-            <label><input type="checkbox" value="OPT_NATIVE" checked> Options (standalone)</label>
-          </fieldset>
-          <button id="run" class="primary">Run</button>
-        </div>
-        <div id="run-msg" class="msg"></div>
+<main>
+  <section class="cardsec">
+    <div class="row between wrap gap">
+      <div id="fam" class="chips"></div>
+      <div class="row gap">
+        <button id="cards-toggle" hidden>Show all as cards</button>
+        <input id="search" type="search" placeholder="search strategies" aria-label="Search strategies">
+        <select id="sort" aria-label="Sort cards">
+          <option value="code">by code</option><option value="net">by net</option><option value="pf">by profit factor</option><option value="recent">recently run</option>
+        </select>
       </div>
+    </div>
+    <div id="cards" class="cards"></div>
+  </section>
 
-      <div class="card">
-        <div class="row between wrap">
-          <h3>Results</h3>
-          <label class="inline">Run <select id="r-run"></select></label>
-        </div>
-        <div id="r-meta" class="muted small"></div>
-        <div id="r-types" class="tabs"></div>
-        <div id="r-refused" class="msg warn" hidden></div>
-        <div id="r-body">
-          <div class="row wrap gap">
-            <label class="inline">Choice <select id="r-choice"></select></label>
-            <div id="r-side" class="seg">
-              <button data-side="all" class="on">All</button><button data-side="LONG">Long</button><button data-side="SHORT">Short</button>
-              <button data-side="CE">CE</button><button data-side="PE">PE</button>
-            </div>
+  <section id="detail" hidden>
+    <div class="card">
+      <h2 id="d-title"></h2>
+      <p id="d-desc" class="desc"></p>
+      <p id="d-rules" class="rules"></p>
+    </div>
+
+    <div class="card">
+      <div class="row between wrap gap">
+        <h3>Backtests</h3>
+        <span id="run-meta" class="muted small"></span>
+      </div>
+      <div id="bt-tabs" class="tabs"></div>
+      <div id="bt-vars" class="segs"></div>
+      <details class="runpanel" open>
+        <summary>Run <span class="muted">— this strategy only</span></summary>
+        <div class="rp">
+          <div class="rp-row"><button id="rp-this" class="primary">Run this backtest</button>
+            <span class="muted small">or a new period:</span><span id="rp-presets" class="chips"></span></div>
+          <div class="rp-row">
+            <label>From <input type="date" id="rp-from"></label><label>To <input type="date" id="rp-to"></label>
+            <label>Label <input id="rp-label" placeholder="optional" maxlength="40"></label>
+            <button id="rp-custom">Run dates</button>
           </div>
+          <div class="rp-row">
+            <label>Candles <select id="rp-tf"><option value="">strategy's</option><option value="minute">1m</option><option value="3minute">3m</option>
+              <option value="5minute">5m</option><option value="15minute">15m</option><option value="30minute">30m</option></select></label>
+            <label>Signals on <select id="rp-und"><option value="">strategy's</option><option value="FUT">futures</option><option value="INDEX">index</option></select></label>
+            <label>Holding <select id="rp-sq"><option value="keep">strategy's</option><option value="none">positional</option><option value="15:25">intraday 15:25</option></select></label>
+            <span id="rp-types" class="chips">
+              <label class="ck"><input type="checkbox" value="FUT" checked> Futures</label>
+              <label class="ck"><input type="checkbox" value="OPT_FUT_SIGNAL" checked> Options (via futures)</label>
+              <label class="ck"><input type="checkbox" value="OPT_NATIVE" checked> Options (standalone)</label>
+            </span>
+          </div>
+          <div id="rp-msg" class="msg"></div>
+        </div>
+      </details>
+    </div>
+
+    <div id="run-none" class="card muted" hidden></div>
+    <div id="run-body">
+      <div class="card">
+        <div id="types" class="types"></div>
+        <div id="optbar" class="optbar" hidden></div>
+      </div>
+      <div id="res">
+        <div class="card">
+          <div id="crumb" class="crumb"></div>
           <div id="kpis" class="kpis"></div>
-          <div class="grid2">
-            <div>
-              <div class="sub">Equity (net ₹, by exit)</div>
-              <div id="equity" class="chart small-chart"></div>
-            </div>
-            <div>
-              <div class="sub">Choices in this type</div>
-              <div class="tablewrap"><table id="choices" class="tbl"></table></div>
-            </div>
-          </div>
+          <div id="kpi-note" class="muted small"></div>
+        </div>
+        <div class="card" id="chart-card">
+          <h3>Chart</h3>
+          <div id="chart-view"></div>
+        </div>
+        <div class="card">
+          <div id="tabs" class="tabs sticky"></div>
+          <div id="tab-body"></div>
         </div>
       </div>
-
-      <div class="card" id="report-card" hidden>
-        <h3 id="rep-title">Strategy report</h3>
-        <div id="rep-kpis" class="kpis"></div>
-        <div id="rep-body"></div>
-      </div>
-
-      <div class="card" id="chart-card" hidden>
-        <div class="row between wrap">
-          <h3 id="c-title">Chart</h3>
-          <div class="row gap">
-            <button id="c-prev" class="icon" aria-label="Previous day">‹</button>
-            <input type="date" id="c-day">
-            <button id="c-next" class="icon" aria-label="Next day">›</button>
-            <select id="c-inst"></select>
-          </div>
-        </div>
-        <div id="c-legend" class="muted small"></div>
-        <div id="chart" class="chart big-chart"></div>
-      </div>
-
-      <div class="card">
-        <div class="row between wrap">
-          <h3>Trades <span id="t-count" class="muted"></span></h3>
-          <input id="t-filter" type="search" placeholder="filter (date, reason, instrument…)">
-        </div>
-        <div class="tablewrap tall"><table id="trades" class="tbl"></table></div>
-        <details class="skipped"><summary id="sk-sum">Not taken</summary><div class="tablewrap"><table id="skipped" class="tbl"></table></div></details>
-      </div>
-    </section>
-  </main>
-</div>
-<script src="app.js"></script>
+    </div>
+  </section>
+</main>
+<script type="module" src="js/main.js"></script>
 </body>
 </html>

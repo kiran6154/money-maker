@@ -8,7 +8,10 @@ API
     GET  /api/strategies                                   every strategy: spec + its runs (meta)
     GET  /api/runs?code=ST1                                runs of one strategy, newest first
     GET  /api/result?code=&run=&type=&choice=              trades, stats, skipped, signals of one choice
-    GET  /api/chart?code=&run=&type=&choice=&day=[&inst=]  one session's chart, computed on request
+    GET  /api/chart?code=&run=&type=&choice=&day=[&to=][&inst=]   sessions day..to of a run, computed on request
+    GET  /api/history?code=ST1                             the strategy's versions (definition, changes, results per run)
+    GET  /api/explorer/meta | instruments?date=&tf= | chart?date=&inst=FUT|INDEX|OPT&code=&tf=&expiry=&strike=&right=
+         &days_before=&holding=own|none|HH:MM             any day, any instrument (explorer.html)
     GET  /api/status                                       {busy, jobs: last 20}
     POST /api/backtest {code, what: MTD|1M|3M|6M|YTD|1Y|5Y|all|custom|defined:<run key>, from, to,
                         tf, underlying, square_off (null = positional, "HH:MM", absent = the strategy's), types: [...]}
@@ -23,9 +26,23 @@ jobs, lock, wake = [], threading.Lock(), threading.Event()
 run_lock = threading.Lock()          # the core runner is not re-entrant: backtests and charts take turns
 
 
+def family_of(spec):
+    """The card filter group of a strategy."""
+    rule = spec["rules"].get("entry_rule", "setup_v1")
+    if rule.startswith("fz"): return "FZ gate"
+    if rule == "rl_v1": return "Learner"
+    if rule == "c2c_v1": return "CHoCH to CHoCH"
+    if rule == "rainbow_v1": return "Rainbow"
+    return "Managed exits" if core.position_of(spec)["exit"] == "position" else "Foundation"
+
+
 def spec_view(m):
     s = dict(m.SPEC)
     s["backtests"] = [dict(b, run=core.run_key(b, m.SPEC)[0]) for b in s["backtests"]]
+    s["family"] = family_of(m.SPEC)
+    s["position"] = core.position_of(m.SPEC)
+    h = core.history(m.SPEC["code"])["versions"]
+    s["version"] = h and dict(version=h[-1]["version"], at=h[-1]["at"], changes=h[-1]["changes"])
     return s
 
 
@@ -102,7 +119,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.reply(200, open(f, "rb").read())
             if u.path == "/api/chart":
                 with run_lock:
-                    return self.reply(200, core.chart(q["code"], q["run"], q["type"], q["choice"], q["day"], q.get("inst") or None))
+                    return self.reply(200, core.chart(q["code"], q["run"], q["type"], q["choice"], q["day"], q.get("inst") or None,
+                                                      q.get("to") or None))
+            if u.path == "/api/history":
+                return self.reply(200, core.history(q["code"]))
+            if u.path == "/api/explorer/meta":
+                return self.reply(200, core.explorer_meta())
+            if u.path == "/api/explorer/instruments":
+                with run_lock:
+                    return self.reply(200, core.explorer_instruments(q["date"], q.get("tf") or "minute"))
+            if u.path == "/api/explorer/chart":
+                with run_lock:
+                    return self.reply(200, core.explorer_chart(q["date"], q["inst"], q["code"], q.get("tf") or "minute",
+                                                               q.get("expiry") or None, q.get("strike") or None, q.get("right") or None,
+                                                               int(q.get("days_before") or 1), q.get("holding") or "own"))
             if u.path == "/api/status":
                 with lock:
                     return self.reply(200, dict(busy=any(j["state"] in ("queued", "running") for j in jobs),
@@ -110,7 +140,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             p = "index.html" if u.path in ("/", "") else u.path.lstrip("/")
             f = os.path.normpath(os.path.join(UI, p))
             if not f.startswith(UI) or not os.path.isfile(f): return self.reply(404, {"error": "not found"})
-            return self.reply(200, open(f, "rb").read(), mimetypes.guess_type(f)[0] or "application/octet-stream")
+            ext = os.path.splitext(f)[1].lower()           # Windows' registry can map .js to text/plain: modules would not load
+            ctype = {".js": "text/javascript", ".css": "text/css", ".html": "text/html; charset=utf-8",
+                     ".svg": "image/svg+xml"}.get(ext) or mimetypes.guess_type(f)[0] or "application/octet-stream"
+            return self.reply(200, open(f, "rb").read(), ctype)
         except (KeyError, ValueError) as e:
             return self.reply(400, {"error": f"{type(e).__name__}: {e}"})
         except Exception as e:
