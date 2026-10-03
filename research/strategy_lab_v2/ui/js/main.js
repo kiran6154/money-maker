@@ -1,6 +1,6 @@
 // Strategy lab v2 page: strategy cards on top, the selected strategy's details below (backtests, run controls, the three
 // trade types side by side, KPIs, the chart and the analysis tabs). Everything comes from the server's JSON API.
-import { $, $$, api, post, esc, inr, num, pct, cls, tsOf, pref, TYPE_LABEL, TF_LABEL, reasonTag, rulesSentence } from "./util.js";
+import { $, $$, api, post, esc, inr, num, pct, cls, tsOf, pref, TYPE_LABEL, TF_LABEL, reasonTag, algorithmHtml } from "./util.js";
 import { ChartView } from "./chart.js";
 import * as T from "./tabs.js";
 
@@ -116,7 +116,7 @@ function renderDetail() {
   $("#d-title").innerHTML = `<span class="code">${esc(sp.code)}</span> ${esc(sp.name)} <span class="fam fam-${esc(sp.family.replace(/\W+/g, "-"))}">${esc(sp.family)}</span>` +
     (sp.version ? ` <span class="ver" title="${esc((sp.version.changes || []).join("\n") || "first version")}">version ${sp.version.version}</span>` : "");
   $("#d-desc").textContent = sp.description;
-  $("#d-rules").textContent = rulesSentence(sp);
+  $("#d-rules").innerHTML = algorithmHtml(sp);
   renderBacktests();
   renderRunPanel();
   showRun();

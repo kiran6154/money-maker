@@ -125,6 +125,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.reply(200, core.history(q["code"]))
             if u.path == "/api/explorer/meta":
                 return self.reply(200, core.explorer_meta())
+            if u.path == "/api/explorer/expiries":
+                with run_lock:
+                    return self.reply(200, core.explorer_expiries(q.get("tf") or "minute"))
+            if u.path == "/api/explorer/strikes":
+                with run_lock:
+                    return self.reply(200, core.explorer_strikes(q["expiry"], q.get("tf") or "minute", q.get("date") or None))
             if u.path == "/api/explorer/instruments":
                 with run_lock:
                     return self.reply(200, core.explorer_instruments(q["date"], q.get("tf") or "minute"))

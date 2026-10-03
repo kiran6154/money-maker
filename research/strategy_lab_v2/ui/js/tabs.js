@@ -5,6 +5,7 @@ import {
   inr, inrk, fmt, pct, cl, esc, sum, isoOf, TFS, tradesOf, paramsOf, statsOf, reprice, repriceCheck, sessionsOf, tradeMin,
   dailySeries, streaks, weekKey, capitalFor, rMultiples, curve, underwater, ddEpisodes, monteCarlo, groupBy, entryBucket,
 } from './analytics.js';
+import { algorithmHtml } from './util.js';
 
 // ---------------------------------------------------------------- tab list
 const TABS = [['performance', 'Performance'], ['cumulative', 'Cumulative P&L'], ['drawdowns', 'Drawdowns'], ['distribution', 'Distribution'],
@@ -337,7 +338,7 @@ function rules(el, X) {
       (pos.trail ? `, the rest trails from ${pos.trail.start_r}R (${pos.trail.lag_r}R behind the best R reached)` : '') + '; no CHoCH exit.' : `exit on stop loss (${esc(String(ru.sl_rule || '').replace('_', ' '))}) or the next CHoCH.`);
   const card = (h, items) => `<div class="card tb-card"><h3>${h}</h3><ul class="tb-ul">${items.map(x => `<li>${x}</li>`).join('')}</ul></div>`;
   const cards = [
-    card('This strategy', [esc(spec.description || ''), `<b>Rules</b> — ${chain}`, `Designed on ${TFS[spec.timeframe] || esc(spec.timeframe)} candles · warm-up ${spec.warmup_days ?? '—'} sessions · AVWAP ${esc(ru.avwap_weight)}-weighted · slippage per side: ${slips || P.slip + ' pt'}`]),
+    `<div class="card tb-card"><h3>This strategy — step by step</h3>${algorithmHtml(spec)}</div>`,
     card('Strategy, backtest, timeframe', ['<b>Strategy</b> — the engine and its rules. Each strategy runs only the backtests defined for it; a backtest the data cannot cover is refused with the reason.',
       '<b>Backtest period</b> — its own run over exactly its dates (plus warm-up). Presets count back from the latest data date; Design period = where the rules were built; Unseen test = dates the rules never saw.',
       '<b>Timeframe</b> — the design timeframe by default; the same rules can be run on other candles.']),

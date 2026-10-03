@@ -1621,7 +1621,8 @@ def chart(code, run, typ, choice, day, inst=None, to=None):
 def explorer_meta():
     mods = load_strategies(); ss = sessions()
     return dict(strategies=[dict(code=c, name=m.SPEC["name"], timeframe=m.SPEC["timeframe"], description=m.SPEC["description"],
-                                 entry_rule=m.SPEC["rules"].get("entry_rule"), managed=position_of(m.SPEC)["exit"] == "position")
+                                 entry_rule=m.SPEC["rules"].get("entry_rule"), managed=position_of(m.SPEC)["exit"] == "position",
+                                 square_off=position_of(m.SPEC)["square_off"])
                             for c, m in mods.items()],
                 first=dstr(ss[0]), last=dstr(ss[-1]), tfs=list(TF_MIN))
 
@@ -1778,3 +1779,47 @@ def explorer_chart(date, inst, code, tf="minute", expiry=None, strike=None, righ
         out["spot"] = [[int(t_), float(sp.c[jj])] for t_, jj, o_ in zip(b.t[i0:i1 + 1], j, okj) if o_]
         out["strike"] = int(strike)
     return _jsonable(out)
+
+def explorer_expiries(tf="minute"):
+    """Every option expiry the data holds (newest first): its date, weekly / monthly, and whether it has full-chain data."""
+    ch = OptionChain("minute" if tf in ("minute", "3minute") else "5minute")
+    months = set(ch.monthly)
+    out = []
+    for e in reversed(ch.calendar):
+        base = os.path.join(ch.root, e[:4], e)
+        has = e == ch.kite_exp or os.path.isdir(base)
+        if not has: continue
+        full = e == ch.kite_exp or (os.path.exists(os.path.join(base, "manifest.json"))
+                                    and "full_chain" in json.load(open(os.path.join(base, "manifest.json"), encoding="utf-8")))
+        out.append(dict(expiry=e, monthly=e in months, full_chain=bool(full)))
+    return out
+
+
+def explorer_strikes(expiry, tf="minute", date=None):
+    """One expiry's contracts: strikes with candles per right, the first / last session of the contracts, and the strike
+    nearest the index on `date` (clamped into the contracts' life) as the suggested one."""
+    ch = OptionChain("minute" if tf in ("minute", "3minute") else "5minute")
+    strikes, first, last = {}, None, None
+    for right in ("CE", "PE"):
+        if expiry == ch.kite_exp:
+            folder = os.path.join(ch.kite, ch.base)
+            ks = sorted({int(f[len(ch.pre):-6]) for f in os.listdir(folder) if f.startswith(ch.pre) and f.endswith(right + ".csv")}) if os.path.isdir(folder) else []
+            spans = []
+            for k_ in ks:
+                b_ = ch.get(expiry, k_, right)
+                if b_ is not None: spans.append((k_, int(b_.day[0]), int(b_.day[-1])))
+        else:
+            tab, idx = ch._local_right(expiry, right)
+            spans = [(k_, int(tab["t"][a] // DAY), int(tab["t"][b_ - 1] // DAY)) for k_, (a, b_) in sorted(idx.items())]
+        strikes[right] = [k_ for k_, _, _ in spans]
+        for _, f_, l_ in spans:
+            first = f_ if first is None else min(first, f_); last = l_ if last is None else max(last, l_)
+    if first is None: raise ValueError(f"no option candles for {expiry}")
+    d = dnum(date) if date else last
+    d = min(max(d, first), last)
+    sp = series("spot", "minute")
+    k = int(np.searchsorted(sp.day, d, "right")) - 1
+    spot = float(sp.c[k]) if k >= 0 else None
+    near = lambda ks: min(ks, key=lambda x: abs(x - spot)) if ks and spot is not None else (ks[0] if ks else None)
+    return dict(expiry=expiry, first=dstr(first), last=dstr(last), date=dstr(d), index_close=spot,
+                strikes=strikes, atm=dict(CE=near(strikes["CE"]), PE=near(strikes["PE"])))

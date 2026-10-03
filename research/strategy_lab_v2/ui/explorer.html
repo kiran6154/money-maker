@@ -13,37 +13,51 @@
   <a class="toplink" href="./">← Strategy Lab</a>
 </header>
 <main>
-  <div class="card">
-    <p class="muted small" style="margin-top:0">Any session, any instrument: the chosen strategy's rules applied to that instrument's own candles,
-      priced with its position rules. A visualization, not a backtest — nothing is stored.</p>
-    <div class="rp-row fld">
-      <label>Date <input type="date" id="x-date"></label>
-      <label>Strategy <select id="x-code"></select></label>
-      <label>Candles <select id="x-tf"></select></label>
-      <label>Holding <select id="x-hold"><option value="own">strategy's</option><option value="15:25">intraday 15:25</option><option value="none">positional</option></select></label>
-      <label>Sessions before <select id="x-before"><option>0</option><option selected>1</option><option>2</option><option>3</option></select></label>
+  <div class="card xcard">
+    <div class="xhead">
+      <div>
+        <b>Any day, any instrument</b>
+        <div class="muted small">A strategy's rules on that instrument's own candles, priced with its position rules — a visualization, nothing is stored. Changes apply at once.</div>
+      </div>
+      <button id="x-go" class="primary">Refresh</button>
     </div>
-    <div class="rp-row fld" style="margin-top:10px">
-      <span class="seg" id="x-inst"><button data-i="FUT" class="on">Near-month futures</button><button data-i="INDEX">NIFTY index</button><button data-i="OPT">Option</button></span>
-      <span id="x-opt" class="rp-row fld" hidden>
-        <label>Expiry <select id="x-exp"></select></label>
-        <span class="seg" id="x-right"><button data-r="CE" class="on">CE</button><button data-r="PE">PE</button></span>
-        <label>Strike <select id="x-strike"></select></label>
+    <div class="xgroups">
+      <fieldset class="xg">
+        <legend>Strategy</legend>
+        <label>Strategy <select id="x-code"></select></label>
+        <label>Candles <select id="x-tf"></select></label>
+        <label>Holding <select id="x-hold"></select></label>
+        <div class="xfield"><span class="xl">Trades shown</span>
+          <span class="seg" id="x-side"><button data-s="all">All</button><button data-s="LONG">Long</button><button data-s="SHORT">Short</button></span></div>
+      </fieldset>
+      <fieldset class="xg">
+        <legend>Instrument</legend>
+        <div class="xfield"><span class="xl">Chart</span>
+          <span class="seg" id="x-inst"><button data-i="FUT">Futures</button><button data-i="INDEX">Index</button><button data-i="OPT">Option</button></span></div>
+        <label class="x-opt">Expiry <select id="x-exp"></select></label>
+        <div class="xfield x-opt"><span class="xl">Right</span>
+          <span class="seg" id="x-right"><button data-r="CE">CE</button><button data-r="PE">PE</button></span></div>
+        <label class="x-opt">Strike <select id="x-strike"></select></label>
+        <div class="muted small x-opt" id="x-life"></div>
+      </fieldset>
+      <fieldset class="xg">
+        <legend>Range</legend>
+        <label>Date <input type="date" id="x-date"></label>
         <label>Show from <select id="x-start">
           <option value="days">sessions before the date</option>
-          <option value="listing">its first candle (listing)</option>
-          <option value="prev_expiry">the previous expiry</option>
-          <option value="atm">when it first became ATM</option>
-          <option value="itm">when it first became ITM</option>
-          <option value="liquid">its first liquid session</option>
+          <option value="listing" class="o-opt">the contract's first candle</option>
+          <option value="prev_expiry" class="o-opt">the previous expiry</option>
+          <option value="atm" class="o-opt">when it first became ATM</option>
+          <option value="itm" class="o-opt">when it first became ITM</option>
+          <option value="liquid" class="o-opt">its first liquid session</option>
         </select></label>
-        <label id="x-liq-l" hidden>Liquid at % of peak volume <input id="x-liq" type="number" min="1" max="100" value="10" style="width:5em"></label>
-        <label>Show to <select id="x-end"><option value="date">the date</option><option value="expiry">expiry (last candle)</option></select></label>
-      </span>
-      <button id="x-go" class="primary">Show</button>
+        <label id="x-before-l">Sessions before <select id="x-before"><option>0</option><option selected>1</option><option>2</option><option>3</option><option>5</option><option>10</option><option>20</option><option>30</option></select></label>
+        <label id="x-liq-l">Liquid at % of the peak day <input id="x-liq" type="number" min="1" max="100" value="10"></label>
+        <label class="x-opt">Show to <select id="x-end"><option value="date">the date</option><option value="expiry">expiry (last candle)</option></select></label>
+      </fieldset>
     </div>
     <div id="x-msg" class="msg muted"></div>
-    <div id="x-miles" class="chips" style="margin-top:6px"></div>
+    <div id="x-miles" class="chips"></div>
   </div>
   <div class="card"><div id="x-chart"></div></div>
   <div class="card">

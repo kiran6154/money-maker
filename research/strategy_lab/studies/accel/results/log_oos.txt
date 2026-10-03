@@ -1,0 +1,34 @@
+start
+== primary 5 2025
+2025 tf 5 {'P': 135, 'V': 1764, 'PV': 108, 'PnoV': 27, 'C': 396, 'O': 296}
+primary done 4 s
+== primary 5 2026
+2026 tf 5 {'P': 79, 'V': 1241, 'PV': 67, 'PnoV': 12, 'C': 296, 'O': 216}
+primary done 2 s
+== primary 1 2025
+2025 tf 1 {'P': 700, 'V': 9777, 'PV': 541, 'PnoV': 159, 'C': 2298, 'O': 326}
+primary done 6 s
+== primary 1 2026
+2026 tf 1 {'P': 401, 'V': 6775, 'PV': 294, 'PnoV': 107, 'C': 1643, 'O': 233}
+primary done 3 s
+== options 5 2025
+val options done
+options done 42 s
+== options 5 2026
+blind options done
+options done 30 s
+== null 5 2025
+val bars done
+val volume done
+null done 14 s
+== null 5 2026
+blind bars done
+blind volume done
+null done 11 s
+== grid 5 2025
+val grid done
+grid done 11 s
+== grid 5 2026
+blind grid done
+grid done 9 s
+OOS_END

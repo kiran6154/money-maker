@@ -166,3 +166,26 @@ details.skipped { margin-top: 10px; } details.skipped summary { cursor: pointer;
 .ch-box { position: relative; }
 .edge { position: absolute; top: 8px; z-index: 3; font-size: 12px; padding: 3px 9px; border-radius: 999px; background: var(--card); border: 1px solid var(--accent); color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,.12); }
 .edge.l { left: 8px; } .edge.r { right: 70px; }
+
+/* the strategy as numbered steps: 1, 1.1, 1.2 ... */
+.algo-box { margin-top: 8px; } .algo-box summary { cursor: pointer; font-weight: 600; font-size: 13.5px; }
+.algo, .algo ol { counter-reset: step; list-style: none; padding-left: 0; margin: 6px 0; }
+.algo li { counter-increment: step; position: relative; padding-left: 2.6em; margin: 4px 0; font-size: 13.5px; line-height: 1.45; }
+.algo li::before { content: counters(step, ".") "."; position: absolute; left: 0; width: 2.3em; color: var(--accent); font-weight: 650; font-variant-numeric: tabular-nums; }
+.algo ol li { padding-left: 3.1em; } .algo ol li::before { width: 2.8em; }
+.algo > li { padding-top: 4px; border-top: 1px solid var(--line); } .algo > li:first-child { border-top: none; }
+
+/* explorer: three control groups; labels in one column, controls in the next; Refresh fixed in the header */
+.xhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.xhead #x-go { flex: 0 0 auto; }
+.xgroups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 12px; }
+.xg { border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px 12px; margin: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.xg legend { font-weight: 650; font-size: 13px; padding: 0 4px; }
+.xg label, .xg .xfield { display: grid; grid-template-columns: 8.5em minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+.xg label[hidden], .xg .xfield[hidden], .xg div[hidden] { display: none !important; }
+.xg select, .xg input { width: 100%; min-width: 0; }
+.xg .seg { justify-self: start; }
+.xg .xl { color: var(--muted); }
+#x-life { padding-left: calc(8.5em + 8px); }
+#x-msg { margin-top: 10px; } #x-miles { margin-top: 6px; }
+@media (max-width: 760px) { #x-life { padding-left: 0; } }
