@@ -1624,11 +1624,15 @@ def chart(code, run, typ, choice, day, inst=None, to=None):
     if not (0 <= i0 <= i1 < len(b)): raise ValueError(f"no candles from {day}" + (f" to {to}" if to else ""))
     out = dict(day=day, to=to or day, inst=inst, candles=_chart_bars(b, i0, i1), cols=body["cols"], trades=marks,
                sessions=int(len(np.unique(b.day[i0:i1 + 1]))))
-    if sg is not None: out.update(_overlays(b, sg, i0, i1, pair=out["sessions"] <= 10))
+    if typ == "OPT_NATIVE" and not inst:
+        out["reference"] = True                       # standalone signals come from the option panes; this row is context only
+    elif sg is not None: out.update(_overlays(b, sg, i0, i1, pair=out["sessions"] <= 10))
     if zones: out["fz"] = zones
     if inst and hasattr(mod, "option_lines"):         # a strategy's own lines on an option's chart (e.g. its SMA filter)
-        out["olines"] = [dict(name=nm_, pts=[[int(b.t[i]), round(float(v[i]), 2)] for i in range(i0, i1 + 1) if not np.isnan(v[i])])
-                         for nm_, v in mod.option_lines(b)]
+        k = np.searchsorted(s.t, b.t)                 # computed on the contract's whole series, as the filter reads it
+        out["olines"] = [dict(name=nm_, pts=[[int(b.t[i]), round(float(v[k[i]]), 2)] for i in range(i0, i1 + 1)
+                                             if k[i] < len(s) and s.t[k[i]] == b.t[i] and not np.isnan(v[k[i]])])
+                         for nm_, v in mod.option_lines(s)]
     return _jsonable(out)
 
 

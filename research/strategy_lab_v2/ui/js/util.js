@@ -55,7 +55,11 @@ export function algorithm(spec) {
   const by = (m) => (m === "close" ? "a candle closing beyond it" : "a candle touching it (high / low)");
   const S = (t, sub) => ({ t, sub: sub || [] });
   const steps = [];
-  steps.push(S(`Candles: ${TF[spec.timeframe] || spec.timeframe} candles of the ${spec.underlying === "INDEX" ? "NIFTY index (AVWAP equal-weighted: the index has no volume)" : "near-month NIFTY futures"}; the first ${spec.warmup_days} session(s) only warm the indicators up.`));
+  const onOpt = !!spec.sma_filter;                 // Strategy 32: everything is read on each option's own chart
+  const ns = o.native_scan || {};
+  if (onOpt) steps.push(S(`Candles: ${TF[spec.timeframe] || spec.timeframe} candles of each option contract itself (not the index, not the futures); the first ${spec.warmup_days} session(s) only warm the indicators up.`, [
+    S(`Which contracts: every ${ns.every_minutes || 5} minutes, for CE and PE, the ${(ns.choices || []).join(" / ")} strike${(ns.choices || []).length > 1 ? "s" : ""} (from the index's last closed candle) on the nearest expiry; each is watched until the next scan.`)]));
+  else steps.push(S(`Candles: ${TF[spec.timeframe] || spec.timeframe} candles of the ${spec.underlying === "INDEX" ? "NIFTY index (AVWAP equal-weighted: the index has no volume)" : "near-month NIFTY futures"}; the first ${spec.warmup_days} session(s) only warm the indicators up.`));
   if (rule !== "rainbow_v1") steps.push(S("Market structure (Foundation engine), candle by candle:", [
     S(`Swing high / low: confirmed when a later candle breaks the swing candle's low / high — ${by(r.break_mode)}.`),
     S("Protected level: in an uptrend, the latest confirmed swing low that sat below the trend AVWAP; in a downtrend the mirror (swing high above it)."),
@@ -64,7 +68,8 @@ export function algorithm(spec) {
   ]));
   const setup = S("SETUP: after a CHoCH, both AVWAPs (anchored at the previous swing high and swing low) slope in the CHoCH's direction AND a candle closes beyond the CHoCH candle (above its high for a bullish CHoCH, below its low for a bearish one). The entry is that candle's close.");
   const dirs = S("Direction → position: bullish = futures LONG · options LONG CE and SHORT PE; bearish = futures SHORT · options LONG PE and SHORT CE (each option leg is its own position).");
-  if (rule === "setup_v1") steps.push(S("Entry: every SETUP is a position.", [setup, dirs]));
+  const dirsOpt = S(`Direction → position on that option: bullish SETUP = LONG (buy it), bearish = SHORT (sell it); ${ns.one_per_side ? "one position per side (CE / PE) at a time; " : ""}first SETUP wins.`);
+  if (rule === "setup_v1") steps.push(S("Entry: every SETUP is a position.", [setup, onOpt ? dirsOpt : dirs]));
   else if (rule === "htf_v1") {
     const h = spec.htf || {};
     steps.push(S("Entry: a SETUP is taken only in the higher-timeframe direction.", [setup,
@@ -101,7 +106,7 @@ export function algorithm(spec) {
   }
   if (spec.sma_filter) {                           // Strategy 32: each option leg checked against the option's own SMA
     const f = spec.sma_filter;
-    steps[steps.length - 1].sub.push(S(`Option-leg filter: on the option's own candles, its SMA ${f.period} at the entry candle versus the candle before — a LONG leg (buying the option) needs it rising, a SHORT leg (selling it) needs it falling; otherwise the leg is not taken (listed with the reason). Futures are not traded.`));
+    steps[steps.length - 1].sub.push(S(`Trend filter, on the same option chart: its SMA ${f.period} at the entry candle versus the candle before — LONG needs it rising, SHORT needs it falling; otherwise the trade is not taken (listed with the reason). The SMA starts at the contract's first candle, so it exists from its 200th.`));
   }
   const skip = [S("The entry time is at or after the square-off time" + (p.square_off ? ` (${p.square_off})` : "") + "."),
                 S("The same instrument (option strike + expiry + right, or the futures contract) already has an open position (strike lock)."),

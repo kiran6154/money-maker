@@ -301,7 +301,7 @@ export class ChartView {
     const tag = (why, open) => (why === "stop_loss" ? "SL " : why === "trail_stop" ? "TRAIL " : why === "eod" ? "EOD " : /^target /.test(why || "") ? "T" + why.slice(7) + " "
       : why === "expiry" ? "EXPIRY " : why === "band_reclaim" || why === "band_exit" ? "BAND " : why === "next_choch" || why === "choch" ? "" : open ? "OPEN* " : "");
     const P = this.ctx.spec.position || {}, managed = P.exit === "position", seen = new Set();
-    if (on.trades) for (const r of d.trades) {
+    if (on.trades && !d.reference) for (const r of d.trades) {       // reference row: the trades are on the option panes
       const ets = tsOf(r[C.entry_time]), xts = tsOf(r[C.exit_time]), up = r[C.position] === "LONG", win = r[C.pts] > 0;
       const lbl = r[C.label] || r[C.position];
       const et = Math.max(ets, t0), xe = Math.min(xts, tN);
@@ -377,6 +377,7 @@ export class ChartView {
   legend(d) {
     const n = d.trades.length, net = d.trades.reduce((a, r) => a + r[d.cols.indexOf("net")], 0);
     $(".ch-legend", this.root).innerHTML =
+      (d.reference ? `<b>Futures for reference only: the signals are read on each option's own chart (CE / PE below).</b> ` : "") +
       `${esc(this.day)}${this.to && this.to !== this.day ? " → " + esc(this.to) : ""} · ${d.sessions} session${d.sessions > 1 ? "s" : ""} · ` +
       `${d.candles.length} candles · ${n} trade${n === 1 ? "" : "s"} <span class="${net > 0 ? "pos" : net < 0 ? "neg" : ""}">${inr(net)}</span>` +
       ` · arrow = entry, dot = exit (reason, pts), dashed = path, dotted red = stop` + (d.fz ? " · purple / blue boxes = FZ bands (A / B), T W B R = gate" : "") +
