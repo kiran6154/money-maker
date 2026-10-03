@@ -1700,7 +1700,9 @@ def chart(code, run, typ, choice, day, inst=None, to=None, atm=None):
     elif sg is not None: out.update(_overlays(b, sg, i0, i1, pair=out["sessions"] <= 30))
     if zones: out["fz"] = zones
     if atm:                                           # the index against the strike, as on the explorer
-        out.update(atm=dict(right=atm, expiry=akey[0], strike=akey[1], index_open=spot0), strike=akey[1])
+        step = mod.SPEC["options"]["strike_step"]; true_atm = int(round(spot0 / step) * step)
+        out.update(atm=dict(right=atm, expiry=akey[0], strike=akey[1], index_open=spot0, true_atm=true_atm,
+                            off=akey[1] - true_atm), strike=akey[1])
         sp = series("spot", meta["timeframe"] if meta["timeframe"] in ("minute", "5minute") else "minute")
         j = np.searchsorted(sp.t, b.t[i0:i1 + 1], "right") - 1
         okj = (j >= 0) & (sp.day[np.maximum(j, 0)] == b.day[i0:i1 + 1])

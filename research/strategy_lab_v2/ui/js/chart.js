@@ -208,12 +208,14 @@ export class ChartView {
     const note = this.paneSrc?.note || "";
     host.innerHTML = ["CE", "PE"].map((r) => {
       const p = this.panes[r] || { insts: [] };
-      const lbl = (x) => (x === "ATM" ? `ATM ${r}${p.atmName ? " · " + p.atmName : ""}` : x + " · traded");
+      const A = p.data?.atm, offAtm = A && A.off;
+      const lbl = (x) => (x === "ATM" ? (offAtm ? `${r} nearest ATM · ${p.atmName || ""}` : `ATM ${r}${p.atmName ? " · " + p.atmName : ""}`) : x + " · traded");
       const nTraded = p.insts.length - 1;
       return `<div class="pane" data-r="${r}"><div class="pane-h"><b>${r}</b>
         ${p.insts.length > 1 ? `<select>${p.insts.map((x) => `<option value="${esc(x)}" ${x === p.pick ? "selected" : ""}>${esc(lbl(x))}</option>`).join("")}</select>`
                              : `<span class="small">${esc(lbl(p.pick || "ATM"))}</span>`}
-        <span class="muted small">· from the session before${p.pick === "ATM" && p.data?.atm ? ` · strike nearest the index at the open (${num(p.data.atm.index_open, 1)})` : ""}${
+        <span class="muted small">· from the session before${p.pick === "ATM" && A ? (offAtm ? ` · <b>not the ATM</b>: the ATM ${A.true_atm} (index ${num(A.index_open, 1)} at the open) has no candles in the data; nearest strike with candles, ${Math.abs(A.off)} pts ${A.off > 0 ? "above" : "below"}`
+                                 : ` · strike nearest the index at the open (${num(A.index_open, 1)}); expiry ${A.expiry}, the nearest weekly at least 1 day out`) : ""}${
           nTraded ? ` · ${nTraded} traded ${r} contract${nTraded > 1 ? "s" : ""} in the list` : (this.paneSrc?.rows ? ` · no ${r} position in this range` : "")}${note ? " · " + esc(note) : ""}${p.data?.error ? " · " + esc(p.data.error) : ""}</span></div>
         <div class="pane-c">${p.data?.error ? `<div class="pane-empty muted small">${esc(p.data.error)}</div>` : ""}</div></div>`;
     }).join("");
