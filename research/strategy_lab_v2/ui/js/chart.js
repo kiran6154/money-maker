@@ -75,9 +75,27 @@ export class ChartView {
     }
     if (my !== this.req) return;
     this.panes = {};
-    if (type !== "FUT") await this.loadPanes(my);
+    if (!this.hooks.static) await this.loadPanes(my);
     if (my !== this.req) return;
     this.redraw();
+  }
+
+  async paneSource() {
+    // the option row's contracts: this choice's own option trades, or - on a Futures run - the same signals traded in
+    // options (the run's Options (via futures) result at the strategy's default strike), so every chart has both rows
+    const { run, type, choice, spec } = this.ctx;
+    if (type !== "FUT") return { type, choice, rows: this.ctx.rows, C: this.C, note: "" };
+    const tm = run.types?.OPT_FUT_SIGNAL;
+    if (!tm || tm.status !== "ok") return { note: tm ? `options not run for this backtest: ${tm.reason || ""}` : "options not run for this backtest" };
+    const keys = Object.keys(tm.choices), want = `W-${spec.options?.strike_default}`;
+    const ch = keys.includes(want) ? want : keys.find((k) => k.endsWith(spec.options?.strike_default)) || keys[0];
+    const key = `${this.ctx.code}|${run.run}|${ch}`;
+    if (this._optKey !== key) {
+      this._optRes = await api("/api/result?" + new URLSearchParams({ code: this.ctx.code, run: run.run, type: "OPT_FUT_SIGNAL", choice: ch }));
+      this._optKey = key;
+    }
+    const C = Object.fromEntries(this._optRes.cols.map((k, i) => [k, i]));
+    return { type: "OPT_FUT_SIGNAL", choice: ch, rows: this._optRes.trades, C, note: `the same signals in options (${ch})` };
   }
 
   async step(k) {
@@ -94,8 +112,11 @@ export class ChartView {
 
   async loadPanes(my) {
     // the option contracts traded in this range, by right; one pane per right with a picker when there are several
-    const C = this.C, d0 = this.day, d1 = this.to || this.day;
-    const inRange = this.ctx.rows.filter((r) => { const d = r[C.entry_time].slice(0, 10); return d >= d0 && d <= d1; });
+    let src;
+    try { src = await this.paneSource(); } catch (e) { src = { note: e.message }; }
+    this.paneSrc = src;
+    const d0 = this.day, d1 = this.to || this.day, C = src.C;
+    const inRange = src.rows ? src.rows.filter((r) => { const d = r[C.entry_time].slice(0, 10); return d >= d0 && d <= d1; }) : [];
     for (const right of ["CE", "PE"]) {
       const insts = [...new Set(inRange.filter((r) => r[C.opt_type] === right).map((r) => r[C.instrument]))];
       const pick = this.focus && insts.includes(this.focus) ? this.focus : insts[0];
@@ -105,7 +126,7 @@ export class ChartView {
   }
 
   async loadPane(right, inst, my) {
-    const { code, run, type, choice } = this.ctx;
+    const { code, run } = this.ctx, { type, choice } = this.paneSrc;
     const q = new URLSearchParams({ code, run: run.run, type, choice, day: this.day, inst });
     if (this.to) q.set("to", this.to);
     try { this.panes[right].data = await api("/api/chart?" + q); this.panes[right].pick = inst; }
@@ -141,16 +162,17 @@ export class ChartView {
     const d = this.data; if (!d) return;
     const main = this.draw($(".ch-main", this.root), d, { own: this.ctx.type === "FUT" && this.ctx.run.underlying !== "INDEX", main: true });
     this.legend(d);
-    // option panes
+    // row 2: the CE pane and the PE pane, side by side
     const host = $(".ch-panes", this.root);
-    if (this.ctx.type === "FUT") { host.innerHTML = ""; this.sync(); return; }
+    if (this.hooks.static) { host.innerHTML = ""; return; }
+    const note = this.paneSrc?.note || "";
     host.innerHTML = ["CE", "PE"].map((r) => {
       const p = this.panes[r] || { insts: [] };
       return `<div class="pane" data-r="${r}"><div class="pane-h"><b>${r}</b>
         ${p.insts.length > 1 ? `<select>${p.insts.map((x) => `<option ${x === p.pick ? "selected" : ""}>${esc(x)}</option>`).join("")}</select>`
-                             : `<span class="muted small">${esc(p.pick || `no ${r} position in this range`)}</span>`}
-        <span class="muted small">· from the session before${p.data?.error ? " · " + esc(p.data.error) : ""}</span></div>
-        <div class="pane-c"></div></div>`;
+                             : `<span class="muted small">${esc(p.pick || (this.paneSrc?.rows ? `no ${r} position in this range` : ""))}</span>`}
+        <span class="muted small">${p.pick ? "· from the session before" : ""}${note ? " · " + esc(note) : ""}${p.data?.error ? " · " + esc(p.data.error) : ""}</span></div>
+        <div class="pane-c">${p.pick ? "" : `<div class="pane-empty muted small">${esc(this.paneSrc?.rows ? `No ${r} position on ${this.day}${this.to && this.to !== this.day ? " – " + this.to : ""}.` : note)}</div>`}</div></div>`;
     }).join("");
     for (const r of ["CE", "PE"]) {
       const p = this.panes[r]; const el = $(`.pane[data-r="${r}"]`, host);
@@ -232,6 +254,9 @@ export class ChartView {
     }
     // trades: entry arrow, exit circle with its reason and points, the entry -> exit path, the stop and the R levels
     const C = Object.fromEntries(d.cols.map((k, i) => [k, i]));
+    // a level is drawn only on its own price scale: an option traded on a futures signal carries the futures stop
+    let lo = Infinity, hi = -Infinity; for (const c of d.candles) { if (c[3] < lo) lo = c[3]; if (c[2] > hi) hi = c[2]; }
+    const onScale = (v) => v != null && v >= lo - (hi - lo) * 0.5 && v <= hi + (hi - lo) * 0.5;
     if (L.trades) for (const r of d.trades) {
       const te = snap(tsOf(r[C.entry_time])), tx = snap(tsOf(r[C.exit_time]));
       const lng = r[C.position] === "LONG", win = r[C.net] > 0;
@@ -241,15 +266,19 @@ export class ChartView {
                                      text: `${reasonTag(r[C.exit_reason])} ${num(r[C.pts], 0)}` });
       if (own && te != null && tx != null && te < tx) {
         line([{ time: te, value: r[C.entry_px] }, { time: tx, value: r[C.exit_px] }], win ? up : dn, 2, 2);
-        if (r[C.sl] != null) line([{ time: te, value: r[C.sl] }, { time: tx, value: r[C.sl] }], dn, 1, 1);
-        if (L.rlevels && this.ctx.spec.position?.exit === "position" && r[C.sl] != null) {
+        if (onScale(r[C.sl])) line([{ time: te, value: r[C.sl] }, { time: tx, value: r[C.sl] }], dn, 1, 1);
+        if (L.rlevels && this.ctx.spec.position?.exit === "position" && onScale(r[C.sl])) {
           const R = Math.abs(r[C.entry_px] - r[C.sl]), sg = lng ? 1 : -1;
           for (const k of [1, 2, 3]) line([{ time: te, value: r[C.entry_px] + sg * k * R }, { time: tx, value: r[C.entry_px] + sg * k * R }], acc + "aa", 3, 1);
         }
       }
     }
-    markers.sort((a, b) => a.time - b.time);
-    cs.setMarkers(markers.filter((m) => m.time != null));
+    // every marker on a candle of this chart (a swing confirmed today can sit on yesterday's bar: dropped, not drawn
+    // off the left edge, which would stretch the time axis)
+    const t0 = times[0], tN = times[times.length - 1];
+    const placed = markers.filter((m) => m.time != null && m.time >= t0 && m.time <= tN).map((m) => Object.assign(m, { time: snap(m.time) }));
+    placed.sort((a, b) => a.time - b.time);
+    cs.setMarkers(placed);
     // crosshair readout: OHLCV and, for FZ, the zone card of that bar
     const Z = d.fz ? new Map(d.fz.Z.map((z) => [z[0], z])) : null;
     ch.subscribeCrosshairMove((p) => {

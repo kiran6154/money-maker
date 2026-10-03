@@ -119,7 +119,8 @@ main { padding: 16px; max-width: 1500px; margin: 0 auto; }
 .ch-panes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
 .pane { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; min-width: 0; }
 .pane-h { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-.pane-c { height: 320px; }
+.pane-c { height: 320px; position: relative; }
+.pane-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 10px; }
 
 /* tables */
 .tablewrap { overflow: auto; max-height: 300px; border: 1px solid var(--line); border-radius: 8px; max-width: 100%; }
@@ -137,7 +138,7 @@ details.skipped { margin-top: 10px; } details.skipped summary { cursor: pointer;
 @media (max-width: 760px) {
   main { padding: 10px; }
   .top { gap: 8px; } .jobs { display: none; }
-  .ch-panes { grid-template-columns: 1fr; }
+  .pane-c { height: 260px; }
   .ch-box { height: 380px; }
   #t-filter, #search { min-width: 0; width: 100%; }
   .tabs.sticky { top: 45px; }
