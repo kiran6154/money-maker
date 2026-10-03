@@ -699,6 +699,9 @@ def validate(s, where, rules_ok=()):
     if unknown: raise ValueError(f"{where}: position: unknown key(s) {sorted(unknown)}")
     if p["exit"] not in ("strategy", "position"): raise ValueError(f"{where}: position.exit is 'strategy' or 'position'")
     if p["exit"] == "position" and not p["stop"]: raise ValueError(f"{where}: exit 'position' needs a stop")
+    if p["stop"] and p["stop"].get("from", "fixed") not in ("fixed", "signal"): raise ValueError(f"{where}: position.stop.from is 'fixed' or 'signal'")
+    if p["stop"] and p["stop"].get("from") == "signal" and s["rules"].get("sl_rule", "none") == "none":
+        raise ValueError(f"{where}: position.stop.from 'signal' needs a rules.sl_rule (the engine's stop is 1R)")
     if p["exit"] == "strategy" and (p["reverse"] or p["trail"] or any("target_r" in so for so in p["scale_out"])):
         raise ValueError(f"{where}: trail / target_r / reverse need exit 'position'")
     if p["reverse"] and (p["reverse"].get("trigger") != "initial_stop" or int(p["reverse"].get("max", 0)) < 1):
@@ -861,7 +864,8 @@ def eod_cut(sq, rec, b):
 
 def manage(P, rec, b, cap, expiry=None):
     """exit 'position': the position managed from the entry fill on its own candles (v1 manage); the strategy's exit is not
-    used. R = stop.futures_pts (futures) or stop.option_pct % of the entry premium (options); the stop starts 1R against the
+    used. R = stop.futures_pts (futures) or stop.option_pct % of the entry premium (options), or - stop.from 'signal' - the
+    distance from the entry to the engine's own stop (rules.sl_rule, on the signal's own candles); the stop starts 1R against the
     entry. Candle by candle after the entry candle up to `cap` (int time; and the square-off): 1. stop - all open lots
     (open if it gaps beyond, a session's first candle at its close); 2. targets - each scale_out lot at entry +/- target_r x
     R (or target_pts); 3. trail - once start_r whole R are reached the stop moves to (reached - lag_r) x R, never back,
@@ -869,7 +873,14 @@ def manage(P, rec, b, cap, expiry=None):
     candle, else 'open'. Returns one record per lot group."""
     long, e, kind = rec["position"] == "LONG", rec["entry_px"], rec["kind"]
     sg = 1 if long else -1
-    R = P["stop"]["futures_pts"] if kind == "FUT" else e * P["stop"]["option_pct"] / 100
+    if P["stop"].get("from") == "signal":
+        if kind == "OPT" and rec.get("und_entry") is not None:      # via futures: the engine's stop is a futures price
+            raise ValueError("stop.from 'signal' needs the signal on the traded instrument's own candles (futures or options standalone)")
+        if rec.get("sl") is None or not math.isfinite(rec["sl"]) or sg * (e - rec["sl"]) <= 0:
+            raise ValueError(f"stop.from 'signal': no usable engine stop for {rec['instrument']} at {tstr(rec['entry_time'])}")
+        R = sg * (e - rec["sl"])
+    else:
+        R = P["stop"]["futures_pts"] if kind == "FUT" else e * P["stop"]["option_pct"] / 100
     stop = e - sg * R
     tag = lambda so: f"{so['target_r']:g}R" if "target_r" in so else f"+{so['target_pts']:g}"
     lots = [dict(lots=so["lots"], tranche=f"T{n} {tag(so)}", tgt=e + sg * (so["target_r"] * R if "target_r" in so else so["target_pts"]),
