@@ -1799,7 +1799,7 @@ def explorer_strikes(expiry, tf="minute", date=None):
     """One expiry's contracts: strikes with candles per right, the first / last session of the contracts, and the strike
     nearest the index on `date` (clamped into the contracts' life) as the suggested one."""
     ch = OptionChain("minute" if tf in ("minute", "3minute") else "5minute")
-    strikes, first, last = {}, None, None
+    strikes, lives, first, last = {}, {}, None, None
     for right in ("CE", "PE"):
         if expiry == ch.kite_exp:
             folder = os.path.join(ch.kite, ch.base)
@@ -1812,6 +1812,7 @@ def explorer_strikes(expiry, tf="minute", date=None):
             tab, idx = ch._local_right(expiry, right)
             spans = [(k_, int(tab["t"][a] // DAY), int(tab["t"][b_ - 1] // DAY)) for k_, (a, b_) in sorted(idx.items())]
         strikes[right] = [k_ for k_, _, _ in spans]
+        lives[right] = {str(k_): [dstr(f_), dstr(l_)] for k_, f_, l_ in spans}      # each strike trades over its own dates
         for _, f_, l_ in spans:
             first = f_ if first is None else min(first, f_); last = l_ if last is None else max(last, l_)
     if first is None: raise ValueError(f"no option candles for {expiry}")
@@ -1820,6 +1821,11 @@ def explorer_strikes(expiry, tf="minute", date=None):
     sp = series("spot", "minute")
     k = int(np.searchsorted(sp.day, d, "right")) - 1
     spot = float(sp.c[k]) if k >= 0 else None
-    near = lambda ks: min(ks, key=lambda x: abs(x - spot)) if ks and spot is not None else (ks[0] if ks else None)
-    return dict(expiry=expiry, first=dstr(first), last=dstr(last), date=dstr(d), index_close=spot,
-                strikes=strikes, atm=dict(CE=near(strikes["CE"]), PE=near(strikes["PE"])))
+    ds = dstr(d)
+    def near(right):
+        # the strike nearest the index among those trading on the date (else among all of them)
+        ks = strikes[right]
+        alive = [k_ for k_ in ks if lives[right][str(k_)][0] <= ds <= lives[right][str(k_)][1]] or ks
+        return min(alive, key=lambda x: abs(x - spot)) if alive and spot is not None else (alive[0] if alive else None)
+    return dict(expiry=expiry, first=dstr(first), last=dstr(last), date=ds, index_close=spot,
+                strikes=strikes, lives=lives, atm=dict(CE=near("CE"), PE=near("PE")))

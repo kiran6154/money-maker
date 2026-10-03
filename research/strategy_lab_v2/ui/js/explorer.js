@@ -3,7 +3,8 @@
 import { $, $$, api, esc, inr, num, cls, pref, tsOf, TF_LABEL, reasonTag } from "./util.js";
 import { ChartView } from "./chart.js";
 
-const S = Object.assign({ inst: "FUT", right: "CE", side: "all", start: "days", end: "date", before: "1", liq: "10", hold: "own" }, pref("explorer2") || {});
+const S = Object.assign({ inst: "FUT", right: "CE", start: "days", end: "date", before: "1", liq: "10", hold: "own" }, pref("explorer2") || {});
+S.side = "all";                                   // the trade filter starts at All on every visit (a hidden Long / Short looked empty)
 let meta, strategies = {}, view, data = null, timer = null, req = 0, expiries = [];
 
 const save = () => pref("explorer2", S);
@@ -31,7 +32,7 @@ async function start() {
   $$("#x-right button").forEach((b) => b.onclick = async () => { S.right = b.dataset.r; paint(); await loadStrikes(); later(); });
   $$("#x-side button").forEach((b) => b.onclick = () => { S.side = b.dataset.s; save(); paint(); render(); });
   $("#x-exp").onchange = async () => { S.exp = $("#x-exp").value; await loadStrikes(); later(); };
-  $("#x-strike").onchange = () => { S.strike = $("#x-strike").value; later(); };
+  $("#x-strike").onchange = () => { S.strike = $("#x-strike").value; fitDate(); later(); };
   $("#x-go").onclick = show;
   await loadExpiries();
   if (S.inst === "OPT") await loadStrikes();
@@ -87,9 +88,22 @@ async function loadStrikes() {
   const ks = s.strikes[S.right] || [], keep = ks.map(String).includes(String(S.strike)) && S.strikeExp === s.expiry;
   const pick = keep ? +S.strike : s.atm[S.right];
   $("#x-strike").innerHTML = ks.map((k) => `<option value="${k}" ${k === pick ? "selected" : ""}>${k}${k === s.atm[S.right] ? " · ATM on " + s.date.slice(5) : ""}</option>`).join("");
-  S.strike = $("#x-strike").value; S.strikeExp = s.expiry;
+  S.strike = $("#x-strike").value; S.strikeExp = s.expiry; S.lives = s.lives; S.life = s;
   if ($("#x-date").value !== s.date) $("#x-date").value = s.date;     // the date moved into the contract's life
-  $("#x-life").textContent = `contracts traded ${s.first} → ${s.last} · index close on ${s.date}: ${num(s.index_close, 1)} · ${ks.length} ${S.right} strikes`;
+  fitDate();
+}
+
+function fitDate() {
+  // each strike trades over its own dates: keep the date inside the chosen strike's life, and say when it moved
+  const s = S.life; if (!s) return;
+  const life = S.lives?.[S.right]?.[String(S.strike)];
+  let moved = "";
+  if (life) {
+    const d = $("#x-date").value;
+    if (d < life[0]) { $("#x-date").value = life[0]; moved = ` · date moved to ${life[0]}, its first day`; }
+    else if (d > life[1]) { $("#x-date").value = life[1]; moved = ` · date moved to ${life[1]}, its last day`; }
+  }
+  $("#x-life").textContent = `${S.right} ${S.strike} traded ${life ? life[0] + " → " + life[1] : "?"} · this expiry's contracts ${s.first} → ${s.last} · index close on ${s.date}: ${num(s.index_close, 1)}${moved}`;
 }
 
 async function show() {
@@ -102,7 +116,15 @@ async function show() {
   const my = ++req;
   $("#x-msg").textContent = "computing…";
   let d;
-  try { d = await api("/api/explorer/chart?" + new URLSearchParams(q)); } catch (e) { if (my === req) $("#x-msg").textContent = e.message; return; }
+  try { d = await api("/api/explorer/chart?" + new URLSearchParams(q)); }
+  catch (e) {
+    if (my !== req) return;
+    // never leave the previous contract's chart and P&L next to a new selection
+    data = null; view.clear(); $(".ch-panes", $("#x-chart")).innerHTML = ""; $(".ch-legend", $("#x-chart")).textContent = "";
+    $("#x-sum").textContent = ""; $("#x-trades").innerHTML = ""; $("#x-miles").innerHTML = ""; $("#x-sk").innerHTML = "";
+    $("#x-msg").innerHTML = `<span class="warn">Nothing to show for this selection: ${esc(e.message.replace(/^\w+Error: /, ""))}. Pick another date, strike or range.</span>`;
+    return;
+  }
   if (my !== req) return;
   data = d;
   render();

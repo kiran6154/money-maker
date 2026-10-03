@@ -32,16 +32,13 @@ export class ChartView {
       <div class="ch-legend muted small"></div>
       <div class="ch-read mono small"></div>
       <div class="ch-box"><div class="ch-main"></div>
-        <button class="edge l" hidden title="Add the previous session to this chart">‹ previous session</button>
-        <button class="edge r" hidden title="Add the next session to this chart">next session ›</button></div>
+</div>
       <div class="ch-panes"></div>`;
     $('[data-k="prev"]', root).onclick = () => this.step(-1);
     $('[data-k="next"]', root).onclick = () => this.step(1);
     $('[data-k="full"]', root).onclick = () => this.open(this.ctx.result.date_from || this.ctx.run.date_from, this.ctx.run.date_to);
     $('[data-k="more-prev"]', root).onclick = () => this.extend(-1);
     $('[data-k="more-next"]', root).onclick = () => this.extend(1);
-    $('.edge.l', root).onclick = () => this.extend(-1);
-    $('.edge.r', root).onclick = () => this.extend(1);
     $('[data-k="snap"]', root).onclick = () => this.snapshot();
     $(".ch-day", root).onchange = (e) => this.open(e.target.value);
     $(".ch-days", root).onchange = (e) => e.target.value && this.open(e.target.value);
@@ -91,8 +88,8 @@ export class ChartView {
   }
 
   async extend(dir) {
-    // dragging past the chart's left (right) edge loads the previous (next) session into the same chart, as v1 did; the view
-    // stays where it was. Up to MAX_SESSIONS sessions are kept so the chart stays light.
+    // + earlier / + later: load the previous (next) session into the same chart; the view stays where it was. Up to
+    // MAX_SESSIONS sessions are kept so the chart stays light.
     const MAX_SESSIONS = 20;
     if (this.extending || this.hooks.static || !this.data || (this.data.sessions || 1) >= MAX_SESSIONS) return;
     this.extending = true;
@@ -184,19 +181,7 @@ export class ChartView {
                           fixLeftEdge: true, fixRightEdge: true },
              rightPriceScale: { borderColor: css("--line") }, crosshair: { mode: 0 },
              handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
-             handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: true } };
-  }
-
-  zoomOnCtrlWheel(el, ch) {
-    // plain wheel scrolls the page; Ctrl / ⌘ + wheel zooms the chart around the middle of the view
-    el.addEventListener("wheel", (e) => {
-      if (!e.ctrlKey && !e.metaKey) return;
-      e.preventDefault();
-      const c = el._chart || ch;                       // the chart drawn in this element now (charts are redrawn)
-      const ts = c.timeScale(), r = ts.getVisibleLogicalRange(); if (!r) return;
-      const f = e.deltaY > 0 ? 1.18 : 0.85, mid = (r.from + r.to) / 2, half = Math.max(5, ((r.to - r.from) / 2) * f);
-      ts.setVisibleLogicalRange({ from: mid - half, to: mid + half });
-    }, { passive: false });
+             handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true } };
   }
 
   redraw() {
@@ -245,7 +230,6 @@ export class ChartView {
   draw(el, d, { own, main }) {
     const ch = LightweightCharts.createChart(el, this.opts(el));
     this.charts.push(ch);
-    if (!el.dataset.wheel) { el.dataset.wheel = "1"; this.zoomOnCtrlWheel(el, ch); }
     el._chart = ch;
     const on = this.layers, UP = "#089981", DN = "#f23645", PURPLE = "#7b1fa2", BLUE = "#2962ff", ORANGE = "#ff6d00", GREY = "#9e9e9e";
     const C0 = d.candles, times = C0.map((c) => c[0]), t0 = times[0], tN = times[times.length - 1];
@@ -375,17 +359,6 @@ export class ChartView {
         const t = this.focusTime; this.focusTime = null;
         try { ch.timeScale().setVisibleRange({ from: t - 3600, to: t + 3600 }); } catch (e) { ch.timeScale().fitContent(); }
       } else ch.timeScale().fitContent();
-      // at an edge of the data, offer the neighbouring session (a button on that edge); nothing loads by itself, so
-      // zooming or scrolling never changes the data under the reader
-      if (main && !this.hooks.static) {
-        const L = $(".edge.l", this.root), R = $(".edge.r", this.root), n = C0.length;
-        const edges = (r) => {
-          L.hidden = !(r && r.from <= 0.5) || this.extending;
-          R.hidden = !(r && r.to >= n - 1.5) || this.extending;
-        };
-        ch.timeScale().subscribeVisibleLogicalRangeChange(edges);
-        edges(ch.timeScale().getVisibleLogicalRange());
-      }
     });
     return ch;
   }
@@ -405,7 +378,7 @@ export class ChartView {
       `${d.candles.length} candles · ${n} trade${n === 1 ? "" : "s"} <span class="${net > 0 ? "pos" : net < 0 ? "neg" : ""}">${inr(net)}</span>` +
       ` · arrow = entry, dot = exit (reason, pts), dashed = path, dotted red = stop` + (d.fz ? " · purple / blue boxes = FZ bands (A / B), T W B R = gate" : "") +
       (d.pair && d.pair.length ? " · orange / blue = AVWAP from SH / SL (dotted: back to the anchor)" : "") +
-      (this.hooks.static ? "" : " · at the first / last candle a button adds the previous / next session") + " · Ctrl/⌘ + wheel zooms · drag the bottom edge to resize";
+      (this.hooks.static ? "" : " · + earlier / + later add sessions") + " · mouse wheel zooms, drag pans · drag the bottom edge to resize";
   }
 
   async snapshot() {
