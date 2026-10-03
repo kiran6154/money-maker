@@ -189,3 +189,37 @@ details.skipped { margin-top: 10px; } details.skipped summary { cursor: pointer;
 #x-life { padding-left: calc(8.5em + 8px); }
 #x-msg { margin-top: 10px; } #x-miles { margin-top: 6px; }
 @media (max-width: 760px) { #x-life { padding-left: 0; } }
+
+/* Backtests card: the table of backtests, the "showing" line, the new-backtest steps */
+.bt-wrap { max-height: 360px; }
+#bt-table td, #bt-table th { vertical-align: middle; }
+#bt-table tr.sel td { background: var(--sel); }
+#bt-table tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.bt-run { padding: 2px 10px; font-size: 12px; }
+.st { font-size: 11.5px; border-radius: 999px; padding: 1px 8px; background: var(--chip); white-space: nowrap; }
+.st.st-ok { color: var(--up); } .st.st-bad { color: var(--down); } .st.st-none { color: var(--muted); }
+.bt-showing { margin: 10px 0 4px; font-size: 13px; }
+#bt-new { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
+.nb { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
+.nb-step { display: flex; gap: 10px; align-items: flex-start; }
+.nb-n { flex: 0 0 22px; height: 22px; border-radius: 50%; background: var(--sel); color: var(--accent); font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center; }
+.nb-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.nb-h { font-weight: 600; font-size: 13px; }
+.nb-periods { flex-wrap: wrap; }
+.nb-custom, .nb-grid { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+.nb-custom label, .nb-grid label { display: inline-flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 2px; }
+.nb-go { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding-left: 32px; }
+
+/* narrow screens: each backtest is a compact block (name + Run on top; period, settings, status, net below) */
+@media (max-width: 760px) {
+  .bt-wrap { max-height: 420px; overflow-x: hidden; }
+  #bt-table, #bt-table tbody { display: block; }
+  #bt-table tr:first-child { display: none; }
+  #bt-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  #bt-table td { display: block; border: none; text-align: left; white-space: normal; padding: 1px 6px; }
+  #bt-table td:nth-child(1) { grid-column: 1; grid-row: 1; }
+  #bt-table td:nth-child(6) { grid-column: 2; grid-row: 1; }
+  #bt-table td:nth-child(2), #bt-table td:nth-child(3), #bt-table td:nth-child(4) { grid-column: 1; }
+  #bt-table td:nth-child(5) { grid-column: 2; grid-row: 2 / span 2; text-align: right; }
+  #bt-table tr.sel td:first-child { box-shadow: none; } #bt-table tr.sel { box-shadow: inset 3px 0 0 var(--accent); background: var(--sel); }
+}

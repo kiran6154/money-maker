@@ -102,7 +102,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         b = body if isinstance(body, bytes) else json.dumps(body, separators=(",", ":")).encode()
         self.send_response(code); self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(b))); self.send_header("Cache-Control", "no-store")
-        self.end_headers(); self.wfile.write(b)
+        try:
+            self.end_headers(); self.wfile.write(b)
+        except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError):
+            pass                                        # the browser left (page change, newer request): nothing to send
 
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)

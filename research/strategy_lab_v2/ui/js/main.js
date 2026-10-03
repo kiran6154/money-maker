@@ -5,7 +5,6 @@ import { ChartView } from "./chart.js";
 import * as T from "./tabs.js";
 
 const FAMILY_ORDER = ["Foundation", "Managed exits", "FZ gate", "Learner", "CHoCH to CHoCH", "Rainbow"];
-const PRESETS = [["1M", "1M"], ["3M", "3M"], ["6M", "6M"], ["YTD", "YTD"], ["1Y", "1Y"], ["5Y", "5Y"], ["all", "All data"]];
 const S = { list: [], code: null, family: pref("family") || "All", search: "", sort: pref("sort") || "code",
             label: null, run: null, type: null, exp: "W", strike: null, side: "all", result: null, rows: [], tab: pref("tab") || "trades",
             jobs: {}, sortCol: null, sortDir: 1 };
@@ -122,45 +121,80 @@ function renderDetail() {
   showRun();
 }
 
-function renderBacktests() {
-  const item = cur(), vs = variants(item);
-  const labels = [...new Set(vs.map((v) => v.label))];
-  $("#bt-tabs").innerHTML = labels.map((l) => {
-    const any = vs.filter((v) => v.label === l), ran = any.find((v) => v.meta);
-    const ok = ran && Object.values(ran.meta.types).some((t) => t.status === "ok");
-    return `<button class="tab ${l === S.label ? "on" : ""} ${ran ? "" : "dim"}" data-l="${esc(l)}" title="${esc(any[0].bt?.notes || "")}">${esc(l)}${ran && !ok ? " ⊘" : ""}</button>`;
-  }).join("");
-  $$("#bt-tabs button").forEach((b) => b.onclick = () => keepScroll(() => {
-    S.label = b.dataset.l;
-    const vsl = variants(cur()).filter((v) => v.label === S.label);
-    S.run = (vsl.find((v) => v.meta) || vsl[0]).run; save(); renderBacktests(); renderRunPanel(); showRun();
-  }));
-  const same = vs.filter((v) => v.label === S.label);
-  $("#bt-vars").innerHTML = same.map((v) => {
-    const m = v.meta, b = v.bt || {};
-    const tf = m ? m.timeframe : (b.timeframe || item.spec.timeframe), und = m ? m.underlying : (b.underlying || item.spec.underlying || "FUT");
-    const hold = m ? m.holding : ("square_off" in b ? (b.square_off ? `intraday ${b.square_off}` : "positional") : (item.spec.position?.square_off ? `intraday ${item.spec.position.square_off}` : "positional"));
-    return `<button class="seg-b ${v.run === S.run ? "on" : ""} ${m ? "" : "dim"}" data-r="${esc(v.run)}" title="${esc(b.notes || "")}">${TF_LABEL[tf]} candles · ${und === "INDEX" ? "index" : "futures"} signals · ${esc(hold)}${m ? "" : " · not run"}</button>`;
-  }).join("");
-  $$("#bt-vars button").forEach((b) => b.onclick = () => keepScroll(() => { S.run = b.dataset.r; save(); renderBacktests(); renderRunPanel(); showRun(); }));
+function describe(item, v) {
+  // one backtest row: what it is (period, candles, signal source, holding), whether it has run, and its headline net
+  const m = v.meta, b = v.bt || {}, sp = item.spec;
+  const tf = m ? m.timeframe : (b.timeframe || sp.timeframe);
+  const und = m ? m.underlying : (b.underlying || sp.underlying || "FUT");
+  const hold = m ? m.holding : ("square_off" in b ? (b.square_off ? `intraday ${b.square_off}` : "positional")
+                                                  : (sp.position?.square_off ? `intraday ${sp.position.square_off}` : "positional"));
+  const kind = m ? m.kind : b.kind, preset = m ? m.preset : b.preset;
+  const period = kind === "preset" ? `last ${preset === "MTD" ? "month to date" : preset === "YTD" ? "year to date" : preset}`
+    : kind === "all" ? "all data" : "fixed dates";
+  const dates = m && m.date_from ? `${m.date_from} → ${m.date_to}` : (b.from ? `${b.from} → ${b.to}` : "");
+  let status = "not run", cls_ = "st-none", net = null, netTag = "";
+  if (m) {
+    const ok = Object.entries(m.types).filter(([, t]) => t.status === "ok");
+    if (!ok.length) { status = "refused"; cls_ = "st-bad"; }
+    else {
+      status = `run ${m.at.slice(5, 16).replace("T", " ")}`; cls_ = "st-ok";
+      const [t, tm] = ok[0], key = tm.choices["-"] ? "-" : tm.choices[`W-${sp.options.strike_default}`] ? `W-${sp.options.strike_default}` : Object.keys(tm.choices)[0];
+      net = tm.choices[key]?.net_inr; netTag = `${TYPE_LABEL[t]}${key !== "-" ? " " + key : ""}`;
+    }
+  }
+  return { tf, und, hold, period, dates, status, cls_, net, netTag, design: tf === sp.timeframe && und === (sp.underlying || "FUT") };
 }
 
+function renderBacktests() {
+  const item = cur(), vs = variants(item);
+  const rows = vs.map((v) => ({ v, d: describe(item, v) }));
+  $("#bt-table").innerHTML = `<tr><th class="l">Backtest</th><th class="l">Period</th><th class="l">Settings</th>
+      <th class="l">Status</th><th>Net</th><th></th></tr>` +
+    rows.map(({ v, d }) => `<tr class="click ${v.run === S.run ? "sel" : ""}" data-r="${esc(v.run)}" title="${esc(v.bt?.notes || "")}">
+      <td class="l"><b>${esc(v.label)}</b>${v.bt?.default ? ' <span class="pill">default</span>' : ""}${v.bt ? "" : ' <span class="pill">ad hoc</span>'}</td>
+      <td class="l">${esc(d.period)}<div class="muted small">${esc(d.dates)}</div></td>
+      <td class="l">${TF_LABEL[d.tf]} candles · ${d.und === "INDEX" ? "index" : "futures"} signals${d.design ? "" : ' <span class="pill pw" title="not the candles / signal source the rules were designed on">variant</span>'}<div class="muted small">${esc(d.hold)}</div></td>
+      <td class="l"><span class="st ${d.cls_}">${esc(d.status)}</span></td>
+      <td>${d.net != null ? `<span class="${cls(d.net)}">${inr(d.net)}</span><div class="muted small">${esc(d.netTag)}</div>` : ""}</td>
+      <td><button class="bt-run" data-r="${esc(v.run)}">${v.meta ? "Re-run" : "Run"}</button></td></tr>`).join("");
+  $$("#bt-table tr.click").forEach((tr) => tr.onclick = () => keepScroll(() => {
+    S.run = tr.dataset.r; S.label = variants(cur()).find((x) => x.run === S.run).label; save(); renderBacktests(); showRun();
+  }));
+  $$("#bt-table .bt-run").forEach((b) => b.onclick = (e) => { e.stopPropagation(); runVariant(variants(cur()).find((x) => x.run === b.dataset.r)); });
+}
+
+function runVariant(v) {
+  // a backtest of the strategy file by its key; an ad hoc one with its own period and settings
+  if (v.bt) return submit({ what: "defined:" + v.run }, true);
+  const m = v.meta;
+  submit({ what: m.kind === "preset" ? m.preset : m.kind === "all" ? "all" : "custom", from: m.date_from, to: m.date_to, label: m.label,
+           tf: m.timeframe, underlying: m.underlying, square_off: m.square_off }, true);
+}
+
+const NB_PERIODS = [["1M", "1M"], ["3M", "3M"], ["6M", "6M"], ["YTD", "YTD"], ["1Y", "1Y"], ["5Y", "5Y"], ["all", "All data"], ["custom", "Custom…"]];
 function renderRunPanel() {
-  const item = cur(), v = variants(item).find((x) => x.run === S.run);
-  $("#rp-presets").innerHTML = PRESETS.map(([w, l]) => `<button class="chip-t" data-w="${w}">${l}</button>`).join("");
-  $$("#rp-presets button").forEach((b) => b.onclick = () => submit({ what: b.dataset.w }));
-  $("#rp-this").textContent = v?.meta ? "Re-run this backtest" : "Run this backtest";
-  $("#rp-this").onclick = () => {
-    if (v?.bt) return submit({ what: "defined:" + v.run }, true);
-    const m = v.meta; const q = { what: m.kind === "preset" ? m.preset : m.kind === "all" ? "all" : "custom", from: m.date_from, to: m.date_to, label: m.label,
-      tf: m.timeframe, underlying: m.underlying, square_off: m.square_off };
-    submit(q, true);
+  S.nbPeriod = S.nbPeriod || "3M";
+  $("#nb-period").innerHTML = NB_PERIODS.map(([w, l]) => `<button data-w="${w}" class="${w === S.nbPeriod ? "on" : ""}">${l}</button>`).join("");
+  $$("#nb-period button").forEach((b) => b.onclick = () => { S.nbPeriod = b.dataset.w; renderRunPanel(); });
+  $("#nb-custom").hidden = S.nbPeriod !== "custom";
+  const sum = () => {
+    const tf = $("#rp-tf").selectedOptions[0]?.text, und = $("#rp-und").selectedOptions[0]?.text, sq = $("#rp-sq").selectedOptions[0]?.text;
+    const per = S.nbPeriod === "custom" ? `${$("#rp-from").value || "?"} → ${$("#rp-to").value || "?"}` : S.nbPeriod === "all" ? "all data" : `the last ${S.nbPeriod}`;
+    const types = $$("#rp-types input:checked").map((x) => x.parentElement.textContent.trim()).join(", ") || "no type";
+    $("#nb-summary").textContent = `${S.code} over ${per} · candles: ${tf} · signals: ${und} · holding: ${sq} · ${types}`;
   };
-  $("#rp-custom").onclick = () => submit({ what: "custom", from: $("#rp-from").value, to: $("#rp-to").value, label: $("#rp-label").value || undefined });
+  ["#rp-tf", "#rp-und", "#rp-sq", "#rp-from", "#rp-to"].forEach((s) => $(s).onchange = sum);
+  $$("#rp-types input").forEach((x) => x.onchange = sum);
+  sum();
+  $("#nb-run").onclick = () => {
+    if (S.nbPeriod === "custom" && !($("#rp-from").value && $("#rp-to").value)) { $("#rp-msg").textContent = "Pick both dates for a custom period."; return; }
+    submit({ what: S.nbPeriod, from: $("#rp-from").value || undefined, to: $("#rp-to").value || undefined, label: $("#rp-label").value || undefined });
+  };
 }
 
 async function submit(q, keepVariant) {
-  const types = $$("#rp-types input:checked").map((x) => x.value);
+  // a listed backtest runs every type; a new one runs the types ticked in its form
+  const types = keepVariant ? ["FUT", "OPT_FUT_SIGNAL", "OPT_NATIVE"] : $$("#rp-types input:checked").map((x) => x.value);
   if (!types.length) { $("#rp-msg").textContent = "Pick at least one type."; return; }
   q = Object.assign({ code: S.code, types }, q);
   if (!keepVariant && !String(q.what).startsWith("defined:")) {
@@ -194,11 +228,12 @@ function showRun() {
     $("#run-none").innerHTML = `<h3>${esc(S.label)} has not been run yet</h3>
       <p class="muted">${esc(S.code)} over ${esc(period)} · ${TF_LABEL[tf]} candles · ${und === "INDEX" ? "index" : "futures"} signals · ${esc(hold)}${b.notes ? " — " + esc(b.notes) : ""}</p>
       <button class="primary" id="run-now">Run it now</button> <span class="muted small">only ${esc(S.code)} runs; usually a few seconds (the learner strategies take 1–2 minutes)</span>`;
-    $("#run-now").onclick = () => $("#rp-this").click();
+    $("#run-now").onclick = () => runVariant(v);
+    $("#bt-showing").innerHTML = `<span class="muted">Selected</span> <b>${esc(S.label)}</b> <span class="muted">· not run yet</span>`;
     return;
   }
-  $("#run-meta").textContent = `${m.date_from || "?"} → ${m.date_to || "?"} · ${TF_LABEL[m.timeframe]} candles · signals on ${m.underlying === "INDEX" ? "the index" : "futures"} · ${m.holding} · run ${m.at.replace("T", " ")} in ${m.seconds}s` +
-    (m.status !== "ok" ? ` · refused: ${m.reason}` : "");
+  $("#bt-showing").innerHTML = `<span class="muted">Showing</span> <b>${esc(m.label)}</b> · ${esc(m.date_from || "?")} → ${esc(m.date_to || "?")} · ${TF_LABEL[m.timeframe]} candles · ${m.underlying === "INDEX" ? "index" : "futures"} signals · ${esc(m.holding)}` +
+    ` <span class="muted">· run ${esc(m.at.replace("T", " ").slice(0, 16))} in ${m.seconds}s${m.status !== "ok" ? " · refused: " + esc(m.reason) : ""}</span>`;
   const ok = Object.keys(m.types).filter((t) => m.types[t].status === "ok");
   if (!S.type || !ok.includes(S.type)) S.type = ok[0] || Object.keys(m.types)[0];
   renderTypes();
@@ -451,6 +486,8 @@ async function start() {
   $("#search").oninput = (e) => { S.search = e.target.value.trim().toLowerCase(); renderCards(); };
   $("#sort").onchange = (e) => { S.sort = e.target.value; pref("sort", S.sort); renderCards(); };
   $("#cards-toggle").onclick = () => { S.expanded = !S.expanded; renderCards(); };
+  $("#algo-box").open = !!pref("algoOpen");                     // the steps stay open / closed as the reader left them
+  $("#algo-box").ontoggle = () => pref("algoOpen", $("#algo-box").open);
   try { await load(); } catch (e) { $("#cards").innerHTML = `<div class="warn">Server not reachable: ${esc(e.message)}</div>`; return; }
   renderFilters(); renderCards();
   const code = pref("code"); if (code && S.list.some((x) => x.spec.code === code)) { select(code, false); renderCards(); }

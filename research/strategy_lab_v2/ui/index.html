@@ -35,40 +35,45 @@
     <div class="card">
       <h2 id="d-title"></h2>
       <p id="d-desc" class="desc"></p>
-      <details class="algo-box" open><summary>How it trades — step by step</summary><div id="d-rules"></div></details>
+      <details class="algo-box" id="algo-box"><summary>How it trades — step by step</summary><div id="d-rules"></div></details>
     </div>
 
-    <div class="card">
-      <div class="row between wrap gap">
-        <h3>Backtests</h3>
-        <span id="run-meta" class="muted small"></span>
-      </div>
-      <div id="bt-tabs" class="tabs"></div>
-      <div id="bt-vars" class="segs"></div>
-      <details class="runpanel" open>
-        <summary>Run <span class="muted">— this strategy only</span></summary>
-        <div class="rp">
-          <div class="rp-row"><button id="rp-this" class="primary">Run this backtest</button>
-            <span class="muted small">or a new period:</span><span id="rp-presets" class="chips"></span></div>
-          <div class="rp-row">
-            <label>From <input type="date" id="rp-from"></label><label>To <input type="date" id="rp-to"></label>
-            <label>Label <input id="rp-label" placeholder="optional" maxlength="40"></label>
-            <button id="rp-custom">Run dates</button>
-          </div>
-          <div class="rp-row">
-            <label>Candles <select id="rp-tf"><option value="">strategy's</option><option value="minute">1m</option><option value="3minute">3m</option>
-              <option value="5minute">5m</option><option value="15minute">15m</option><option value="30minute">30m</option></select></label>
-            <label>Signals on <select id="rp-und"><option value="">strategy's</option><option value="FUT">futures</option><option value="INDEX">index</option></select></label>
-            <label>Holding <select id="rp-sq"><option value="keep">strategy's</option><option value="none">positional</option><option value="15:25">intraday 15:25</option></select></label>
+    <div class="card btcard">
+      <h3>Backtests <span class="muted small">— each one runs this strategy only</span></h3>
+      <div class="tablewrap bt-wrap"><table class="tbl" id="bt-table"></table></div>
+      <div id="bt-showing" class="bt-showing"></div>
+      <details class="runpanel" id="bt-new">
+        <summary>+ New backtest</summary>
+        <div class="nb">
+          <div class="nb-step"><span class="nb-n">1</span><div class="nb-body">
+            <div class="nb-h">Period</div>
+            <div class="seg nb-periods" id="nb-period"></div>
+            <div class="nb-custom" id="nb-custom" hidden>
+              <label>From <input type="date" id="rp-from"></label><label>To <input type="date" id="rp-to"></label>
+            </div>
+          </div></div>
+          <div class="nb-step"><span class="nb-n">2</span><div class="nb-body">
+            <div class="nb-h">Settings <span class="muted small">(leave as the strategy's own unless you want a variant)</span></div>
+            <div class="nb-grid">
+              <label>Candles <select id="rp-tf"><option value="">strategy's own</option><option value="minute">1m</option><option value="3minute">3m</option>
+                <option value="5minute">5m</option><option value="15minute">15m</option><option value="30minute">30m</option><option value="60minute">1h</option></select></label>
+              <label>Signals on <select id="rp-und"><option value="">strategy's own</option><option value="FUT">futures</option><option value="INDEX">index</option></select></label>
+              <label>Holding <select id="rp-sq"><option value="keep">strategy's own</option><option value="none">positional</option><option value="15:25">intraday 15:25</option></select></label>
+              <label>Label <input id="rp-label" placeholder="optional, e.g. Q3 test" maxlength="40"></label>
+            </div>
+          </div></div>
+          <div class="nb-step"><span class="nb-n">3</span><div class="nb-body">
+            <div class="nb-h">Types to run</div>
             <span id="rp-types" class="chips">
               <label class="ck"><input type="checkbox" value="FUT" checked> Futures</label>
               <label class="ck"><input type="checkbox" value="OPT_FUT_SIGNAL" checked> Options (via futures)</label>
               <label class="ck"><input type="checkbox" value="OPT_NATIVE" checked> Options (standalone)</label>
             </span>
-          </div>
-          <div id="rp-msg" class="msg"></div>
+          </div></div>
+          <div class="nb-go"><button id="nb-run" class="primary">Run new backtest</button><span id="nb-summary" class="muted small"></span></div>
         </div>
       </details>
+      <div id="rp-msg" class="msg"></div>
     </div>
 
     <div id="run-none" class="card muted" hidden></div>
