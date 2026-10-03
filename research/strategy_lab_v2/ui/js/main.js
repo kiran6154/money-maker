@@ -337,6 +337,28 @@ function renderKPIs() {
   $("#kpis").innerHTML = tiles.map(([k, v, c, sub]) => `<div class="kpi"><div class="k">${k}</div><div class="v ${c}">${v}</div><div class="s muted">${esc(sub)}</div></div>`).join("");
   $("#kpi-note").textContent = (S.result.skipped.length ? `${S.result.skipped.length} signal(s) not taken (listed under Trades) · ` : "") +
     (open ? `${open} position(s) still open at the window end, valued there (*)` : "");
+  // no trades: say why, in words, where the numbers would be
+  const why = $("#empty-why");
+  why.hidden = rows.length > 0;
+  if (!rows.length) {
+    const sk = S.result.skipped, rl = S.result.rl?.summary;
+    const reasons = {};
+    for (const x of sk) {
+      const w = String(x.why || "");
+      const k = w.startsWith("strike locked") ? "an open position on the same instrument (strike lock)" : w.startsWith("learner skipped") ? "the learner declined them"
+        : w.startsWith("entry at or after") ? "they came at or after the square-off time" : w.startsWith("no data") || w.includes("no candle") ? "no option data for the strike" : w;
+      reasons[k] = (reasons[k] || 0) + 1;
+    }
+    const list = Object.entries(reasons).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n} because ${k}`).join(" · ");
+    const side = S.side === "all" ? "" : ` on the ${S.side === "CE" || S.side === "PE" ? S.side + " side" : S.side.toLowerCase() + " side"} (try Long + short)`;
+    let text;
+    if (rl) text = `No trades in this window: the learner saw ${rl.setups} SETUP(s) and declined ${rl.skipped}, ${rl.locked} locked by an open position. The Journal shows each SETUP, what the learner predicted and what every action would have made.`;
+    else if (sk.length) text = `No trades in this window${side}: ${sk.length} signal(s) were not taken — ${list}.`;
+    else text = `No trades in this window${side}: the strategy produced no signal between ${meta().date_from} and ${meta().date_to}${S.result.signals?.length ? ` (${S.result.signals.length} CHoCH, but no SETUP that passed its rules)` : ""}.`;
+    why.innerHTML = `<b>Why is this empty?</b> ${esc(text)}` + (rl ? ` <button id="go-journal">Open the Journal</button>` : sk.length ? ` <button id="go-trades">See the signals not taken</button>` : "");
+    const gj = $("#go-journal"); if (gj) gj.onclick = () => { S.tab = "journal"; renderTabs(); $("#tabs").scrollIntoView({ behavior: "smooth", block: "start" }); };
+    const gt = $("#go-trades"); if (gt) gt.onclick = () => { S.tab = "trades"; renderTabs(); const d = $("details.skipped"); if (d) { d.open = true; d.scrollIntoView({ behavior: "smooth", block: "center" }); } };
+  }
 }
 
 function baseline() {
@@ -468,7 +490,8 @@ async function poll() {
           S.run = j.run; S.label = cur().byRun[j.run]?.label || S.label; S.resultKey = null; save();
           keepScroll(() => renderDetail());
           const m = meta(), ok = m && Object.values(m.types).some((t) => t.status === "ok");
-          status(ok ? `<b>${esc(j.code)} · ${esc(j.label)}</b> done in ${j.seconds}s — showing its results below`
+          const trades = ok ? Object.values(m.types).filter((t) => t.status === "ok").reduce((a, t) => a + Object.values(t.choices).reduce((x, c) => x + (c.trades || 0), 0), 0) : 0;
+          status(ok ? `<b>${esc(j.code)} · ${esc(j.label)}</b> done in ${j.seconds}s — ` + (trades ? "showing its results below" : "it took no trades in this window; the reason is below")
                     : `<b>${esc(j.code)} · ${esc(j.label)}</b> finished, but every type was refused: ${esc(m?.reason || Object.values(m?.types || {})[0]?.reason || "")}`, ok ? "good" : "bad");
           const target = ok ? $("#run-body") : $("#run-none");
           setTimeout(() => { target.scrollIntoView({ behavior: "smooth", block: "start" }); flash(target); }, 150);
