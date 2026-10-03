@@ -23,7 +23,7 @@ REFUSED_WHY = ("the 1-hour filter reads the near-month futures; standalone optio
 MODES = ("last_choch", "trend")
 
 SPEC = {'code': 'ST31',
- 'name': 'Strategy 31',
+ 'name': 'Foundation + 1-hour direction · 1m',
  'description': 'Strategy 1 (Foundation on 1-minute candles) taken only in the direction of the 1-hour structure: the '
                 'direction of the latest 1-hour CHoCH, from the 1-hour candles closed by the entry. Stop at the previous '
                 'swing; exit on the stop or the next 1-minute CHoCH; flat by 15:25.',

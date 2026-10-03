@@ -8,7 +8,7 @@ c2c = core.family("c2c")
 ENTRY_RULES, TYPES, TIMEFRAMES, OWN_COVERAGE, REFUSED_WHY, TF_WHY = c2c.ENTRY_RULES, c2c.TYPES, c2c.TIMEFRAMES, c2c.OWN_COVERAGE, c2c.REFUSED_WHY, c2c.TF_WHY
 
 SPEC = {'code': 'ST26',
- 'name': 'Strategy 26',
+ 'name': 'Put retest · PCR off · close stops',
  'description': 'CHoCH to CHoCH put retest on 5-minute candles: after the structure flips bearish (a close through the '
                 'protected level and the AVWAP), buy the ITM1 put of the nearest monthly expiry at least 15 days out '
                 'when a fresh swing high confirms within 50 pts of the VWAP anchored at the pre-break peak, the day is '

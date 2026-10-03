@@ -9,7 +9,7 @@ rainbow = core.family("rainbow")
 ENTRY_RULES, TYPES, UNDERLYINGS, REFUSED_WHY = rainbow.ENTRY_RULES, rainbow.TYPES, rainbow.UNDERLYINGS, rainbow.REFUSED_WHY
 
 SPEC = {'code': 'ST29',
- 'name': 'Strategy 29',
+ 'name': 'Rainbow · EMA ribbon · 1m',
  'description': 'Rainbow ribbon intraday on 1-minute near-month futures: an EMA ribbon (5 / 8 / 13 / 21 / 34 / 55); a '
                 'fresh close outside the ribbon with no fan condition, oscillator at least 25 (lookback 10) enters at '
                 'that close (09:20–14:30), one position per contract; exits: 3 lots, stop 50 pts = 1R; from 3R every '

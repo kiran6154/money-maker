@@ -10,7 +10,7 @@ ENTRY_RULES, FIRST_SESSION = fzg.ENTRY_RULES, fzg.FIRST_SESSION
 refuse, signals, gate, payload = fzg.refuse, fzg.signals, fzg.gate, fzg.payload
 
 SPEC = {'code': 'ST8',
- 'name': 'Strategy 8',
+ 'name': 'FZ gate · rooms · 5m',
  'description': 'Living indicator on rooms: a room is a band the market sat in (cluster of closes), retired after N '
                 'sessions without a visit; Strategy 2 SETUPs (5-minute) gated by the room card TAKE / WATCH / BLOCK, '
                 're-entry only after a held leave of the room. Fills, stop and exits as Strategy 2; REENTER adds a '

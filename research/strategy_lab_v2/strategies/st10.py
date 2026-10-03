@@ -5,7 +5,7 @@ Ported from v1 strategies/strategy_10.json; v2 reproduces its trades (tests/test
 import core
 
 SPEC = {'code': 'ST10',
- 'name': 'Strategy 10',
+ 'name': 'Managed exits · 5m',
  'description': "Strategy 2's entries (5-minute candles: swings, CHoCH by touch, AVWAP pair, SETUP) with managed "
                 'exits: 3 lots, stop 50 pts (futures) / 5% of the entry premium (options) = 1R; lot 1 out at 1R, lot 2 '
                 "at 2R; from 3R the last lot's stop steps up 1R behind the best R reached. No CHoCH exit: lots stay "

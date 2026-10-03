@@ -9,7 +9,7 @@ rainbow = core.family("rainbow")
 ENTRY_RULES, TYPES, UNDERLYINGS, REFUSED_WHY = rainbow.ENTRY_RULES, rainbow.TYPES, rainbow.UNDERLYINGS, rainbow.REFUSED_WHY
 
 SPEC = {'code': 'ST30',
- 'name': 'Strategy 30',
+ 'name': 'Rainbow · Widner ribbon · 5m',
  'description': "Rainbow ribbon intraday on 5-minute near-month futures: Widner's Rainbow Charts (10 recursive "
                 '2-period simple averages of the close); a fresh close outside the ribbon with every faster line '
                 'beyond the next, oscillator at least 25 (lookback 10), as a re-emergence (price had closed outside on '

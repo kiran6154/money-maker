@@ -16,7 +16,7 @@ TYPES = ("OPT_FUT_SIGNAL", "OPT_NATIVE")
 REFUSED_WHY = "Strategy 32 filters option legs by the option's own 200-SMA; the futures type is not part of it"
 
 SPEC = {'code': 'ST32',
- 'name': 'Strategy 32',
+ 'name': 'Foundation + option SMA-200 · 1m',
  'description': "Strategy 1's Foundation entries on options, each leg taken only with the option's own 200-SMA: "
                 'buy the option only while its SMA 200 is rising, sell it only while it is falling (slope at the entry '
                 'candle vs the candle before, on the option\'s own 1-minute candles). Stop at the previous swing; exit on '

@@ -5,7 +5,7 @@ Ported from v1 strategies/strategy_15.json; v2 reproduces its trades (tests/test
 import core
 
 SPEC = {'code': 'ST15',
- 'name': 'Strategy 15',
+ 'name': 'Positional · trail 3R−2 · 1m',
  'description': "Strategy 1's entries (1-minute), positional, all 3 lots trail: stop 50 pts (futures) / 5% of premium "
                 '(options) = 1R; no partial exits; from 3R the stop steps up 2R behind the best whole R reached. Best '
                 'of the 2026 exit study (S50) - chosen in-sample.',

@@ -5,7 +5,7 @@ Ported from v1 strategies/strategy_12.json; v2 reproduces its trades (tests/test
 import core
 
 SPEC = {'code': 'ST12',
- 'name': 'Strategy 12',
+ 'name': 'Managed + stop & reverse · 5m',
  'description': "Strategy 10 with stop and reverse: when a position's initial stop (1R) is hit, the opposite position "
                 'opens at the stop fill (a full new 3-lot position: stop 1R on the other side, lot 1 out at 1R, lot 2 '
                 'at 2R, the rest trails from 3R); once per signal, not after a trail stop, not at or after the '

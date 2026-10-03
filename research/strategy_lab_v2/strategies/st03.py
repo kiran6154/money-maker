@@ -5,7 +5,7 @@ Ported from v1 strategies/strategy_3.json; v2 reproduces its trades (tests/test_
 import core
 
 SPEC = {'code': 'ST3',
- 'name': 'Strategy 3',
+ 'name': 'Foundation · 1m · CHoCH on close',
  'description': 'Strategy 1 with one change: a CHoCH needs a candle to CLOSE beyond the protected level (and beyond '
                 'the AVWAP for a trend flip) instead of touching it. Everything else as Strategy 1 — 1-minute candles, '
                 'swings / BOS by touch, stop at the previous swing.',

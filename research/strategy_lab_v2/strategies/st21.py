@@ -11,7 +11,7 @@ REFUSED_WHY, TF_WHY, FIXED_HOLDING = lrn.REFUSED_WHY, lrn.TF_WHY, lrn.FIXED_HOLD
 signals, run = lrn.signals, lrn.run
 
 SPEC = {'code': 'ST21',
- 'name': 'Strategy 21',
+ 'name': 'Learner · R reward · 1m',
  'description': "Learner (rl_v1) on Strategy 1's 1-minute SETUPs, reward = R multiples (net points per lot over the "
                 'stop distance). At each SETUP a contextual bandit (linear Thompson sampling over time-of-day, ATR, '
                 "distance from the AVWAP pair, trend flip, bars since the CHoCH, the day's CHoCH count, the session's "

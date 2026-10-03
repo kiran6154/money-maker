@@ -10,7 +10,7 @@ ENTRY_RULES, FIRST_SESSION = fzg.ENTRY_RULES, fzg.FIRST_SESSION
 refuse, signals, gate, payload = fzg.refuse, fzg.signals, fzg.gate, fzg.payload
 
 SPEC = {'code': 'ST6',
- 'name': 'Strategy 6 (FZ base)',
+ 'name': 'FZ gate · bands · 5m',
  'description': 'FZ base, band model: Foundation-Zone gate on Strategy 2 rules (5-minute): every Foundation SETUP is '
                 'carded against a memory of price bands (protected levels and cluster sits) and gated TAKE / WATCH / '
                 'BLOCK; re-entry only after a confirmed leave of the band. Fills, stop and exits as Strategy 2; '

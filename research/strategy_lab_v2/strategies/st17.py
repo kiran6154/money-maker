@@ -5,7 +5,7 @@ Ported from v1 strategies/strategy_17.json; v2 reproduces its trades (tests/test
 import core
 
 SPEC = {'code': 'ST17',
- 'name': 'Strategy 17',
+ 'name': 'Positional · 2R/4R, trail 4R−2 · 1m',
  'description': "Strategy 1's entries (1-minute), positional: 3 lots, stop 50 pts / 5% = 1R; lot 1 out at 2R, lot 2 at "
                 '4R; the last lot trails from 4R, 2R behind. From the 2026 exit study (S50).',
  'timeframe': 'minute',

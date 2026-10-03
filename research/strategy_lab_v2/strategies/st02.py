@@ -5,7 +5,7 @@ Ported from v1 strategies/strategy_2.json; v2 reproduces its trades (tests/test_
 import core
 
 SPEC = {'code': 'ST2',
- 'name': 'Strategy 2',
+ 'name': 'Foundation · 5m',
  'description': 'Foundation rules on 5-minute candles: swings → protected level → CHoCH / BOS by touch → AVWAP pair '
                 "from the previous SH and SL → SETUP. Stop at the CHoCH candle's high / low; exit on the stop or the "
                 'next CHoCH.',
