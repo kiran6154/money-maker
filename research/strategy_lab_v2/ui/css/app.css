@@ -146,3 +146,8 @@ details.skipped { margin-top: 10px; } details.skipped summary { cursor: pointer;
 
 /* labelled fields in a wrapping row (explorer controls) */
 .fld label { display: inline-flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 2px; }
+
+/* layer chips: a colour swatch per layer, as v1 */
+.chip-t.lay i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: 0; }
+.chip-t.lay:not(.on) { opacity: .45; background: none; border-color: var(--line); color: var(--muted); }
+.chip-t.lay.on { background: var(--chip); border-color: var(--line); color: var(--ink); }

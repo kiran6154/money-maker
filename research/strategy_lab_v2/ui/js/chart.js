@@ -3,14 +3,15 @@
 // on request (/api/chart). Layers can be switched off; the choice and the chart height are remembered per viewer.
 import { $, $$, api, esc, inr, num, css, tsOf, dayOf, pref, reasonTag } from "./util.js";
 
-const LAYERS = [["trades", "Trades"], ["rlevels", "1R/2R/3R"], ["avwap", "AVWAP pair"], ["prot", "Protected"], ["events", "CHoCH/BOS"],
-                ["swings", "Swings"], ["volume", "Volume"], ["zones", "Zones"], ["ribbon", "Ribbon"]];
+const LAYERS = [["trades", "Trades", "#111111"], ["rlevels", "1R / 2R / 3R", "#089981"], ["rainbow", "Rainbow", "#ff9800"],
+                ["avwap", "AVWAP", "#ff6d00"], ["prot", "Protected", "#7b1fa2"], ["struct", "CHoCH/BOS", "#9e9e9e"],
+                ["swings", "Swings", "#089981"], ["vol", "Volume", "#c3c7cf"], ["zones", "Zones", "#2962ff"]];
 const ZONE_COLORS = { A: "#8e4ec6", B: "#0090ff" };
 
 export class ChartView {
   constructor(root, hooks) {
     this.root = root; this.hooks = hooks || {};
-    this.layers = Object.assign(Object.fromEntries(LAYERS.map(([k]) => [k, k !== "swings" ? true : true])), pref("layers") || {});
+    this.layers = Object.assign(Object.fromEntries(LAYERS.map(([k]) => [k, true])), pref("layers2") || {});
     this.charts = []; this.req = 0;
     root.innerHTML = `
       <div class="ch-bar">
@@ -22,13 +23,12 @@ export class ChartView {
           <button data-k="full" title="Every session of the run (heavy on long 1-minute runs)">Full period</button>
           <button data-k="snap" title="Save the chart as a PNG">PNG</button>
         </div>
-        <div class="ch-layers">${LAYERS.map(([k, l]) => `<button class="chip-t" data-layer="${k}">${l}</button>`).join("")}</div>
+        <div class="ch-layers"></div>
       </div>
       <div class="ch-legend muted small"></div>
       <div class="ch-read mono small"></div>
       <div class="ch-box"><div class="ch-main"></div></div>
       <div class="ch-panes"></div>`;
-    $$(".ch-layers button", root).forEach((b) => b.onclick = () => { this.layers[b.dataset.layer] = !this.layers[b.dataset.layer]; pref("layers", this.layers); this.redraw(); });
     $('[data-k="prev"]', root).onclick = () => this.step(-1);
     $('[data-k="next"]', root).onclick = () => this.step(1);
     $('[data-k="full"]', root).onclick = () => this.open(this.ctx.result.date_from || this.ctx.run.date_from, this.ctx.run.date_to);
@@ -129,8 +129,11 @@ export class ChartView {
     const { code, run } = this.ctx, { type, choice } = this.paneSrc;
     const q = new URLSearchParams({ code, run: run.run, type, choice, day: this.day, inst });
     if (this.to) q.set("to", this.to);
-    try { this.panes[right].data = await api("/api/chart?" + q); this.panes[right].pick = inst; }
-    catch (e) { this.panes[right].data = { error: e.message }; }
+    const pane = this.panes[right];                  // a newer open() replaces this.panes; write only to this request's pane
+    let data;
+    try { data = await api("/api/chart?" + q); } catch (e) { data = { error: e.message }; }
+    if (!pane || (my != null && my !== this.req)) return;
+    pane.data = data; if (!data.error) pane.pick = inst;
   }
 
   clear() { for (const c of this.charts) c.remove(); this.charts = []; }
@@ -158,8 +161,13 @@ export class ChartView {
 
   redraw() {
     this.clear();
-    $$(".ch-layers button", this.root).forEach((b) => b.classList.toggle("on", !!this.layers[b.dataset.layer]));
     const d = this.data; if (!d) return;
+    // the layer chips this chart has (Rainbow only for ribbon strategies, Zones only for FZ, 1R/2R/3R only for managed exits)
+    const has = { rlevels: this.ctx.spec.position?.exit === "position", rainbow: !!d.lines, zones: !!d.fz };
+    const host0 = $(".ch-layers", this.root);
+    host0.innerHTML = LAYERS.filter(([k]) => has[k] !== false).map(([k, l, col]) =>
+      `<button class="chip-t lay ${this.layers[k] ? "on" : ""}" data-layer="${k}"><i style="background:${col}"></i>${l}</button>`).join("");
+    $$("button", host0).forEach((b) => b.onclick = () => { this.layers[b.dataset.layer] = !this.layers[b.dataset.layer]; pref("layers2", this.layers); this.redraw(); });
     const main = this.draw($(".ch-main", this.root), d, { own: this.ctx.type === "FUT" && this.ctx.run.underlying !== "INDEX", main: true });
     this.legend(d);
     // row 2: the CE pane and the PE pane, side by side
@@ -189,94 +197,106 @@ export class ChartView {
     m.timeScale().subscribeVisibleTimeRangeChange((r) => { if (!r) return; for (const c of rest) { try { c.timeScale().setVisibleRange(r); } catch (e) {} } });
   }
 
+  // v1's chart look (dashboard.tpl drawChart): TradingView-style candles, swings as small squares with their level line
+  // and a confirming arrow, faded candidate dots, CHoCH (purple) / BOS (grey) dots, the AVWAP pair (orange from the SH,
+  // blue from the SL; dotted back to the anchor), the protected level (purple dashes), translucent FZ bands, the trades
+  // (black arrow + label at entry, coloured exit dot with its reason and points, dashed path, dotted stop) and, for
+  // managed exits, the stop / target / trail levels labelled on the price axis.
   draw(el, d, { own, main }) {
     const ch = LightweightCharts.createChart(el, this.opts(el));
     this.charts.push(ch);
-    if (!el.dataset.wheel) { el.dataset.wheel = "1"; this.zoomOnCtrlWheel(el, ch); el._chart = ch; } else el._chart = ch;
-    const L = this.layers, up = css("--up"), dn = css("--down"), mut = css("--muted"), acc = css("--accent"), warn = css("--warn");
-    const cs = ch.addCandlestickSeries({ upColor: up, downColor: dn, wickUpColor: up, wickDownColor: dn, borderVisible: false });
-    const times = d.candles.map((c) => c[0]);
-    cs.setData(d.candles.map((c) => ({ time: c[0], open: c[1], high: c[2], low: c[3], close: c[4] })));
-    if (L.volume) {
-      const v = ch.addHistogramSeries({ priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
-      ch.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-      v.setData(d.candles.map((c) => ({ time: c[0], value: c[5], color: c[4] >= c[1] ? up + "55" : dn + "55" })));
+    if (!el.dataset.wheel) { el.dataset.wheel = "1"; this.zoomOnCtrlWheel(el, ch); }
+    el._chart = ch;
+    const on = this.layers, UP = "#089981", DN = "#f23645", PURPLE = "#7b1fa2", BLUE = "#2962ff", ORANGE = "#ff6d00", GREY = "#9e9e9e";
+    const C0 = d.candles, times = C0.map((c) => c[0]), t0 = times[0], tN = times[times.length - 1];
+    const base = { lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: () => null };
+    const rgba = (h, a) => `rgba(${parseInt(h.slice(1, 3), 16)},${parseInt(h.slice(3, 5), 16)},${parseInt(h.slice(5, 7), 16)},${a})`;
+    // FZ bands: one translucent lo-hi box per band, from its birth (or the first bar) to the last bar, under the candles
+    if (on.zones && d.fz) for (const [, kind, lo, hi, born] of d.fz.ZONES) {
+      const a = Math.max(born, t0); if (a >= tN) continue;
+      const col = rgba(kind === "A" ? PURPLE : BLUE, 0.08);
+      const s = ch.addBaselineSeries({ ...base, baseValue: { type: "price", price: lo }, lineVisible: false, topLineColor: col, topFillColor1: col,
+                                       topFillColor2: col, bottomLineColor: col, bottomFillColor1: col, bottomFillColor2: col });
+      s.setData([{ time: this.snapT(times, a), value: hi }, { time: tN, value: hi }]);
     }
-    const line = (pts, color, style = 0, width = 1, extra = {}) => {
-      const s = ch.addLineSeries(Object.assign({ color, lineWidth: width, lineStyle: style, priceLineVisible: false, lastValueVisible: false,
-                                                 crosshairMarkerVisible: false }, extra));
-      s.setData(pts); return s;
-    };
-    const snap = (t) => { let lo = 0, hi = times.length - 1; if (t < times[0] || t > times[hi] + 86400) return null;
-      while (lo < hi) { const m = (lo + hi + 1) >> 1; if (times[m] <= t) lo = m; else hi = m - 1; } return times[lo]; };
-    const markers = [];
-    // FZ zones: each band's edges as dashed lines over the range (A births purple, B blue)
-    if (L.zones && d.fz) {
-      for (const [id, kind, lo, hi, born] of d.fz.ZONES) {
-        const t0 = snap(Math.max(born, times[0])) ?? times[0], col = ZONE_COLORS[kind] || mut;
-        const seg = times.filter((t) => t >= t0);
-        if (seg.length < 2) continue;
-        line(seg.map((t) => ({ time: t, value: hi })), col, 2, 1);
-        line(seg.map((t) => ({ time: t, value: lo })), col, 2, 1);
+    const cs = ch.addCandlestickSeries({ upColor: UP, downColor: DN, wickUpColor: UP, wickDownColor: DN, borderVisible: false });
+    cs.priceScale().applyOptions({ scaleMargins: { top: 0.06, bottom: 0.2 } });
+    cs.setData(C0.map((c) => ({ time: c[0], open: c[1], high: c[2], low: c[3], close: c[4] })));
+    const line = (opt, data) => { const s = ch.addLineSeries({ ...base, ...opt }); s.setData(data); return s; };
+    if (on.vol) {
+      const vs = ch.addHistogramSeries({ priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
+      ch.priceScale("vol").applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
+      vs.setData(C0.map((c) => ({ time: c[0], value: c[5], color: c[4] >= c[1] ? "rgba(8,153,129,.35)" : "rgba(242,54,69,.35)" })));
+    }
+    const snap = (t) => this.snapT(times, t);
+    const M = [];
+    if (on.swings) {
+      if (d.cand) for (const [k, col] of [[1, "rgba(8,153,129,.4)"], [2, "rgba(242,54,69,.4)"]])
+        line({ color: col, lineVisible: false, pointMarkersVisible: true, pointMarkersRadius: 1.5 }, d.cand.map((r) => (r[k] == null ? { time: r[0] } : { time: r[0], value: r[k] })));
+      for (const [k, t, p, ct] of d.swings || []) {
+        const hi = k === "H", col = hi ? UP : DN;
+        if (t >= t0) M.push({ time: t, position: hi ? "aboveBar" : "belowBar", color: col, shape: "square", size: 0.1 });
+        M.push({ time: ct, position: hi ? "aboveBar" : "belowBar", color: col, shape: hi ? "arrowDown" : "arrowUp", size: 0.5 });
+        const a = Math.max(t, t0);
+        line({ color: col, lineWidth: 1 }, a === ct ? [{ time: ct, value: p }] : [{ time: snap(a), value: p }, { time: ct, value: p }]);
       }
     }
-    if (L.ribbon && d.lines) {
+    if (on.prot && d.prot) {
+      const pm = new Map(d.prot);
+      line({ color: PURPLE, lineWidth: 1, lineStyle: 2, lineType: 1 }, times.map((t) => (pm.has(t) ? { time: t, value: pm.get(t) } : { time: t })));
+    }
+    if (on.rainbow && d.lines) {
       const RB = ["#e5484d", "#f76b15", "#f5a524", "#e2c93a", "#7ac943", "#30a46c", "#12a594", "#0090ff", "#3e63dd", "#8e4ec6"];
-      d.lines.forEach((ln, k, all) => { if (ln.length > 1) line(ln.map(([t, v]) => ({ time: t, value: v })), RB[all.length > 1 ? Math.round(9 * k / (all.length - 1)) : 0]); });
+      d.lines.forEach((ln, k, all) => { if (ln.length) line({ color: RB[all.length > 1 ? Math.round(9 * k / (all.length - 1)) : 0], lineWidth: 1 }, ln.map(([x, v]) => ({ time: x, value: v }))); });
     }
-    if (L.prot && d.prot) {
-      const m = new Map(d.prot);
-      line(times.map((t) => (m.has(t) ? { time: t, value: m.get(t) } : { time: t })), mut, 2, 1);
+    if (on.avwap && d.pair) for (const a of d.pair) {
+      const col = a.side === "H" ? ORANGE : BLUE;
+      if (a.live.length) line({ color: col, lineWidth: 2 }, a.live.map(([x, v]) => ({ time: x, value: v })));
+      if (a.back && a.back.length > 1) line({ color: col, lineWidth: 1, lineStyle: 1 }, a.back.map(([x, v]) => ({ time: x, value: v })));
     }
-    if (L.avwap && d.pair) for (const p of d.pair) {
-      const col = p.side === "H" ? dn : up;
-      if (p.live.length > 1) line(p.live.map(([t, v]) => ({ time: t, value: v })), col, 0, 1);
-      if (p.back && p.back.length > 1) line(p.back.map(([t, v]) => ({ time: t, value: v })), col, 1, 1);
-    }
-    if (L.swings && d.swings) {
-      for (const s of d.swings) markers.push({ time: s[1], position: s[0] === "H" ? "aboveBar" : "belowBar", color: mut, shape: "circle", size: 0.1 });
-      if (d.cand) {
-        line(d.cand.map(([t, h]) => (h == null ? { time: t } : { time: t, value: h })), mut + "66", 0, 1, { lineVisible: false, pointMarkersVisible: true, pointMarkersRadius: 1 });
-        line(d.cand.map(([t, , l]) => (l == null ? { time: t } : { time: t, value: l })), mut + "66", 0, 1, { lineVisible: false, pointMarkersVisible: true, pointMarkersRadius: 1 });
-      }
-    }
-    if (L.events && d.events) {
-      const flips = new Set(d.flips || []);
-      for (const e of d.events) markers.push(e[1] === "CHoCH"
-        ? { time: e[0], position: e[2] === "up" ? "belowBar" : "aboveBar", color: acc, shape: "square", size: 0.6, text: flips.has(e[0]) ? "CHoCH ⇅" : "CHoCH" }
-        : { time: e[0], position: e[2] === "up" ? "belowBar" : "aboveBar", color: mut, shape: "square", size: 0.2 });
-      for (const s of d.setups || []) markers.push({ time: s[0], position: s[1] === "up" ? "belowBar" : "aboveBar", color: warn, shape: "circle", size: 0.6, text: "S" });
-    }
-    // FZ gate markers at each SETUP (T take, R re-enter, W watch, B block)
-    if (L.zones && main && this.ctx.result.fz) {
-      const Lg = this.ctx.result.fz.ledger, gi = Lg.cols.indexOf("outcome_gate"), ti = Lg.cols.indexOf("time");
-      for (const r of Lg.rows) { const t = snap(tsOf(r[ti])); if (t != null && t >= times[0]) markers.push({ time: t, position: "aboveBar", color: ZONE_COLORS.A, shape: "circle", size: 0.4, text: (r[gi] || "?")[0] }); }
-    }
-    // trades: entry arrow, exit circle with its reason and points, the entry -> exit path, the stop and the R levels
+    if (on.struct && d.events) for (const [x, kind, dir] of d.events)
+      M.push({ time: x, position: dir === "up" ? "aboveBar" : "belowBar", color: kind === "BOS" ? GREY : PURPLE, shape: "circle", size: kind === "BOS" ? 0.2 : 0.5, text: kind === "BOS" ? "" : "CHoCH" });
     const C = Object.fromEntries(d.cols.map((k, i) => [k, i]));
-    // a level is drawn only on its own price scale: an option traded on a futures signal carries the futures stop
-    let lo = Infinity, hi = -Infinity; for (const c of d.candles) { if (c[3] < lo) lo = c[3]; if (c[2] > hi) hi = c[2]; }
+    let lo = Infinity, hi = -Infinity; for (const c of C0) { if (c[3] < lo) lo = c[3]; if (c[2] > hi) hi = c[2]; }
     const onScale = (v) => v != null && v >= lo - (hi - lo) * 0.5 && v <= hi + (hi - lo) * 0.5;
-    if (L.trades) for (const r of d.trades) {
-      const te = snap(tsOf(r[C.entry_time])), tx = snap(tsOf(r[C.exit_time]));
-      const lng = r[C.position] === "LONG", win = r[C.net] > 0;
-      if (te != null) markers.push({ time: te, position: lng ? "belowBar" : "aboveBar", color: lng ? up : dn, shape: lng ? "arrowUp" : "arrowDown",
-                                     text: (lng ? "L" : "S") + (r[C.tranche] ? " " + r[C.tranche].replace(" (trail)", "") : "") });
-      if (tx != null) markers.push({ time: tx, position: lng ? "aboveBar" : "belowBar", color: win ? up : dn, shape: "circle", size: 0.6,
-                                     text: `${reasonTag(r[C.exit_reason])} ${num(r[C.pts], 0)}` });
-      if (own && te != null && tx != null && te < tx) {
-        line([{ time: te, value: r[C.entry_px] }, { time: tx, value: r[C.exit_px] }], win ? up : dn, 2, 2);
-        if (onScale(r[C.sl])) line([{ time: te, value: r[C.sl] }, { time: tx, value: r[C.sl] }], dn, 1, 1);
-        if (L.rlevels && this.ctx.spec.position?.exit === "position" && onScale(r[C.sl])) {
-          const R = Math.abs(r[C.entry_px] - r[C.sl]), sg = lng ? 1 : -1;
-          for (const k of [1, 2, 3]) line([{ time: te, value: r[C.entry_px] + sg * k * R }, { time: tx, value: r[C.entry_px] + sg * k * R }], acc + "aa", 3, 1);
+    const tag = (why, open) => (why === "stop_loss" ? "SL " : why === "trail_stop" ? "TRAIL " : why === "eod" ? "EOD " : /^target /.test(why || "") ? "T" + why.slice(7) + " "
+      : why === "expiry" ? "EXPIRY " : why === "band_reclaim" || why === "band_exit" ? "BAND " : why === "next_choch" || why === "choch" ? "" : open ? "OPEN* " : "");
+    const P = this.ctx.spec.position || {}, managed = P.exit === "position", seen = new Set();
+    if (on.trades) for (const r of d.trades) {
+      const ets = tsOf(r[C.entry_time]), xts = tsOf(r[C.exit_time]), up = r[C.position] === "LONG", win = r[C.pts] > 0;
+      const lbl = r[C.label] || r[C.position];
+      const et = Math.max(ets, t0), xe = Math.min(xts, tN);
+      if (ets >= t0 && ets <= tN) M.push({ time: snap(ets), position: up ? "belowBar" : "aboveBar", color: "#111111", shape: up ? "arrowUp" : "arrowDown", size: 1.5, text: lbl });
+      if (xts <= tN && xts >= t0) M.push({ time: snap(xts), position: up ? "aboveBar" : "belowBar", color: win ? UP : DN, shape: "circle", size: 0.9, text: tag(r[C.exit_reason], r[C.open]) + num(r[C.pts], 1) });
+      if (!own || et > xe) continue;
+      line({ color: win ? UP : DN, lineWidth: 2, lineStyle: 2 }, snap(et) === snap(xe) ? [{ time: snap(et), value: r[C.entry_px] }] : [{ time: snap(et), value: r[C.entry_px] }, { time: snap(xe), value: r[C.exit_px] }]);
+      if (onScale(r[C.sl])) line({ color: "#d32f2f", lineWidth: 1, lineStyle: 1 }, [{ time: snap(et), value: r[C.sl] }, { time: snap(xe), value: r[C.sl] }]);
+      // managed exits: the position's stop, its targets and where the trail starts, labelled on the price axis (once per position)
+      const key = ets + "|" + r[C.position] + "|" + r[C.instrument];
+      if (on.rlevels && managed && onScale(r[C.sl]) && !seen.has(key)) {
+        seen.add(key);
+        const end = Math.min(tN, Math.max(...d.trades.filter((z) => tsOf(z[C.entry_time]) === ets && z[C.position] === r[C.position] && z[C.instrument] === r[C.instrument]).map((z) => tsOf(z[C.exit_time]))));
+        const R = Math.abs(r[C.entry_px] - r[C.sl]), sg = up ? 1 : -1;
+        const lv = [["SL", -1, "#d32f2f"], ...(P.scale_out || []).filter((x) => x.target_r != null).map((x) => [x.target_r + "R", x.target_r, UP]),
+                    ...(P.trail ? [[P.trail.start_r + "R trail", P.trail.start_r, BLUE]] : [])];
+        if (R && et <= end) for (const [name, k, col] of lv) {
+          const y = +(r[C.entry_px] + sg * k * R).toFixed(2);
+          line({ color: col, lineWidth: 1, lineStyle: k < 0 ? 0 : 2, title: name, lastValueVisible: true }, snap(et) === snap(end) ? [{ time: snap(et), value: y }] : [{ time: snap(et), value: y }, { time: snap(end), value: y }]);
         }
       }
     }
-    // every marker on a candle of this chart (a swing confirmed today can sit on yesterday's bar: dropped, not drawn
-    // off the left edge, which would stretch the time axis)
-    const t0 = times[0], tN = times[times.length - 1];
-    const placed = markers.filter((m) => m.time != null && m.time >= t0 && m.time <= tN).map((m) => Object.assign(m, { time: snap(m.time) }));
+    // FZ gate at each Foundation SETUP: T take (blue) · W watch (grey) · B block (red) · R re-enter (purple)
+    if (on.trades && main && this.ctx.result.fz && d.fz) {
+      const Lg = this.ctx.result.fz.ledger, ix = (k) => Lg.cols.indexOf(k);
+      const G = { TAKE: ["T", BLUE], WATCH: ["W", GREY], BLOCK: ["B", DN], REENTER: ["R", PURPLE] };
+      for (const r of Lg.rows) {
+        const g = G[r[ix("gate")]], x = tsOf(r[ix("time")]);
+        if (g && x >= t0 && x <= tN) M.push({ time: snap(x), position: r[ix("dir")] === "up" ? "belowBar" : "aboveBar", color: g[1], shape: "circle", size: 0.3, text: g[0] });
+        const f = r[ix("fill_time")];
+        if (r[ix("outcome_gate")] === "REENTER" && f && f !== r[ix("time")]) { const y = tsOf(f); if (y >= t0 && y <= tN) M.push({ time: snap(y), position: r[ix("dir")] === "up" ? "belowBar" : "aboveBar", color: PURPLE, shape: "circle", size: 0.3, text: "R" }); }
+      }
+    }
+    const placed = M.filter((m) => m.time != null && m.time >= t0 && m.time <= tN);
     placed.sort((a, b) => a.time - b.time);
     cs.setMarkers(placed);
     // crosshair readout: OHLCV and, for FZ, the zone card of that bar
@@ -284,13 +304,13 @@ export class ChartView {
     ch.subscribeCrosshairMove((p) => {
       const box = $(".ch-read", this.root);
       if (!p || !p.time) { box.textContent = ""; return; }
-      const c = d.candles[times.indexOf(p.time)]; if (!c) return;
-      let s = `${new Date(p.time * 1000).toISOString().slice(0, 16).replace("T", " ")}  O ${c[1]}  H ${c[2]}  L ${c[3]}  C ${c[4]}  V ${Math.round(c[5]).toLocaleString("en-IN")}`;
+      const c = C0[times.indexOf(p.time)]; if (!c) return;
+      let s = `${new Date(p.time * 1000).toISOString().slice(5, 16).replace("T", " ")}  O ${c[1]}  H ${c[2]}  L ${c[3]}  C ${c[4]}  V ${Math.round(c[5]).toLocaleString("en-IN")}`;
       if (Z && Z.has(p.time)) {
         const z = Z.get(p.time), k = Object.fromEntries(d.fz.Z_COLS.map((n, i) => [n, z[i]]));
         const zone = d.fz.ZONES.find((x) => x[0] === k.zone_id);
         s += `  ·  zone ${k.zone_id ?? "–"}${zone ? ` [${zone[2]}–${zone[3]}]` : ""} visit ${k.visit_n ?? "–"} bars ${k.this_bars ?? "–"}` +
-             (k.first_vol && k.this_vol ? ` vol× ${(k.this_vol / k.this_bars / (k.first_vol / k.first_bars)).toFixed(2)}` : "") +
+             (k.first_vol && k.this_vol && k.this_bars && k.first_bars ? ` vol× ${(k.this_vol / k.this_bars / (k.first_vol / k.first_bars)).toFixed(2)}` : "") +
              ` read ${d.fz.READS[k.read] ?? "–"}${k.left_id ? ` · LEAVE from ${k.left_id}` : ""}`;
       }
       box.textContent = s;
@@ -303,6 +323,14 @@ export class ChartView {
       ch.timeScale().fitContent();
     });
     return ch;
+  }
+
+  snapT(times, t) {
+    // the last candle at or before t (the chart's own bars), else the first one
+    let lo = 0, hi = times.length - 1;
+    if (t <= times[0]) return times[0];
+    while (lo < hi) { const m = (lo + hi + 1) >> 1; if (times[m] <= t) lo = m; else hi = m - 1; }
+    return times[lo];
   }
 
   legend(d) {
