@@ -4,9 +4,10 @@
 import { $, $$, api, esc, inr, num, css, tsOf, dayOf, pref, reasonTag } from "./util.js";
 
 const LAYERS = [["trades", "Trades", "#111111"], ["rlevels", "1R / 2R / 3R", "#089981"], ["rainbow", "Rainbow", "#ff9800"],
-                ["avwap", "AVWAP", "#ff6d00"], ["prot", "Protected", "#7b1fa2"], ["struct", "CHoCH/BOS", "#9e9e9e"],
+                ["avwap", "AVWAP pair", "#ff6d00"], ["tav", "Trend AVWAP", "#37474f"], ["trig", "SETUP level", "#0b8043"],
+                ["prot", "Protected", "#7b1fa2"], ["struct", "CHoCH/BOS", "#9e9e9e"],
                 ["swings", "Swings", "#089981"], ["vol", "Volume", "#c3c7cf"], ["zones", "Zones", "#2962ff"],
-                ["index", "Index & strike", "#6b7280"], ["miles", "Milestones", "#8e4ec6"], ["olines", "SMA", "#f5a524"]];
+                ["index", "Index & strike", "#6b7280"], ["miles", "Milestones", "#8e4ec6"], ["olines", "SMA", "#a1887f"]];
 const ZONE_COLORS = { A: "#8e4ec6", B: "#0090ff" };
 
 export class ChartView {
@@ -283,7 +284,14 @@ export class ChartView {
       M.push({ time: snap(m.ts), position: "aboveBar", color: "#8e4ec6", shape: "square", size: 0.8, text: m.label });
     }
     if (on.olines && d.olines) for (const ln of d.olines)       // e.g. the option's SMA 200 (Strategy 32's filter)
-      if (ln.pts.length) line({ color: "#f5a524", lineWidth: 2, title: ln.name, lastValueVisible: true }, ln.pts.map(([x, v]) => ({ time: x, value: v })));
+      if (ln.pts.length) line({ color: "#a1887f", lineWidth: 2, lineStyle: 2, title: ln.name, lastValueVisible: true }, ln.pts.map(([x, v]) => ({ time: x, value: v })));
+    // the trend AVWAP: anchored at the swing of the last trend flip; qualifies the protected level and decides a flip
+    if (on.tav && d.tav) d.tav.forEach((sgm, k, all) => { if (sgm.pts.length)
+      line({ color: "#37474f", lineWidth: 2, title: k === all.length - 1 ? "trend AVWAP" : "", lastValueVisible: k === all.length - 1 }, sgm.pts.map(([x, v]) => ({ time: x, value: v }))); });
+    // the SETUP level: the CHoCH candle's high (bullish) / low (bearish) a close must clear, until its SETUP or the next CHoCH
+    if (on.trig && d.trig) for (const g of d.trig)
+      line({ color: g.dir === "up" ? "#0b8043" : "#c5221f", lineWidth: 1, lineStyle: g.hit ? 0 : 2 },
+           g.a === g.z ? [{ time: g.a, value: g.p }] : [{ time: snap(g.a), value: g.p }, { time: snap(g.z), value: g.p }]);
     if (on.rainbow && d.lines) {
       const RB = ["#e5484d", "#f76b15", "#f5a524", "#e2c93a", "#7ac943", "#30a46c", "#12a594", "#0090ff", "#3e63dd", "#8e4ec6"];
       d.lines.forEach((ln, k, all) => { if (ln.length) line({ color: RB[all.length > 1 ? Math.round(9 * k / (all.length - 1)) : 0], lineWidth: 1 }, ln.map(([x, v]) => ({ time: x, value: v }))); });
@@ -381,7 +389,9 @@ export class ChartView {
       `${esc(this.day)}${this.to && this.to !== this.day ? " → " + esc(this.to) : ""} · ${d.sessions} session${d.sessions > 1 ? "s" : ""} · ` +
       `${d.candles.length} candles · ${n} trade${n === 1 ? "" : "s"} <span class="${net > 0 ? "pos" : net < 0 ? "neg" : ""}">${inr(net)}</span>` +
       ` · arrow = entry, dot = exit (reason, pts), dashed = path, dotted red = stop` + (d.fz ? " · purple / blue boxes = FZ bands (A / B), T W B R = gate" : "") +
-      (d.pair && d.pair.length ? " · orange / blue = AVWAP from SH / SL (dotted: back to the anchor)" : "") +
+      (d.pair && d.pair.length ? " · orange / blue = AVWAP pair from the last SH / SL at each CHoCH (dotted: back to the anchor)" : "") +
+      (d.tav && d.tav.length ? " · dark grey = trend AVWAP" : "") + (d.trig && d.trig.length ? " · green / red short line = SETUP level (CHoCH candle high / low; solid = a SETUP came)" : "") +
+      (d.olines && d.olines.length ? ` · brown dashed = ${esc(d.olines.map((l) => l.name).join(", "))}` : "") +
       (this.hooks.static ? "" : " · + earlier / + later add sessions") + " · mouse wheel zooms, drag pans · drag the bottom edge to resize";
   }
 

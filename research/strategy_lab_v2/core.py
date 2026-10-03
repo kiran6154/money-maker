@@ -1546,6 +1546,26 @@ def _fz_layers(b, F, i0, i1):
     return dict(Z=Z, ZONES=ZONES, Z_COLS=list(F["Z_COLS"]), READS=list(fz.READS))
 
 
+def _trend_avwap(b, sg, i0, i1):
+    """The engine's trend AVWAP over b[i0..i1], one segment per anchor: anchored at the first confirmed swing, then at
+    every trend flip on the swing the flip makes the anchor (the last swing high after a bearish flip, the last swing low
+    after a bullish one); the engine reads it from the bar after the anchor is set. It qualifies the protected level and
+    decides whether a CHoCH flips the trend."""
+    if not len(sg.sc): return []
+    ch = [(int(sg.sc[0]) + 1, int(sg.sb[0]))]
+    for j in range(len(sg.qi)):
+        if sg.qflip[j]:
+            s_ = int(sg.qhi[j] if sg.qd[j] == -1 else sg.qlo[j])
+            ch.append((int(sg.qi[j]) + 1, int(sg.sb[s_])))
+    out = []
+    for n, (a, anc) in enumerate(ch):
+        z = ch[n + 1][0] - 1 if n + 1 < len(ch) else len(b) - 1
+        lo, hi = max(a, i0), min(z, i1)
+        if lo > hi: continue
+        out.append(dict(anchor=tstr(b.t[anc]), pts=[[int(b.t[k]), round(sg.av(anc, k), 2)] for k in range(lo, hi + 1)]))
+    return out
+
+
 def _overlays(b, sg, i0, i1, pair=True):
     """The engine's layers over b[i0..i1]: candidate swing levels, swings, CHoCH / BOS, protected level, SETUPs, the AVWAP
     pair (live from the CHoCH, and back to its anchor), and a strategy's own lines (the rainbow ribbon)."""
@@ -1572,6 +1592,19 @@ def _overlays(b, sg, i0, i1, pair=True):
                 back = [[int(t[k]), round(sg.av(a, k), 2)] for k in range(max(a, i0), min(ci, i1) + 1)] if ci >= i0 else []
                 P.append(dict(side=side, anchor=tstr(t[a]), p=float(sg.sp[s_]), live=live, back=back))
     out["pair"] = P
+    out["tav"] = _trend_avwap(b, sg, i0, i1)
+    # the SETUP trigger: the CHoCH candle's high (bullish) / low (bearish), from the CHoCH to its SETUP or the next CHoCH
+    setup_of = {int(c_): int(k) for k, c_ in zip(sg.ui, sg.uch)}
+    trig = []
+    for j in range(len(sg.qi)):
+        ci = int(sg.qi[j])
+        if sg.qhi[j] < 0 or sg.qlo[j] < 0: continue          # no AVWAP pair -> no SETUP possible from this CHoCH
+        stop = setup_of.get(ci, int(sg.qend[j]))
+        if stop < i0 or ci > i1: continue
+        up = sg.qd[j] == 1
+        trig.append(dict(dir="up" if up else "down", p=float(b.h[ci] if up else b.l[ci]),
+                         a=int(t[max(ci, i0)]), z=int(t[min(stop, i1)]), hit=ci in setup_of))
+    out["trig"] = trig
     if sg.lines is not None:
         out["lines"] = [[[int(t[i]), round(float(ln[i]), 2)] for i in rng if not np.isnan(ln[i])] for ln in sg.lines]
     return out
@@ -1626,7 +1659,7 @@ def chart(code, run, typ, choice, day, inst=None, to=None):
                sessions=int(len(np.unique(b.day[i0:i1 + 1]))))
     if typ == "OPT_NATIVE" and not inst:
         out["reference"] = True                       # standalone signals come from the option panes; this row is context only
-    elif sg is not None: out.update(_overlays(b, sg, i0, i1, pair=out["sessions"] <= 10))
+    elif sg is not None: out.update(_overlays(b, sg, i0, i1, pair=out["sessions"] <= 30))
     if zones: out["fz"] = zones
     if inst and hasattr(mod, "option_lines"):         # a strategy's own lines on an option's chart (e.g. its SMA filter)
         k = np.searchsorted(s.t, b.t)                 # computed on the contract's whole series, as the filter reads it
@@ -1790,7 +1823,7 @@ def explorer_chart(date, inst, code, tf="minute", expiry=None, strike=None, righ
                               "visualization only: the strategy's signals() on this instrument's own candles, priced with its position rules"),
                candles=_chart_bars(b, i0, i1), cols=list(TRADE_COLS), trades=trade_rows(trades), skipped=skipped,
                net=round(sum(x["net"] for x in trades), 2))
-    out.update(_overlays(b, sg, i0, i1, pair=len(np.unique(b.day[i0:i1 + 1])) <= 10))
+    out.update(_overlays(b, sg, i0, i1, pair=len(np.unique(b.day[i0:i1 + 1])) <= 30))
     out["meta"]["note"] = note + out["meta"]["note"]
     out["meta"]["range"] = [dstr(show), dstr(last)]
     if M is not None:
