@@ -153,23 +153,28 @@ export class ChartView {
     this.paneSrc = src;
     const d0 = this.day, d1 = this.to || this.day, C = src.C;
     const inRange = src.rows ? src.rows.filter((r) => { const d = r[C.entry_time].slice(0, 10); return d >= d0 && d <= d1; }) : [];
+    // each pane opens on that day's ATM contract (traded or not); the contracts the run traded are in its picker, and a
+    // trade picked from the table opens its own contract
     for (const right of ["CE", "PE"]) {
-      const insts = [...new Set(inRange.filter((r) => r[C.opt_type] === right).map((r) => r[C.instrument]))];
-      const pick = this.focus && insts.includes(this.focus) ? this.focus : insts[0];
+      const insts = ["ATM", ...new Set(inRange.filter((r) => r[C.opt_type] === right).map((r) => r[C.instrument]))];
+      const pick = this.focus && insts.includes(this.focus) ? this.focus : "ATM";
       this.panes[right] = { insts, pick, data: null };
-      if (pick) await this.loadPane(right, pick, my);
+      await this.loadPane(right, pick, my);
     }
   }
 
   async loadPane(right, inst, my) {
-    const { code, run } = this.ctx, { type, choice } = this.paneSrc;
-    const q = new URLSearchParams({ code, run: run.run, type, choice, day: this.day, inst });
+    const { code, run } = this.ctx;
+    const { type, choice } = this.paneSrc?.type ? this.paneSrc : this.ctx;      // a run without option results: its own type
+    const q = new URLSearchParams({ code, run: run.run, type, choice, day: this.day });
+    if (inst === "ATM") q.set("atm", right); else q.set("inst", inst);
     if (this.to) q.set("to", this.to);
     const pane = this.panes[right];                  // a newer open() replaces this.panes; write only to this request's pane
     let data;
     try { data = await api("/api/chart?" + q); } catch (e) { data = { error: e.message }; }
     if (!pane || (my != null && my !== this.req)) return;
     pane.data = data; if (!data.error) pane.pick = inst;
+    if (inst === "ATM" && data.inst) pane.atmName = data.inst;
   }
 
   clear() { for (const c of this.charts) c.remove(); this.charts = []; }
@@ -189,7 +194,7 @@ export class ChartView {
     this.clear();
     const d = this.data; if (!d) return;
     // the layer chips this chart has (Rainbow only for ribbon strategies, Zones only for FZ, 1R/2R/3R only for managed exits)
-    const has = { rlevels: this.ctx.spec.position?.exit === "position", rainbow: !!d.lines, zones: !!d.fz, index: !!d.spot, miles: !!d.milestones,
+    const has = { rlevels: this.ctx.spec.position?.exit === "position", rainbow: !!d.lines, zones: !!d.fz, index: !!(d.spot || Object.values(this.panes || {}).some((p) => p && p.data && p.data.spot)), miles: !!d.milestones,
                   olines: !!(d.olines || Object.values(this.panes || {}).some((p) => p && p.data && p.data.olines)) };
     const host0 = $(".ch-layers", this.root);
     host0.innerHTML = LAYERS.filter(([k]) => has[k] !== false).map(([k, l, col]) =>
@@ -203,11 +208,14 @@ export class ChartView {
     const note = this.paneSrc?.note || "";
     host.innerHTML = ["CE", "PE"].map((r) => {
       const p = this.panes[r] || { insts: [] };
+      const lbl = (x) => (x === "ATM" ? `ATM ${r}${p.atmName ? " · " + p.atmName : ""}` : x + " · traded");
+      const nTraded = p.insts.length - 1;
       return `<div class="pane" data-r="${r}"><div class="pane-h"><b>${r}</b>
-        ${p.insts.length > 1 ? `<select>${p.insts.map((x) => `<option ${x === p.pick ? "selected" : ""}>${esc(x)}</option>`).join("")}</select>`
-                             : `<span class="muted small">${esc(p.pick || (this.paneSrc?.rows ? `no ${r} position in this range` : ""))}</span>`}
-        <span class="muted small">${p.pick ? "· from the session before" : ""}${note ? " · " + esc(note) : ""}${p.data?.error ? " · " + esc(p.data.error) : ""}</span></div>
-        <div class="pane-c">${p.pick ? "" : `<div class="pane-empty muted small">${esc(this.paneSrc?.rows ? `No ${r} position on ${this.day}${this.to && this.to !== this.day ? " – " + this.to : ""}.` : note)}</div>`}</div></div>`;
+        ${p.insts.length > 1 ? `<select>${p.insts.map((x) => `<option value="${esc(x)}" ${x === p.pick ? "selected" : ""}>${esc(lbl(x))}</option>`).join("")}</select>`
+                             : `<span class="small">${esc(lbl(p.pick || "ATM"))}</span>`}
+        <span class="muted small">· from the session before${p.pick === "ATM" && p.data?.atm ? ` · strike nearest the index at the open (${num(p.data.atm.index_open, 1)})` : ""}${
+          nTraded ? ` · ${nTraded} traded ${r} contract${nTraded > 1 ? "s" : ""} in the list` : (this.paneSrc?.rows ? ` · no ${r} position in this range` : "")}${note ? " · " + esc(note) : ""}${p.data?.error ? " · " + esc(p.data.error) : ""}</span></div>
+        <div class="pane-c">${p.data?.error ? `<div class="pane-empty muted small">${esc(p.data.error)}</div>` : ""}</div></div>`;
     }).join("");
     for (const r of ["CE", "PE"]) {
       const p = this.panes[r]; const el = $(`.pane[data-r="${r}"]`, host);

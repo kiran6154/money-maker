@@ -1621,7 +1621,24 @@ def _overlays(b, sg, i0, i1, pair=True):
     return out
 
 
-def chart(code, run, typ, choice, day, inst=None, to=None):
+def atm_contract(spec, day, right, tf="minute"):
+    """(expiry, strike) of the ATM `right` on `day`: the strategy's nearest weekly expiry at least options.expiry_min_days
+    out, the strike nearest the index's first candle of the day (no look-ahead), among strikes with candles that day."""
+    o = spec["options"]; d = dnum(day)
+    ch = OptionChain("minute" if tf in ("minute", "3minute") else "5minute")
+    exp = ch.expiry_for(d, o.get("expiry_min_days", 1), "WEEKLY")
+    if not exp: raise ValueError(f"no expiry in the data after {day}")
+    sp = series("spot", "minute"); i = int(np.searchsorted(sp.day, d))
+    if i >= len(sp) or sp.day[i] != d: raise ValueError(f"no index candles on {day}")
+    step = o["strike_step"]; k0 = round(float(sp.o[i]) / step) * step
+    for n in range(0, 21):                            # nearest strike first, then outwards
+        for k in ((k0,) if n == 0 else (k0 + n * step, k0 - n * step)):
+            c = ch.get(exp, int(k), right)
+            if c is not None and np.any(c.day == d): return exp, int(k), float(sp.o[i])
+    raise ValueError(f"no {right} contract of {exp} with candles on {day} near {k0}")
+
+
+def chart(code, run, typ, choice, day, inst=None, to=None, atm=None):
     """Sessions day .. to (default: day) of a stored run: the signal candles (futures or index) with the engine's layers, the
     FZ zones for FZ strategies, and this choice's trades; with `inst`, that option contract's own candles (from the session
     before) with its trades and, for standalone options, the engine on its candles."""
@@ -1635,13 +1652,23 @@ def chart(code, run, typ, choice, day, inst=None, to=None):
     d0, d1 = dnum(day), dnum(to or day)
     trades = body["trades"]
     zones = None
-    if inst:
+    spot0 = None
+    if atm:                                           # the ATM CE / PE of the day, whether or not the run traded it
+        if atm not in ("CE", "PE"): raise ValueError("atm is CE or PE")
+        exp_, k_, spot0 = atm_contract(mod.SPEC, day, atm, meta["timeframe"])
+        inst = OptionChain.name(exp_, k_, atm)
+        mine = [r for r in trades if r[cols["instrument"]] == inst]
+        s = OptionChain(meta["timeframe"]).get(exp_, k_, atm)
+        akey = (exp_, k_)
+    elif inst:
         mine = [r for r in trades if r[cols["instrument"]] == inst]
         if not mine: raise ValueError("no trades on that instrument in this run")
         r0 = mine[0]
         s = OptionChain(meta["timeframe"]).get(r0[cols["expiry"]], r0[cols["strike"]], r0[cols["opt_type"]])
+    if inst:
         if typ == "OPT_NATIVE":
-            ob, _ = window(s, ctx["date_from"], ctx["date_to"], ctx["warmup"])
+            ob, _ = window(s, dstr(int(s.day[max(0, int(np.searchsorted(s.day, d0)) - 1)])) if atm else ctx["date_from"],
+                           ctx["date_to"], ctx["warmup"])
             sg = strategy_signals(dict(ctx, underlying="FUT"), ob); b = ob
         else:
             b, sg = s, None
@@ -1672,6 +1699,12 @@ def chart(code, run, typ, choice, day, inst=None, to=None):
         out["reference"] = True                       # standalone signals come from the option panes; this row is context only
     elif sg is not None: out.update(_overlays(b, sg, i0, i1, pair=out["sessions"] <= 30))
     if zones: out["fz"] = zones
+    if atm:                                           # the index against the strike, as on the explorer
+        out.update(atm=dict(right=atm, expiry=akey[0], strike=akey[1], index_open=spot0), strike=akey[1])
+        sp = series("spot", meta["timeframe"] if meta["timeframe"] in ("minute", "5minute") else "minute")
+        j = np.searchsorted(sp.t, b.t[i0:i1 + 1], "right") - 1
+        okj = (j >= 0) & (sp.day[np.maximum(j, 0)] == b.day[i0:i1 + 1])
+        out["spot"] = [[int(t_), float(sp.c[jj])] for t_, jj, o_ in zip(b.t[i0:i1 + 1], j, okj) if o_]
     if inst and hasattr(mod, "option_lines"):         # a strategy's own lines on an option's chart (e.g. its SMA filter)
         k = np.searchsorted(s.t, b.t)                 # computed on the contract's whole series, as the filter reads it
         out["olines"] = [dict(name=nm_, pts=[[int(b.t[i]), round(float(v[k[i]]), 2)] for i in range(i0, i1 + 1)

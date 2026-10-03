@@ -8,7 +8,8 @@ API
     GET  /api/strategies                                   every strategy: spec + its runs (meta)
     GET  /api/runs?code=ST1                                runs of one strategy, newest first
     GET  /api/result?code=&run=&type=&choice=              trades, stats, skipped, signals of one choice
-    GET  /api/chart?code=&run=&type=&choice=&day=[&to=][&inst=]   sessions day..to of a run, computed on request
+    GET  /api/chart?code=&run=&type=&choice=&day=[&to=][&inst= | &atm=CE|PE]   sessions day..to of a run, computed on request
+                                                                         (atm: that day's ATM option, traded or not)
     GET  /api/history?code=ST1                             the strategy's versions (definition, changes, results per run)
     GET  /api/explorer/meta | instruments?date=&tf= | chart?date=&inst=FUT|INDEX|OPT&code=&tf=&expiry=&strike=&right=
          &days_before=&holding=own|none|HH:MM             any day, any instrument (explorer.html)
@@ -123,7 +124,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if u.path == "/api/chart":
                 with run_lock:
                     return self.reply(200, core.chart(q["code"], q["run"], q["type"], q["choice"], q["day"], q.get("inst") or None,
-                                                      q.get("to") or None))
+                                                      q.get("to") or None, q.get("atm") or None))
             if u.path == "/api/history":
                 return self.reply(200, core.history(q["code"]))
             if u.path == "/api/explorer/meta":

@@ -58,7 +58,7 @@ python backtest.py ST1 --defined # every backtest listed in the strategy file
    version, from `history/<CODE>.json`).
 5. **Chart:** the signal candles with layers you can switch (trades, 1R/2R/3R, AVWAP pair with its back-extension,
    protected level, CHoCH / BOS, swings and candidates, volume, FZ zone bands and gate letters, rainbow ribbon), a
-   crosshair readout (with the FZ zone card), CE and PE panes with each traded option on its own candles, day / range
+   crosshair readout (with the FZ zone card), CE and PE panes that open on the day's ATM CE / ATM PE (nearest weekly expiry, strike nearest the index at the day's first candle; shown whether or not the run traded it, with the index against the strike) and list the contracts the run traded that day, day / range
    navigation, "Full period", PNG snapshot, drag to resize.
 6. **Tabs:** Trades (sortable, filterable, charges breakdown, signals not taken) · Performance · Cumulative P&L ·
    Drawdowns · Distribution · Monte Carlo · Robustness (slippage / charges sensitivity by repricing every trade, month by
