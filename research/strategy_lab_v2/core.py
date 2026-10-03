@@ -1657,32 +1657,72 @@ def explorer_instruments(date, tf="minute"):
     return dict(date=date, futures=fut, index_open=float(sp.o[k]) if k < len(sp) and sp.day[k] == d else None, options=opts)
 
 
-def explorer_chart(date, inst, code, tf="minute", expiry=None, strike=None, right=None, days_before=1, holding="own"):
+def option_milestones(src, expiry, strike, right, tf, step, liq_pct):
+    """When an option contract was listed (its first candle), the previous expiry (the first candle on or after it), the
+    first candle it was ATM (index within half a strike step) and ITM (CE: index above the strike, PE: below), from the
+    index candle at that time; its first liquid session (daily volume >= liq_pct % of its busiest session); and its last
+    candle. Times as int seconds, None where it never happened in the data. Hindsight by design (the busiest session):
+    this is for reading a chart, never for a trading decision."""
+    out = dict(listing=int(src.t[0]), expiry=int(src.t[-1]))
+    ch = OptionChain(tf)
+    prev = [e for e in ch.calendar if e < expiry]
+    pe = dnum(prev[-1]) if prev else None
+    k = int(np.searchsorted(src.day, pe)) if pe is not None else len(src)
+    out["prev_expiry"] = int(src.t[k]) if k < len(src) else None
+    sp = series("spot", tf)
+    j = np.searchsorted(sp.t, src.t, "right") - 1
+    ok = (j >= 0) & (sp.day[np.maximum(j, 0)] == src.day)
+    spot = np.where(ok, sp.c[np.maximum(j, 0)], np.nan)
+    atm = np.nonzero(np.abs(spot - strike) <= step / 2)[0]
+    itm = np.nonzero(spot > strike if right == "CE" else spot < strike)[0]
+    out["atm"] = int(src.t[atm[0]]) if len(atm) else None
+    out["itm"] = int(src.t[itm[0]]) if len(itm) else None
+    days, idx = np.unique(src.day, return_index=True)
+    vol = np.add.reduceat(src.v, idx) if len(idx) else np.array([])
+    liq = np.nonzero(vol >= vol.max() * liq_pct / 100)[0] if len(vol) and vol.max() > 0 else []
+    out["liquid"] = int(src.t[idx[liq[0]]]) if len(liq) else None
+    return out
+
+
+def explorer_chart(date, inst, code, tf="minute", expiry=None, strike=None, right=None, days_before=1, holding="own",
+                   start="days", end="date", liq_pct=10):
     """One instrument's candles around `date` with the engine's layers and the strategy's trades computed on those candles
     (a visualization, not a backtest: nothing stored). FUT = the near-month futures, INDEX = the index (equal-weight
     AVWAP), OPT = one option contract, the strategy applied to its own chart. The engine warms up on the strategy's
-    warm-up sessions before the date; `days_before` sessions are shown before it."""
+    warm-up sessions before the start; the chart starts `days_before` sessions before the date, or (options, `start`) at the
+    contract's first candle ('listing'), the previous expiry ('prev_expiry'), its first ATM / ITM candle ('atm' / 'itm':
+    from the index at that candle, ATM = within half a strike step) or its first liquid session ('liquid': daily volume at
+    least `liq_pct` % of its busiest session); it ends at the date or (`end` = 'expiry') at the contract's last candle."""
     if tf not in TF_MIN: raise ValueError(f"tf must be one of {tuple(TF_MIN)}")
     if inst not in ("FUT", "INDEX", "OPT"): raise ValueError("inst is FUT, INDEX or OPT")
-    days_before = max(0, min(int(days_before), 5))
+    days_before = max(0, min(int(days_before), 30))
     mod = load_strategies()[code]; spec = mod.SPEC
     ss = sessions(); d = dnum(date)
     k = int(np.searchsorted(ss, d))
     if k >= len(ss) or ss[k] != d: raise ValueError(f"{date} is not a session in the data")
-    first, show = int(ss[max(0, k - max(spec["warmup_days"], days_before))]), int(ss[max(0, k - days_before)])
-    typ = "OPT_NATIVE" if inst == "OPT" else "FUT"
-    sq = position_of(spec)["square_off"] if holding == "own" else (None if holding in ("none", "positional", "") else holding)
-    ctx = context(mod, typ, tf, "INDEX" if inst == "INDEX" else "FUT", sq, dstr(show), date)
+    show, last, M, note = int(ss[max(0, k - days_before)]), d, None, ""
     if inst == "OPT":
         if not (expiry and strike and right in ("CE", "PE")): raise ValueError("an option needs expiry, strike and right")
         src = OptionChain(tf).get(expiry, int(strike), right)
         if src is None: raise ValueError(f"no candles for {expiry} {strike} {right}")
         name = OptionChain.name(expiry, int(strike), right)
+        M = option_milestones(src, expiry, int(strike), right, tf, spec["options"]["strike_step"], float(liq_pct))
+        if start != "days":
+            if start not in M or start == "expiry": raise ValueError("start is days, listing, prev_expiry, atm, itm or liquid")
+            if M[start] is None: note = f"never {start.replace('_', ' ')} in its data: shown from its first candle; "
+            show = (M[start] or M["listing"]) // DAY
+        if end == "expiry": last = int(src.day[-1])
+        if show > last: raise ValueError(f"the chosen start ({dstr(show)}) is after the end ({dstr(last)}): pick a later date or end at expiry")
     else:
         src = series("spot" if inst == "INDEX" else "fut", tf); name = None
-    a, z = int(np.searchsorted(src.day, first)), int(np.searchsorted(src.day, d, "right"))
+    ks = int(np.searchsorted(ss, show))
+    first = int(ss[max(0, ks - spec["warmup_days"])])
+    typ = "OPT_NATIVE" if inst == "OPT" else "FUT"
+    sq = position_of(spec)["square_off"] if holding == "own" else (None if holding in ("none", "positional", "") else holding)
+    ctx = context(mod, typ, tf, "INDEX" if inst == "INDEX" else "FUT", sq, dstr(show), dstr(last))
+    a, z = int(np.searchsorted(src.day, first)), int(np.searchsorted(src.day, last, "right"))
     b = src.slice(a, z)
-    if not len(b) or not np.any(b.day == d): raise ValueError("no candles on that date")
+    if not len(b) or not np.any((b.day >= show) & (b.day <= last)): raise ValueError("no candles in that range")
     sg = strategy_signals(ctx, b)
     i0 = int(np.searchsorted(b.day, show)); i1 = len(b) - 1
     P = ctx["position"]; pmode = P["exit"] == "position"
@@ -1726,5 +1766,15 @@ def explorer_chart(date, inst, code, tf="minute", expiry=None, strike=None, righ
                               "visualization only: the strategy's signals() on this instrument's own candles, priced with its position rules"),
                candles=_chart_bars(b, i0, i1), cols=list(TRADE_COLS), trades=trade_rows(trades), skipped=skipped,
                net=round(sum(x["net"] for x in trades), 2))
-    out.update(_overlays(b, sg, i0, i1))
+    out.update(_overlays(b, sg, i0, i1, pair=len(np.unique(b.day[i0:i1 + 1])) <= 10))
+    out["meta"]["note"] = note + out["meta"]["note"]
+    out["meta"]["range"] = [dstr(show), dstr(last)]
+    if M is not None:
+        lbl = dict(listing="listed", prev_expiry="prev expiry", atm="first ATM", itm="first ITM", liquid="liquid", expiry="expiry")
+        out["milestones"] = [dict(key=k_, label=lbl[k_], ts=v, time=tstr(v) if v is not None else None) for k_, v in M.items() if k_ in lbl]
+        sp = series("spot", tf)
+        j = np.searchsorted(sp.t, b.t[i0:i1 + 1], "right") - 1
+        okj = (j >= 0) & (sp.day[np.maximum(j, 0)] == b.day[i0:i1 + 1])
+        out["spot"] = [[int(t_), float(sp.c[jj])] for t_, jj, o_ in zip(b.t[i0:i1 + 1], j, okj) if o_]
+        out["strike"] = int(strike)
     return _jsonable(out)

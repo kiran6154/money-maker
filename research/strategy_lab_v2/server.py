@@ -132,7 +132,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 with run_lock:
                     return self.reply(200, core.explorer_chart(q["date"], q["inst"], q["code"], q.get("tf") or "minute",
                                                                q.get("expiry") or None, q.get("strike") or None, q.get("right") or None,
-                                                               int(q.get("days_before") or 1), q.get("holding") or "own"))
+                                                               int(q.get("days_before") or 1), q.get("holding") or "own",
+                                                               q.get("start") or "days", q.get("end") or "date",
+                                                               float(q.get("liq_pct") or 10)))
             if u.path == "/api/status":
                 with lock:
                     return self.reply(200, dict(busy=any(j["state"] in ("queued", "running") for j in jobs),

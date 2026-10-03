@@ -20,6 +20,8 @@ async function start() {
   $$("#x-inst button").forEach((b) => b.onclick = () => { S.inst = b.dataset.i; paint(); });
   $$("#x-right button").forEach((b) => b.onclick = () => { S.right = b.dataset.r; paint(); fillStrikes(); });
   $("#x-exp").onchange = fillStrikes;
+  $("#x-start").value = S.start || "days"; $("#x-end").value = S.end || "date"; $("#x-liq").value = S.liq || 10;
+  $("#x-start").onchange = paint;
   $("#x-go").onclick = show;
   paint();
   await loadInstruments();
@@ -30,6 +32,7 @@ function paint() {
   $$("#x-inst button").forEach((b) => b.classList.toggle("on", b.dataset.i === S.inst));
   $$("#x-right button").forEach((b) => b.classList.toggle("on", b.dataset.r === S.right));
   $("#x-opt").hidden = S.inst !== "OPT";
+  $("#x-liq-l").hidden = $("#x-start").value !== "liquid";
 }
 
 async function loadInstruments() {
@@ -51,17 +54,28 @@ function fillStrikes() {
 
 async function show() {
   const q = { date: $("#x-date").value, inst: S.inst, code: $("#x-code").value, tf: $("#x-tf").value, days_before: $("#x-before").value, holding: $("#x-hold").value };
-  if (S.inst === "OPT") Object.assign(q, { expiry: $("#x-exp").value, strike: $("#x-strike").value, right: S.right });
-  Object.assign(S, { date: q.date, code: q.code, tf: q.tf, hold: q.holding, before: q.days_before, exp: q.expiry || S.exp });
+  if (S.inst === "OPT") Object.assign(q, { expiry: $("#x-exp").value, strike: $("#x-strike").value, right: S.right,
+                                           start: $("#x-start").value, end: $("#x-end").value, liq_pct: $("#x-liq").value });
+  Object.assign(S, { date: q.date, code: q.code, tf: q.tf, hold: q.holding, before: q.days_before, exp: q.expiry || S.exp,
+                     start: $("#x-start").value, end: $("#x-end").value, liq: $("#x-liq").value });
   pref("explorer", S);
   $("#x-msg").textContent = "computing…";
   let d;
   try { d = await api("/api/explorer/chart?" + new URLSearchParams(q)); } catch (e) { $("#x-msg").textContent = e.message; return; }
   const m = d.meta;
   $("#x-msg").textContent = `${m.instrument} · ${m.strategy} · ${TF_LABEL[m.tf]} · warm-up from ${m.warmup_from} · lot ${m.lot_size} · slippage ${m.slippage_pts} · ${m.note}`;
-  d.day = m.first_shown; d.sessions = new Set(d.candles.map((c) => new Date(c[0] * 1000).toISOString().slice(0, 10))).size;
+  d.day = m.range ? m.range[0] : m.first_shown; d.sessions = new Set(d.candles.map((c) => new Date(c[0] * 1000).toISOString().slice(0, 10))).size;
   view.showStatic(d, { code: m.code, run: { underlying: "FUT", label: "explorer", run: "" }, type: "FUT", choice: "-", result: { cols: d.cols }, rows: [],
                        spec: { position: m.position } });
+  if (m.range) view.to = m.range[1];
+  // the contract's milestones: click one to zoom the chart to it
+  $("#x-miles").innerHTML = (d.milestones || []).map((x) => x.ts == null
+    ? `<span class="chip muted">${esc(x.label)}: never</span>`
+    : `<button class="chip-t" data-ts="${x.ts}" title="zoom the chart to it">${esc(x.label)} · ${esc(x.time.slice(0, 16))}</button>`).join("");
+  $$("#x-miles button").forEach((b) => b.onclick = () => {
+    const t = +b.dataset.ts, c = view.charts[0];
+    if (c) try { c.timeScale().setVisibleRange({ from: t - 4 * 3600, to: t + 4 * 3600 }); } catch (e) {}
+  });
   const C = Object.fromEntries(d.cols.map((k, i) => [k, i]));
   $("#x-sum").innerHTML = `(${d.trades.length}) · net <span class="${cls(d.net)}">${inr(d.net)}</span>`;
   $("#x-trades").innerHTML = `<tr>${["Position", "Lots", "CHoCH", "Entry", "Entry px", "SL", "Exit", "Exit px", "Reason", "Pts", "Gross", "Charges", "Net", "MFE", "MAE"].map((h, i) => `<th class="${i < 4 || i === 6 || i === 8 ? "l" : ""}">${h}</th>`).join("")}</tr>` +

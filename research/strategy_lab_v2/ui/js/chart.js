@@ -5,7 +5,8 @@ import { $, $$, api, esc, inr, num, css, tsOf, dayOf, pref, reasonTag } from "./
 
 const LAYERS = [["trades", "Trades", "#111111"], ["rlevels", "1R / 2R / 3R", "#089981"], ["rainbow", "Rainbow", "#ff9800"],
                 ["avwap", "AVWAP", "#ff6d00"], ["prot", "Protected", "#7b1fa2"], ["struct", "CHoCH/BOS", "#9e9e9e"],
-                ["swings", "Swings", "#089981"], ["vol", "Volume", "#c3c7cf"], ["zones", "Zones", "#2962ff"]];
+                ["swings", "Swings", "#089981"], ["vol", "Volume", "#c3c7cf"], ["zones", "Zones", "#2962ff"],
+                ["index", "Index & strike", "#6b7280"], ["miles", "Milestones", "#8e4ec6"]];
 const ZONE_COLORS = { A: "#8e4ec6", B: "#0090ff" };
 
 export class ChartView {
@@ -196,7 +197,7 @@ export class ChartView {
     this.clear();
     const d = this.data; if (!d) return;
     // the layer chips this chart has (Rainbow only for ribbon strategies, Zones only for FZ, 1R/2R/3R only for managed exits)
-    const has = { rlevels: this.ctx.spec.position?.exit === "position", rainbow: !!d.lines, zones: !!d.fz };
+    const has = { rlevels: this.ctx.spec.position?.exit === "position", rainbow: !!d.lines, zones: !!d.fz, index: !!d.spot, miles: !!d.milestones };
     const host0 = $(".ch-layers", this.root);
     host0.innerHTML = LAYERS.filter(([k]) => has[k] !== false).map(([k, l, col]) =>
       `<button class="chip-t lay ${this.layers[k] ? "on" : ""}" data-layer="${k}"><i style="background:${col}"></i>${l}</button>`).join("");
@@ -277,6 +278,18 @@ export class ChartView {
     if (on.prot && d.prot) {
       const pm = new Map(d.prot);
       line({ color: PURPLE, lineWidth: 1, lineStyle: 2, lineType: 1 }, times.map((t) => (pm.has(t) ? { time: t, value: pm.get(t) } : { time: t })));
+    }
+    // an option on its own chart: the index (left scale) against the strike, to see it go in and out of the money
+    if (on.index && d.spot && d.spot.length) {
+      ch.applyOptions({ leftPriceScale: { visible: true, borderColor: css("--line") } });
+      const sl = ch.addLineSeries({ ...base, autoscaleInfoProvider: undefined, priceScaleId: "left", color: "#6b7280", lineWidth: 1, title: "NIFTY", lastValueVisible: true });
+      sl.setData(d.spot.map(([t, v]) => ({ time: t, value: v })));
+      const ks = ch.addLineSeries({ ...base, autoscaleInfoProvider: undefined, priceScaleId: "left", color: "#8e4ec6", lineWidth: 1, lineStyle: 2, title: `strike ${d.strike}`, lastValueVisible: true });
+      ks.setData([{ time: t0, value: d.strike }, { time: tN, value: d.strike }]);
+    }
+    if (on.miles && d.milestones) for (const m of d.milestones) {
+      if (m.ts == null || m.ts < t0 || m.ts > tN) continue;
+      M.push({ time: snap(m.ts), position: "aboveBar", color: "#8e4ec6", shape: "square", size: 0.8, text: m.label });
     }
     if (on.rainbow && d.lines) {
       const RB = ["#e5484d", "#f76b15", "#f5a524", "#e2c93a", "#7ac943", "#30a46c", "#12a594", "#0090ff", "#3e63dd", "#8e4ec6"];
