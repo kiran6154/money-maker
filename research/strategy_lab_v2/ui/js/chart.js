@@ -13,6 +13,7 @@ export class ChartView {
     this.root = root; this.hooks = hooks || {};
     this.layers = Object.assign(Object.fromEntries(LAYERS.map(([k]) => [k, true])), pref("layers2") || {});
     this.charts = []; this.req = 0;
+    (window.__charts = window.__charts || []).push(this);   // for inspecting the charts from the browser console
     root.innerHTML = `
       <div class="ch-bar">
         <div class="ch-nav">
@@ -20,6 +21,8 @@ export class ChartView {
           <input type="date" class="ch-day" aria-label="Day">
           <button class="icon" data-k="next" title="Next trading day">›</button>
           <select class="ch-days" aria-label="Days with trades"></select>
+          <button data-k="more-prev" title="Add the previous session to this chart (or drag past the left edge)">+ earlier</button>
+          <button data-k="more-next" title="Add the next session to this chart (or drag past the right edge)">+ later</button>
           <button data-k="full" title="Every session of the run (heavy on long 1-minute runs)">Full period</button>
           <button data-k="snap" title="Save the chart as a PNG">PNG</button>
         </div>
@@ -32,11 +35,13 @@ export class ChartView {
     $('[data-k="prev"]', root).onclick = () => this.step(-1);
     $('[data-k="next"]', root).onclick = () => this.step(1);
     $('[data-k="full"]', root).onclick = () => this.open(this.ctx.result.date_from || this.ctx.run.date_from, this.ctx.run.date_to);
+    $('[data-k="more-prev"]', root).onclick = () => this.extend(-1);
+    $('[data-k="more-next"]', root).onclick = () => this.extend(1);
     $('[data-k="snap"]', root).onclick = () => this.snapshot();
     $(".ch-day", root).onchange = (e) => this.open(e.target.value);
     $(".ch-days", root).onchange = (e) => e.target.value && this.open(e.target.value);
     if (this.hooks.static)                         // the explorer: no run, so no day navigation
-      $$('.ch-nav [data-k="prev"], .ch-nav [data-k="next"], .ch-nav [data-k="full"], .ch-day, .ch-days', root).forEach((e) => e.hidden = true);
+      $$('.ch-nav [data-k="prev"], .ch-nav [data-k="next"], .ch-nav [data-k="full"], .ch-nav [data-k^="more"], .ch-day, .ch-days', root).forEach((e) => e.hidden = true);
     const box = $(".ch-box", root);
     const h = pref("chartH"); if (h) box.style.height = h + "px";
     new ResizeObserver(() => { if (box.offsetHeight > 150) pref("chartH", box.offsetHeight); }).observe(box);
@@ -44,7 +49,7 @@ export class ChartView {
 
   // the explorer: draw a payload computed elsewhere, without the run's day navigation
   showStatic(data, ctx) {
-    $$('.ch-nav [data-k="prev"], .ch-nav [data-k="next"], .ch-nav [data-k="full"], .ch-day, .ch-days', this.root).forEach((e) => e.hidden = true);
+    $$('.ch-nav [data-k="prev"], .ch-nav [data-k="next"], .ch-nav [data-k="full"], .ch-nav [data-k^="more"], .ch-day, .ch-days', this.root).forEach((e) => e.hidden = true);
     this.ctx = ctx; this.data = data; this.day = data.day; this.to = null; this.panes = {};
     this.redraw();
   }
@@ -78,6 +83,34 @@ export class ChartView {
     if (!this.hooks.static) await this.loadPanes(my);
     if (my !== this.req) return;
     this.redraw();
+  }
+
+  async extend(dir) {
+    // dragging past the chart's left (right) edge loads the previous (next) session into the same chart, as v1 did; the view
+    // stays where it was. Up to MAX_SESSIONS sessions are kept so the chart stays light.
+    const MAX_SESSIONS = 20;
+    if (this.extending || this.hooks.static || !this.data || (this.data.sessions || 1) >= MAX_SESSIONS) return;
+    this.extending = true;
+    const keep = this.charts[0]?.timeScale().getVisibleRange();
+    const { code, run, type, choice } = this.ctx, start = this.day, end = this.to || this.day, span = this.data.sessions || 1;
+    let d = new Date((dir < 0 ? start : end) + "T00:00:00Z");
+    try {
+      for (let n = 0; n < 7; n++) {                 // skip weekends and holidays: the range grows only when a session is added
+        d = new Date(d.getTime() + dir * 86400000);
+        if (d.getUTCDay() === 0 || d.getUTCDay() === 6) continue;
+        const s = d.toISOString().slice(0, 10), day = dir < 0 ? s : start, to = dir < 0 ? end : s;
+        let data;
+        try { data = await api("/api/chart?" + new URLSearchParams({ code, run: run.run, type, choice, day, to })); } catch (e) { continue; }
+        if ((data.sessions || 1) <= span) continue;
+        const my = ++this.req;
+        this.day = day; this.to = to; this.data = data; this.keepRange = keep;
+        $(".ch-day", this.root).value = day;
+        this.panes = {};
+        if (!this.hooks.static) await this.loadPanes(my);
+        if (my === this.req) this.redraw();
+        break;
+      }
+    } finally { this.extending = false; }
   }
 
   async paneSource() {
@@ -316,11 +349,21 @@ export class ChartView {
       box.textContent = s;
     });
     requestAnimationFrame(() => {
-      if (this.focusTime && main) {
+      if (main && this.keepRange) {                // an extension: keep the view the reader had
+        const r = this.keepRange; this.keepRange = null;
+        try { ch.timeScale().setVisibleRange(r); } catch (e) { ch.timeScale().fitContent(); }
+      } else if (this.focusTime && main) {
         const t = this.focusTime; this.focusTime = null;
-        try { ch.timeScale().setVisibleRange({ from: t - 3600, to: t + 3600 }); return; } catch (e) {}
-      }
-      ch.timeScale().fitContent();
+        try { ch.timeScale().setVisibleRange({ from: t - 3600, to: t + 3600 }); } catch (e) { ch.timeScale().fitContent(); }
+      } else ch.timeScale().fitContent();
+      // reaching an edge (dragging into the empty space past the first / last candle) loads the next session that way
+      if (main && !this.hooks.static) setTimeout(() => {
+        ch.timeScale().subscribeVisibleLogicalRangeChange((r) => {
+          if (!r || this.extending) return;
+          if (r.from < -3) this.extend(-1);
+          else if (r.to > C0.length + 6) this.extend(1);
+        });
+      }, 400);
     });
     return ch;
   }
@@ -338,8 +381,9 @@ export class ChartView {
     $(".ch-legend", this.root).innerHTML =
       `${esc(this.day)}${this.to && this.to !== this.day ? " → " + esc(this.to) : ""} · ${d.sessions} session${d.sessions > 1 ? "s" : ""} · ` +
       `${d.candles.length} candles · ${n} trade${n === 1 ? "" : "s"} <span class="${net > 0 ? "pos" : net < 0 ? "neg" : ""}">${inr(net)}</span>` +
-      ` · arrow = entry, circle = exit (reason, pts), dashed = path, red dots = stop` + (d.fz ? " · purple / blue dashes = FZ bands (A / B), letters = gate" : "") +
-      (d.pair && d.pair.length ? " · red / green = AVWAP from SH / SL (dotted: back to the anchor)" : "") + " · drag the bottom edge to resize · Ctrl/⌘ + wheel zooms";
+      ` · arrow = entry, dot = exit (reason, pts), dashed = path, dotted red = stop` + (d.fz ? " · purple / blue boxes = FZ bands (A / B), T W B R = gate" : "") +
+      (d.pair && d.pair.length ? " · orange / blue = AVWAP from SH / SL (dotted: back to the anchor)" : "") +
+      (this.hooks.static ? "" : " · drag past the left / right edge to load the previous / next session") + " · Ctrl/⌘ + wheel zooms · drag the bottom edge to resize";
   }
 
   async snapshot() {
