@@ -1749,6 +1749,7 @@ def explorer_chart(date, inst, code, tf="minute", expiry=None, strike=None, righ
     ct, con, exps, clast = fut_contracts()
     lock = StrikeLock(P["lock"] == "strike")
     trades, skipped = [], []
+    leg_filter = getattr(mod, "leg_filter", None) if inst == "OPT" else None
     for x in sg.trades():
         if x["entry"] < i0: continue
         te = int(b.t[x["entry"]]); lng = x["dir"] == "up"
@@ -1761,6 +1762,9 @@ def explorer_chart(date, inst, code, tf="minute", expiry=None, strike=None, righ
                    opt_type=right or inst, kind="OPT" if inst == "OPT" else "FUT", instrument=iname, strike=strike, expiry=e_,
                    choch_time=int(b.t[x["choch"]]), entry_time=te, exit_time=int(b.t[x["exit"]]), exit_reason=x["exit_reason"],
                    open=x["open"], sl=x["sl"], entry_px=float(b.c[x["entry"]]), exit_px=x["exit_px"], und_entry=None, und_exit=None)
+        why = leg_filter(ctx, rec, src) if leg_filter else None      # e.g. Strategy 32's SMA filter on the whole contract
+        if why:
+            skipped.append(dict(entry_time=tstr(te), position=rec["position"], why=why, filtered=True)); continue
         e = square_off_at(sq, te)
         if e and te >= e:
             skipped.append(dict(entry_time=tstr(te), position=rec["position"], why="entry at or after the square-off time")); continue
@@ -1797,6 +1801,11 @@ def explorer_chart(date, inst, code, tf="minute", expiry=None, strike=None, righ
         okj = (j >= 0) & (sp.day[np.maximum(j, 0)] == b.day[i0:i1 + 1])
         out["spot"] = [[int(t_), float(sp.c[jj])] for t_, jj, o_ in zip(b.t[i0:i1 + 1], j, okj) if o_]
         out["strike"] = int(strike)
+        if hasattr(mod, "option_lines"):              # the strategy's own lines (Strategy 32: SMA 200 from the contract's first candle)
+            out["olines"] = [dict(name=nm_, pts=[[int(b.t[i]), round(float(v[a + i]), 2)] for i in range(i0, i1 + 1)
+                                                 if not np.isnan(v[a + i])]) for nm_, v in mod.option_lines(src)]
+    elif hasattr(mod, "TYPES") and "FUT" not in mod.TYPES:
+        out["meta"]["note"] += f" · {spec['code']} does not trade this instrument: " + str(getattr(mod, "REFUSED_WHY", ""))
     return _jsonable(out)
 
 def explorer_expiries(tf="minute"):
