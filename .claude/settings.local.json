@@ -35,7 +35,9 @@
       "Bash(mvn -DskipTests compile)",
       "Bash(ls \"d:/office/stocks/workspace\")",
       "Read(//d/office/stocks/workspace/**)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(awk '/public ArrayList<OfficeMaster> getOfficeList\\\\\\(int/,/^\\\\t}/' src/main/java/com/fencewatch/service/Internal.java)",
+      "Bash(awk '/public boolean validateToken/,/^\\\\t}/' src/main/java/com/fencewatch/service/Internal.java)"
     ],
     "additionalDirectories": [
       "d:\\office\\stocks\\workspace\\money-maker"

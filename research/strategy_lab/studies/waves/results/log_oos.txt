@@ -1,0 +1,23 @@
+bars 2025 1 1220054
+D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\pipeline.py:65: FutureWarning: Downcasting object dtype arrays on .fillna, .ffill, .bfill is deprecated and will change in a future version. Call result.infer_objects(copy=False) instead. To opt-in to the future behavior, set `pd.set_option('future.no_silent_downcasting', True)`
+  on=["sid", "date"], how="left").c.fillna(False).values
+bars 2025 3 406781
+bars 2025 5 244089
+D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\pipeline.py:65: FutureWarning: Downcasting object dtype arrays on .fillna, .ffill, .bfill is deprecated and will change in a future version. Call result.infer_objects(copy=False) instead. To opt-in to the future behavior, set `pd.set_option('future.no_silent_downcasting', True)`
+  on=["sid", "date"], how="left").c.fillna(False).values
+bars 2025 10 123683
+D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\pipeline.py:65: FutureWarning: Downcasting object dtype arrays on .fillna, .ffill, .bfill is deprecated and will change in a future version. Call result.infer_objects(copy=False) instead. To opt-in to the future behavior, set `pd.set_option('future.no_silent_downcasting', True)`
+  on=["sid", "date"], how="left").c.fillna(False).values
+bars 2025 15 81373
+D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\pipeline.py:65: FutureWarning: Downcasting object dtype arrays on .fillna, .ffill, .bfill is deprecated and will change in a future version. Call result.infer_objects(copy=False) instead. To opt-in to the future behavior, set `pd.set_option('future.no_silent_downcasting', True)`
+  on=["sid", "date"], how="left").c.fillna(False).values
+bars 2026 1 899519
+D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\pipeline.py:65: FutureWarning: Downcasting object dtype arrays on .fillna, .ffill, .bfill is deprecated and will change in a future version. Call result.infer_objects(copy=False) instead. To opt-in to the future behavior, set `pd.set_option('future.no_silent_downcasting', True)`
+  on=["sid", "date"], how="left").c.fillna(False).values
+bars 2026 3 299877
+D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\pipeline.py:65: FutureWarning: Downcasting object dtype arrays on .fillna, .ffill, .bfill is deprecated and will change in a future version. Call result.infer_objects(copy=False) instead. To opt-in to the future behavior, set `pd.set_option('future.no_silent_downcasting', True)`
+  on=["sid", "date"], how="left").c.fillna(False).values
+bars 2026 5 179935
+bars 2026 10 91175
+bars 2026 15 59984
+2025 tf5: 25838 events, 14s

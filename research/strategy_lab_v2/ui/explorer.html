@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chart Explorer</title>
+<link rel="stylesheet" href="css/app.css">
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+<header class="top">
+  <h1>Chart explorer <span class="muted">v2</span></h1>
+  <a class="toplink" href="./">← Strategy Lab</a>
+</header>
+<main>
+  <div class="card xcard">
+    <div class="xhead">
+      <div>
+        <b>Any day, any instrument</b>
+        <div class="muted small">A strategy's rules on that instrument's own candles, priced with its position rules — a visualization, nothing is stored. Changes apply at once.</div>
+      </div>
+      <button id="x-go" class="primary">Refresh</button>
+    </div>
+    <div class="xgroups">
+      <fieldset class="xg">
+        <legend>Strategy</legend>
+        <label>Strategy <select id="x-code"></select></label>
+        <label>Candles <select id="x-tf"></select></label>
+        <label>Holding <select id="x-hold"></select></label>
+        <div class="xfield"><span class="xl">Trades shown</span>
+          <span class="seg" id="x-side"><button data-s="all">All</button><button data-s="LONG">Long</button><button data-s="SHORT">Short</button></span></div>
+      </fieldset>
+      <fieldset class="xg">
+        <legend>Instrument</legend>
+        <div class="xfield"><span class="xl">Chart</span>
+          <span class="seg" id="x-inst"><button data-i="FUT">Futures</button><button data-i="INDEX">Index</button><button data-i="OPT">Option</button></span></div>
+        <label class="x-opt">Expiry <select id="x-exp"></select></label>
+        <div class="xfield x-opt"><span class="xl">Right</span>
+          <span class="seg" id="x-right"><button data-r="CE">CE</button><button data-r="PE">PE</button></span></div>
+        <label class="x-opt">Strike <select id="x-strike"></select></label>
+        <div class="muted small x-opt" id="x-life"></div>
+      </fieldset>
+      <fieldset class="xg">
+        <legend>Range</legend>
+        <label>Date <input type="date" id="x-date"></label>
+        <label>Show from <select id="x-start">
+          <option value="days">sessions before the date</option>
+          <option value="listing" class="o-opt">the contract's first candle</option>
+          <option value="prev_expiry" class="o-opt">the previous expiry</option>
+          <option value="atm" class="o-opt">when it first became ATM</option>
+          <option value="itm" class="o-opt">when it first became ITM</option>
+          <option value="liquid" class="o-opt">its first liquid session</option>
+        </select></label>
+        <label id="x-before-l">Sessions before <select id="x-before"><option>0</option><option selected>1</option><option>2</option><option>3</option><option>5</option><option>10</option><option>20</option><option>30</option></select></label>
+        <label id="x-liq-l">Liquid at % of the peak day <input id="x-liq" type="number" min="1" max="100" value="10"></label>
+        <label class="x-opt">Show to <select id="x-end"><option value="date">the date</option><option value="expiry">expiry (last candle)</option></select></label>
+      </fieldset>
+    </div>
+    <div id="x-msg" class="msg muted"></div>
+    <div id="x-miles" class="chips"></div>
+  </div>
+  <div class="card"><div id="x-chart"></div></div>
+  <div class="card">
+    <h3>Trades on this instrument <span id="x-sum" class="muted"></span></h3>
+    <div class="tablewrap tall"><table class="tbl" id="x-trades"></table></div>
+    <details class="skipped"><summary id="x-sk-sum">Not taken</summary><div id="x-sk"></div></details>
+  </div>
+</main>
+<script type="module" src="js/explorer.js"></script>
+</body>
+</html>

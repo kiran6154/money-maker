@@ -1,0 +1,149 @@
+{
+ "code": "ST25",
+ "versions": [
+  {
+   "version": 1,
+   "vid": "7dc3ab6d11d6",
+   "at": "2026-09-29T22:01:33",
+   "updated": "2026-10-01T00:29:57",
+   "code_hash": "e6992b5fb2b4fbd6+c2c:0bbfe32e4e4d78a6",
+   "def": {
+    "code": "ST25",
+    "timeframe": "5minute",
+    "underlying": "INDEX",
+    "warmup_days": 5,
+    "rules": {
+     "break_mode": "close",
+     "choch_mode": "close",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "c2c_v1",
+     "exit_rule": "next_choch"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": null,
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "MONTHLY"
+     ],
+     "expiry_min_days": 15,
+     "strike_step": 50,
+     "strike_choices": [
+      "ITM1"
+     ],
+     "strike_default": "ITM1",
+     "atr_period": 14
+    },
+    "c2c": {
+     "notes": "every number is from the user's 'Nifty CHoCH to CHoCH in Plain English' spec (2026-09-29), except pcr.window_pts / pcr.min_strikes (the local option files hold a strike window, not the full chain: STRATEGY_ANALYSIS_TODO S52)",
+     "band_pts": 50,
+     "day_drop_pct": 0.6,
+     "pcr": {
+      "entry_max": 1.3,
+      "exit_above": 0.95,
+      "window_pts": 300,
+      "min_strikes": 9
+     },
+     "stop_pct": 5,
+     "trail_pts": 5,
+     "stop_fill": "close",
+     "ladder": {
+      "time": "15:15",
+      "profit_pct": 40,
+      "loss_pct": 2
+     },
+     "max_open": 1
+    }
+   },
+   "changes": [],
+   "results": {
+    "ST25": {},
+    "ST25_FB": {
+     "option-data-window_5m_idx": {
+      "M-ITM1": {
+       "trades": 31,
+       "wins": 11,
+       "pts": 193.65,
+       "net_inr": 10008.85,
+       "pf": 1.7,
+       "max_dd_inr": -8941.33,
+       "t_stat": 0.64
+      }
+     },
+     "option-data-window_5m": {
+      "M-ITM1": {
+       "trades": 28,
+       "wins": 12,
+       "pts": 270.35,
+       "net_inr": 15248.13,
+       "pf": 2.16,
+       "max_dd_inr": -6458.95,
+       "t_stat": 0.92
+      }
+     },
+     "all-data_5m_idx": {
+      "M-ITM1": {
+       "trades": 62,
+       "wins": 26,
+       "pts": 326.9,
+       "net_inr": 15881.02,
+       "pf": 1.61,
+       "max_dd_inr": -8941.33,
+       "t_stat": 0.95
+      }
+     },
+     "all-data_5m": {
+      "M-ITM1": {
+       "trades": 59,
+       "wins": 29,
+       "pts": 281.25,
+       "net_inr": 13171.29,
+       "pf": 1.5,
+       "max_dd_inr": -6458.95,
+       "t_stat": 0.77
+      }
+     },
+     "this-month_5m_idx": {
+      "M-ITM1": {
+       "trades": 2,
+       "wins": 2,
+       "pts": 58.3,
+       "net_inr": 3638.27,
+       "pf": null,
+       "max_dd_inr": 0.0,
+       "t_stat": 2.35
+      }
+     }
+    },
+    "ST25_NB": {}
+   }
+  }
+ ]
+}

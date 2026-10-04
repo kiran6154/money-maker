@@ -1,0 +1,129 @@
+{
+ "code": "ST35",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-03T23:40:53",
+   "key": "5bcbf89efc4d",
+   "code": "43d8eb25e25d",
+   "definition": {
+    "code": "ST35",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 2,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "choch_candle",
+     "entry_rule": "setup_v1",
+     "exit_rule": "next_choch"
+    },
+    "sma_filter": {
+     "period": 200,
+     "trend": "slope",
+     "notes": "long: close above the SMA and the SMA rising; short: close below it and the SMA falling; on the option's own candles at the entry candle",
+     "price": "with_trend"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 3,
+     "lock": "strike",
+     "scale_out": [
+      {
+       "lots": 1,
+       "target_r": 1
+      },
+      {
+       "lots": 1,
+       "target_r": 2
+      }
+     ],
+     "exit": "position",
+     "stop": {
+      "from": "signal"
+     },
+     "trail": {
+      "start_r": 3,
+      "lag_r": 1
+     },
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM2",
+      "ITM1",
+      "OTM1",
+      "OTM2",
+      "OTM3",
+      "OTM4"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14,
+     "native_scan": {
+      "choices": [
+       "ATR2",
+       "ATM",
+       "ITM1",
+       "OTM1"
+      ],
+      "every_minutes": 5,
+      "one_per_side": true
+     }
+    }
+   },
+   "changes": [],
+   "results": {
+    "all-data_1m": {
+     "OPT_NATIVE": {
+      "W-SCAN": {
+       "trades": 1680,
+       "wins": 580,
+       "pts": -2041.6,
+       "net_inr": -235172.7,
+       "pf": 0.59,
+       "max_dd_inr": -259035.41,
+       "t_stat": -7.64
+      },
+      "M-SCAN": {
+       "trades": 1686,
+       "wins": 530,
+       "pts": -2980.8,
+       "net_inr": -316945.85,
+       "pf": 0.51,
+       "max_dd_inr": -317564.67,
+       "t_stat": -10.14
+      }
+     }
+    }
+   }
+  }
+ ]
+}

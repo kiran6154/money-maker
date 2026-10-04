@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Strategy Lab v2</title>
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/tabs.css">
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+<header class="top">
+  <h1>Strategy Lab <span class="muted">v2</span></h1>
+  <a class="toplink" href="explorer.html">Chart explorer</a>
+  <div id="jobs" class="jobs"></div>
+</header>
+
+<main>
+  <section class="cardsec">
+    <div class="row between wrap gap">
+      <div id="fam" class="chips"></div>
+      <div class="row gap">
+        <button id="cards-toggle" hidden>Show all as cards</button>
+        <input id="search" type="search" placeholder="search strategies" aria-label="Search strategies">
+        <select id="sort" aria-label="Sort cards">
+          <option value="code">by code</option><option value="net">by net</option><option value="pf">by profit factor</option><option value="recent">recently run</option>
+        </select>
+      </div>
+    </div>
+    <div id="cards" class="cards"></div>
+  </section>
+
+  <section id="detail" hidden>
+    <div id="status" class="status" hidden></div>
+    <div class="card">
+      <h2 id="d-title"></h2>
+      <p id="d-desc" class="desc"></p>
+      <details class="algo-box" id="algo-box"><summary>How it trades — step by step</summary><div id="d-rules"></div></details>
+    </div>
+
+    <div class="card btcard">
+      <h3>Backtests <span class="muted small">— each one runs this strategy only</span></h3>
+      <div class="tablewrap bt-wrap"><table class="tbl" id="bt-table"></table></div>
+      <div id="bt-showing" class="bt-showing"></div>
+      <details class="runpanel" id="bt-new">
+        <summary>+ New backtest</summary>
+        <div class="nb">
+          <div class="nb-step"><span class="nb-n">1</span><div class="nb-body">
+            <div class="nb-h">Period</div>
+            <div class="seg nb-periods" id="nb-period"></div>
+            <div class="nb-custom" id="nb-custom" hidden>
+              <label>From <input type="date" id="rp-from"></label><label>To <input type="date" id="rp-to"></label>
+            </div>
+          </div></div>
+          <div class="nb-step"><span class="nb-n">2</span><div class="nb-body">
+            <div class="nb-h">Settings <span class="muted small">(leave as the strategy's own unless you want a variant)</span></div>
+            <div class="nb-grid">
+              <label>Candles <select id="rp-tf"><option value="">strategy's own</option><option value="minute">1m</option><option value="3minute">3m</option>
+                <option value="5minute">5m</option><option value="15minute">15m</option><option value="30minute">30m</option><option value="60minute">1h</option></select></label>
+              <label>Signals on <select id="rp-und"><option value="">strategy's own</option><option value="FUT">futures</option><option value="INDEX">index</option></select></label>
+              <label>Holding <select id="rp-sq"><option value="keep">strategy's own</option><option value="none">positional</option><option value="15:25">intraday 15:25</option></select></label>
+              <label>Label <input id="rp-label" placeholder="optional, e.g. Q3 test" maxlength="40"></label>
+            </div>
+          </div></div>
+          <div class="nb-step"><span class="nb-n">3</span><div class="nb-body">
+            <div class="nb-h">Types to run</div>
+            <span id="rp-types" class="chips">
+              <label class="ck"><input type="checkbox" value="FUT" checked> Futures</label>
+              <label class="ck"><input type="checkbox" value="OPT_FUT_SIGNAL" checked> Options (via futures)</label>
+              <label class="ck"><input type="checkbox" value="OPT_NATIVE" checked> Options (standalone)</label>
+            </span>
+          </div></div>
+          <div class="nb-go"><button id="nb-run" class="primary">Run new backtest</button><span id="nb-summary" class="muted small"></span></div>
+        </div>
+      </details>
+      <div id="rp-msg" class="msg"></div>
+    </div>
+
+    <div id="run-none" class="card muted" hidden></div>
+    <div id="run-body">
+      <div class="card">
+        <div id="types" class="types"></div>
+        <div id="optbar" class="optbar" hidden></div>
+      </div>
+      <div id="res">
+        <div class="card">
+          <div id="crumb" class="crumb"></div>
+          <div id="kpis" class="kpis"></div>
+          <div id="kpi-note" class="muted small"></div>
+          <div id="empty-why" class="empty-why" hidden></div>
+        </div>
+        <div class="card" id="chart-card">
+          <h3>Chart</h3>
+          <div id="chart-view"></div>
+        </div>
+        <div class="card">
+          <div id="tabs" class="tabs sticky"></div>
+          <div id="tab-body"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

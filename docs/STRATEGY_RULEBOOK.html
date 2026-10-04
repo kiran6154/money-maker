@@ -1,0 +1,913 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Money-Maker Strategy Rulebook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: sticky left index of every strategy, one long reference column; each strategy is an entry/exit algorithm block. */
+:root {
+  --bg: #f5f7f8;
+  --surface: #ffffff;
+  --ink: #16222b;
+  --muted: #5a6b76;
+  --line: #d9e1e6;
+  --accent: #0f6e78;
+  --accent-soft: #e2f1f2;
+  --bull: #1d7a45;
+  --bull-soft: #e3f3e9;
+  --bear: #b23a32;
+  --bear-soft: #f8e6e4;
+  --warn: #9a6400;
+  --warn-soft: #fbf0d9;
+  --code-bg: #eef2f4;
+  --f-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f161b; --surface: #151f26; --ink: #dfe7ec; --muted: #93a5b1; --line: #26343d;
+    --accent: #5cc3cc; --accent-soft: #15343a; --bull: #5fc98b; --bull-soft: #16301f;
+    --bear: #f08a80; --bear-soft: #3a1c1a; --warn: #e3b25a; --warn-soft: #362a12; --code-bg: #1c2931;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f161b; --surface: #151f26; --ink: #dfe7ec; --muted: #93a5b1; --line: #26343d;
+  --accent: #5cc3cc; --accent-soft: #15343a; --bull: #5fc98b; --bull-soft: #16301f;
+  --bear: #f08a80; --bear-soft: #3a1c1a; --warn: #e3b25a; --warn-soft: #362a12; --code-bg: #1c2931;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 16px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.6 var(--f-body); }
+a { color: var(--accent); }
+a:focus-visible, input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
+code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+h1, h2, h3, h4 { font-family: var(--f-display); line-height: 1.2; text-wrap: balance; margin: 0; }
+
+.shell { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 40px; max-width: 1280px; margin: 0 auto; padding-inline: 24px; }
+nav.index { position: sticky; top: env(safe-area-inset-top, 0px); align-self: start; max-height: 100vh; overflow-y: auto; padding-block: 28px; font-size: 13px; }
+nav.index .grp { font-family: var(--f-display); text-transform: uppercase; letter-spacing: .08em; font-size: 11.5px; color: var(--muted); margin: 18px 0 6px; }
+nav.index a { display: flex; gap: 8px; padding: 3px 6px; border-radius: 5px; text-decoration: none; color: var(--ink); }
+nav.index a:hover { background: var(--accent-soft); }
+nav.index a .n { font-family: var(--f-mono); color: var(--accent); min-width: 2.6em; font-size: 12px; padding-top: 1px; }
+#filter { width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; }
+
+main { padding-block: 32px 80px; min-width: 0; }
+header.top { border-bottom: 2px solid var(--ink); padding-bottom: 20px; margin-bottom: 28px; }
+header.top .eyebrow { font-family: var(--f-mono); font-size: 12px; color: var(--muted); letter-spacing: .04em; }
+header.top h1 { font-size: clamp(30px, 5vw, 44px); margin: 6px 0 10px; letter-spacing: -.01em; }
+header.top p { max-width: 70ch; margin: 0; color: var(--muted); }
+.tally { display: flex; flex-wrap: wrap; gap: 10px 28px; margin-top: 16px; font-size: 13.5px; }
+.tally b { font-family: var(--f-display); font-size: 22px; display: block; color: var(--ink); }
+.tally span { color: var(--muted); }
+
+section.part { margin-top: 56px; }
+section.part > h2 { font-size: 28px; padding-bottom: 8px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+section.part > h2 small { font-family: var(--f-mono); font-size: 13px; color: var(--muted); font-weight: 400; margin-left: 8px; }
+.lede { max-width: 72ch; color: var(--muted); margin: 8px 0 20px; }
+h3.sub { font-size: 20px; margin: 34px 0 10px; }
+p, li { max-width: 78ch; }
+
+.strat { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; margin: 18px 0; }
+.strat.reserved { background: transparent; border-style: dashed; }
+.strat-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.strat-head .id { font-family: var(--f-mono); font-weight: 500; color: var(--accent); font-size: 14px; }
+.strat-head h3 { font-size: 21px; }
+.idea { margin: 8px 0 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+.chip { font-size: 12px; font-family: var(--f-mono); padding: 2px 8px; border-radius: 999px; background: var(--code-bg); color: var(--ink); white-space: nowrap; }
+.chip.live { background: var(--accent-soft); color: var(--accent); }
+.chip.frozen { background: var(--warn-soft); color: var(--warn); }
+.chip.dead { background: var(--bear-soft); color: var(--bear); }
+
+.cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 6px; }
+.algo-box h4 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+.algo-box.entry h4 { color: var(--bull); }
+.algo-box.exit h4 { color: var(--bear); }
+.algo-box h4::before { content: ""; width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
+ol.algo { margin: 0; padding: 0; list-style: none; counter-reset: step; }
+ol.algo > li { counter-increment: step; position: relative; padding: 5px 0 5px 34px; border-top: 1px dotted var(--line); font-size: 14px; }
+ol.algo > li:first-child { border-top: 0; }
+ol.algo > li::before { content: counter(step); position: absolute; left: 0; top: 6px; width: 22px; height: 22px; border-radius: 50%; background: var(--code-bg); font: 500 11.5px/22px var(--f-mono); text-align: center; color: var(--muted); }
+ol.algo ul { margin: 4px 0 0; padding-left: 18px; }
+ol.algo ul li { font-size: 13.5px; }
+.meta { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; font-size: 13.5px; margin: 10px 0 4px; }
+.meta dt { color: var(--muted); font-family: var(--f-display); text-transform: uppercase; letter-spacing: .06em; font-size: 11.5px; padding-top: 3px; }
+.meta dd { margin: 0; min-width: 0; }
+.result { margin-top: 12px; padding: 8px 12px; border-radius: 6px; background: var(--code-bg); font-size: 13px; }
+.result b { font-family: var(--f-display); letter-spacing: .04em; text-transform: uppercase; font-size: 11.5px; color: var(--muted); margin-right: 6px; }
+.neg { color: var(--bear); font-variant-numeric: tabular-nums; }
+.pos { color: var(--bull); font-variant-numeric: tabular-nums; }
+
+.engine { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 22px; margin: 14px 0; }
+.engine h4 { font-size: 16px; margin-bottom: 8px; }
+.note { border-left: 3px solid var(--warn); background: var(--warn-soft); padding: 8px 12px; border-radius: 0 6px 6px 0; font-size: 13.5px; margin: 12px 0; max-width: 78ch; }
+pre.formula { background: var(--code-bg); padding: 12px 14px; border-radius: 6px; font: 13px/1.5 var(--f-mono); overflow-x: auto; margin: 8px 0; }
+
+.tablewrap { overflow-x: auto; margin: 12px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--f-display); text-transform: uppercase; letter-spacing: .05em; font-size: 11.5px; color: var(--muted); background: var(--code-bg); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.num { text-align: right; white-space: nowrap; }
+
+ol.issues > li { margin: 8px 0; font-size: 14px; }
+footer { margin-top: 60px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+.hidden-by-filter { display: none; }
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: minmax(0, 1fr); gap: 0; padding-inline: 16px; }
+  nav.index { position: static; max-height: none; padding-block: 16px 0; border-bottom: 1px solid var(--line); }
+  nav.index .links { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .cols { grid-template-columns: minmax(0, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<nav class="index" aria-label="Strategy index">
+  <label for="filter" class="grp" style="display:block;margin-top:0">Find a strategy</label>
+  <input id="filter" type="search" placeholder="e.g. CHoCH, trail, 5m, PE">
+  <div class="links">
+    <div class="grp">Start here</div>
+    <a href="#glossary"><span class="n">—</span>Terms used</a>
+    <a href="#overview"><span class="n">—</span>All strategies at a glance</a>
+    <div class="grp">A · Production app (Java)</div>
+    <a href="#a-engine"><span class="n">A0</span>Shared pipeline</a>
+    <a href="#p1"><span class="n">P1</span>SMA cross, short</a>
+    <a href="#p2"><span class="n">P2</span>+ SMA-20 slope</a>
+    <a href="#p3"><span class="n">P3</span>Inverted cross, long</a>
+    <a href="#p4"><span class="n">P4</span>P1 detection, bought</a>
+    <a href="#p5"><span class="n">P5</span>Pressure</a>
+    <a href="#p6"><span class="n">P6</span>Confirmed cross</a>
+    <a href="#p7"><span class="n">P7</span>+ first-hour gate</a>
+    <a href="#p8"><span class="n">P8</span>20SMA 15-min candle</a>
+    <a href="#p9"><span class="n">P9</span>+ three gates</a>
+    <a href="#p10"><span class="n">P10</span>Intraday tuning</a>
+    <div class="grp">B · Strategy lab (Python)</div>
+    <a href="#b-engine"><span class="n">B0</span>Foundation engine</a>
+    <a href="#l1"><span class="n">L1–4</span>Foundation SETUP</a>
+    <a href="#fz"><span class="n">L5–8</span>Foundation-Zone gate</a>
+    <a href="#managed"><span class="n">L9–12</span>Managed exits</a>
+    <a href="#l13"><span class="n">L13–14</span>Reserved (FZ v3)</a>
+    <a href="#l15"><span class="n">L15–18</span>Positional exits</a>
+    <a href="#rl"><span class="n">L19–24</span>Bandit learner</a>
+    <a href="#c2c"><span class="n">L25–28</span>CHoCH put retest</a>
+    <a href="#rainbow"><span class="n">L29–30</span>Rainbow ribbon</a>
+    <div class="grp">C · Caveats</div>
+    <a href="#issues"><span class="n">C</span>Code vs docs</a>
+  </div>
+</nav>
+
+<main>
+<header class="top">
+  <div class="eyebrow">docs/STRATEGY_RULEBOOK.html · as of 2026-10-01 · branch research/strategy-lab</div>
+  <h1>Money-Maker Strategy Rulebook</h1>
+  <p>Every strategy built so far, written as algorithms: what it reads, the exact entry steps, the exact exit steps, and how it differs from its sibling. The code was the source of truth; where a doc says something else, Part C lists it.</p>
+  <div class="tally">
+    <div><b>10</b><span>production beans (P1–P10)</span></div>
+    <div><b>28</b><span>lab strategies (L1–L12, L15–L30)</span></div>
+    <div><b>2</b><span>reserved numbers (L13–L14)</span></div>
+    <div><b>0</b><span>lab results positive at t ≥ 2</span></div>
+  </div>
+</header>
+
+<p class="note"><strong>Two separate numberings.</strong> "Strategy 5" in the Spring Boot app (the Pressure engine) is not "Strategy 5" in the research lab (the Foundation-Zone gate). This page prefixes them: <code>P</code> for production <code>stratergy_id</code> values, <code>L</code> for lab <code>strategies/strategy_N.json</code> files.</p>
+
+<section class="part" id="glossary">
+  <h2>Terms used</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Term</th><th>Meaning</th></tr>
+    <tr><td>Settled bar</td><td>The newest candle that has finished forming at the tick time. A 15-minute bar starting 09:15 settles at 09:30.</td></tr>
+    <tr><td>Close-signal time</td><td><code>app.market.close</code> − <code>close-signal-offset-minutes</code> = 15:30 − 15 = <b>15:15</b>.</td></tr>
+    <tr><td>Swing high / low (lab)</td><td>Not an N-bar pivot. A swing high confirms when a later bar breaks <em>below the low of the candle that made the high</em>; a swing low mirrors it. Swings alternate and are used only from their confirmation bar.</td></tr>
+    <tr><td>AVWAP</td><td>Anchored VWAP from bar <code>a</code> to bar <code>i</code>: Σ(tp·w)/Σw, tp = (H+L+C)/3, w = volume (futures) or 1 (index).</td></tr>
+    <tr><td>Protected level</td><td>The most recent unbroken swing that qualified against the trend AVWAP (uptrend: a swing low below AVWAP; downtrend: a swing high above it).</td></tr>
+    <tr><td>CHoCH / flip</td><td>Change of character: price breaks the protected level. It is a <em>flip</em> (trend reverses) only if the same bar also breaks the trend AVWAP.</td></tr>
+    <tr><td>BOS</td><td>Break of structure in trend direction. Informational only; no strategy trades it.</td></tr>
+    <tr><td>SETUP</td><td>After a CHoCH, the first bar that closes beyond the CHoCH candle's extreme while both AVWAPs (anchored at the latest swing high and swing low) slope the same way. The lab's core entry event.</td></tr>
+    <tr><td>touch / close</td><td>How a level counts as broken: <code>touch</code> = the wick reaches it; <code>close</code> = the candle closes beyond it.</td></tr>
+    <tr><td>R</td><td>One unit of initial risk: 50 futures points (or the file's <code>stop.futures_pts</code>), or 5% of option premium.</td></tr>
+    <tr><td>Strike lock</td><td>Lab rule: one open position per instrument (futures contract, or expiry+strike+right). Exit processed before entry on the same candle.</td></tr>
+  </table></div>
+</section>
+
+<section class="part" id="overview">
+  <h2>All strategies at a glance</h2>
+  <div class="tablewrap"><table>
+    <tr><th>ID</th><th>Name</th><th>Series</th><th>TF</th><th>Trigger</th><th>Exit</th><th>Status</th></tr>
+    <tr><td>P1</td><td>SMA cross, short</td><td>option premium</td><td>per config</td><td>open&gt;SMA&gt;close, SMA down all day</td><td>15:15 signal, target/SL/ladder</td><td>registered</td></tr>
+    <tr><td>P2</td><td>P1 + SMA-20 slope</td><td>premium</td><td>per config</td><td>P1 + SMA-20 not rising</td><td>as P1</td><td>registered</td></tr>
+    <tr><td>P3</td><td>Inverted cross, long</td><td>premium</td><td>per config</td><td>open&lt;SMA&lt;close, SMA up all day</td><td>as P1, mirrored</td><td>registered</td></tr>
+    <tr><td>P4</td><td>P1 detection, bought</td><td>premium</td><td>per config</td><td>P1's signal, executed BUY</td><td>as P1, mirrored</td><td>registered</td></tr>
+    <tr><td>P5</td><td>Pressure</td><td>NIFTY spot</td><td>5m</td><td>pressure score ≥ 3</td><td>50/50 pts, trail 25:25, 90-min, 15:15</td><td>registered</td></tr>
+    <tr><td>P6</td><td>Confirmed cross</td><td>premium</td><td>per config</td><td>P2 + 15m SMA-50 down + ≤14:45</td><td>as P1 + SL day lock</td><td>registered</td></tr>
+    <tr><td>P7</td><td>P6 + first-hour gate</td><td>premium</td><td>per config</td><td>P6 + first hour not against &gt; 0.2 ATR</td><td>as P6</td><td>registered</td></tr>
+    <tr><td>P8</td><td>20SMA 15-min candle</td><td>premium</td><td>15m</td><td>SMA-20 falling, close &lt; prev close</td><td>chandelier 2×ATR14, fixed SL</td><td>registered</td></tr>
+    <tr><td>P9</td><td>P8 + three gates</td><td>premium</td><td>15m</td><td>P8 + close position, volume, DTE</td><td>as P8</td><td>registered</td></tr>
+    <tr><td>P10</td><td>P9 intraday</td><td>premium</td><td>15m</td><td>P9, cut-off 13:15</td><td>as P8</td><td>registered</td></tr>
+    <tr><td>L1–L4</td><td>Foundation SETUP</td><td>NIFTY near-month fut</td><td>1m / 5m</td><td>SETUP</td><td>stop, else next CHoCH, 15:25</td><td>lab</td></tr>
+    <tr><td>L5–L8</td><td>Foundation-Zone gate</td><td>fut</td><td>1m / 5m</td><td>SETUP gated by zone read</td><td>stop, band reclaim, next CHoCH</td><td>frozen</td></tr>
+    <tr><td>L9–L12</td><td>Managed exits (±reverse)</td><td>fut</td><td>1m / 5m</td><td>SETUP</td><td>3 lots: 1R, 2R, trail from 3R</td><td>lab</td></tr>
+    <tr><td>L13–L14</td><td>FZ v3</td><td>—</td><td>1m / 5m</td><td>—</td><td>—</td><td>reserved</td></tr>
+    <tr><td>L15–L18</td><td>Positional exit variants</td><td>fut</td><td>1m / 5m</td><td>SETUP</td><td>R-based, held overnight</td><td>lab</td></tr>
+    <tr><td>L19–L24</td><td>Contextual-bandit learner</td><td>fut</td><td>1m / 5m</td><td>SETUP → pick arm</td><td>chosen profile</td><td>lab</td></tr>
+    <tr><td>L25–L28</td><td>CHoCH-to-CHoCH put retest</td><td>index/fut → ITM1 PE</td><td>5m</td><td>swing high at AVWAP in bear regime</td><td>5% stop, 5-pt trail, flip, 15:15 ladder</td><td>lab</td></tr>
+    <tr><td>L29–L30</td><td>Rainbow ribbon</td><td>fut</td><td>1m / 5m</td><td>fresh close outside ribbon</td><td>stop 50, trail 3R lag 2R, 15:25</td><td>lab</td></tr>
+  </table></div>
+</section>
+
+<!-- ============================ PART A ============================ -->
+<section class="part" id="part-a">
+  <h2>A · Production app strategies <small>src/main/java/com/moneymaker/strategy</small></h2>
+  <p class="lede">All ten are Spring <code>@Component</code>s, so all are registered in <code>StrategyFactory</code>. Whether one actually trades depends on which <code>trade_config</code> rows carry its id, which the code cannot tell you. Inheritance: P2 → P6 → P7; P8 → P9 → P10; P5 overrides the whole engine.</p>
+
+  <div class="engine" id="a-engine">
+    <h4>A0.1 · Per-tick scan (<code>AbstractSmaCrossStrategy.execute</code>), used by P1–P4 and P6–P10</h4>
+    <ol class="algo">
+      <li><b>Transaction guard.</b> If the strategy's entry action is BUY and <code>transaction_type</code> ≠ BUY, skip the config (guards P3, P4).</li>
+      <li>Stop if the strike cache is empty or the config has no <code>sma_timeframe</code> rows.</li>
+      <li>Option type from <code>trading_side</code> (CE/PE); ITM/OTM depth from the config.</li>
+      <li>For each <code>sma_timeframe</code> row (interval, primary SMA period <code>p</code>):
+        <ul>
+          <li>Pick legs matching <code>token|interval|side|…|itmDepth|otmDepth</code>, non-empty, <b>written by this tick</b>.</li>
+          <li>Sort legs by last premium, <b>highest first</b>.</li>
+          <li>Per leg: stamp whole-day trend flags; skip if the last settled bar is not today (so a 15m series emits nothing before 09:30).</li>
+          <li><code>decision = RuleEngine.decide(...)</code>, then <code>mapAction</code> (identity except P4).</li>
+          <li>Entry-direction signals must pass the price band <code>min_option_price ≤ close ≤ max_option_price</code>. Exit signals are never filtered.</li>
+          <li>Emit <code>TradeSignal</code> priced at the settled bar's close, stamped with the bar's start time.</li>
+        </ul></li>
+    </ol>
+    <p style="font-size:13.5px;margin:10px 0 0">Strike set: <code>base = floor(spot / strike_points) × strike_points</code> (NIFTY <code>strike_points</code> = 100, data grid is 50). ITM <code>base ∓ i·step</code> for i = 0…itm_depth−1; OTM i = 1…otm_depth. Strikes of open positions are appended so exits can still fire.</p>
+  </div>
+
+  <div class="engine">
+    <h4>A0.2 · Rule engine</h4>
+    <div class="tablewrap"><table>
+      <tr><th>Mode</th><th>Used by</th><th>Logic</th></tr>
+      <tr><td><code>decide</code></td><td>P1, P2, P4, P6, P7</td><td>No SMA (or ≤ 0) → NONE. If <code>open &gt; SMA &amp;&amp; close &lt; SMA</code>: sell rules pass → SELL. Else buy rules (ungated) pass → BUY (the exit).</td></tr>
+      <tr><td><code>decideBuyEntry</code></td><td>P3</td><td>Mirror: if <code>open &lt; SMA &amp;&amp; close &gt; SMA</code>: buy rules → BUY. Else sell rules (ungated) → SELL (the exit).</td></tr>
+      <tr><td><code>decideWithoutCrossGate</code></td><td>P8, P9, P10</td><td>No SMA gate. Sell rules pass → SELL; else buy rules pass → BUY; else NONE.</td></tr>
+    </table></div>
+    <p style="font-size:13.5px">A <code>TradeRules</code> passes when every <code>required</code> rule passes and (if non-empty) at least one <code>anyOf</code> rule passes. Both lists empty → <b>fail closed</b>.</p>
+    <p style="font-size:13.5px"><b>Baseline rule sets:</b> for p ∈ {50, 100, 200, 500}, sell = [<code>isSma{p}DownTrending</code>], buy = anyOf[<code>isMarketCloseTime</code>]. Period 20 is commented out, so an <code>sma = 20</code> row trades nothing under P1–P4, P6, P7.</p>
+    <p style="font-size:13.5px"><b>Whole-day trend flag</b> (<code>SmaTrendCalculator</code>, <code>maxDeviations = 0</code>): <code>isSmaNNDownTrending</code> is true only if the SMA has <em>strictly fallen on every bar since the session's first bar</em>. One flat or rising bar kills it for the rest of the day.</p>
+    <p style="font-size:13.5px;margin-bottom:0"><code>isMarketCloseTime</code>: bar is today and bar start ≥ 15:15.</p>
+  </div>
+
+  <div class="engine">
+    <h4>A0.3 · Order admission (<code>OrderService.handleSignal</code>), keyed on (config, strategy)</h4>
+    <ol class="algo">
+      <li>OPEN row on the same (config, strategy, option token)? Same direction → ignore. Opposite → <b>close it</b> at the signal price, <code>exit_reason = SIGNAL</code>.</li>
+      <li>No open row and direction ≠ <code>transaction_type</code> → drop. This makes every strategy one-sided.</li>
+      <li>Entry window: drop if outside <code>entry_from … entry_to</code> (null = unbounded).</li>
+      <li>Book cap: any OPEN row in the same <code>book_id</code> blocks.</li>
+      <li><code>no_of_trades</code>: today's entries must be below the cap.</li>
+      <li><code>max_loss</code>: block when today's <em>realised</em> P&amp;L ≤ −max_loss.</li>
+      <li><code>no_of_parrellel_trades</code> (same direction) and <code>max_parallel_per_side</code> (same CE/PE).</li>
+      <li>Stop-loss day lock (P6, P7 only): a <code>STOP_LOSS</code> exit today blocks new entries. <code>TRAIL_SL</code> does not lock.</li>
+      <li>Exact-duplicate guard on (config, strategy, token, direction, entry_time).</li>
+      <li>Persist the row <b>before</b> any broker call, freezing: entry price/time, quantity, <code>target_at_entry</code>, <code>stop_loss_at_entry</code> (capped by <code>max_sl_points</code>), <code>trail_ladder_at_entry</code>, <code>trail_atr_distance_at_entry = trail_atr_multiple × ATR</code> (nulls the ladder), <code>max_hold_minutes</code>, <code>flatten_at</code>.</li>
+    </ol>
+  </div>
+
+  <div class="engine">
+    <h4>A0.4 · Position monitor (<code>PositionService</code>), every tick, every OPEN row</h4>
+    <ol class="algo">
+      <li>Get the quote. Skip if <code>quote.asOf ≤ entry_time</code>: a trade never exits on its entry bar.</li>
+      <li><code>pnl</code> on the close; <code>adversePnl</code> on the bar's adverse extreme (high for a short, low for a long; live LTP falls back to close).</li>
+      <li>Check in order: <b>TARGET</b> <code>pnl ≥ target</code> → <b>TIME_STOP</b> held ≥ max_hold → <b>FLATTEN</b> time ≥ flatten_at → floors: if <code>trail_sl_at</code> is strictly above <code>−stop_loss</code>, <b>TRAIL_SL</b> when adversePnl ≤ trail; else <b>STOP_LOSS</b> when adversePnl ≤ −stop.</li>
+      <li>Update peak profit / loss from the favourable extreme.</li>
+      <li>Raise the trail <em>after</em> the check (a floor earned this bar fires next bar at the earliest). Chandelier: <code>peak − distance</code>. Ladder <code>"trigger:lock,…"</code>: lock of the highest rung with trigger ≤ peak.</li>
+      <li>Fills: TRAIL_SL at the trail level, STOP_LOSS at the stop level (resting-order model), others at the bar close.</li>
+    </ol>
+    <p style="font-size:13.5px;margin-bottom:0"><b>End-of-day force close</b> closes every OPEN row, reason <code>FORCE_CLOSE</code>: 15:20 in backtest (last replay tick), 15:30 live (<code>DaySummaryScheduler</code>, cron 15:31).</p>
+  </div>
+
+  <!-- P1 -->
+  <article class="strat" id="p1" data-tags="sma cross short sell premium ce pe">
+    <div class="strat-head"><span class="id">P1</span><h3>SMA cross, short premium</h3></div>
+    <div class="chips"><span class="chip live">registered</span><span class="chip">SELL</span><span class="chip">option premium</span><span class="chip">each sma_timeframe row</span><span class="chip">Strategy1.java</span></div>
+    <p class="idea">Sell an option whose premium crosses down through its SMA inside one bar, on a day when that SMA has fallen on every bar.</p>
+    <dl class="meta">
+      <dt>Indicators</dt><dd>SMA-p of option premium closes, p ∈ {50, 100, 200, 500}; whole-day trend flag for p.</dd>
+      <dt>Config</dt><dd><code>trading_side</code>, <code>itm_depth</code>/<code>otm_depth</code>, <code>transaction_type</code> = SELL, price band, trade caps, <code>target</code>/<code>target_pct</code>, <code>stop_loss</code>/<code>sl_pct</code>, <code>max_sl_points</code>, <code>trail_ladder</code>, <code>strategy_defaults(1)</code> modes.</dd>
+    </dl>
+    <div class="cols">
+      <div class="algo-box entry"><h4>Entry</h4><ol class="algo">
+        <li>The leg was written by this tick and its last settled bar is from today.</li>
+        <li><code>SMA_p &gt; 0</code> (warm-up complete).</li>
+        <li><code>open &gt; SMA_p</code> and <code>close &lt; SMA_p</code> on that bar.</li>
+        <li><code>isSmaPDownTrending</code>: SMA_p fell on every bar today.</li>
+        <li><code>min_option_price ≤ close ≤ max_option_price</code>.</li>
+        <li>Emit SELL at the bar close. Legs are scanned highest premium first, so the dearest qualifying leg takes a slot when caps allow one.</li>
+        <li>Order admission A0.3 applies.</li>
+      </ol></div>
+      <div class="algo-box exit"><h4>Exit (first that fires)</h4><ol class="algo">
+        <li><b>TARGET</b>: <code>pnl(close) ≥ entry × target_pct</code> (PERCENT) or <code>target</code> points.</li>
+        <li><b>TRAIL_SL</b>: <code>trail_ladder</code> rungs on peak profit.</li>
+        <li><b>STOP_LOSS</b>: bar high reaches <code>entry + min(stop, max_sl_points)</code>; fills at the stop.</li>
+        <li><b>SIGNAL</b>: first settled bar of the traded leg starting ≥ 15:15 emits BUY → close.</li>
+        <li><b>FORCE_CLOSE</b>: 15:20 backtest / 15:30 live.</li>
+        <li>Re-entry allowed after any exit, subject to caps.</li>
+      </ol></div>
+    </div>
+  </article>
+
+  <!-- P2 -->
+  <article class="strat" id="p2" data-tags="sma cross short sell sma20 slope">
+    <div class="strat-head"><span class="id">P2</span><h3>P1 + SMA-20 slope filter</h3></div>
+    <div class="chips"><span class="chip live">registered</span><span class="chip">SELL</span><span class="chip">premium</span><span class="chip">extends base</span><span class="chip">Strategy2.java</span></div>
+    <p class="idea">Same as P1 with one extra sell-side rule: the premium's SMA-20 must not be rising.</p>
+    <div class="cols">
+      <div class="algo-box entry"><h4>Entry</h4><ol class="algo">
+        <li>P1 entry steps 1–4.</li>
+        <li><code>sma20SlopeNotUp</code>: NOT (<code>sma20(t) &gt; sma20(t−1)</code>).</li>
+        <li>Unknown means allow: if either SMA-20 is missing or the previous bar is from an earlier day (always true on the session's first bar), the rule passes.</li>
+        <li>Price band, emit SELL.</li>
+      </ol></div>
+      <div class="algo-box exit"><h4>Exit</h4><ol class="algo"><li>Identical to P1.</li></ol></div>
+    </div>
+  </article>
+
+  <!-- P3 -->
+  <article class="strat" id="p3" data-tags="inverted cross long buy premium up trend">
+    <div class="strat-head"><span class="id">P3</span><h3>Inverted cross, buy premium</h3></div>
+    <div class="chips"><span class="chip live">registered</span><span class="chip">BUY</span><span class="chip">requires transaction_type = BUY</span><span class="chip">Strategy3.java</span></div>
+    <p class="idea">Buy an option whose premium crosses up through its SMA while that SMA has risen all day. Built as the opposite-side partner of a P1 PE sell ("PE sell becomes CE buy").</p>
+    <div class="cols">
+      <div class="algo-box entry"><h4>Entry</h4><ol class="algo">
+        <li>Fresh leg with today's settled bar; <code>SMA_p &gt; 0</code>, p ∈ {50, 100, 200, 500}.</li>
+        <li><code>open &lt; SMA_p</code> and <code>close &gt; SMA_p</code>.</li>
+        <li><code>isSmaPUpTrending</code>: SMA_p strictly rose on every bar today.</li>
+        <li>Premium inside the price band.</li>
+        <li>Emit BUY at the close.</li>
+      </ol></div>
+      <div class="algo-box exit"><h4>Exit</h4><ol class="algo">
+        <li>At the first settled bar ≥ 15:15, emit SELL → <b>SIGNAL</b> close.</li>
+        <li>Brackets mirror automatically: TARGET when premium rises by the target; STOP_LOSS on the bar <em>low</em>; trail as configured.</li>
+        <li>FORCE_CLOSE.</li>
+      </ol></div>
+    </div>
+    <p style="font-size:13.5px;margin-bottom:0"><b>vs P1:</b> gate, trend flag and direction all mirrored by hand; a new baseline predicate would not be inverted automatically.</p>
+  </article>
+
+  <!-- P4 -->
+  <article class="strat" id="p4" data-tags="fade buy premium mapped">
+    <div class="strat-head"><span class="id">P4</span><h3>P1's detection, executed long</h3></div>
+    <div class="chips"><span class="chip live">registered</span><span class="chip">BUY (mapped)</span><span class="chip">requires transaction_type = BUY</span><span class="chip">Strategy4.java</span></div>
+    <p class="idea">On exactly the ticks where P1 would sell a leg, buy that same leg instead. Only <code>mapAction</code> is overridden: SELL → BUY, BUY → SELL.</p>
+    <div class="cols">
+      <div class="algo-box entry"><h4>Entry</h4><ol class="algo">
+        <li>P1 entry steps 1–4 unchanged: <code>open &gt; SMA_p &amp;&amp; close &lt; SMA_p</code> and SMA_p down all day.</li>
+        <li>Emitted action becomes BUY; price band applies.</li>
+        <li>Open a long at the bar close.</li>
+      </ol></div>
+      <div class="algo-box exit"><h4>Exit</h4><ol class="algo">
+        <li>At ≥ 15:15 the detected BUY is emitted as SELL → SIGNAL close.</li>
+        <li>Long-side brackets: target on premium rise, SL on bar low, trail.</li>
+        <li>FORCE_CLOSE.</li>
+      </ol></div>
+    </div>
+    <p style="font-size:13.5px;margin-bottom:0"><b>vs P3:</b> P3 mirrors the detection; P4 keeps the detection and inverts only the execution.</p>
+  </article>
+
+  <!-- P5 -->
+  <article class="strat" id="p5" data-tags="pressure spot rsi supertrend adx opening range anchor book">
+    <div class="strat-head"><span class="id">P5</span><h3>Pressure (NIFTY 5-minute spot continuation)</h3></div>
+    <div class="chips"><span class="chip live">registered</span><span class="chip">spot 5m</span><span class="chip">7 books × 2 configs</span><span class="chip">source = PRESSURE</span><span class="chip">Strategy5.java</span></div>
+    <p class="idea">Score the latest settled spot bar on four confirming terms and one penalty. When a side reaches 3, trade the continuation on one exact option strike (or synthetic spot). One position at a time per book. Full detail: <a href="PRESSURE_STRATEGY.md">PRESSURE_STRATEGY.md</a>.</p>
+    <dl class="meta">
+      <dt>Indicators</dt><dd>On spot 5m bars, session 09:15–15:30: RSI(14) Wilder; Supertrend (ATR 10, ×3); ADX(14) with ±DI and ±DI 3 bars back; session anchor = unweighted expanding mean of (H+L+C)/3 from 09:15 (default <code>TYPICAL_MEAN</code>); opening range = high/low of bars 09:15–09:30, complete once a bar ≥ 09:30 exists.</dd>
+      <dt>Books</dt><dd><code>SPOT</code>, <code>SELL_ITM300/200/ATM</code>, <code>BUY_ITM300/200/ATM</code>; each two configs sharing a <code>book_id</code>.</dd>
+      <dt>Generator values</dt><dd>target 50 pts, stop 50 pts, trail ladder <code>25:25</code>, entry 09:25–14:15, max hold 90 min, flatten 15:15, strike step 50, lot 75, parallel 1, per side 1.</dd>
+    </dl>
+<pre class="formula">P_down = [RSI&lt;40] + [close&lt;anchor] + [ST==-1] + [OR complete &amp;&amp; close&lt;OR_low]
+         - [ADX&gt;40 &amp;&amp; -DI(t) &lt; -DI(t-3)]
+P_up   = [RSI&gt;60] + [close&gt;anchor] + [ST==+1] + [OR complete &amp;&amp; close&gt;OR_high]
+         - [ADX&gt;40 &amp;&amp; +DI(t) &lt; +DI(t-3)]
+both ≥ 3 → skip;  P_down ≥ 3 → DOWN;  P_up ≥ 3 → UP;  else NONE
+(NaN: confirming term scores 0, penalty not applied)</pre>
+    <div class="cols">
+      <div class="algo-box entry"><h4>Entry</h4><ol class="algo">
+        <li>Read the spot series for the config's interval; take the last session bar ≤ asOf. Stop if it is from an earlier date.</li>
+        <li>Score it. Stop on NONE or both sides.</li>
+        <li>Side match:
+          <ul><li>SPOT book: SELL config takes DOWN (short), BUY config takes UP (long).</li>
+          <li>Option SELL: CE takes DOWN, PE takes UP.</li>
+          <li>Option BUY: CE takes UP, PE takes DOWN.</li></ul></li>
+        <li>Strike: <code>ATM = round(spot / 50) × 50</code>; CE = ATM − offset, PE = ATM + offset. Try exact, −1, +1, −2, +2 steps; first key written this tick wins.</li>
+        <li>Emit at the leg's last close. No premium band check.</li>
+        <li>Admission: 09:25 ≤ t ≤ 14:15, one OPEN per <code>book_id</code>, parallel caps 1.</li>
+        <li>No trades before the opening range completes (09:30 bar).</li>
+      </ol></div>
+      <div class="algo-box exit"><h4>Exit (position-level only)</h4><ol class="algo">
+        <li><b>TARGET</b>: pnl(close) ≥ +50 pts.</li>
+        <li><b>TIME_STOP</b>: 90 minutes after entry.</li>
+        <li><b>FLATTEN</b>: time ≥ 15:15.</li>
+        <li><b>TRAIL_SL</b>: once peak ≥ 25, floor = +25 (armed next bar); fills at +25.</li>
+        <li><b>STOP_LOSS</b>: adverse extreme ≤ −50; fills at −50.</li>
+        <li>FORCE_CLOSE if anything survived.</li>
+        <li>A new position may open on the very next bar.</li>
+      </ol></div>
+    </div>
+  </article>
+
+  <!-- P6 -->
+  <article class="strat" id="p6" data-tags="confirmed cross 15m sma50 cutoff stop loss lock">
+    <div class="strat-head"><span class="id">P6</span><h3>Confirmed cross: P2 + 15-min confirmation, 14:45 cut-off, SL lock</h3></div>
+    <div class="chips"><span class="chip live">registered</span><span class="chip">SELL</span><span class="chip">extends P2</span><span class="chip">confirmationTimeframes = {15}</span><span class="chip">Strategy6.java</span></div>
+    <p class="idea">P2 plus two identity constants picked by replay: the 15-minute SMA-50 must not contradict, and no entry in the last half hour before the close signal. One stop-loss locks the book for the day.</p>
+    <div class="cols">
+      <div class="algo-box entry"><h4>Entry</h4><ol class="algo">
+        <li>P2's rules: SMA_p down all day, SMA-20 slope not up.</li>
+        <li><code>htf15Sma50DownOrUnknown</code>: swap the leg key to 15-minute; if the series is missing, stale, not from today (every tick before 09:30), or SMA-50 ≤ 0 → unknown, allow. Otherwise the 15m SMA-50 must have fallen on every 15m bar today.</li>
+        <li><code>entryAtOrBefore1445</code>: bar start ≤ 15:15 − 30 min.</li>
+        <li>Price band, emit SELL.</li>
+        <li>Admission: if this (config, 6) had a <code>STOP_LOSS</code> exit today → no more entries today.</li>
+      </ol></div>
+      <div class="algo-box exit"><h4>Exit</h4><ol class="algo"><li>As P1 (SIGNAL at 15:15, target, ladder, SL, FORCE_CLOSE).</li><li>A STOP_LOSS exit triggers the day lock.</li></ol></div>
+    </div>
+  </article>
+
+  <!-- P7 -->
+  <article class="strat" id="p7" data-tags="first hour regime atr gate">
+    <div class="strat-head"><span class="id">P7</span><h3>P6 + first-hour regime gate</h3></div>
+    <div class="chips"><span class="chip live">registered</span><span class="chip">SELL</span><span class="chip">extends P6</span><span class="chip">Strategy7.java</span></div>
+    <p class="idea">Do not sell a CE after a first hour that rallied more than 0.2 daily ATR, or a PE after one that fell more than 0.2 ATR.</p>
+    <div class="cols">
+      <div class="algo-box entry"><h4>Entry</h4><ol class="algo">
+        <li>P6's rules.</li>
+        <li>If the signal bar starts before 10:15 → gate is unknown, allow.</li>
+        <li><code>sign</code> = −1 for <code>trading_side</code> exactly "CE", +1 for exactly "PE", else unknown.</li>
+        <li>On the underlying at the signal interval: <code>move = close(last bar before 10:15) − open(first bar today)</code>; first bar must start ≤ 09:30.</li>
+        <li><code>ATR</code> = mean of the last ≤ 14 daily true ranges from sessions before today (needs ≥ 5 sessions).</li>
+        <li>Allow if <code>sign × move / ATR ≥ −0.20</code> (or any value is unknown).</li>
+      </ol></div>
+      <div class="algo-box exit"><h4>Exit</h4><ol class="algo"><li>Identical to P6, including the SL day lock.</li></ol></div>
+    </div>
+  </article>
+
+  <!-- P8 -->
+  <article class="strat" id="p8" data-tags="20sma 15min candle chandelier atr trail">
+    <div class="strat-head"><span class="id">P8</span><h3>"20SMA 15min candle": no cross gate, chandelier exit</h3></div>
+    <div class="chips"><span class="chip live">registered</span><span class="chip">SELL</span><span class="chip">15m only</span><span class="chip">target NONE · trail 2×ATR</span><span class="chip">Strategy8.java</span></div>
+    <p class="idea">On the leg's own 15-minute premium candles, sell when the 20-bar SMA of closes is falling and the bar closes below the previous close. Exit on a 2×ATR chandelier instead of a target.</p>
+    <div class="cols">
+      <div class="algo-box entry"><h4>Entry (all required, in order)</h4><ol class="algo">
+        <li>Config narrowed to its first 15-minute <code>sma_timeframe</code> row (none → WARN, nothing).</li>
+        <li><code>is15MinuteSeries</code>.</li>
+        <li><code>sma20SlopeDown</code>: <code>mean(close[t−19..t]) &lt; mean(close[t−20..t−1])</code>, across sessions; needs 21 bars.</li>
+        <li><code>closeBelowPrevClose</code>: <code>close[t] &lt; close[t−1]</code> (previous may be yesterday's last bar).</li>
+        <li>Bar start ≤ 14:45.</li>
+        <li>Price band, emit SELL with <code>ATR14</code> of the leg (true range mean over 14 bars).</li>
+        <li>No whole-day trend requirement. First possible signal: 09:15 bar, seen at 09:30.</li>
+      </ol></div>
+      <div class="algo-box exit"><h4>Exit</h4><ol class="algo">
+        <li>No TARGET.</li>
+        <li><b>Chandelier</b>: <code>distance = 2.00 × ATR14</code> frozen at entry; each tick <code>trail = max(trail, peak − distance)</code>. Governs only once strictly above <code>−stop_loss</code>. Exit TRAIL_SL on the bar high.</li>
+        <li><b>STOP_LOSS</b>: fixed stop from <code>sl_mode</code>/<code>sl_pct</code>/<code>stop_loss</code>, capped by <code>max_sl_points</code>.</li>
+        <li><b>SIGNAL</b>: BUY on the settled 15m bar ≥ 15:15 (in backtest this bar settles after the last 15:20 tick, so the day ends as FORCE_CLOSE instead).</li>
+        <li>FORCE_CLOSE. No SL day lock.</li>
+      </ol></div>
+    </div>
+    <div class="result"><b>Measured</b>2024 engine replay (S31): 770 trades, +2,715 pts, PF 1.20. The edge sits entirely in the end-of-day close; both stop paths are net negative.</div>
+  </article>
+
+  <!-- P9 -->
+  <article class="strat" id="p9" data-tags="volume surge candle close position days to expiry gates">
+    <div class="strat-head"><span class="id">P9</span><h3>P8 + three configurable gates</h3></div>
+    <div class="chips"><span class="chip live">registered</span><span class="chip">SELL</span><span class="chip">15m</span><span class="chip">extends P8</span><span class="chip">Strategy9.java</span></div>
+    <p class="idea">P8's signal, filtered by where the candle closed in its range, a near-ATM volume surge, and days to expiry. Gate thresholds come from <code>strategy_defaults(9)</code> (seeded 0.25 / 2.00 / 2); a null column switches that gate off.</p>
+    <div class="cols">
+      <div class="algo-box entry"><h4>Entry</h4><ol class="algo">
+        <li>P8's four rules.</li>
+        <li><code>candleNotAtLow</code>: <code>(close − low) / (high − low) ≥ min_candle_close_position</code> (flat bar → allow).</li>
+        <li><code>noNearAtmVolumeSpike</code>:
+          <ul><li>refATM = today's first 15m underlying close rounded to <code>strike_points</code>.</li>
+          <li>Sum volume of all cached CE and PE legs within ±200 pts of refATM at each of the last 26 bar times.</li>
+          <li><code>surge = sum(t) / median(previous 25)</code>; pass if ≤ <code>max_volume_surge</code>. Missing data → allow.</li></ul></li>
+        <li><code>minDaysToExpiry</code>: days from session to expiry ≥ <code>min_days_to_expiry</code>.</li>
+        <li>Price band, emit SELL with ATR14.</li>
+      </ol></div>
+      <div class="algo-box exit"><h4>Exit</h4><ol class="algo"><li>Identical to P8.</li></ol></div>
+    </div>
+    <div class="result"><b>Measured</b>2024 replay (S31): 298 trades, +1,821 pts, PF 1.47, max DD −238 vs P8's −818. 2025 Q1: 70 trades, PF 2.08.</div>
+  </article>
+
+  <!-- P10 -->
+  <article class="strat" id="p10" data-tags="intraday cutoff 13:15">
+    <div class="strat-head"><span class="id">P10</span><h3>P9 tuned for intraday</h3></div>
+    <div class="chips"><span class="chip live">registered</span><span class="chip">SELL</span><span class="chip">15m</span><span class="chip">extends P9</span><span class="chip">Strategy10.java</span></div>
+    <p class="idea">One code change and two config changes from P9.</p>
+    <div class="cols">
+      <div class="algo-box entry"><h4>Entry</h4><ol class="algo">
+        <li>P9's rules with entry cut-off 120 min before close signal: last entry bar starts at <b>13:15</b>.</li>
+        <li><code>min_candle_close_position = 0.35</code>, <code>max_volume_surge = 2.00</code>, DTE gate off (changeset 050).</li>
+      </ol></div>
+      <div class="algo-box exit"><h4>Exit</h4><ol class="algo"><li>As P8: 2×ATR chandelier, fixed SL, no target.</li></ol></div>
+    </div>
+  </article>
+
+  <h3 class="sub">Production comparison</h3>
+  <div class="tablewrap"><table>
+    <tr><th>ID</th><th>Trigger</th><th>Extra required rules</th><th>Dir</th><th>Bracket</th><th>SL lock</th></tr>
+    <tr><td>P1</td><td>open&gt;SMA&gt;close</td><td>SMA_p down all day</td><td>SELL</td><td>config target / SL / ladder</td><td>no</td></tr>
+    <tr><td>P2</td><td>same</td><td>+ SMA-20 slope not up</td><td>SELL</td><td>same</td><td>no</td></tr>
+    <tr><td>P3</td><td>open&lt;SMA&lt;close</td><td>SMA_p up all day</td><td>BUY</td><td>same</td><td>no</td></tr>
+    <tr><td>P4</td><td>open&gt;SMA&gt;close</td><td>SMA_p down all day</td><td>BUY (mapped)</td><td>same</td><td>no</td></tr>
+    <tr><td>P5</td><td>pressure ≥ 3</td><td>OR complete, 09:25–14:15</td><td>per book</td><td>50/50, trail 25:25, 90 min, 15:15</td><td>no</td></tr>
+    <tr><td>P6</td><td>open&gt;SMA&gt;close</td><td>P2 + 15m SMA-50 down + ≤14:45</td><td>SELL</td><td>as P1</td><td><b>yes</b></td></tr>
+    <tr><td>P7</td><td>same</td><td>P6 + first hour ≥ −0.2 ATR</td><td>SELL</td><td>as P1</td><td><b>yes</b></td></tr>
+    <tr><td>P8</td><td>none</td><td>SMA-20 falling, close&lt;prev, ≤14:45</td><td>SELL</td><td>chandelier 2×ATR14 + fixed SL</td><td>no</td></tr>
+    <tr><td>P9</td><td>none</td><td>P8 + close pos ≥0.25, surge ≤2×, DTE ≥2</td><td>SELL</td><td>as P8</td><td>no</td></tr>
+    <tr><td>P10</td><td>none</td><td>P9, cut-off 13:15, close pos ≥0.35, DTE off</td><td>SELL</td><td>as P8</td><td>no</td></tr>
+  </table></div>
+</section>
+
+<!-- ============================ PART B ============================ -->
+<section class="part" id="part-b">
+  <h2>B · Strategy lab <small>research/strategy_lab</small></h2>
+  <p class="lede">A standalone Python bench, not part of the Spring Boot build. Every strategy is a JSON file in <code>strategies/</code>. Signals run on NIFTY near-month futures (1m and 5m); options are priced from the signal. Results below are net ₹ after 5-pt futures / 0.5-pt option slippage per side and Zerodha charges, from <code>results/summary.json</code> (build 2026-09-30). "All data" means 2026 only (<code>history_from = 2026-01-01</code>).</p>
+
+  <div class="engine" id="b-engine">
+    <h4>B0.1 · Foundation engine (<code>engine.py</code>), processed bar by bar</h4>
+    <ol class="algo">
+      <li><b>Swings.</b> Track a running candidate high (ties move to the later bar) and candidate low. A swing high confirms at bar i when bar i breaks below the low of the candidate-high candle (touch: <code>low[i] ≤ low[chb]</code>; close: <code>close[i] &lt; low[chb]</code>). Swing low mirrors. Swings alternate; each is usable only from its confirmation bar.</li>
+      <li><b>Trend.</b> The first confirmed swing sets it (swing high → down, swing low → up) and becomes the AVWAP anchor.</li>
+      <li><b>Protected level.</b> In an uptrend, swing lows at/after the anchor whose price is below AVWAP(anchor → swing's confirmation bar) qualify; the latest unbroken one is protected. Downtrend mirrors with swing highs above AVWAP.</li>
+      <li><b>CHoCH.</b> Bar i breaks the protected level (by <code>choch_mode</code>). It is a <b>flip</b> if bar i also breaks AVWAP(anchor → i) and a swing exists to re-anchor: trend reverses, anchor = latest swing high (new downtrend) or low (new uptrend), candidates rebuilt. A non-flip CHoCH keeps the trend.</li>
+      <li><b>Use-up.</b> Every unbroken swing that bar i breaks (by <code>break_mode</code>) is marked broken; then swings confirming at i are added.</li>
+      <li><b>SETUP.</b> For each CHoCH at bar ci, anchor two AVWAPs at its latest swing high (aH) and swing low (aL). Scan k = ci+1 … next CHoCH: the first k where
+        <ul><li>down CHoCH: <code>close[k] &lt; low[ci]</code> and both AVWAPs fell vs k−1 → <b>bearish SETUP</b>;</li>
+        <li>up CHoCH: <code>close[k] &gt; high[ci]</code> and both rose → <b>bullish SETUP</b>.</li></ul>
+        At most one SETUP per CHoCH. Entry = <code>close[k]</code>.</li>
+      <li><b>Stop</b> (fixed at the entry close): <code>prev_swing</code> = latest swing low (long) / high (short) confirmed ≤ k; <code>choch_candle</code> = CHoCH candle's low / high; <code>none</code>. A stop on the wrong side of the entry → SETUP skipped.</li>
+      <li><b>Exit</b>: stop checked first on each later bar (hit on break or gap; fill at the stop, at the open on a gap, at the close on a session's first bar), else the close of the next CHoCH bar in either direction.</li>
+    </ol>
+  </div>
+
+  <div class="engine">
+    <h4>B0.2 · Lab execution rules (<code>lab.py</code>)</h4>
+    <ol class="algo">
+      <li><b>Fill</b>: futures close of the signal bar; slippage 5 pts (futures) / 0.5 pts (options) per side; lot 65. Each scale-out tranche is charged as its own round trip.</li>
+      <li><b>Strike lock</b>: one open position per instrument; a signal on a locked instrument is skipped; exit before entry on the same candle.</li>
+      <li><b>Square-off</b> <code>"15:25"</code>: no entry at/after 15:25; still-open positions close at the close of the 15:25 candle (<code>eod</code>). <code>null</code> = positional.</li>
+      <li><b>Near-month</b>: a futures position trades its entry candle's contract and closes at that contract's last candle (<code>expiry</code>).</li>
+      <li><b>Option types.</b> <em>Via futures</em> (<code>_FB</code>): bullish → long CE + short PE; bearish → long PE + short CE. <em>Standalone</em> (<code>_NB</code>): every 5 minutes pick ATR2/ATM/ITM1/OTM1 strikes, run the engine on each option's own chart, first SETUP wins, one per side.</li>
+      <li><b>Strike pick</b> from the spot close: <code>ATRn</code> = spot ± n×ATR(14) OTM rounded to 50 (default ATR2); <code>ATM</code> = round(spot, 50); <code>ITMn/OTMn</code> = ATM ∓/± n×50. Expiry = nearest weekly/monthly ≥ 1 day away. Missing strike → skipped, never substituted. Options only from 30 Jun 2026.</li>
+    </ol>
+  </div>
+
+  <div class="engine" id="managed-engine">
+    <h4>B0.3 · Managed position exit (<code>lab.manage</code>), used by L9–L12, L15–L18, L29–L30 and every learner arm</h4>
+    <ol class="algo">
+      <li><code>R</code> = <code>stop.futures_pts</code> (futures) or <code>option_pct</code>% of entry premium. Initial stop = entry ∓ 1R for every lot.</li>
+      <li>Walk candles after the entry candle up to the cap (backtest end, contract end, or square-off). On each candle, in order:</li>
+      <li><b>Stop</b> (all open lots): gap or break → fill at the stop, at the open on a gap, at the close on a session's first candle. Reason <code>stop_loss</code>, or <code>trail_stop</code> once the trail has moved it.</li>
+      <li><b>Targets</b>: each <code>scale_out</code> tranche exits at entry ± target_r×R (open if gapped beyond; first candle of a session only if the close is still beyond).</li>
+      <li><b>Trail</b>: <code>reached = floor((best − entry) / R)</code>. If <code>reached ≥ start_r</code>: stop = entry ± (reached − lag_r)×R, only tightened, effective from the next candle.</li>
+      <li>No break-even move before <code>start_r</code>: remaining lots keep −1R after targets fill.</li>
+    </ol>
+  </div>
+
+  <!-- L1-4 -->
+  <h3 class="sub" id="l1">L1–L4 · Foundation SETUP</h3>
+  <p class="lede">The engine as-is, one lot, intraday. The four differ on two axes: timeframe + stop rule, and whether a CHoCH needs a touch or a close.</p>
+  <div class="tablewrap"><table>
+    <tr><th>File</th><th>TF</th><th>warm-up</th><th>CHoCH</th><th>Stop</th><th class="num">All data 2026</th><th class="num">PF</th></tr>
+    <tr><td>L1</td><td>1m</td><td>2</td><td>touch</td><td>prev_swing</td><td class="num neg">815 · −927,146</td><td class="num">0.34</td></tr>
+    <tr><td>L2</td><td>5m</td><td>5</td><td>touch</td><td>choch_candle</td><td class="num neg">168 · −130,929</td><td class="num">0.65</td></tr>
+    <tr><td>L3</td><td>1m</td><td>2</td><td><b>close</b></td><td>prev_swing</td><td class="num neg">436 · −515,139</td><td class="num">0.41</td></tr>
+    <tr><td>L4</td><td>5m</td><td>5</td><td><b>close</b></td><td>choch_candle</td><td class="num neg">101 · −61,415</td><td class="num">0.75</td></tr>
+  </table></div>
+  <article class="strat" data-tags="foundation setup choch avwap swing 1m 5m touch close l1 l2 l3 l4">
+    <div class="strat-head"><span class="id">L1–L4</span><h3>Shared algorithm</h3></div>
+    <div class="chips"><span class="chip">NIFTY near-month fut</span><span class="chip">1 lot</span><span class="chip">square_off 15:25</span><span class="chip">lock strike</span><span class="chip">AVWAP volume-weighted</span></div>
+    <div class="cols">
+      <div class="algo-box entry"><h4>Entry</h4><ol class="algo">
+        <li>On each closed bar, update swings (touch), trend and protected level (B0.1).</li>
+        <li>CHoCH down when the bar's low breaks the protected low in an uptrend (L1/L2: touch; L3/L4: <b>close</b> below). Mirror for up.</li>
+        <li>From the next bar until the next CHoCH, find the first close beyond the CHoCH candle's extreme with both AVWAPs sloping with it → SETUP.</li>
+        <li>Stop = L1/L3: latest swing high (short) / low (long); L2/L4: CHoCH candle's high / low. Wrong side of the close → no trade.</li>
+        <li>SETUP bar ≥ 15:25 → not taken.</li>
+        <li>Enter at the SETUP close: short on bearish, long on bullish. <code>_FB</code>: long PE + short CE on bearish, long CE + short PE on bullish, ATR2 strike.</li>
+      </ol></div>
+      <div class="algo-box exit"><h4>Exit (first that fires)</h4><ol class="algo">
+        <li>Stop touched or gapped through (fill at stop / open / first-bar close).</li>
+        <li>Close of the next CHoCH bar, either direction.</li>
+        <li>15:25 square-off on the entry day (<code>eod</code>).</li>
+        <li>Contract expiry.</li>
+      </ol></div>
+    </div>
+    <p class="note">L3/L4 side effect: swings are still used up on a <em>touch</em> while the CHoCH needs a <em>close</em>. A wick through the protected level that closes back inside removes that level with no CHoCH, and protection falls back to an older swing.</p>
+  </article>
+
+  <!-- FZ -->
+  <h3 class="sub" id="fz">L5–L8 · Foundation-Zone (FZ) gate</h3>
+  <p class="lede">The engine runs unchanged; <code>fz.py</code> gates every SETUP using price zones the market sat in. TAKE = Foundation's own trade on that SETUP; REENTER = a new position from a watch. One lot, <b>positional</b> (no 15:25), futures only. Rules are frozen (L7/L8 accepted 2026-09-28). Build notes: <a href="../research/strategy_lab/FZ.md">FZ.md</a>.</p>
+
+  <div class="engine">
+    <h4>FZ per-bar processing, in order</h4>
+    <ol class="algo">
+      <li><b>Retire</b> (rooms only): on a session's first bar, retire zones with no inside close for more than <code>room_max_age_sessions</code>.</li>
+      <li><b>Births.</b> A: a band at each new protected level (bands only). B: when the last <code>cluster_bars</code> same-session closes span ≤ <code>cluster_width</code> (20 pts), a sit is born at (max+min)/2. Bands overlapping ≥ 50% merge; otherwise a band mid ± 10 pts. Rooms: see L7.</li>
+      <li><b>Live visit</b>: close inside the reference band continues the visit. <code>leave_closes</code> consecutive closes on one side end it with a <b>LEAVE</b> (side, far-side volume, gap flag).</li>
+      <li>A LEAVE expires on a close back inside, a close across its mid, or after <code>leave_ttl_bars</code>.</li>
+      <li><b>Edge events</b> on the reference band: <b>HUNT</b> (close form: 1…<code>hunt_max_bars</code> closes outside then back in; wick form: wick beyond an edge by ≥ 0.5×ATR14 with closes inside; volume burst ≥ 1.5× visit mean when live). <b>REJECT</b>: wick ends within ±2 pts of an edge and the close moved toward mid.</li>
+      <li><b>Read</b>, first match: LEAVE → HUNT → REJECT → inside read (visit 1 = FIRST_PRINT; ACCEPTED if bars ≥ <code>accept_bars</code> and volume ≥ 0.8× first visit; THIN if volume &lt; 0.5×; else RECYCLE) → PENDING → NEW.</li>
+      <li>Step any open watch; then run the gate if this bar is a SETUP.</li>
+    </ol>
+  </div>
+  <div class="engine">
+    <h4>FZ gate at a SETUP in direction S</h4>
+    <ol class="algo">
+      <li>Watch already re-entered on this SETUP → REENTER.</li>
+      <li><b>BLOCK</b> (first match): FZ position open; bar time ≥ 15:20; opening pierce (early bar crosses an edge of a band last visited on an earlier session); HUNT in direction S on this band within <code>fade_block_bars</code>; read NEW.</li>
+      <li><b>TAKE</b> branches:
+        <ul><li><em>leave</em>: read LEAVE on side S, far-side volume ≥ sit mean, not a gap leave in the quiet open, and the band now holding the close is not RECYCLE/THIN/HUNT/REJECT.</li>
+        <li><em>first_print</em>: read FIRST_PRINT, visit ≥ 3 bars, S = visit's entry direction.</li>
+        <li><em>defend</em>: read ACCEPTED with a HUNT or REJECT at the opposite edge within <code>defend_window_bars</code> (L7/L8 add: close in the half away from the defended edge; one defend direction per visit).</li></ul></li>
+      <li><b>WATCH_EDGE</b>: read PENDING just outside the ref band → armed watch in that direction.</li>
+      <li><b>WATCH</b>: a band contains the close → unarmed watch. Else BLOCK. One watch at a time.</li>
+    </ol>
+    <h4 style="margin-top:14px">Watch → REENTER, each later bar</h4>
+    <ol class="algo">
+      <li>Cancel on a session's first bar, a leave to the opposite side, or (once armed) <code>cancel_inside_bars</code> closes back inside.</li>
+      <li>Arm on a close beyond the band on the watch side; require <code>leave_closes</code> consecutive far-side closes and far-side volume ≥ sit mean.</li>
+      <li>A SETUP in the watch direction on this or the previous bar of the same session.</li>
+      <li>Not after 15:20 or while a position is open → REENTER at this bar's close. Stop = the Foundation rule at the fill bar; refused if wrong side or already traded through.</li>
+    </ol>
+    <h4 style="margin-top:14px">FZ exits</h4>
+    <ol class="algo">
+      <li>Foundation stop, checked first.</li>
+      <li>REENTER only: <b>band reclaim</b> — a close back across the watched band's mid → exit at that close.</li>
+      <li>Close of the next CHoCH bar. Contract expiry. No square-off. FZ positions never overlap.</li>
+    </ol>
+  </div>
+
+  <article class="strat" id="l5" data-tags="fz foundation zone bands 1m base l5">
+    <div class="strat-head"><span class="id">L5</span><h3>FZ v1 bands on L1 SETUPs</h3></div>
+    <div class="chips"><span class="chip frozen">frozen · base, not to be traded</span><span class="chip">1m</span><span class="chip">fz_v1</span><span class="chip">prev_swing stop</span></div>
+    <dl class="meta">
+      <dt>Key values</dt><dd>band ±10, cluster 10 closes within 20 pts, merge 0.5, bands never retired, drift births on, accept 10 bars, HUNT close form ≤ 3 bars, leave = <b>2</b> closes, leave TTL 15, fade/defend window 15, open window to 09:25, cancel inside 5.</dd>
+    </dl>
+    <div class="result"><b>2026</b>157 positions (50 TAKE + 107 REENTER), <span class="neg">−170,296</span>, PF 0.37; random-control 41.8th pct, permutation p 0.89.</div>
+  </article>
+  <article class="strat" id="l6" data-tags="fz bands 5m wick hunt l6">
+    <div class="strat-head"><span class="id">L6</span><h3>FZ v1 bands on L2 SETUPs</h3></div>
+    <div class="chips"><span class="chip frozen">frozen · base</span><span class="chip">5m</span><span class="chip">fz_v1</span><span class="chip">choch_candle stop</span></div>
+    <dl class="meta">
+      <dt>vs L5</dt><dd>cluster 6 bars, accept 2, HUNT = <b>wick</b> ≥ 0.5×ATR14 (1 bar), leave TTL 3, fade/defend 3, open bars 2, cancel inside 1.</dd>
+    </dl>
+    <div class="result"><b>2026</b>49 positions, <span class="neg">−12,584</span>, PF 0.91; control 44.0th, p 0.51.</div>
+  </article>
+  <article class="strat" id="l7" data-tags="fz v2 rooms 1m sit retire l7">
+    <div class="strat-head"><span class="id">L7</span><h3>FZ v2 rooms on L1 SETUPs</h3></div>
+    <div class="chips"><span class="chip frozen">frozen 2026-09-28</span><span class="chip">1m</span><span class="chip">fz_v2</span><span class="chip">rooms retire after 2 sessions</span></div>
+    <p class="idea">Zones are only "rooms" the market actually sat in, sized to the sit's own range, and retired after 2 sessions without a visit.</p>
+    <div class="algo-box entry"><h4>Room birth (on each sit: last 10 same-session closes within 20 pts)</h4><ol class="algo">
+      <li>Candidate = the sit's own min…max close.</li>
+      <li>A live room containing the candidate's mid absorbs it (the sit is a visit of that room).</li>
+      <li>Rooms born earlier today that overlap and never read ACCEPTED are marked for replacement.</li>
+      <li>A live room that had a real sit today and overlaps at all keeps the sit (older wins).</li>
+      <li>A room sat today whose edge is within its own half-range → no birth.</li>
+      <li>Else a new frozen room; partly overlapped rooms and replaced same-day rooms are retired.</li>
+      <li>A stay with &lt; 2 inside closes is a touch, not a visit. Leave = <b>3</b> closes out; HUNT = 1–2 closes out then back.</li>
+    </ol></div>
+    <div class="result"><b>2026</b>129 positions (105 TAKE + 24 REENTER), <span class="neg">−30,678</span>, PF 0.87; control 92.2th, p 0.16.</div>
+  </article>
+  <article class="strat" id="l8" data-tags="fz v2 rooms 5m l8">
+    <div class="strat-head"><span class="id">L8</span><h3>FZ v2 rooms on L2 SETUPs</h3></div>
+    <div class="chips"><span class="chip frozen">frozen</span><span class="chip">5m</span><span class="chip">fz_v2</span></div>
+    <dl class="meta"><dt>vs L7</dt><dd>sit = 4 closes (20 min), retire after 3 sessions, visit min 1 bar, accept 2, wick HUNT ≥ 0.5 ATR, leave = 2 closes, windows of 3 bars.</dd></dl>
+    <div class="result"><b>2026</b>67 positions, <span class="neg">−116,153</span>, PF 0.48; control 71.3th, p 0.28.</div>
+  </article>
+
+  <!-- Managed -->
+  <h3 class="sub" id="managed">L9–L12 · Managed exits (3 lots, R targets, trail)</h3>
+  <article class="strat" data-tags="managed exits 3 lots targets trail reverse l9 l10 l11 l12">
+    <div class="strat-head"><span class="id">L9–L12</span><h3>Foundation SETUPs with a 3-lot managed exit</h3></div>
+    <div class="chips"><span class="chip">lots 3</span><span class="chip">R = 50 pts / 5%</span><span class="chip">targets 1R, 2R</span><span class="chip">trail from 3R, lag 1R</span><span class="chip">square_off 15:25</span></div>
+    <div class="cols">
+      <div class="algo-box entry"><h4>Entry</h4><ol class="algo">
+        <li>L9/L11: L1's SETUPs (1m). L10/L12: L2's SETUPs (5m).</li>
+        <li><code>sl_rule none</code>: no SETUP is refused for a wrong-side stop, so the set is wider than L1's.</li>
+        <li>Not at/after 15:25.</li>
+        <li>While <em>any</em> lot of a position is open on the contract, every new futures signal on it is skipped, opposite ones too.</li>
+        <li>Enter 3 lots at the SETUP close.</li>
+      </ol></div>
+      <div class="algo-box exit"><h4>Exit (B0.3)</h4><ol class="algo">
+        <li>Initial stop entry ∓ 50 pts for all lots.</li>
+        <li>Lot 1 at +1R, lot 2 at +2R.</li>
+        <li>At 3R the stop moves to +2R, then trails 1R behind each further whole R.</li>
+        <li>15:25 square-off; contract expiry. The CHoCH exit is ignored.</li>
+      </ol></div>
+    </div>
+    <div class="algo-box exit" style="margin-top:14px"><h4>L11 / L12: stop and reverse (<code>reverse = {initial_stop, max 1}</code>)</h4><ol class="algo">
+      <li>If any lot exits on the <em>initial</em> stop (also when lot 1 already took its target) before 15:25, and no reversal was made for this signal yet:</li>
+      <li>Open a fresh 3-lot position the other way on the same contract at the stop fill price, managed from the next bar with the same R rules.</li>
+      <li><code>_FB</code> options: the stopped leg reverses into the opposite signal's leg, strike re-picked from spot at the stop bar.</li>
+      <li>The reversed position is never reversed again.</li>
+    </ol></div>
+  </article>
+  <div class="tablewrap"><table>
+    <tr><th>File</th><th>Entries</th><th>Reverse</th><th class="num">All data 2026 (lot rows · net)</th><th class="num">PF</th></tr>
+    <tr><td>L9</td><td>L1, 1m</td><td>no</td><td class="num neg">657 · −657,613</td><td class="num">0.58</td></tr>
+    <tr><td>L10</td><td>L2, 5m</td><td>no</td><td class="num neg">387 · −319,821</td><td class="num">0.64</td></tr>
+    <tr><td>L11</td><td>L1, 1m</td><td>yes</td><td class="num neg">741 · −573,650</td><td class="num">0.66</td></tr>
+    <tr><td>L12</td><td>L2, 5m</td><td>yes</td><td class="num neg">462 · −332,560</td><td class="num">0.68</td></tr>
+  </table></div>
+
+  <!-- Reserved -->
+  <article class="strat reserved" id="l13" data-tags="reserved fz v3 l13 l14">
+    <div class="strat-head"><span class="id">L13–L14</span><h3>Reserved for FZ v3</h3></div>
+    <div class="chips"><span class="chip">not built</span><span class="chip">S49 open</span></div>
+    <p class="idea" style="margin-bottom:0">A gate meant to skip losing SETUPs and keep winners: the sideways "CHoCH after CHoCH, no BOS" regime, reaction at high volume, level respect vs break, and a learned rule list (≤ 8 conjunctive rules, depth ≤ 3). Pre-registered IS 2021-10 → 2025-12, OOS 2026 evaluated once. L5–L8 are never retuned toward it. See <a href="STRATEGY_ANALYSIS_TODO.md">S49</a>.</p>
+  </article>
+
+  <!-- 15-18 -->
+  <h3 class="sub" id="l15">L15–L18 · Positional exit variants (2026 exit study, S50)</h3>
+  <p class="lede">Four of the 17 exits tried on L9/L10's entries, made into files. Held overnight (<code>square_off null</code>), 3 lots, strike lock binds hard because positions last long. The winner was chosen in-sample.</p>
+  <article class="strat" data-tags="positional trail l15 l16 l17 l18 overnight">
+    <div class="strat-head"><span class="id">L15–L18</span><h3>Shared entry</h3></div>
+    <div class="cols">
+      <div class="algo-box entry"><h4>Entry</h4><ol class="algo">
+        <li>Run the Foundation engine (touch, volume AVWAP) on the window + warm-up (L15/17/18: 1m, 2 sessions; L16: 5m, 5 sessions).</li>
+        <li>For each SETUP in time order: bullish → long future, bearish → short, near-month contract.</li>
+        <li>Contract already has an open position → skip.</li>
+        <li>Enter 3 lots at the SETUP close. <code>sl_rule none</code>, so these are L9's entries, not L1's.</li>
+      </ol></div>
+      <div class="algo-box exit"><h4>Exit</h4><ol class="algo">
+        <li>B0.3 with the per-file block below.</li>
+        <li>No CHoCH exit, no square-off; contract end → <code>expiry</code>.</li>
+      </ol></div>
+    </div>
+  </article>
+  <div class="tablewrap"><table>
+    <tr><th>File</th><th>TF</th><th>Stop (R)</th><th>Targets</th><th>Trail</th><th class="num">All data 2026</th><th class="num">PF · t</th><th class="num">Unseen</th></tr>
+    <tr><td>L15</td><td>1m</td><td>50</td><td>none, all 3 lots trail</td><td>from 3R, lag 2R</td><td class="num pos">166 · +599,994</td><td class="num">1.38 · 1.29</td><td class="num neg">−58,384</td></tr>
+    <tr><td>L16</td><td>5m</td><td>50</td><td>none</td><td>from 3R, lag 2R</td><td class="num neg">116 · −166,620</td><td class="num">0.87 · −0.55</td><td class="num neg">−153,930</td></tr>
+    <tr><td>L17</td><td>1m</td><td>50</td><td>2R, 4R</td><td>from 4R, lag 2R</td><td class="num neg">489 rows · −67,908</td><td class="num">0.96 · −0.32</td><td class="num neg">−73,676</td></tr>
+    <tr><td>L18</td><td>1m</td><td>75</td><td>1R, 2R</td><td>from 3R, lag 2R</td><td class="num pos">297 rows · +10,373</td><td class="num">1.01 · 0.06</td><td class="num neg">−60,633</td></tr>
+  </table></div>
+  <p style="font-size:13.5px">Trail example (L15): at +150 pts the stop moves to +50; at +200 to +100; at nR to +(n−2)R. Before 3R there is no break-even move.</p>
+
+  <!-- RL -->
+  <h3 class="sub" id="rl">L19–L24 · Journal + contextual-bandit learner (<code>rl.py</code>, S51)</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Reward</th><th>1m (L1 SETUPs)</th><th>5m (L2 SETUPs)</th></tr>
+    <tr><td><code>net</code></td><td>L19</td><td>L20</td></tr>
+    <tr><td><code>r</code></td><td>L21</td><td>L22</td></tr>
+    <tr><td><code>pf</code></td><td>L23</td><td>L24</td></tr>
+  </table></div>
+  <article class="strat" data-tags="bandit learner thompson ridge rl reward l19 l20 l21 l22 l23 l24">
+    <div class="strat-head"><span class="id">L19–L24</span><h3>At every SETUP, pick skip or one of 27 exit actions</h3></div>
+    <div class="chips"><span class="chip">futures only</span><span class="chip">seed 7</span><span class="chip">ridge 1.0</span><span class="chip">explore 0.3</span><span class="chip">learns from Oct 2021</span></div>
+    <dl class="meta">
+      <dt>Arms (28)</dt><dd><code>skip</code> + 3 profiles × stop {35, 50, 75} × lots {1, 2, 3}. Profiles: <em>intraday</em> 1R/2R targets, trail 3R lag 1R, 15:25; <em>positional</em> no targets, trail 3R lag 2R; <em>positional</em> 2R/4R, trail 4R lag 2R. Fewer lots drop the last targets. Intraday arm infeasible at ≥ 15:25.</dd>
+      <dt>Features (21)</dt><dd>bias; hour bucket one-hot (6); direction; CHoCH was a flip; ATR/close ×1000 (cap 5); distance to each SETUP AVWAP in ATR; bars since CHoCH; entry candle body; 20-bar range; CHoCHs today; book's R today; last-3 form; consecutive losses; trades closed today; distance from session open.</dd>
+      <dt>Rewards</dt><dd>Per-lot v clipped to ±10, × lots. <code>net</code>: net ₹ / (65×50×lots). <code>r</code>: net ₹ / (65×stop×lots). <code>pf</code>: as net, losses ×1.5. Skip = 0.</dd>
+    </dl>
+    <div class="algo-box entry"><h4>Decision loop (linear Thompson sampling)</h4><ol class="algo">
+      <li>Build a setup table from one continuous engine run over the whole futures file; simulate every feasible arm for every SETUP with <code>lab.manage</code>.</li>
+      <li>Per non-skip arm keep <code>A = ridge·I</code> (21×21), <code>b = 0</code>.</li>
+      <li>Walk SETUPs in time order. First, pop every queued outcome whose exit time ≤ now and update its arm: <code>A += x xᵀ</code>, <code>b += reward·x</code>.</li>
+      <li>Build x from static features + the book's own closed trades.</li>
+      <li>Queue <em>every</em> learnable arm's outcome for this SETUP (full information, even when skipped or locked).</li>
+      <li>Contract locked by the book's open position → <code>locked</code>.</li>
+      <li>Else for each arm sample <code>θ = A⁻¹b + 0.3·chol(A⁻¹)·z</code>; value = x·θ; skip = 0. Take the argmax.</li>
+      <li>If an arm is taken, lock the contract until its last exit. Execution = that arm's profile via B0.3.</li>
+    </ol></div>
+    <div class="result"><b>2026</b>L19 <span class="pos">+55,217</span> (PF 1.09) · L20 <span class="pos">+60,001</span> · <b>L21 <span class="pos">+247,931</span></b> (PF 1.62, all 5 seeds positive, permutation p 0.105) · L22 <span class="neg">−33,824</span> · L23 0 trades (skips nearly all) · L24 <span class="neg">−95,401</span>. Predicted vs realised correlation 0.04–0.15: the features carry almost no signal.</div>
+  </article>
+
+  <!-- C2C -->
+  <h3 class="sub" id="c2c">L25–L28 · CHoCH-to-CHoCH put retest (<code>c2c.py</code>, S52)</h3>
+  <p class="lede">Buy a monthly ITM1 put when, in a bearish regime, a new swing high forms right at the anchored VWAP. 5m, close-mode engine, 1 lot, positional. The four files differ in two switches.</p>
+  <div class="tablewrap"><table>
+    <tr><th>File</th><th>PCR filter</th><th>Stop fill</th><th class="num">Index signals</th><th class="num">Futures signals</th></tr>
+    <tr><td>L25</td><td>on (entry &lt; 1.3, exit &gt; 0.95)</td><td>close</td><td class="num pos">31 · +10,009</td><td class="num pos">28 · +15,248</td></tr>
+    <tr><td>L26</td><td>off</td><td>close</td><td class="num neg">44 · −447</td><td class="num pos">60 · +15,276</td></tr>
+    <tr><td>L27</td><td>on</td><td>touch</td><td class="num neg">33 · −2,178</td><td class="num pos">28 · +3,985</td></tr>
+    <tr><td>L28</td><td>off</td><td>touch</td><td class="num neg">47 · −6,894</td><td class="num pos">67 · +2,917</td></tr>
+  </table></div>
+  <p style="font-size:13.5px">Window 2026-06-23 → 09-14. Every |t| &lt; 1.8: too few trades for a verdict. Index 5m data has known corrupt candles.</p>
+  <article class="strat" data-tags="c2c put retest pcr avwap bearish regime itm1 monthly l25 l26 l27 l28">
+    <div class="strat-head"><span class="id">L25–L28</span><h3>Algorithm</h3></div>
+    <div class="chips"><span class="chip">long PE only</span><span class="chip">ITM1 = ATM + 50</span><span class="chip">monthly ≥ 15 days</span><span class="chip">band 50 pts</span><span class="chip">one position at a time</span></div>
+    <dl class="meta">
+      <dt>Regime</dt><dd>From <em>flip</em> CHoCHs only: a down flip sets bearish with anchor = the swing high it re-anchors to; an up flip sets bullish.</dd>
+      <dt>Window PCR</dt><dd>ATM ± 300 (13 strikes); a strike counts if both PE and CE have an OI print this session; PCR = ΣPE OI / ΣCE OI; NA if &lt; 9 strikes.</dd>
+    </dl>
+    <div class="cols">
+      <div class="algo-box entry"><h4>Entry, on each swing-high confirmation bar i</h4><ol class="algo">
+        <li>Regime at i is bearish.</li>
+        <li>i is not the flip bar itself.</li>
+        <li><code>AVWAP − 50 &lt; swing-high price &lt; AVWAP + 50</code>.</li>
+        <li><code>close[i] &gt; session open × (1 − 0.006)</code> (day not already down 0.6%).</li>
+        <li>Strike ITM1 PE from index close; monthly expiry ≥ 15 days out with full-chain data.</li>
+        <li>PCR books: window PCR non-NA and &lt; 1.3.</li>
+        <li>First put candle at/after t[i+1]; skip if ≤ the previous position's exit time.</li>
+        <li>Buy 1 lot at that candle's <b>open</b>.</li>
+      </ol></div>
+      <div class="algo-box exit"><h4>Exit, each put candle from the entry candle</h4><ol class="algo">
+        <li>Initial stop = entry × 0.95.</li>
+        <li><b>Stop</b>: close mode (L25/26) close ≤ stop → exit at close; touch mode (L27/28) low ≤ stop → exit at stop (open on gap).</li>
+        <li><b>Bullish flip</b> on the signal series → exit (<code>choch</code>).</li>
+        <li><b>15:15 ladder</b>, once a session: P&amp;L &gt; +40% → take profit; &lt; −2% → cut; PCR books: PCR &gt; 0.95 → exit.</li>
+        <li>Trail: once peak &gt; entry, stop = max(stop, peak − 5 pts), from next candle.</li>
+        <li>Expiry or window end.</li>
+      </ol></div>
+    </div>
+  </article>
+
+  <!-- Rainbow -->
+  <h3 class="sub" id="rainbow">L29–L30 · Rainbow ribbon intraday (<code>rainbow.py</code>, S53)</h3>
+  <article class="strat" data-tags="rainbow ribbon ema widner sma oscillator fan pullback l29 l30">
+    <div class="strat-head"><span class="id">L29–L30</span><h3>Fresh close outside a moving-average ribbon</h3></div>
+    <div class="chips"><span class="chip">futures</span><span class="chip">3 lots</span><span class="chip">stop 50</span><span class="chip">trail 3R lag 2R</span><span class="chip">entries 09:20–14:30</span><span class="chip">square_off 15:25</span></div>
+    <dl class="meta">
+      <dt>L29</dt><dd>1m, EMA ribbon periods 5, 8, 13, 21, 34, 55; trigger <code>cross</code>; fan <code>none</code>.</dd>
+      <dt>L30</dt><dd>5m, Widner ribbon: line 1 = SMA(2) of close, line k = SMA(2) of line k−1, 10 lines; trigger <code>pullback</code>; fan <code>full</code>.</dd>
+      <dt>Ribbon</dt><dd>top = max of lines, bot = min. Fan up = every faster line above the next slower. Oscillator = 100 × (close − mean of lines) / (10-bar close range).</dd>
+    </dl>
+    <div class="cols">
+      <div class="algo-box entry"><h4>Entry</h4><ol class="algo">
+        <li>Candle time in [09:20, 14:30).</li>
+        <li>Long: <code>close[i] &gt; top[i]</code> and not <code>close[i−1] &gt; top[i−1]</code>. Short mirrors below <code>bot</code>.</li>
+        <li>Fan full (L30): lines ordered in the trade direction.</li>
+        <li>Oscillator × direction ≥ 25.</li>
+        <li>Pullback (L30): far edge kept its slope over 5 bars, and some close in bars i−5…i−2 was already outside on the trade side (re-emergence).</li>
+        <li>Contract not locked → enter 3 lots at the close.</li>
+      </ol></div>
+      <div class="algo-box exit"><h4>Exit</h4><ol class="algo">
+        <li>Stop entry ∓ 50 for all lots; no targets.</li>
+        <li>At 3R (150 pts) stop → +1R; at nR → +(n−2)R.</li>
+        <li>15:25 close (<code>eod</code>) or contract expiry. The ribbon plays no part after entry.</li>
+      </ol></div>
+    </div>
+    <div class="result"><b>Grid</b>48 pre-registered variants per timeframe; all 96 lost in both halves. The files are the least-losing variant, not an edge. L29 OOS <span class="neg">−334,212</span> (PF 0.57, t −2.38); L30 OOS <span class="neg">−131,634</span> (PF 0.73).</div>
+  </article>
+</section>
+
+<!-- ============================ PART C ============================ -->
+<section class="part" id="issues">
+  <h2>C · Where code and docs disagree</h2>
+  <p class="lede">Found while writing this page. Trade-affecting items are filed in <a href="STRATEGY_ANALYSIS_TODO.md">STRATEGY_ANALYSIS_TODO.md</a> per Rule 0.</p>
+  <h3 class="sub" style="margin-top:10px">Production</h3>
+  <ol class="issues">
+    <li><b>P5 never applies <code>min_option_price</code>.</b> The generator writes 8 and the docs imply sub-8 premiums are skipped, but the band check lives in the base <code>execute</code>, which P5 replaces. Filed as S56.</li>
+    <li><b>P8–P10 15:15 SIGNAL exit in backtest.</b> A 15m bar starting 15:15 settles at 15:30, after the last 15:20 replay tick, so positions end as <code>FORCE_CLOSE</code> at 15:20. S31's ledger (283 FORCE_CLOSE exits) is consistent with this. Live can see the bar.</li>
+    <li><b>P8 first bar after entry</b> is guarded only by the fixed stop; the chandelier floor appears after the first monitored bar. If both stop columns are null there is no stop on that bar.</li>
+    <li><b>P7 side check is exact</b> (<code>"CE"</code>/<code>"PE"</code>); any other spelling makes the gate "unknown" and lets the entry through.</li>
+    <li><b>100-point ATM rounding</b> (<code>instrument.strike_points</code>) on a 50-point data grid, for depth strike sets and P9/P10's volume window.</li>
+    <li><b>Period 20</b> is disabled in the baseline rule set; <code>isDistanceToNextHigherSmaAboveTarget</code> and <code>resolvePrimarySmaPeriod</code> have no callers.</li>
+    <li>CLAUDE.md says the changeset head is 044; 045–050 exist.</li>
+  </ol>
+  <h3 class="sub">Lab</h3>
+  <ol class="issues">
+    <li><b>"All data" is 2026 only</b> (<code>history_from</code>), not five years; the 1Y preset is refused. Only the learners read from Oct 2021, from one continuous engine run.</li>
+    <li><b>L3/L4</b>: a touched-but-not-closed protected level is used up without a CHoCH. Filed as S57.</li>
+    <li><b>L9–L12, L15/17/18 are not "Strategy 1's entries"</b>: <code>sl_rule none</code> takes SETUPs L1 refuses, and the lock drops signals while a position is open.</li>
+    <li>README says L1–4 and L9–10 square off at 15:25; L11 and L12 do too.</li>
+    <li>FZ zone memory starts 1 Jan 2026, not at the file's first session. Volume is live on every bar of the near-month files ("volume-blind before 26 Aug" is stale).</li>
+    <li>FZ.md says the close-form HUNT is exactly one close outside; the code allows 1…<code>hunt_max_bars</code> (1–2 for L7).</li>
+    <li>Results in the README expectations table, FZ.md §16/§19 and S43 come from older tapes; <code>results/summary.json</code> differs.</li>
+    <li>S50 quotes −1.50L for L16's variant; the stored result is −166,620.</li>
+    <li>c2c: a signal on a session's last candle enters at the next session's 09:15 open (docs say same session); its lock refuses an entry on the exit candle.</li>
+    <li>Learner README says "ATR % of price"; the code uses ATR/close × 1000, capped at 5.</li>
+    <li>L29/L30 JSON descriptions have mangled dash characters; S53's pullback wording was replaced by the re-emergence rule.</li>
+    <li><code>engine.py</code> docstring lists <code>entry_rule</code>/<code>exit_rule</code>; the engine never reads them.</li>
+  </ol>
+</section>
+
+<footer>Built from the code on 2026-10-01. Deeper references: <a href="STRATEGIES.md">STRATEGIES.md</a>, <a href="PRESSURE_STRATEGY.md">PRESSURE_STRATEGY.md</a>, <a href="ORDERS_AND_POSITIONS.md">ORDERS_AND_POSITIONS.md</a>, <a href="../research/strategy_lab/README.md">strategy_lab/README.md</a>, <a href="../research/strategy_lab/FZ.md">FZ.md</a>. When a strategy's rules change, update this page in the same change.</footer>
+</main>
+</div>
+
+<script>
+(function () {
+  var input = document.getElementById('filter');
+  var cards = Array.prototype.slice.call(document.querySelectorAll('article.strat'));
+  input.addEventListener('input', function () {
+    var q = input.value.trim().toLowerCase();
+    cards.forEach(function (c) {
+      var hay = (c.getAttribute('data-tags') + ' ' + c.textContent).toLowerCase();
+      c.classList.toggle('hidden-by-filter', q !== '' && hay.indexOf(q) === -1);
+    });
+  });
+})();
+</script>
+</body>
+</html>

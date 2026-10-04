@@ -1,0 +1,255 @@
+{
+ "code": "ST33",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-03T23:22:48",
+   "key": "8846b30bd592",
+   "code": "05bb2ba9bf6b",
+   "definition": {
+    "code": "ST33",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 2,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "setup_v1",
+     "exit_rule": "next_choch"
+    },
+    "sma_filter": {
+     "period": 200,
+     "trend": "slope",
+     "notes": "uptrend = SMA at the entry candle above the SMA one candle before (the instantaneous slope); on the option's own candles of the backtest's timeframe; long legs need it rising, short legs falling"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 3,
+     "lock": "strike",
+     "scale_out": [
+      {
+       "lots": 1,
+       "target_r": 1
+      },
+      {
+       "lots": 1,
+       "target_r": 2
+      }
+     ],
+     "exit": "position",
+     "stop": {
+      "futures_pts": 50,
+      "option_pct": 5
+     },
+     "trail": {
+      "start_r": 3,
+      "lag_r": 1
+     },
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM2",
+      "ITM1",
+      "OTM1",
+      "OTM2",
+      "OTM3",
+      "OTM4"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14,
+     "native_scan": {
+      "choices": [
+       "ATR2",
+       "ATM",
+       "ITM1",
+       "OTM1"
+      ],
+      "every_minutes": 5,
+      "one_per_side": true
+     }
+    }
+   },
+   "changes": [],
+   "results": {
+    "all-data_1m": {
+     "OPT_NATIVE": {
+      "W-SCAN": {
+       "trades": 1923,
+       "wins": 658,
+       "pts": -2196.28,
+       "net_inr": -259179.28,
+       "pf": 0.57,
+       "max_dd_inr": -259179.28,
+       "t_stat": -10.42
+      },
+      "M-SCAN": {
+       "trades": 1317,
+       "wins": 456,
+       "pts": -1914.43,
+       "net_inr": -217609.62,
+       "pf": 0.64,
+       "max_dd_inr": -234327.98,
+       "t_stat": -6.56
+      }
+     }
+    }
+   }
+  },
+  {
+   "version": 2,
+   "at": "2026-10-03T23:32:40",
+   "key": "53457fa096a4",
+   "code": "b6f0f983321c",
+   "definition": {
+    "code": "ST33",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 2,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "setup_v1",
+     "exit_rule": "next_choch"
+    },
+    "sma_filter": {
+     "period": 200,
+     "trend": "slope",
+     "notes": "uptrend = SMA at the entry candle above the SMA one candle before (the instantaneous slope); on the option's own candles of the backtest's timeframe; long legs need it rising, short legs falling"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 3,
+     "lock": "strike",
+     "scale_out": [
+      {
+       "lots": 1,
+       "target_r": 1
+      },
+      {
+       "lots": 1,
+       "target_r": 2
+      }
+     ],
+     "exit": "position",
+     "stop": {
+      "futures_pts": 50,
+      "option_pct": 5
+     },
+     "trail": {
+      "start_r": 3,
+      "lag_r": 1
+     },
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM2",
+      "ITM1",
+      "OTM1",
+      "OTM2",
+      "OTM3",
+      "OTM4"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14,
+     "native_scan": {
+      "choices": [
+       "ATR2",
+       "ATM",
+       "ITM1",
+       "OTM1"
+      ],
+      "every_minutes": 5,
+      "one_per_side": true
+     }
+    }
+   },
+   "changes": [
+    "code changed (core.py, the strategy file or its family module)"
+   ],
+   "results": {
+    "all-data_1m": {
+     "OPT_NATIVE": {
+      "W-SCAN": {
+       "trades": 1923,
+       "wins": 658,
+       "pts": -2196.28,
+       "net_inr": -259179.28,
+       "pf": 0.57,
+       "max_dd_inr": -259179.28,
+       "t_stat": -10.42
+      },
+      "M-SCAN": {
+       "trades": 1317,
+       "wins": 456,
+       "pts": -1914.43,
+       "net_inr": -217609.62,
+       "pf": 0.64,
+       "max_dd_inr": -234327.98,
+       "t_stat": -6.56
+      }
+     }
+    }
+   }
+  }
+ ]
+}

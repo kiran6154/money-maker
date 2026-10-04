@@ -1,0 +1,495 @@
+{
+ "code": "ST7",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-03T20:15:20",
+   "key": "0c05e6a382ea",
+   "code": "6029d7cd75f2",
+   "definition": {
+    "code": "ST7",
+    "timeframe": "minute",
+    "warmup_days": 2,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "prev_swing",
+     "entry_rule": "fz_v2",
+     "exit_rule": "next_choch"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": null,
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM2",
+      "ITM1",
+      "OTM1",
+      "OTM2",
+      "OTM3",
+      "OTM4"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14
+    },
+    "fz": {
+     "minute": {
+      "band_half_width": {
+       "value": 10,
+       "source": "decision:1-2",
+       "statistic": ""
+      },
+      "birth_a_source": {
+       "value": "none",
+       "source": "evaluation:v2",
+       "statistic": "",
+       "note": "rooms are born from sits only; protected_level / every_swing stay available as diagnostics"
+      },
+      "birth_b": {
+       "value": "band",
+       "source": "decision:1",
+       "statistic": ""
+      },
+      "cluster_bars": {
+       "value": 10,
+       "source": "user brief",
+       "statistic": "",
+       "note": "the 10-close sit"
+      },
+      "cluster_width": {
+       "value": 20,
+       "source": "decision:1",
+       "statistic": ""
+      },
+      "merge_overlap": {
+       "value": 0.5,
+       "source": "decision:1",
+       "statistic": "",
+       "note": "rooms: a sit overlapping a live room by at least half the width is a visit of that room; otherwise a new room, clipped at live rooms' edges"
+      },
+      "zone_max_age_sessions": {
+       "value": null,
+       "source": "evaluation:D06",
+       "statistic": "",
+       "note": "band model chart view only; rooms retire through room_max_age_sessions"
+      },
+      "room_model": {
+       "value": "rooms",
+       "source": "evaluation:v2 (user brief)",
+       "statistic": "",
+       "note": "a room is a band the market sat in; see FZ.md v2"
+      },
+      "drift_birth": {
+       "value": false,
+       "source": "evaluation:v2",
+       "statistic": "",
+       "note": "no drift births: a room is born only on the transition into a sit"
+      },
+      "room_overlap": {
+       "value": "supersede",
+       "source": "user decision 2026-09-27 call 2 (vs rooms not visited this session)",
+       "statistic": "clip, the first reading, cut 131 of 226 rooms and left slivers (D 09-02 12:45 0.65 pt wide, F 09-02 14:38 10.25 pt), the 10-pt stagger the brief rejects (1m, all data)",
+       "note": "a sit overlapping live rooms by less than merge_overlap is a new full-width room and retires them; alternative 'clip' (edges stop at the neighbours')"
+      },
+      "room_max_age_sessions": {
+       "value": 2,
+       "source": "evaluation:v2",
+       "statistic": "",
+       "note": "\"yesterday's shelf, not a two-month hash\" (user brief)"
+      },
+      "visit_min_bars": {
+       "value": 2,
+       "source": "evaluation:v2",
+       "statistic": "",
+       "note": "a stay of fewer inside closes that ends by the leave rule is a touch, not a visit"
+      },
+      "accept_bars": {
+       "value": 10,
+       "source": "spec:s2",
+       "statistic": ""
+      },
+      "accept_vol_ratio": {
+       "value": 0.8,
+       "source": "spec:s2",
+       "statistic": ""
+      },
+      "thin_ratio": {
+       "value": 0.5,
+       "source": "spec:s2",
+       "statistic": ""
+      },
+      "first_print_min_bars": {
+       "value": 3,
+       "source": "decision:7",
+       "statistic": ""
+      },
+      "hunt_form": {
+       "value": "close",
+       "source": "evaluation:M13",
+       "statistic": "one close outside then a close back inside; a wick pierce with the close inside is routine (29% of 1m inside bars)"
+      },
+      "hunt_max_bars": {
+       "value": 2,
+       "source": "user brief",
+       "statistic": "",
+       "note": "1 or 2 closes outside then back inside is a HUNT; the 3rd close outside is the LEAVE (leave_closes)"
+      },
+      "hunt_min_depth_atr": {
+       "value": null,
+       "source": "evaluation:M13",
+       "statistic": "not used by the close form"
+      },
+      "hunt_burst": {
+       "value": 1.5,
+       "source": "evaluation:M13",
+       "statistic": "no tape statistic; skipped when volume NA"
+      },
+      "reject_tol": {
+       "value": 2,
+       "source": "evaluation:M15",
+       "statistic": "wick within eps of an edge, not beyond: 3.7/22/39/75% of inside bars at 0/1/2/5 pts (1m, live protected-level band, all data)"
+      },
+      "leave_closes": {
+       "value": 3,
+       "source": "user brief",
+       "statistic": "",
+       "note": "bound 3 so HUNT and LEAVE do not overlap"
+      },
+      "leave_ttl_bars": {
+       "value": 15,
+       "source": "evaluation:M11",
+       "statistic": "the spec's 15-minute window by analogy"
+      },
+      "leave_far_side": {
+       "value": "block_list",
+       "source": "evaluation:D02/C02",
+       "statistic": "",
+       "note": "S35 unchanged: user decision pending; alternatives 'any', 'no_band'"
+      },
+      "fade_block_bars": {
+       "value": 15,
+       "source": "decision:6",
+       "statistic": ""
+      },
+      "fade_scope": {
+       "value": "ref_band",
+       "source": "evaluation:C03",
+       "statistic": ""
+      },
+      "defend_window_bars": {
+       "value": 15,
+       "source": "evaluation:M18",
+       "statistic": "the spec's 15-minute window by analogy"
+      },
+      "open_bars": {
+       "value": 10,
+       "source": "spec:s3",
+       "statistic": "",
+       "note": "first 10 minutes"
+      },
+      "open_quiet_bars": {
+       "value": 10,
+       "source": "evaluation:M25",
+       "statistic": "the spec's first 10 minutes"
+      },
+      "open_sit_closes": {
+       "value": 3,
+       "source": "evaluation:M25",
+       "statistic": "",
+       "note": "open guard: the pierced band has fewer than this many closes inside today ('no sit')"
+      },
+      "open_window_until": {
+       "value": "09:25",
+       "source": "spec:s3",
+       "statistic": ""
+      },
+      "no_entry_from": {
+       "value": "15:20",
+       "source": "spec:s3, decision:10",
+       "statistic": ""
+      },
+      "cancel_inside_bars": {
+       "value": 5,
+       "source": "spec:s4",
+       "statistic": "",
+       "note": "5 minutes"
+      },
+      "edge_watch": {
+       "value": "ref_band",
+       "source": "evaluation:D03",
+       "statistic": "",
+       "note": "alternative 'containing_band'"
+      },
+      "volume_base": {
+       "value": "first",
+       "source": "spec:s2, decision:4",
+       "statistic": "",
+       "note": "C01: 'previous' is a later variant"
+      },
+      "reenter_fill": {
+       "value": "confirm_bar",
+       "source": "evaluation:M20",
+       "statistic": ""
+      },
+      "control_draws": {
+       "value": 2000,
+       "source": "evaluation:M43",
+       "statistic": ""
+      },
+      "control_seed": {
+       "value": "fz",
+       "source": "evaluation:M43",
+       "statistic": ""
+      },
+      "same_session_overlap": {
+       "value": "keep_older",
+       "source": "user decision 2026-09-27 call 2",
+       "statistic": "",
+       "note": "a sit overlapping a live room already visited this session is a visit of it, never a birth; the older room keeps its edges"
+      },
+      "session_visit_rule": {
+       "value": "sit",
+       "source": "user decision 2026-09-28",
+       "statistic": "",
+       "note": "'visited this session' = a real sit today (at least cluster_bars consecutive same-session closes inside the room), not any close; alternative 'any_close'"
+      },
+      "adjacent_birth": {
+       "value": "block_half_width",
+       "source": "user decision 2026-09-28",
+       "statistic": "",
+       "note": "a sit whose band edge is within band_half_width of a live room sat in this session (overlapping or not) is not a birth and not a visit (sits_near_room); alternative 'allow'"
+      },
+      "defend_half": {
+       "value": "away_half",
+       "source": "user decision 2026-09-28",
+       "statistic": "",
+       "note": "a defend TAKE also needs the SETUP close in the half of the room away from the defended edge (above the mid for a long, below for a short); otherwise WATCH, take_why defend_wrong_half; alternative 'off'"
+      },
+      "room_edges": {
+       "value": "sit_range",
+       "source": "user decision 2026-09-28b",
+       "statistic": "",
+       "note": "a room's lo / hi are the min / max close of the sit that bore it (the cluster_bars window), frozen at birth; mid = (lo + hi) / 2; alternative 'half_width' (mid +- band_half_width)"
+      },
+      "absorb_rule": {
+       "value": "mid_inside",
+       "source": "user decision 2026-09-28b",
+       "statistic": "",
+       "note": "a sit is a visit of a live room only when its mid lies inside that room; otherwise it is a birth candidate for same_session_overlap / adjacent_birth / room_overlap; alternative 'overlap' (merge_overlap x the sit's width)"
+      },
+      "defend_direction": {
+       "value": "one_per_visit",
+       "source": "user decision 2026-09-28b",
+       "statistic": "",
+       "note": "after a defend TAKE one way in a visit, a defend the other way in the same visit is WATCH, take_why defend_opposite_in_visit; alternative 'any'"
+      },
+      "same_day_replace": {
+       "value": "replace_unaccepted",
+       "source": "user decision 2026-09-28d",
+       "statistic": "",
+       "note": "a sit not absorbed by mid_inside whose close range overlaps or touches a live room born earlier the same session retires that room (retired_by same_day_replace) and is born in its place; rooms from earlier days keep keep_older / adjacent_birth protection; alternative 'off'"
+      }
+     }
+    }
+   },
+   "changes": [],
+   "results": {
+    "all-data_1m_idx": {},
+    "all-data_1m": {
+     "FUT": {
+      "-": {
+       "trades": 129,
+       "wins": 27,
+       "pts": 452.5,
+       "net_inr": -30678.33,
+       "pf": 0.87,
+       "max_dd_inr": -79148.37,
+       "t_stat": -0.39
+      }
+     },
+     "OPT_FUT_SIGNAL": {
+      "W-ATR2": {
+       "trades": 78,
+       "wins": 21,
+       "pts": 113.6,
+       "net_inr": 2787.54,
+       "pf": 1.09,
+       "max_dd_inr": -15832.95,
+       "t_stat": 0.2
+      },
+      "W-ATM": {
+       "trades": 78,
+       "wins": 21,
+       "pts": 116.45,
+       "net_inr": 2873.9,
+       "pf": 1.08,
+       "max_dd_inr": -17911.27,
+       "t_stat": 0.19
+      },
+      "W-ITM2": {
+       "trades": 78,
+       "wins": 21,
+       "pts": 240.0,
+       "net_inr": 10351.11,
+       "pf": 1.25,
+       "max_dd_inr": -22247.76,
+       "t_stat": 0.52
+      },
+      "W-ITM1": {
+       "trades": 78,
+       "wins": 21,
+       "pts": 204.65,
+       "net_inr": 8348.81,
+       "pf": 1.23,
+       "max_dd_inr": -19171.46,
+       "t_stat": 0.48
+      },
+      "W-OTM1": {
+       "trades": 78,
+       "wins": 21,
+       "pts": 50.2,
+       "net_inr": -1214.55,
+       "pf": 0.96,
+       "max_dd_inr": -15068.52,
+       "t_stat": -0.1
+      },
+      "W-OTM2": {
+       "trades": 78,
+       "wins": 19,
+       "pts": -11.7,
+       "net_inr": -5058.24,
+       "pf": 0.81,
+       "max_dd_inr": -13595.96,
+       "t_stat": -0.5
+      },
+      "W-OTM3": {
+       "trades": 78,
+       "wins": 19,
+       "pts": -43.15,
+       "net_inr": -6958.94,
+       "pf": 0.7,
+       "max_dd_inr": -11339.21,
+       "t_stat": -0.85
+      },
+      "W-OTM4": {
+       "trades": 78,
+       "wins": 17,
+       "pts": -60.45,
+       "net_inr": -7970.98,
+       "pf": 0.59,
+       "max_dd_inr": -9408.39,
+       "t_stat": -1.22
+      },
+      "M-ATR2": {
+       "trades": 80,
+       "wins": 21,
+       "pts": 100.65,
+       "net_inr": 730.4,
+       "pf": 1.02,
+       "max_dd_inr": -17441.29,
+       "t_stat": 0.05
+      },
+      "M-ATM": {
+       "trades": 80,
+       "wins": 21,
+       "pts": 105.9,
+       "net_inr": 954.39,
+       "pf": 1.03,
+       "max_dd_inr": -19561.16,
+       "t_stat": 0.06
+      },
+      "M-ITM2": {
+       "trades": 80,
+       "wins": 25,
+       "pts": 338.0,
+       "net_inr": 15508.23,
+       "pf": 1.42,
+       "max_dd_inr": -19039.52,
+       "t_stat": 0.81
+      },
+      "M-ITM1": {
+       "trades": 80,
+       "wins": 22,
+       "pts": 243.4,
+       "net_inr": 9637.4,
+       "pf": 1.27,
+       "max_dd_inr": -18587.18,
+       "t_stat": 0.56
+      },
+      "M-OTM1": {
+       "trades": 80,
+       "wins": 22,
+       "pts": 67.5,
+       "net_inr": -1309.59,
+       "pf": 0.96,
+       "max_dd_inr": -16499.76,
+       "t_stat": -0.1
+      },
+      "M-OTM2": {
+       "trades": 80,
+       "wins": 19,
+       "pts": -22.75,
+       "net_inr": -6964.43,
+       "pf": 0.78,
+       "max_dd_inr": -16446.04,
+       "t_stat": -0.63
+      },
+      "M-OTM3": {
+       "trades": 80,
+       "wins": 21,
+       "pts": -35.8,
+       "net_inr": -7623.07,
+       "pf": 0.73,
+       "max_dd_inr": -14411.04,
+       "t_stat": -0.82
+      },
+      "M-OTM4": {
+       "trades": 80,
+       "wins": 19,
+       "pts": -97.7,
+       "net_inr": -11476.33,
+       "pf": 0.6,
+       "max_dd_inr": -15454.49,
+       "t_stat": -1.38
+      }
+     }
+    }
+   }
+  }
+ ]
+}

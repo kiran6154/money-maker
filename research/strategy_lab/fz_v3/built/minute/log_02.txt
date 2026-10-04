@@ -1,0 +1,50 @@
+01:58:22 loaded 443826 bars (lean=True), fm_na bars 4 [rss 167.9 MB, peak 167.9 MB]
+01:58:23 view: 130843 swings, 5326 setups, 8054 CHoCH; cfg keys 46 [rss 261.4 MB, peak 272.8 MB]
+01:58:45 fz.run done in 22.2s: 5326 ledger rows, 6802 rooms, 2644 watches, 875 positions [rss 850.2 MB, peak 891.6 MB]
+01:58:56 card.csv written; reads {'NEW': 48306, 'FIRST_PRINT': 34717, 'PENDING': 61016, 'REJECT': 26273, 'LEAVE': 190693, 'THIN': 52054, 'HUNT': 3708, 'RECYCLE': 13160, 'ACCEPTED': 13899} [rss 603.5 MB, peak 891.6 MB]
+01:58:56 ledger.csv: 5326 rows, extra keys [] [rss 605.1 MB, peak 891.6 MB]
+01:58:57 fz_trades.csv: 875 positions (711 TAKE, 164 REENTER) [rss 639.1 MB, peak 891.6 MB]
+01:58:57 done [rss 639.2 MB, peak 891.6 MB]
+{
+ "load_s": 5.1,
+ "lean_loader": true,
+ "fz_run_s": 22.2,
+ "peak_after_fz_run_mb": 891.6,
+ "card_write_s": 10.9,
+ "build_trades_s": 0.4,
+ "bars": 443826,
+ "ledger_rows": 5326,
+ "rooms": 6802,
+ "watches": 2644,
+ "positions": 875,
+ "gates_by_outcome": {
+  "BLOCK": 1807,
+  "WATCH": 2644,
+  "REENTER": 164,
+  "TAKE": 711
+ },
+ "gates_at_setup": {
+  "BLOCK": 1821,
+  "WATCH": 2644,
+  "REENTER": 150,
+  "TAKE": 711
+ },
+ "reads_per_bar": {
+  "NEW": 48306,
+  "FIRST_PRINT": 34717,
+  "PENDING": 61016,
+  "REJECT": 26273,
+  "LEAVE": 190693,
+  "THIN": 52054,
+  "HUNT": 3708,
+  "RECYCLE": 13160,
+  "ACCEPTED": 13899
+ },
+ "peak_rss_mb": 891.6,
+ "rss_end_mb": 639.1,
+ "sl_rule": "prev_swing",
+ "touch": true,
+ "tf_min": 1,
+ "s0": 0,
+ "strategy_file": "strategies/strategy_7.json"
+}
