@@ -21,7 +21,11 @@ def build_bars(year: int, tf: int) -> pd.DataFrame:
     path = DA.CACHE / f"bars_{year}_{tf}.parquet"
     if path.exists():
         return pd.read_parquet(path)
-    raw = DA.load_year(year)
+    import pyarrow.parquet as pq
+    DA.load_year(year) if not (DA.CACHE / f"raw_{year}.parquet").exists() else None
+    rawpath = DA.CACHE / f"raw_{year}.parquet"
+    # memory: the session table needs only these columns; option rows are read one expiry at a time below
+    raw = pq.read_table(rawpath, columns=["expiry", "dt", "ref_time"]).to_pandas()
     base = 5 if DA.SOURCES[year][1] == "5minute" else 1
     if tf % base:
         raise ValueError(f"{tf}-minute bars cannot be built from {base}-minute data in {year}")
@@ -39,14 +43,17 @@ def build_bars(year: int, tf: int) -> pd.DataFrame:
     keys = pick[["expiry", "strike", "right"]].drop_duplicates()
     # one expiry at a time (memory; same arithmetic as the whole-year version)
     parts = []
-    for e, raw_e in raw.groupby("expiry", sort=True):
+    expiries = sorted(raw.expiry.unique())
+    del raw
+    for e in expiries:
+        raw_e = pq.read_table(rawpath, filters=[("expiry", "=", pd.Timestamp(e))]).to_pandas()
+        raw_e = raw_e[raw_e.strike % DA.GRID == 0]
         sub = raw_e.merge(keys, on=["expiry", "strike", "right"], how="inner")
         if len(sub) == 0:
             continue
         be = DA.resample(sub, tf, base)
         fwd = DA.forward(DA.resample(raw_e[raw_e.strike % DA.GRID == 0], tf, base))
         parts.append(be.merge(fwd, on=["expiry", "dt"], how="left"))
-    del raw
     bars = pd.concat(parts, ignore_index=True)
     bars["date"] = bars.dt.dt.normalize()
     bars = bars.merge(pick, on=["date", "expiry", "strike", "right"], how="left")

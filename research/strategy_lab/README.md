@@ -414,7 +414,7 @@ which moved two 1m positions; the permutation now splits by the SETUPs FZ traded
 | `results/history/<CODE>.json` | **versioned** — every version of a strategy (definition + result code) with its headline numbers per backtest and choice; the baseline each new version is read against |
 | `serve.py`, `start_lab.cmd` | the dashboard server with the backtest queue (`python serve.py`, or double-click `start_lab.cmd`); binds its port exclusively and says so if it is taken |
 | `explorer.py`, `explorer.html` | the chart explorer: any date, futures / index / one option, every indicator and a strategy's trades on that instrument's own candles (read-only, via serve.py) |
-| `studies/` | one-off study scripts that reuse the lab without writing its results (`r_combinations.py`: exit combinations for Strategies 9–10) |
+| `studies/` | one-off study scripts that reuse the lab without writing its results (`r_combinations.py`: exit combinations for Strategies 9–10; `waves/`: the option wave-lifecycle test, S54; `accel/`: NIFTY acceleration, S55) |
 | `exports/` | standalone HTML exports (chart + trades + CSV) for sharing, e.g. `ST9_1m_futures_2026-06-29_to_2026-07-02.html` |
 | `tests/test_strategy_files.py` | adding a backtest (terminal or dashboard) adds exactly one line in the style of its neighbours; the rest of every strategy file stays as written |
 | `rl.py`, `tests/test_rl.py` | the learner (journal + contextual bandit, `rl_v1`) and its tests: no look-ahead by truncation, determinism, learning, outcome arithmetic |
@@ -495,7 +495,10 @@ option listing of a date takes about 30 s, then it is cached).
 
 **Studies (`studies/`):** one-off scripts that reuse the lab without writing its results — e.g. `studies/r_combinations.py`
 (exit combinations for Strategies 9–10 over the last year and five years; output `studies/r_combinations.json`) and
-`studies/rainbow_grid.py` (the pre-registered rainbow grid that picked Strategies 29–30; output `studies/rainbow_grid.json`).
+`studies/rainbow_grid.py` (the pre-registered rainbow grid that picked Strategies 29–30; output `studies/rainbow_grid.json`) and
+`studies/waves/` (the option "wave lifecycle" test, S54: `PREREG.md` design, `LEDGER.md`, `REPORT.md`, per-event CSVs; standalone,
+reads the Breeze option folders directly, caches under `cache/waves/`; verdict: no edge, inconclusive by its pre-registered rule) and
+`studies/accel/` (S55: NIFTY futures acceleration → option expansion, same protocol; verdict: structure in 2026 only, not tradable).
 
 **From a phone:** the server listens only on this PC unless started with `--lan` (every network address of the PC — home
 Wi-Fi), `--tailscale` (only the PC's Tailscale address) or `--host <ip>`; it prints the phone address(es) at start.

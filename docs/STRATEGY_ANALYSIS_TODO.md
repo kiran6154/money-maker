@@ -509,16 +509,54 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 
 ---
 
+### S56. `Strategy5` (Pressure) never applies `min_option_price`: the generator writes 8, but the price band is not on its code path
+
+| | |
+|---|---|
+| Where | `strategy/Strategy5.java:119-209` (`execute`, signal added at :206-208); `AbstractSmaCrossStrategy.outsidePriceBand` (private, called only from the base `execute`, :225-231); `PressureConfigGenerator` writes `min_option_price = 8` for option books. Found 2026-10-01 while writing `docs/STRATEGY_RULEBOOK.html`. |
+| Why | `Strategy5.execute` replaces the base scan loop entirely, so the base loop's premium band never runs. No other component reads `min_option_price` at runtime. `PRESSURE_STRATEGY.md` ("Config values the generator writes") and the `Strategy5` javadoc (:113-114, "inherit … the price band") both imply that premiums below 8 are skipped. They are not. |
+| Impact | **Unquantified.** To measure it, count the Pressure option-book entries in a backtest ledger whose `entry_price` < 8, and compare their P&L with the rest of the book. |
+| Fix sketch | Either apply the band inside `Strategy5.execute` before emitting, or correct the docs to say the band is not enforced. Confirm with the user first, because either change alters what P5 trades (Rule 0(c)). |
+| Effort | **S** |
+| Priority | _Open — filed 2026-10-01._ |
+
+---
+### S57. Lab Strategies 3–4 (`choch_mode close`): a protected level touched but not closed through is used up without a CHoCH
+
+| | |
+|---|---|
+| Where | `research/strategy_lab/engine.py:95` (the CHoCH test uses `choch_mode`) vs `:106-110` (swing use-up uses `break_mode`). Found 2026-10-01 while writing `docs/STRATEGY_RULEBOOK.html`. |
+| Why | Under ST3/ST4 (`break_mode touch`, `choch_mode close`), a bar whose wick touches the protected level and closes back inside marks that swing as broken, but no CHoCH fires. The protected level then falls back to an older candidate. The README and the ST3/ST4 descriptions say only that "the CHoCH needs a close". |
+| Impact | **Unquantified.** To measure it, rerun ST3/ST4 with use-up also on `choch_mode`, over the same window, and diff the CHoCH and SETUP lists and the net. |
+| Fix sketch | Decide whether the silent use-up is intended. If it is, document it. If not, it becomes a new strategy number (a lab variant), not a retune of ST3/ST4. |
+| Effort | **S** |
+| Priority | _Open — filed 2026-10-01._ |
+
+---
+### S55. Redirected question from S54: can NIFTY's own directional acceleration be detected early enough to beat the option's theta and expiry-day asymmetry?
+
+| | |
+|---|---|
+| Where | Follow-up to [`research/strategy_lab/studies/waves/`](../research/strategy_lab/studies/waves/) (S54). Filed 2026-09-30 from the user's review of the S54 report. No code yet. |
+| Why | S54 found the option "staircase" is NIFTY × delta (≈ 85 %) + gamma (13–18 %), IV only 3–4 %, and the staircase shape itself is reproduced by shuffled bars. User's reframing: the staircase is the effect, the cause is a NIFTY move; ask whether the NIFTY move is predictable early. |
+| What S54 already measured that bounds it | (1) The option wave-2 signal read as a NIFTY signal had no NIFTY follow-through: 30-min NIFTY move in the option's direction +5.8 / +3.9 / −6.5 bp (2024 / 2025 / 2026). (2) The option response is lopsided near expiry, so a NIFTY edge must clear a hit-rate bar. ATM CE, 2025, for a ±0.25 % NIFTY move over 15 min: DTE 3–4 +20.9 / −20.2 %, drift −0.7 %; DTE 0 +48.8 / −70.3 %, drift −6.9 %. A symmetric ±0.25 % call must be right about 50 % of the time at DTE 3–4 but about 59 % on expiry day just to break even before costs (p·48.8 = (1−p)·70.3). (3) NIFTY index candles carry no volume; any volume profile must come from futures or front-weekly option volume. |
+| Impact | **Measured 2026-09-30** ([`studies/accel/REPORT.md`](../research/strategy_lab/studies/accel/REPORT.md)): pre-registered verdict **2 — structure, not tradable**. Volume-backed acceleration (PV), 30-min NIFTY futures excess over momentum-matched bars: 2024 +1.3 bp (in-sample), 2025 −0.2 bp [−4.0, +3.8], 2026 +5.0 bp [+0.6, +10.0] (n 67). Price-only acceleration is the same (+4.9 bp in 2026). Volume adds nothing in any year. Compression, opening-range and 1-minute signals: nothing. Real ATM options on PV at 30 min, net: −3.5 % / +2.3 % / +18.4 % [+1.2, +40.0] (n 105 / 52 / 25). |
+| Fix sketch | Nothing to build. The clean next checks, both needing the user: (1) run the frozen code once on the unread 2021-10 → 2023-12 futures reserve (H1 on P and PV, same rule; pre-register up / CE and down / PE as separate tests too, the user's 2026-09-30 question); (2) paper-forward from 2026-10. Post-hoc CE / PE split (LEDGER): no consistent asymmetry on NIFTY; options CE −3.0 / +6.7 / +19.1 %, PE −3.8 / −0.7 / +17.2 %, all intervals across zero. |
+| Reserve confirmation (2026-10-02, `CONFIRM.md`) | 2021-10 → 2023-12: PV +1.4 bp [−1.3, +4.1] → **inconclusive**; price-only +2.2 [−0.1, +4.6]; **CE vs PE: no difference** (up − down +0.9 [−5.8, +7.1]). Price-acceleration excess is positive in all six periods 2021–2026 but significant only in 2022 and 2026: a weak, uneven ~+2 bp / 30 min continuation, below the expiry-day option hurdle. |
+| Effort | **L** (study + confirmation, done). |
+| Priority | _Done 2026-10-02. Only paper-forward remains; no option rule follows._ |
+
+---
 ### S54. Option "wave lifecycle" study (compression → expansion → higher base → expansion …): is it real, and is its geometry exponential?
 
 | | |
 |---|---|
 | Where | [`research/strategy_lab/studies/waves/`](../research/strategy_lab/studies/waves/) — `PREREG.md` (design frozen before any outcome), the study code, `events.csv`, `REPORT.md`. Filed 2026-09-30. No strategy file, no `TradeConfig`, no bean. |
 | Why | User (2026-09-30) asked for a skeptical test of a visual pattern in intraday NIFTY option premiums and of whether successive wave levels follow a linear / log / exponential / power-law / geometric / wave law. Build choices the request leaves open, all recorded in `PREREG.md`: 5-minute is the primary timeframe (the only one present in 2024, 2025 and 2026); 2024 = development, 2025 = validation, 2026 = blind; strikes fixed at 09:20 from the index on the 100-pt grid; sessions before the files' Monday-09:20 strike-list moment are flagged as strike-set hindsight; IV / Greeks are backed out with Black-76 on the put-call-parity forward (no IV data); spread is assumed (no bid / ask data). |
-| Impact | **Unquantified until the study runs (numbers follow in this entry).** |
-| Fix sketch | Research only. Nothing becomes a strategy without the user (Rule 0(c)). |
-| Effort | **L** (study). |
-| Priority | _Open — filed 2026-09-30 before any outcome was computed._ |
+| Impact | **Measured 2026-09-30 (`REPORT.md`): no trading edge; pre-registered verdict 4 (inconclusive).** Wave-2 signal, 30-min excess over matched bars, all front strikes: 2024 +10.7 % (in-sample) → 2025 +2.4 % [−5.1, +8.7] n 47 → 2026 −10.5 % [−35.6, +18.3] n 27; ATM n = 26 / 8 / 9. Bars shuffled within each session give the same lifecycle count and the same continuation to wave 3, so the staircase shape is not distinguishable from random ordering. Exponential / geometric is the worst next-peak law every year. Option waves are NIFTY moves (delta ≈ 85 %, IV ≈ 3–4 %). Volume coincides with the breakout, never leads it. ATM net per lot at 30 min: +₹118 / −₹83 / −₹1,145. |
+| Fix sketch | Nothing to build. Open leads only (post-hoc, not confirmed): wave-3 on 1-minute ATM (+12 / +18 %, n 19 / 13) and CE > PE out of sample. Either needs its own pre-registration on new data (e.g. full-chain 2021–2023 minute data through the frozen detector) before it means anything. |
+| Effort | **L** (study, done). |
+| Priority | _Closed as a study 2026-09-30; kept open only for the two leads above, user's call._ |
 
 ---
 ### S53. Lab Strategies 29–30 (rainbow ribbon intraday, `rainbow_v1`): what "rainbow" and "best" were taken to mean, the pre-registered grid, and the numbers
@@ -542,7 +580,8 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Fix sketch | Nothing changes without the user (Rule 0(c)). Open choices, each a `c2c` value or a small switch: regime = protected-level break vs the engine flip (1); trail only after a set gain, or the 5 % stop alone (4); a PCR exit threshold re-based on the window PCR's own distribution, or the exit rule dropped (it currently makes the PCR books intraday); the delta cap vs ITM1 conflict (8). |
 | Effort | **S** per variant (one strategy file; a run is under a minute). **M** to fetch the missing monthly chains. |
 | Research programme (2026-09-29) | The user set a 16-phase research programme on this strategy (signal edge vs option edge, bull / bear / flat, decay, DTE, strike, exits, walk-forward). Ledger: [`research/strategy_lab/studies/c2c/LEDGER.md`](../research/strategy_lab/studies/c2c/LEDGER.md). **Phase 1 audit (EXP-001) found blocking defects:** (A1) the Breeze index 5-minute file the lab uses for INDEX signals has corrupt candles — 111 bars with a range above 150 pts, 33 of 162 15:20 candles in 2026 above 60 pts where Kite and the long index file are flat — so every INDEX backtest in the lab, Strategy 25–28's index numbers above included, is affected; (A3) the engine's regime is path-dependent: a flip needs a close through the AVWAP anchored at the trend's start, so after a long trend no flip happens — run continuously the regime froze for 330 sessions (2020-11 →) and 300 sessions (2023-11 → 2025-02), 0 flips in 2021 and 2024, while a 5-session re-warm (the lab's per-backtest start) gives 90 flips in 2024-H2. Signals depend on the run's start date. (A4) "next candle open" enters on the 09:15 print after a session's last candle (14 of 1,384 signals). Phase 3 signal study (EXP-002, INCONCLUSIVE because of A3): no directional edge measured on NIFTY for either side 2021–2026 (bearish excess over a same-time-of-day random entry +1.1 pts at 60 min, t 0.62; bullish −2.0, t −1.29). **Decision needed before any further phase:** the regime definition (A3) and the index data source (A1). |
-| Priority | _Open — filed 2026-09-29 with the first publish; research programme blocked on A1 / A3 (user decision)._ |
+| Research programme, development results (2026-09-30) | User decisions: both regime definitions carried (R-A = 5-session rolling memory, R-B = no AVWAP in the regime; the A3 freeze comes from the AVWAP-qualified protected-level candidates, not the flip line — EXP-003), the long index file for research only (A1 left in the lab), all phases run. Development data only (index 2021–2023; options 2021 and 42 of 52 expiries of 2022 from `tools/breeze_options.py --research`, 2023 not yet fetched); 2024 validation and 2025–2026 blind untouched. **No option edge in any of ~1,000 cells:** all 60 strike × expiry baseline books lose (EXP-008); every exit and holding period loses on the bearish side (EXP-011); the exact baseline (R-A bearish) −80,001 ₹ per lot over 377 trades, PF 0.64, t −3.25 (EXP-005). Measured causes: puts lose ≈ 5–7 pts to the close through an intraday IV decline at every DTE (EXP-004); the 5-pt trail closes 74–89 % of trades inside one candle's noise (EXP-005/011/016); slippage decides the sign of every near-zero cell (EXP-016); movement is not missing — NIFTY moves 33–89 pts favourably before the close after almost every signal — direction is (EXP-006). **One lead:** bearish signals with a narrow retest band (±20 instead of ±50) show a monotone NIFTY-level excess (R-B +7.1 pts to the close, t 3.07) that walk-forward carried to 2022 (+6.8, t 1.52) and 2023 (+6.2, t 1.76) — a signal-level lead, not yet an option edge (as an option trade still −157 ₹ per signal). Next: finish the 2023 fetch, re-run, then test the frozen baseline and the ±20 lead once on 2024. |
+| Priority | _Open — filed 2026-09-29; development phases done 2026-09-30 (ledger EXP-001 … EXP-017); 2024 validation pending the option fetch._ |
 
 ### S51. Lab Strategies 19–24 (learner, `rl_v1`): what is out of sample and what is not, and the build choices behind the learner
 

@@ -68,3 +68,17 @@ with the reason, and the frozen-code numbers stay the reported ones.
 `pipeline.build_bars` now builds one expiry at a time; the whole-year version could not allocate the 2025 1-minute panel
 on the shared machine. Checked: the 2024 5-minute panel rebuilt this way is identical to the frozen one
 (`assert_frame_equal`, 487,833 × 29). New `pipeline.py` hash recorded in `results/FREEZE.sha256` as `POST-FREEZE-1`.
+
+### POST-FREEZE-2 (memory only, results unchanged)
+
+The shared machine dropped below 1 GB free commit (another session's `lab.py` at 2.3 GB, mysqld 2.9 GB). `build_bars`
+now reads the raw cache one expiry at a time through a parquet filter instead of loading the year. Checked again: the
+2024 5-minute panel is identical to the frozen one. Hash appended to `results/FREEZE.sha256`.
+
+## 2026-09-30 — validation and blind, run once on frozen code
+
+Result summary in `REPORT.md`; conclusion **4 (inconclusive)** by the pre-registered rule: H1 not confirmed in 2025
+(+2.4 %, CI across 0) or 2026 (−10.5 %), H2 not separable from the shuffled null in either year, 2025–26 intervals
+wider than the round-trip cost. Nothing was re-tuned. The first launch of the 2025–26 run died with the session after
+2025 5-minute; the remaining stages were re-run with the same frozen files (`run_oos2.ps1`), not re-executing what
+had finished. Post-hoc observations (wave-3 on 1-minute, CE > PE) are recorded as leads in S54, not as findings.

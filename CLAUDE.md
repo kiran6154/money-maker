@@ -100,6 +100,7 @@ When changing anything in these areas, **read the relevant doc first**:
 | Architecture overview | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | High-level layering and conventions |
 | Schedulers (all 5) | [`docs/SCHEDULERS.md`](docs/SCHEDULERS.md) | LoginScheduler, AnalysisScheduler, TradeConfigScheduler, OrderScheduler, PositionScheduler — cadence, pipeline, mode-gating |
 | **Strategy gaps / TODO** | [`docs/STRATEGY_ANALYSIS_TODO.md`](docs/STRATEGY_ANALYSIS_TODO.md) | **Rule 0 — every strategy gap, open question and analysis follow-up goes here, not in `GAPS.md`** |
+| **Strategy rulebook (all)** | [`docs/STRATEGY_RULEBOOK.html`](docs/STRATEGY_RULEBOOK.html) | Every production strategy (P1–P10) and lab strategy (L1–L30) as step-by-step entry / exit algorithms, with shared engines, comparison tables and code-vs-docs caveats |
 | Strategies (`stratergy_id`) | [`docs/STRATEGIES.md`](docs/STRATEGIES.md) | What each strategy id runs, the shared `AbstractSmaCrossStrategy` engine, Strategy2's SMA-20 slope filter, how to add one |
 | **Pressure strategy (id 5)** | [`docs/PRESSURE_STRATEGY.md`](docs/PRESSURE_STRATEGY.md) | The NIFTY intraday continuation engine: the five spot indicators, the pressure score, the entry clock, the seven comparison books, and why strategies 1-4 are untouched |
 | Orders + position monitoring | [`docs/ORDERS_AND_POSITIONS.md`](docs/ORDERS_AND_POSITIONS.md) | Order lifecycle, dedupe rules, broker factories, peak / SL / target tracking, `trade_order` columns |
