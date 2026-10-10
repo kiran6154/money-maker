@@ -250,7 +250,7 @@ export class ChartView {
     m.timeScale().subscribeVisibleTimeRangeChange((r) => { if (!r) return; for (const c of rest) { try { c.timeScale().setVisibleRange(r); } catch (e) {} } });
   }
 
-  // v1's chart look (dashboard.tpl drawChart): TradingView-style candles, swings as a thin level line with a dot at each end
+  // v1's chart look (dashboard.tpl drawChart): TradingView-style candles, swings as small squares with their level line
   // and a confirming arrow, faded candidate dots, CHoCH (purple) / BOS (grey) dots, the AVWAP pair (orange from the SH,
   // blue from the SL; dotted back to the anchor), the protected level (purple dashes), translucent FZ bands, the trades
   // (black arrow + label at entry, coloured exit dot with its reason and points, dashed path, dotted stop) and, for
@@ -285,21 +285,17 @@ export class ChartView {
     if (on.swings) {
       if (d.cand) for (const [k, col] of [[1, "rgba(8,153,129,.4)"], [2, "rgba(242,54,69,.4)"]])
         line({ color: col, lineVisible: false, pointMarkersVisible: true, pointMarkersRadius: 1.5 }, d.cand.map((r) => (r[k] == null ? { time: r[0] } : { time: r[0], value: r[k] })));
-      // a swing = a thin line at its price from the swing candle to the candle that confirms it, with a small dot at
-      // each end (at the price itself, so nothing sits on the candle bodies; markers grow with the zoom and hid them)
       for (const [k, t, p, ct] of d.swings || []) {
-        const col = k === "H" ? UP : DN, a = Math.max(t, t0);
-        line({ color: col, lineWidth: 1, pointMarkersVisible: true, pointMarkersRadius: 2 },
-             a === ct ? [{ time: ct, value: p }] : [{ time: snap(a), value: p }, { time: ct, value: p }]);
+        const hi = k === "H", col = hi ? UP : DN;
+        if (t >= t0) M.push({ time: t, position: hi ? "aboveBar" : "belowBar", color: col, shape: "square", size: 0.1 });
+        M.push({ time: ct, position: hi ? "aboveBar" : "belowBar", color: col, shape: hi ? "arrowDown" : "arrowUp", size: 0.5 });
+        const a = Math.max(t, t0);
+        line({ color: col, lineWidth: 1 }, a === ct ? [{ time: ct, value: p }] : [{ time: snap(a), value: p }, { time: ct, value: p }]);
       }
     }
     if (on.prot && d.prot) {
-      // horizontal dashes only: the candle where the level changes is left blank, so no vertical sides (no boxes)
-      const pm = new Map(d.prot); let prev;
-      line({ color: PURPLE, lineWidth: 1, lineStyle: 2 }, times.map((t) => {
-        const v = pm.get(t), same = v !== undefined && v === prev; prev = v;
-        return same ? { time: t, value: v } : { time: t };
-      }));
+      const pm = new Map(d.prot);
+      line({ color: PURPLE, lineWidth: 1, lineStyle: 2, lineType: 1 }, times.map((t) => (pm.has(t) ? { time: t, value: pm.get(t) } : { time: t })));
     }
     // an option on its own chart: the index (left scale) against the strike, to see it go in and out of the money
     if (on.index && d.spot && d.spot.length) {
