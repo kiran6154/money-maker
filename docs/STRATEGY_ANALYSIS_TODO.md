@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S67. Lab v2: relative volume, premium / discount and the session POC as entry filters. Measured on both halves: nothing profitable; premium / discount points the wrong way. Not built
+
+| | |
+|---|---|
+| Where | Scratch `vol_study.py` (nothing saved). 2026-10-11, the user pasted a second SMC note (indicators to pair with SMC). Most of it is TradingView indicator set-up (not applicable to the lab) or already measured (Choppiness Index, ATR: S66; previous-day and session sweeps, equal highs / lows: S63, S65). The three new mechanical rules were validated. |
+| Definitions (fixed before the run) | Relative volume: the CHoCH candle's volume ≥ 1.5 × the mean of the 20 candles before it; ≥ 1.5 × the mean of the same minute over the previous 20 sessions; the same 20-candle test on the SETUP candle. Premium / discount: a long only below the middle of the range, a short only above it; range = the session so far, and the last 60 candles. Session POC: the 5-point price bin with the most volume in the session so far; entry within 10 pts of it. 1-minute near-month futures; split 2023-03-09. |
+| Impact | **Measured, Futures, 1 lot, after costs; PF H1 / H2, yes vs no.** On ST3 (0.36 / 0.36): CHoCH volume vs the 20 before 0.44 / 0.39 vs 0.30 / 0.34; vs the same minute 0.42 / 0.46 vs 0.33 / 0.32; SETUP candle volume 0.33 / 0.40 vs 0.39 / 0.33 (reverses); **premium / discount (session) 0.32 / 0.30 vs 0.38 / 0.39 and (60 candles) 0.32 / 0.37 vs 0.37 / 0.36: the "correct" side is the worse one**; near the POC 0.24 / 0.32 vs 0.40 / 0.37 (entries at the POC are worse). On ST43's filters (0.52 / 0.52): CHoCH volume 0.64 / 0.50 vs 0.19 / 0.55 (reverses); same-minute 0.54 / 0.49 vs 0.50 / 0.54; away from the POC 0.55 / 0.52 vs 0.36 / 0.47. On ST46's filters (0.74 / 0.59; 155 / 175 trades): CHoCH volume 0.78 / 0.61 (143 / 130) vs 0.33 / 0.52; away from the POC 0.80 / 0.62 (124 / 152) vs 0.49 / 0.38; premium / discount (session) 0.59 / 0.76 on 28 / 19 trades. Every slice is net negative on both halves except tiny ones (27 trades). |
+| Read | A CHoCH on above-average volume is a little better than one without, on ST3 and on ST46, in both halves; entries at the session POC are a little worse. Both effects are a few hundredths to a tenth of PF. Premium / discount, as a rule for these breakout entries, is backwards: a Foundation long comes after a break upward, so it sits in the upper half by construction. Not built: stacking more filters chosen on this history onto ST46 (itself chosen on it) would be fitting, and none clears costs. |
+| Fix sketch | None proposed. If the option books of ST43 / ST46 hold up on the option history, the volume and POC readings are the next two to pre-register there. |
+| Effort | **S**. |
+| Priority | _Open; numbers recorded._ Related: S62–S66. |
+
+---
+
 ### S66. Lab v2: the mechanical chop rules of an SMC note, validated on both halves. One holds: Choppiness Index below 38.2. Built as Strategy 46 (still losing on futures)
 
 | | |
