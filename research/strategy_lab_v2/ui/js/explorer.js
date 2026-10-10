@@ -11,7 +11,7 @@ const save = () => pref("explorer2", S);
 const later = () => { clearTimeout(timer); timer = setTimeout(show, 250); };
 
 async function start() {
-  view = new ChartView($("#x-chart"), { static: true });
+  view = new ChartView($("#x-chart"), { static: true, onEdge: grow });
   meta = await api("/api/explorer/meta");
   strategies = Object.fromEntries(meta.strategies.map((s) => [s.code, s]));
   $("#x-code").innerHTML = meta.strategies.map((s) => `<option value="${esc(s.code)}">${esc(s.code)} · ${esc(s.name)} (${TF_LABEL[s.timeframe]})</option>`).join("");
@@ -33,7 +33,7 @@ async function start() {
   $$("#x-side button").forEach((b) => b.onclick = () => { S.side = b.dataset.s; save(); paint(); render(); });
   $("#x-exp").onchange = async () => { S.exp = $("#x-exp").value; await loadStrikes(); later(); };
   $("#x-strike").onchange = () => { S.strike = $("#x-strike").value; fitDate(); later(); };
-  $("#x-go").onclick = show;
+  $("#x-go").onclick = () => show();
   await loadExpiries();
   if (S.inst === "OPT") await loadStrikes();
   paint();
@@ -106,15 +106,33 @@ function fitDate() {
   $("#x-life").textContent = `${S.right} ${S.strike} traded ${life ? life[0] + " → " + life[1] : "?"} · this expiry's contracts ${s.first} → ${s.last} · index close on ${s.date}: ${num(s.index_close, 1)}${moved}`;
 }
 
-async function show() {
+// The reader dragged past the first (dir -1) or last (dir +1) candle: load more sessions on that side and keep the view.
+// The range becomes "N sessions before / after the date", whatever range the form had asked for.
+const MAX_CANDLES = 60000;
+let ext = null;                                   // {before, after} sessions around the date once the reader has scrolled out
+async function grow(dir, keep) {
+  if (!data) return;
+  if (data.candles.length >= MAX_CANDLES) { flashMsg(`${data.candles.length.toLocaleString()} candles loaded: pick a higher timeframe to go further`); return; }
+  const days = [...new Set(data.candles.map((c) => new Date(c[0] * 1000).toISOString().slice(0, 10)))];
+  const date = data.meta.date, per = Math.max(1, data.candles.length / days.length);
+  const step = Math.max(1, Math.round(1500 / per));                 // about 1,500 candles per load
+  ext = ext || { before: days.filter((d) => d < date).length, after: days.filter((d) => d > date).length };
+  if (dir < 0) ext.before += step; else ext.after += step;
+  await show(keep);
+}
+function flashMsg(t) { const el = $("#x-msg"); el.dataset.note = t; el.innerHTML += ` · <span class="warn">${esc(t)}</span>`; }
+
+async function show(keep) {
   clearTimeout(timer);
+  const growing = keep !== undefined && ext;
+  if (!growing) { ext = null; if (view) view.edgeDone = {}; }
   const q = { date: $("#x-date").value, inst: S.inst, code: $("#x-code").value, tf: $("#x-tf").value, days_before: $("#x-before").value, holding: $("#x-hold").value };
   if (S.inst === "OPT") Object.assign(q, { expiry: $("#x-exp").value, strike: $("#x-strike").value, right: S.right,
                                            start: $("#x-start").value, end: $("#x-end").value, liq_pct: $("#x-liq").value });
-  Object.assign(S, { date: q.date, code: q.code, tf: q.tf, hold: q.holding, before: q.days_before, start: $("#x-start").value, end: $("#x-end").value, liq: $("#x-liq").value });
-  save();
+  if (growing) Object.assign(q, { date: data.meta.date, days_before: ext.before, days_after: ext.after, start: "days", end: "date" });
+  if (!growing) { Object.assign(S, { date: q.date, code: q.code, tf: q.tf, hold: q.holding, before: q.days_before, start: $("#x-start").value, end: $("#x-end").value, liq: $("#x-liq").value }); save(); }
   const my = ++req;
-  $("#x-msg").textContent = "computing…";
+  if (growing) $("#x-msg").innerHTML += ` · <span class="muted">loading more…</span>`; else $("#x-msg").textContent = "computing…";
   let d;
   try { d = await api("/api/explorer/chart?" + new URLSearchParams(q)); }
   catch (e) {
@@ -127,6 +145,7 @@ async function show() {
   }
   if (my !== req) return;
   data = d;
+  if (growing && keep) view.keepRange = keep;      // the chart stays where the reader was
   render();
 }
 

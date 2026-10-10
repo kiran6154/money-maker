@@ -144,7 +144,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                                                q.get("expiry") or None, q.get("strike") or None, q.get("right") or None,
                                                                int(q.get("days_before") or 1), q.get("holding") or "own",
                                                                q.get("start") or "days", q.get("end") or "date",
-                                                               float(q.get("liq_pct") or 10)))
+                                                               float(q.get("liq_pct") or 10), int(q.get("days_after") or 0)))
             if u.path == "/api/status":
                 with lock:
                     return self.reply(200, dict(busy=any(j["state"] in ("queued", "running") for j in jobs),

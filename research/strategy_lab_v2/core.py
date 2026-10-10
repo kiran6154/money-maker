@@ -1806,7 +1806,7 @@ def option_milestones(src, expiry, strike, right, tf, step, liq_pct):
 
 
 def explorer_chart(date, inst, code, tf="minute", expiry=None, strike=None, right=None, days_before=1, holding="own",
-                   start="days", end="date", liq_pct=10):
+                   start="days", end="date", liq_pct=10, days_after=0):
     """One instrument's candles around `date` with the engine's layers and the strategy's trades computed on those candles
     (a visualization, not a backtest: nothing stored). FUT = the near-month futures, INDEX = the index (equal-weight
     AVWAP), OPT = one option contract, the strategy applied to its own chart. The engine warms up on the strategy's
@@ -1816,12 +1816,13 @@ def explorer_chart(date, inst, code, tf="minute", expiry=None, strike=None, righ
     least `liq_pct` % of its busiest session); it ends at the date or (`end` = 'expiry') at the contract's last candle."""
     if tf not in TF_MIN: raise ValueError(f"tf must be one of {tuple(TF_MIN)}")
     if inst not in ("FUT", "INDEX", "OPT"): raise ValueError("inst is FUT, INDEX or OPT")
-    days_before = max(0, min(int(days_before), 30))
+    days_before = max(0, min(int(days_before), 2000))     # the page loads further back as the reader scrolls left
+    days_after = max(0, min(int(days_after), 2000))       # ... and forward as they scroll right
     mod = load_strategies()[code]; spec = mod.SPEC
     ss = sessions(); d = dnum(date)
     k = int(np.searchsorted(ss, d))
     if k >= len(ss) or ss[k] != d: raise ValueError(f"{date} is not a session in the data")
-    show, last, M, note = int(ss[max(0, k - days_before)]), d, None, ""
+    show, last, M, note = int(ss[max(0, k - days_before)]), int(ss[min(len(ss) - 1, k + days_after)]), None, ""
     if inst == "OPT":
         if not (expiry and strike and right in ("CE", "PE")): raise ValueError("an option needs expiry, strike and right")
         src = OptionChain(tf).get(expiry, int(strike), right)

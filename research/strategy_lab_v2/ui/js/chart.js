@@ -45,6 +45,11 @@ export class ChartView {
     $(".ch-days", root).onchange = (e) => e.target.value && this.open(e.target.value);
     if (this.hooks.static)                         // the explorer: no run, so no day navigation
       $$('.ch-nav [data-k="prev"], .ch-nav [data-k="next"], .ch-nav [data-k="full"], .ch-nav [data-k^="more"], .ch-day, .ch-days', root).forEach((e) => e.hidden = true);
+    // more sessions load only after the reader moved the chart themselves (drag, wheel, touch, keys): a load never
+    // triggers the next one, so zooming out cannot run away
+    for (const ev of ["pointerdown", "wheel", "touchstart", "keydown"])
+      root.addEventListener(ev, () => { this.userMoved = true; }, { passive: true, capture: true });
+    this.edgeDone = {};
     const box = $(".ch-box", root);
     const h = pref("chartH"); if (h) box.style.height = h + "px";
     new ResizeObserver(() => { if (box.offsetHeight > 150) pref("chartH", box.offsetHeight); }).observe(box);
@@ -68,7 +73,7 @@ export class ChartView {
   }
 
   async open(day, to, focus) {
-    this.day = day; this.to = to || null; this.focus = focus || null;
+    this.day = day; this.to = to || null; this.focus = focus || null; this.edgeDone = {};
     $(".ch-day", this.root).value = day;
     const { code, run, type, choice } = this.ctx;
     const q = new URLSearchParams({ code, run: run.run, type, choice, day });
@@ -88,10 +93,21 @@ export class ChartView {
     this.redraw();
   }
 
+  // the reader reached the first (dir -1) or last (dir +1) candle: load the next sessions on that side
+  edge(dir) {
+    if (!this.userMoved || this.edgeBusy || this.edgeDone[dir]) return;
+    this.userMoved = false; this.edgeBusy = true;
+    const keep = this.charts[0]?.timeScale().getVisibleRange();
+    const before = this.data?.candles?.length || 0;
+    Promise.resolve(this.hooks.onEdge ? this.hooks.onEdge(dir, keep) : this.extend(dir))
+      .then(() => { if ((this.data?.candles?.length || 0) <= before) this.edgeDone[dir] = true; })   // nothing more on that side
+      .catch(() => {}).finally(() => { this.edgeBusy = false; });
+  }
+
   async extend(dir) {
     // + earlier / + later: load the previous (next) session into the same chart; the view stays where it was. Up to
     // MAX_SESSIONS sessions are kept so the chart stays light.
-    const MAX_SESSIONS = 20;
+    const MAX_SESSIONS = 60;
     if (this.extending || this.hooks.static || !this.data || (this.data.sessions || 1) >= MAX_SESSIONS) return;
     this.extending = true;
     const keep = this.charts[0]?.timeScale().getVisibleRange();
@@ -182,11 +198,11 @@ export class ChartView {
   opts(el) {
     return { autoSize: true, layout: { background: { color: css("--card") }, textColor: css("--muted"), fontSize: 11 },
              grid: { vertLines: { color: css("--line") }, horzLines: { color: css("--line") } },
-             // fixed edges: zooming out stops at the first / last candle (no empty space, nothing to "reach")
-             timeScale: { timeVisible: true, secondsVisible: false, borderColor: css("--line"), minBarSpacing: 0.001, rightOffset: 0,
-                          fixLeftEdge: true, fixRightEdge: true },
+             // free edges, like any charting tool: drag (or scroll sideways) past the first / last candle and the next
+             // sessions load (see edge()); vertical wheel zooms
+             timeScale: { timeVisible: true, secondsVisible: false, borderColor: css("--line"), minBarSpacing: 0.001, rightOffset: 0 },
              rightPriceScale: { borderColor: css("--line") }, crosshair: { mode: 0 },
-             handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+             handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
              handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true } };
   }
 
@@ -372,6 +388,11 @@ export class ChartView {
       }
       box.textContent = s;
     });
+    // past the first candle -> older sessions; past the last -> newer (only after the reader moved the chart: see edge())
+    if (main) ch.timeScale().subscribeVisibleLogicalRangeChange((r) => {
+      if (!r || !this.userMoved) return;
+      if (r.from < -0.5) this.edge(-1); else if (r.to > C0.length - 0.5) this.edge(1);
+    });
     requestAnimationFrame(() => {
       if (main && this.keepRange) {                // an extension: keep the view the reader had
         const r = this.keepRange; this.keepRange = null;
@@ -402,7 +423,7 @@ export class ChartView {
       (d.pair && d.pair.length ? " · orange / blue = AVWAP pair from the last SH / SL at each CHoCH (dotted: back to the anchor)" : "") +
       (d.tav && d.tav.length ? " · dark grey = trend AVWAP" : "") + (d.trig && d.trig.length ? " · green / red short line = SETUP level (CHoCH candle high / low; solid = a SETUP came)" : "") +
       (d.olines && d.olines.length ? ` · brown dashed = ${esc(d.olines.map((l) => l.name).join(", "))}` : "") +
-      (this.hooks.static ? "" : " · + earlier / + later add sessions") + " · mouse wheel zooms, drag pans · drag the bottom edge to resize";
+      " · drag or scroll sideways past the first / last candle to load more sessions · mouse wheel zooms · drag the bottom edge to resize";
   }
 
   async snapshot() {
