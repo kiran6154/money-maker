@@ -83,7 +83,7 @@ REFUSED_WHY = ("the liquidity filters read the near-month futures chart; standal
 def signals(bars, spec):
     """Strategy 3's trades that pass every enabled liquidity filter; the engine's structure stays on the chart."""
     eng = core.foundation(bars, spec["rules"])
-    on = [f for f in _LIQ.FILTERS if spec["liquidity"][f]["on"]]
+    on = _LIQ.on_filters(spec)
     keep = [x for x, v in zip(eng.trades(), _LIQ.verdicts(bars, eng, spec)) if all(v[f] for f in on)]
     s = eng.with_trades(keep)
     s.ui, s.ud, s.uch = eng.ui, eng.ud, eng.uch

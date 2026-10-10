@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S65. Lab v2 Strategies 44 and 45: the two structural entry ideas (a sweep of a real extreme; a higher-degree pivot as the broken level). Measured before building: both mark the worse trades
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/liquidity.py` (`extreme_sweep`, `pivot_degree`), `st44.py` (ST43 + extreme sweep), `st45.py` (ST43 + 15-candle pivot). 2026-10-11, at the user's request ("validate, and if profitable or we need a history of it, code it"). |
+| Definitions (fixed before the validation run) | **A. Extreme sweep** (bullish; highs for bearish): within the 30 candles up to the CHoCH candle, a candle went below the level and closed back above it; A1 level = the session's low so far, A2 = the previous session's low, A3 = either. **B. Higher-degree pivot**: the swing the CHoCH broke is the highest high / lowest low of the K candles on each side of it, all before the CHoCH candle; B1 K = 15, B2 K = 30. Split 2023-03-09 (H1 2,479 / H2 2,488 ST3 futures trades). |
+| Impact | **Measured, Futures, 1 lot, after costs; PF H1 / H2, passes vs fails.** On ST3 (0.36 / 0.36): A1 0.43 / 0.33 vs 0.35 / 0.37 (417 / 470 pass); A2 0.41 / 0.27 vs 0.35 / 0.38; A3 0.43 / 0.32 vs 0.33 / 0.38; B1 0.38 / 0.32 vs 0.36 / 0.36 (92 / 117 pass); B2 0.28 / 0.05 (26 / 30). The sweeps help in H1 and hurt in H2: not stable. **On ST43's filters (0.52 / 0.52): with A1 0.27 / 0.36, without 0.56 / 0.57; with A3 0.38 / 0.49, without 0.56 / 0.53; with B1 0.36 / 0.36, without 0.56 / 0.56; with B2 0.46 / 0.05.** On the best base both ideas select the worse trades in both halves. **Built for the record: ST44 (ST43 + A3) 246 trades, ₹-2,61,038, PF 0.47; ST45 (ST43 + B1) 150 trades, ₹-1,98,706, PF 0.36.** Options via futures W-ATR2, Jun 30 → Oct 9 2026: ST44 28 trades, ₹+7,040, PF 1.97, t 1.17; ST45 20 trades, ₹-4,370, PF 0.56 (too few to read). |
+| Read | Neither is profitable and neither is a stable improvement. The opposite reading (ST43 without a 15-candle-pivot break: 248 / 405 trades, PF 0.56 / 0.56; without a session-extreme sweep: 0.56 / 0.57) is consistent on both halves but small, was found on the whole history, and still loses. The entry side of this structure is now tested through slope, trend, swing age, displacement (twice), separation, sweep (any swing, aged, aged + extreme, session / previous-day extreme), equal levels, pivot degree, risk, time of day and CHoCH delay: best stable result PF 0.52–0.56 on futures. |
+| Fix sketch | None proposed. Re-run ST43–ST45's option books when the option history is in the store. |
+| Effort | **S**. |
+| Priority | _Open; numbers recorded._ Related: S62, S63, S64. |
+
+---
+
 ### S64. Lab v2 Strategies 41 and 42: the sweep tightened to a swing at least 40 candles old. Measured: still not a filter; the whole loss sits in trades held under 30 minutes, and no filter so far moves that
 
 | | |

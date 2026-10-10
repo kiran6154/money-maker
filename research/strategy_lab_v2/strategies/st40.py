@@ -87,7 +87,7 @@ def signals(bars, spec):
     """Strategy 3's trades that pass every enabled anti-chop filter and every enabled liquidity filter."""
     eng = core.foundation(bars, spec["rules"])
     on_c = [f for f in _ST38.FILTERS if spec["chop"][f]["on"]]
-    on_l = [f for f in _LIQ.FILTERS if spec["liquidity"][f]["on"]]
+    on_l = _LIQ.on_filters(spec)
     keep = [x for x, c, l in zip(eng.trades(), _ST38.verdicts(bars, eng, spec), _LIQ.verdicts(bars, eng, spec))
             if all(c[f] for f in on_c) and all(l[f] for f in on_l)]
     s = eng.with_trades(keep)

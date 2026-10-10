@@ -11,12 +11,17 @@ For a bullish CHoCH at candle ci with its SETUP at candle k (bearish mirrors, hi
             formed at most `memory` candles before it, whose price is within tol_atr x ATR(atr_period) at ci.
   displace  the SETUP candle's body is at least body_atr x ATR(atr_period) at k, or it leaves a fair-value gap in the
             trade's direction (bullish: low[k] > high[k - 2]).
-All three read only candles up to the SETUP candle's close.
+Two structural filters (ST44 / ST45; keys optional in SPEC["liquidity"], off when absent):
+  extreme_sweep  within `lookback` candles up to ci, a candle went below the session's low so far (`session`) and / or the
+                 previous session's low (`prev_day`) and closed back above it (bullish; highs for bearish)
+  pivot_degree   the swing the CHoCH broke is the highest high (swing high) / lowest low (swing low) of the `bars` candles
+                 on each side of it, all of them before the CHoCH candle
+All read only candles up to the SETUP candle's close.
 """
 import numpy as np
 import core
 
-FILTERS = ("sweep", "equal", "displace")
+FILTERS = ("sweep", "equal", "displace", "extreme_sweep", "pivot_degree")
 DEFAULT = {'sweep': {'on': True, 'lookback': 30, 'memory': 240},
            'equal': {'on': False, 'tol_atr': 0.25, 'memory': 240, 'atr_period': 14},
            'displace': {'on': True, 'body_atr': 1.0, 'atr_period': 14, 'fvg': True},
@@ -50,6 +55,34 @@ def sweep_ok(bars, sw, ci, up, lookback, extreme):
     return bool((w & ((x <= x.min()) if up else (x >= x.max()))).any())
 
 
+_EX = {}
+
+
+def _extremes(bars):
+    """Per candle, cumulative counts of: took the session's low so far / the session's high so far / the previous
+    session's low / high, and closed back inside."""
+    key = id(bars)
+    if key not in _EX or _EX[key][0] is not bars:
+        n = len(bars); h, l, c, day = bars.h, bars.l, bars.c, bars.day
+        slo = np.full(n, np.nan); shi = np.full(n, np.nan); pdl = np.full(n, np.nan); pdh = np.full(n, np.nan)
+        start = 0; prev = (np.nan, np.nan)
+        for i in range(n):
+            if i and day[i] != day[i - 1]:
+                prev = (float(l[start:i].min()), float(h[start:i].max())); start = i
+            if i > start: slo[i] = l[start:i].min(); shi[i] = h[start:i].max()
+            pdl[i], pdh[i] = prev
+        with np.errstate(invalid="ignore"):
+            t = dict(sess_lo=(l < slo) & (c > slo), sess_hi=(h > shi) & (c < shi), pd_lo=(l < pdl) & (c > pdl), pd_hi=(h > pdh) & (c < pdh))
+        while len(_EX) > 4: del _EX[next(iter(_EX))]
+        _EX[key] = (bars, {k: np.concatenate([[0], np.cumsum(v)]) for k, v in t.items()})
+    return _EX[key][1]
+
+
+def on_filters(spec):
+    """The enabled filters of a SPEC (a filter missing from SPEC["liquidity"] is off)."""
+    return [f for f in FILTERS if spec["liquidity"].get(f, {}).get("on")]
+
+
 def verdicts(bars, eng, spec):
     """Per engine trade: {filter: passed?} for every liquidity filter (enabled or not)."""
     L = spec["liquidity"]
@@ -70,5 +103,19 @@ def verdicts(bars, eng, spec):
         o_, c_ = float(bars.o[k]), float(bars.c[k])
         fvg = L["displace"].get("fvg") and k >= 2 and (bars.l[k] > bars.h[k - 2] if up else bars.h[k] < bars.l[k - 2])
         v["displace"] = bool(abs(c_ - o_) >= L["displace"]["body_atr"] * float(atr_d[k]) or fvg)
+        E = L.get("extreme_sweep")
+        if E:
+            cum = _extremes(bars); a0 = max(0, ci - E["lookback"]); took = lambda nm: bool(cum[nm][ci + 1] - cum[nm][a0] > 0)
+            v["extreme_sweep"] = bool((E.get("session") and took("sess_lo" if up else "sess_hi")) or
+                                      (E.get("prev_day") and took("pd_lo" if up else "pd_hi")))
+        else: v["extreme_sweep"] = True
+        D = L.get("pivot_degree")
+        if D:
+            K, sb = D["bars"], int(eng.sb[s0])
+            if sb + K > ci or sb - K < 0: v["pivot_degree"] = False
+            else:
+                w = (bars.h if kind == 1 else bars.l)[sb - K:sb + K + 1]
+                v["pivot_degree"] = bool(p0 >= w.max() - 1e-9) if kind == 1 else bool(p0 <= w.min() + 1e-9)
+        else: v["pivot_degree"] = True
         out.append(v)
     return out
