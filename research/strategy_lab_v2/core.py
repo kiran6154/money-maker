@@ -1343,13 +1343,17 @@ def _r2(v):
     return round(v, 2) if isinstance(v, float) else v
 
 
+def _when(v):
+    """A candle time as text: the learner's copied v1 code carries times as text already, core as int seconds."""
+    return None if v is None else v if isinstance(v, str) else tstr(v)
+
+
 def trade_rows(trs):
     rows = []
     for x in trs:
         d = dict(x, charges=x["chg"]["total"], entry_time=tstr(x["entry_time"]), exit_time=tstr(x["exit_time"]),
                  choch_time=tstr(x["choch_time"]), chg_parts={k: round(v, 2) for k, v in x["chg"].items() if k != "total"},
-                 mfe_time=tstr(x["mfe_time"]) if x.get("mfe_time") is not None else None,
-                 mae_time=tstr(x["mae_time"]) if x.get("mae_time") is not None else None)
+                 mfe_time=_when(x.get("mfe_time")), mae_time=_when(x.get("mae_time")))
         rows.append([_r2(d.get(k)) if k not in ("entry_px", "exit_px", "sl") else d.get(k) for k in TRADE_COLS])
     return rows
 
