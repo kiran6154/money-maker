@@ -457,6 +457,19 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S63. Lab v2 Strategies 39 and 40: liquidity filters (sweep, equal highs / lows, displacement) on Strategy 3 and on Strategy 38. Measured: as defined they do not separate good SETUPs from bad
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/liquidity.py` (family module), `st39.py` (ST3 + liquidity), `st40.py` (ST38 + liquidity). Built 2026-10-11 at the user's request (a pasted brief on liquidity sweeps before a CHoCH; "create one from ST3 and one from ST38"). |
+| Build choices (the brief gave ideas, no rules or numbers; fixed before any run) | **Sweep** (on): within the 30 candles up to the CHoCH candle, a candle went through a confirmed swing low (bullish; swing high for bearish) and closed back inside; the swing confirmed before that candle and formed at most 240 candles before it. **Equal level** (built, off: the brief says "prefer (or require)"): the swing the CHoCH broke has a twin swing of the same kind within 0.25 × ATR(14), formed up to 240 candles earlier. **Displacement** (on): the SETUP candle's body ≥ 1.0 × ATR(14), or a fair-value gap in the trade's direction (bullish: low[k] > high[k−2]). Not built: order block / last opposing candle (optional in the brief); displacement on the next 1–2 candles (it would move the entry). Futures and options via futures only. |
+| Impact | **Measured, Futures, 1 lot, after costs, 2018-01-03 → 2026-10-09.** ST3 4,967 trades, ₹-48,98,447, PF 0.36. **ST39 3,298 trades, ₹-33,28,577, PF 0.36, win 17.2% (unchanged quality, a third fewer trades).** **ST40 23 trades, ₹-83,566, PF 0.18** (ST38: 37, ₹-43,539, 0.66). Each filter alone, kept vs refused (PF): **sweep 4,951 kept vs 16 refused (it passes 99.7%: on 1-minute candles some swing is wicked through and reclaimed within 30 candles almost always)**; equal level 3,514 kept 0.36 vs 0.37; displacement 3,307 kept 0.36 vs 0.37 (average loss ₹-1,013 vs ₹-933: slightly the wrong way, as in S62). Options via futures W-ATR2: ST39 234 trades, ₹-24,224, PF 0.74; ST40 4 trades. |
+| Fix sketch | None proposed. The sweep as defined is not a filter. A sweep that means something needs a definition of which liquidity counts, chosen before running, e.g. only the session's high / low or the previous day's, only a swing at least N candles old, or the sweep candle making the lowest low of the lookback. Each is a new pre-registered variant with the user's go-ahead. Displacement has now failed twice (S62, here). |
+| Effort | **S** per variant (switches and numbers in `SPEC["liquidity"]`). |
+| Priority | _Open; first numbers recorded._ Related: S62 (ST38). |
+
+---
+
 ### S62. Lab v2 Strategy 38: Strategy 3 with five anti-chop filters on the SETUP. Measured: 37 trades in 8.7 years, still losing; one filter never binds and one points the wrong way
 
 | | |
