@@ -74,6 +74,30 @@ its results come from changes, with the headline numbers of each run made on it.
 The first run after a data change is slower. The CSVs are parsed into `cache/` once and numba compiles the engine once
 (also cached).
 
+## Data
+
+Index and futures: the Breeze Parquet store `D:/nifty_data` (written by `../strategy_lab/tools/breeze_store.py`, another
+session's download), **Jan 2018 → the last downloaded day**. `tools/build_from_store.py` reads the store (never writes
+to it) and writes the CSV files `core.py` reads under `cache/store/`; `config/data.json` points there. Re-run it to
+pick up new downloads, then restart the server:
+
+```
+python tools/build_from_store.py        # ~3 min; cache/store/build.json says what was built and every exception
+```
+
+- Only 09:15–15:29 candles are kept (the store also has pre-open and post-close rows). Prices are identical to the old
+  files wherever both have a candle; the store has more candles (gaps in the old files, and 2018–2021).
+- Near-month futures = the monthly contract with the earliest expiry on or after the session. The two contracts the
+  store has set aside for re-download (Jan 2019, Jun 2022) come from its `_superseded` copies, one session short each.
+- Options: the old folders (`weekly_dir`, the Kite expiry) plus `options.extra_dirs` (`cache/store/options`). A store
+  expiry is exported only when its whole window is downloaded; an expiry found in several places is read from the
+  first one with a full chain. Full-chain option data still starts 2026-06-30; the store's option history is being
+  downloaded backwards (about 85 days at Breeze's daily limit) and appears here expiry by expiry on each rebuild.
+- `config/data.v1.json` is the previous set (the files v1 reads). `tests/test_parity.py` uses it (`LAB2_DATA_CONFIG`),
+  so v1 and v2 are still compared on the same candles.
+- Foundation strategies are path-dependent: on the long history Strategy 1 has no CHoCH from 2020-11 to 2022-03
+  (STRATEGY_ANALYSIS_TODO S58), so "All data" is not comparable with runs made on the old Oct 2021 start.
+
 ## Files
 
 ```
@@ -83,7 +107,8 @@ backtest.py          CLI: one strategy per call
 server.py            JSON API + static ui/; backtests queue and run one at a time in-process
 ui/                  index.html + explorer.html, css/, js/ (main, chart, tabs + analytics, explorer, util); lightweight-charts from jsdelivr
 history/             per-strategy versions and their results (versioned)
-config/data.json     candle files (same as v1; history_from null = the whole files, so 1Y / 5Y presets work)
+config/data.json     candle files (cache/store, built from the Breeze store; data.v1.json = the files v1 reads)
+tools/build_from_store.py  the Breeze Parquet store -> cache/store (index, near-month futures, finished option expiries)
 config/charges.json  charge schedules (copy of v1's)
 tests/test_parity.py v2 against v1, trade for trade
 cache/, results/     generated (git-ignored)

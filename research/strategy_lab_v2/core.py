@@ -21,11 +21,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(HERE, "cache")
 RESULTS = os.path.join(HERE, "results")
 STRATDIR = os.path.join(HERE, "strategies")
-DATA = json.load(open(os.path.join(HERE, "config", "data.json"), encoding="utf-8"))
+# config/data.json, or the file LAB2_DATA_CONFIG names (tests/test_parity.py reads config/data.v1.json: the files v1 reads)
+DATA = json.load(open(os.environ.get("LAB2_DATA_CONFIG") or os.path.join(HERE, "config", "data.json"), encoding="utf-8"))
+def _path(p):                                         # a path in the config: absolute, or relative to this folder
+    return p if os.path.isabs(p) else os.path.normpath(os.path.join(HERE, p))
 CHARGES = {k: v for k, v in json.load(open(os.path.join(HERE, "config", "charges.json"), encoding="utf-8")).items()
            if not k.startswith("_")}
-FUT1, FUT5 = DATA["futures"]["minute"], DATA["futures"]["5minute"]
-SPOT1, SPOT5 = DATA["spot"]["minute"], DATA["spot"]["5minute"]
+FUT1, FUT5 = _path(DATA["futures"]["minute"]), _path(DATA["futures"]["5minute"])
+SPOT1, SPOT5 = _path(DATA["spot"]["minute"]), _path(DATA["spot"]["5minute"])
 
 TF_MIN = {"minute": 1, "3minute": 3, "5minute": 5, "15minute": 15, "30minute": 30, "60minute": 60}
 TF_LABEL = {"minute": "1m", "3minute": "3m", "5minute": "5m", "15minute": "15m", "30minute": "30m", "60minute": "1h"}
@@ -532,14 +535,34 @@ class OptionChain:
         self.base = "minute" if tf in ("minute", "3minute") else "5minute"
         self.sub = "nifty_options" if self.base == "5minute" else "nifty_options_1minute"
         self.root = os.path.join(self.local, self.sub)
-        cal = {self.kite_exp}
-        for y in os.listdir(self.root) if os.path.isdir(self.root) else []:
-            if y.isdigit(): cal |= {e for e in os.listdir(os.path.join(self.root, y)) if len(e) == 10}
+        # options.extra_dirs: more folders in the same layout (cache/store/options, built from the Breeze store). An expiry
+        # found in several is read from the first one whose manifest says full_chain, else from the first that has it.
+        self.roots = [self.root] + [os.path.join(_path(x), self.sub) for x in o.get("extra_dirs", [])]
+        cal, self._dir = {self.kite_exp}, {}
+        for root in self.roots:
+            for y in os.listdir(root) if os.path.isdir(root) else []:
+                if not y.isdigit(): continue
+                for e in os.listdir(os.path.join(root, y)):
+                    if len(e) != 10: continue
+                    cal.add(e); d_ = os.path.join(root, y, e)
+                    if e not in self._dir or (not self._full(self._dir[e]) and self._full(d_)): self._dir[e] = d_
         self.calendar = sorted(cal)
         self.cal_days = np.array([dnum(e) for e in self.calendar], dtype=np.int64)
         months = sorted({monthly_expiry(e[:7]) for e in self.calendar})
         self.monthly, self.monthly_days = months, np.array([dnum(e) for e in months], dtype=np.int64)
         self._rights, self._cache, self._exp = {}, {}, {}
+
+    @staticmethod
+    def _full(folder):
+        f = os.path.join(folder, "manifest.json")
+        return os.path.exists(f) and "full_chain" in json.load(open(f, encoding="utf-8"))
+
+    def dir_of(self, expiry):
+        """The folder one expiry's files are read from (None for the Kite expiry or an expiry without files)."""
+        return self._dir.get(expiry)
+
+    def full_chain(self, expiry):
+        return expiry == self.kite_exp or (expiry in self._dir and self._full(self._dir[expiry]))
 
     def expiry_for(self, day, min_days, kind="WEEKLY"):
         """Nearest expiry of `kind` at least min_days calendar days after `day` (a day number)."""
@@ -554,7 +577,7 @@ class OptionChain:
         """{strike: (start, end)} rows of one expiry and right in a cached numpy table (cache/opt/...)."""
         key = (expiry, right)
         if key in self._rights: return self._rights[key]
-        base = os.path.join(self.root, expiry[:4], expiry)
+        base = self._dir.get(expiry) or os.path.join(self.root, expiry[:4], expiry)
         files = [os.path.join(base, f"NIFTY_{expiry}_{right}_{'5minute' if self.base == '5minute' else '1minute'}.csv")]
         files += sorted(glob.glob(os.path.join(base, ".chunks", "options", right, "*", "*.csv")))
         files = [f for f in files if os.path.exists(f)]
@@ -636,16 +659,15 @@ def option_coverage(tf, expiry_types, min_days):
         full = {}
         def ok(e):
             if e is None: return False
-            if e == chain.kite_exp: return True
-            if e not in full:
-                f = os.path.join(chain.root, e[:4], e, "manifest.json")
-                full[e] = os.path.exists(f) and "full_chain" in json.load(open(f, encoding="utf-8"))
+            if e not in full: full[e] = chain.full_chain(e)
             return full[e]
+        good = [all(ok(chain.expiry_for(int(d), min_days, k)) for k in expiry_types) for d in sessions()]
+        # the latest unbroken run of covered sessions. Sessions after it (the newest days, whose expiry has not been
+        # downloaded yet) do not cancel it: their signals are reported as "no data" for the contract, never repriced.
+        j = len(good) - 1
+        while j >= 0 and not good[j]: j -= 1
         start = None
-        for d in sessions():
-            good = all(ok(chain.expiry_for(int(d), min_days, k)) for k in expiry_types)
-            if good and start is None: start = int(d)
-            if not good: start = None
+        while j >= 0 and good[j]: start = int(sessions()[j]); j -= 1
         _COV[key] = start
     return _COV[key]
 
@@ -1893,11 +1915,9 @@ def explorer_expiries(tf="minute"):
     months = set(ch.monthly)
     out = []
     for e in reversed(ch.calendar):
-        base = os.path.join(ch.root, e[:4], e)
-        has = e == ch.kite_exp or os.path.isdir(base)
+        has = e == ch.kite_exp or ch.dir_of(e) is not None
         if not has: continue
-        full = e == ch.kite_exp or (os.path.exists(os.path.join(base, "manifest.json"))
-                                    and "full_chain" in json.load(open(os.path.join(base, "manifest.json"), encoding="utf-8")))
+        full = ch.full_chain(e)
         out.append(dict(expiry=e, monthly=e in months, full_chain=bool(full)))
     return out
 

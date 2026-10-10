@@ -11,6 +11,7 @@ import os, sys, json, time
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 V1 = os.path.join(os.path.dirname(HERE), "strategy_lab")
 sys.path.insert(0, HERE)
+os.environ.setdefault("LAB2_DATA_CONFIG", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "data.v1.json"))  # the files v1 reads
 import core
 
 # (code, date_from, date_to, timeframe override, underlying override, square_off override ('keep' = the strategy's))
