@@ -172,3 +172,29 @@ def arrays(bars):
 def recent(arr, k, n):
     """True on any of the n candles up to and including k."""
     return bool(arr[max(0, k - n):k + 1].any())
+
+
+RULES = ("zone", "ob_internal", "ob_swing", "fvg", "swing_bias", "internal_bias", "eq_sweep", "premium_discount")
+
+
+def passes(S, bars, x, M):
+    """Does engine trade x (entry k, CHoCH ci, dir) pass the rule of M = SPEC["smc"]? S = arrays(bars).
+      zone              the SETUP candle closes inside a heavy volume zone still open
+      ob_internal / ob_swing / fvg   a candle within M["lookback"] up to k traded into a live internal / swing order block /
+                        5-minute fair value gap on the trade's side
+      swing_bias / internal_bias     the structure's bias at k is the trade's direction
+      eq_sweep          within M["lookback"] candles up to the CHoCH candle, an equal-lows level (long; equal highs for a
+                        short) was taken and reclaimed
+      premium_discount  a long below, a short above, the middle of the trailing swing range at k"""
+    k, ci, up = x["entry"], x["choch"], x["dir"] == "up"; d = 1 if up else -1; r = M["rule"]
+    if r == "zone": return bool(S["zone_in"][k])
+    if r == "ob_internal": return recent(S["ob_int_bull" if up else "ob_int_bear"], k, M["lookback"])
+    if r == "ob_swing": return recent(S["ob_sw_bull" if up else "ob_sw_bear"], k, M["lookback"])
+    if r == "fvg": return recent(S["fvg_bull" if up else "fvg_bear"], k, M["lookback"])
+    if r == "swing_bias": return bool(S["sw_bias"][k] == d)
+    if r == "internal_bias": return bool(S["int_bias"][k] == d)
+    if r == "eq_sweep": return recent(S["eql_swept" if up else "eqh_swept"], ci, M["lookback"])
+    if r == "premium_discount":
+        mid = (S["trail_top"][k] + S["trail_bot"][k]) / 2
+        return bool(not np.isnan(mid) and ((bars.c[k] < mid) if up else (bars.c[k] > mid)))
+    raise ValueError(f"smc.rule {r!r}: one of {RULES}")
