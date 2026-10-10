@@ -457,6 +457,19 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S61. Lab v2 on the 8-year futures history (Jan 2018 → Oct 9 2026): every futures strategy loses over the whole period
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2` after the switch to the Breeze store (`tools/build_from_store.py`, commit e4db3cd). Run 2026-10-10 at the user's request ("start using new data", then "do it" for the re-runs): every strategy's default backtest, then `backtest.py <code> all --type FUT`. |
+| Impact | **Measured, Futures, 1 lot, after slippage (5 pts / side) and charges, 2018-01-03 → 2026-10-09** (trades, net, PF, t): ST1 8,336, ₹-81,99,748, 0.30, -37.7; ST2 1,596, ₹-12,23,708, 0.59, -7.7; ST3 4,967, ₹-48,98,447, 0.36, -24.9; ST4 991, ₹-6,09,356, 0.69, -4.3; ST9 5,712, ₹-54,59,910, 0.57; ST10 3,432, ₹-29,43,148, 0.59; ST11 6,366, ₹-58,89,104, 0.58; ST12 3,972, ₹-34,31,505, 0.59; ST15 1,286, ₹-26,90,575, 0.80, -2.8; ST16 878, ₹-8,99,559, 0.90, -1.2; ST17 3,600, ₹-35,42,556, 0.72; ST18 2,244, ₹-20,23,506, 0.78; ST29 4,450, ₹-99,28,338, 0.70; ST30 2,899, ₹-55,58,551, 0.72; ST31 4,196, ₹-41,82,918, 0.29; learner ST19 915, ₹-14,71,023, 0.79, -2.2; ST20 801, ₹-10,86,697, 0.82; ST21 931, ₹-17,90,365, 0.76; ST22 725, ₹-10,08,984, 0.82; ST23 175, ₹-3,66,173, 0.71; ST24 324, ₹-1,72,890, 0.90, -0.6. FZ (memory from 2026-01-01, so Jan → Oct 9 2026 only): ST5 185, ₹-2,11,153, 0.34; ST6 55, ₹-24,395, 0.85; ST7 157, ₹-72,109, 0.75; ST8 77, ₹-1,01,751, 0.58. Managed-exit rows count lot exits, not positions. The least bad are the 5-minute positional and learner books (ST16, ST24: PF 0.90, t about -1), still negative. |
+| Caveats | (1) Foundation is silent 2020-11 → 2022-03 on this run (S58), so these books have no 2021 trades. (2) The 5-pt-per-side futures slippage is the SPEC assumption, not a measured fill. (3) Option types still cover only 2026-06-30 on (the option history is downloading), so no option book is tested on the long history yet. (4) "This month" defaults now cover 7 sessions (Oct 1-9) and are not evidence either way. |
+| Fix sketch | None proposed. Before any conclusion on the futures books: settle S58 (the 16-month silence) and measure real futures slippage. For options: wait for the store's option history, then re-run ST25-ST37 on it. |
+| Effort | Re-runs **S** (9 min for all defaults, 8 min for all-data futures). |
+| Priority | _Open; first long-history numbers recorded._ |
+
+---
+
 ### S60. Lab v2 Strategy 32: Strategy 1's option legs taken only with the option's own SMA-200 slope. Measured: the kept legs lose less, not significantly, and the design month reverses
 
 | | |
