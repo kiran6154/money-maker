@@ -486,9 +486,13 @@ def _atr(h, l, c, n):
 
 _ATR = {}
 def atr(b, n):
+    # keyed by the object's id, so the entry keeps the object alive: a freed Bars' id can be handed to a new one, and a
+    # strategy asking for the ATR of its window would get the previous window's
     key = (id(b), n)
-    if key not in _ATR: _ATR[key] = _atr(b.h, b.l, b.c, n)
-    return _ATR[key]
+    if key not in _ATR or _ATR[key][0] is not b:
+        while len(_ATR) > 64: del _ATR[next(iter(_ATR))]
+        _ATR[key] = (b, _atr(b.h, b.l, b.c, n))
+    return _ATR[key][1]
 
 
 def pick_strike(choice, side, spot, atr_v, step):

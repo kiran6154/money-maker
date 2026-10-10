@@ -67,16 +67,16 @@ def signals(bars, spec):
 _SMA = {}
 def sma_of(s, period):
     """SMA(period) of a series' closes (nan until `period` candles), cached per series."""
-    key = (id(s), period, len(s))
-    if key not in _SMA:
+    key = (id(s), period, len(s))                # the entry keeps the series, so its id cannot pass to another one
+    if key not in _SMA or _SMA[key][0] is not s:
         c = np.asarray(s.c, float)
         out = np.full(len(c), np.nan)
         if len(c) >= period:
             cs = np.concatenate([[0.0], np.cumsum(c)])
             out[period - 1:] = (cs[period:] - cs[:-period]) / period
         while len(_SMA) > 400: del _SMA[next(iter(_SMA))]
-        _SMA[key] = out
-    return _SMA[key]
+        _SMA[key] = (s, out)
+    return _SMA[key][1]
 
 
 def leg_filter(ctx, rec, s):
