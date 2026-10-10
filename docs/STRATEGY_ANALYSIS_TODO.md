@@ -457,6 +457,19 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S62. Lab v2 Strategy 38: Strategy 3 with five anti-chop filters on the SETUP. Measured: 37 trades in 8.7 years, still losing; one filter never binds and one points the wrong way
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/st38.py` (`verdicts`, `SPEC["chop"]`; `core.trend_segments`). Built 2026-10-11 at the user's request ("from Strategy 3 create a new one with the below conditions": two pasted briefs on staying out of flat-AVWAP chop). |
+| Build choices (the brief gave ranges, not values) | The five filters of the second brief (the ones phrased against the Foundation rules), each a switch, all read at the SETUP candle's close, values = the middle of the brief's ranges, fixed before any run: (1) slope: both pair AVWAPs moved ≥ 2.0 pts with the trade over 6 candles; (2) trend: the close is beyond the trend AVWAP that was in force at the CHoCH; (3) pivot age: the broken swing is ≥ 10 candles old at the CHoCH; (4) displacement: SETUP candle body ≥ 0.8 × ATR(14) or its close in the outer 30% of its range; (5) separation: the two pair AVWAPs ≥ 10 pts apart. Not built: the first brief's distance-from-AVWAP, higher-timeframe AVWAP and volume filters; a protected-level persistence rule inside the engine (it would change which CHoCHs exist; here the filter acts on the SETUP). Futures and options via futures only (thresholds are futures points). Stop / exit = ST3's. Thresholds in points are not scaled to the index level (10,000 in 2018, 25,000 in 2026). |
+| Impact | **Measured, Futures, 1 lot, after costs, 2018-01-03 → 2026-10-09.** ST3: 4,967 trades, ₹-48,98,447, PF 0.36, win 17.2%. **ST38 (all five): 37 trades, ₹-43,539, PF 0.66, win 27.0%, t -0.96, 3 of 7 traded years positive.** Each filter alone, kept vs refused (PF): slope 3,489 kept 0.40 vs 0.26; **trend 4,967 kept, 0 refused (never binds: every SETUP already closes beyond that AVWAP)**; pivot age 1,247 kept 0.45 vs 0.33; **displacement 3,881 kept 0.34 vs 0.43 (the displacement candles do worse: the wrong way)**; separation 260 kept 0.61 vs 0.34 (it alone removes 95%). Cumulative: slope 3,489 (0.40) → + pivot age 1,074 (0.48) → + displacement 849 (0.47) → + separation 37 (0.66). The average loss per trade barely moves (₹-986 → ₹-868 … ₹-1,177): the filters cut the number of trades, not the loss on each, and a futures round trip costs about ₹1,070 (10 pts slippage + charges). Options via futures W-ATR2: 4 trades. |
+| Fix sketch | None proposed. Readings to test next, each a new pre-registered variant with the user's go-ahead: drop the trend filter (no effect) and the displacement filter (wrong sign); a separation threshold that scales with the index (10 pts at 25,000 is 0.04%) so it is not a 95% cut; slope + pivot age only (1,074 trades, PF 0.48) as the base. None is near break-even on futures at these costs. |
+| Effort | **S** per variant (switches in `SPEC["chop"]`). |
+| Priority | _Open; first numbers recorded._ Related: S58 (the engine's silence), S61 (every futures book loses on the long history). |
+
+---
+
 ### S61. Lab v2 on the 8-year futures history (Jan 2018 → Oct 9 2026): every futures strategy loses over the whole period
 
 | | |

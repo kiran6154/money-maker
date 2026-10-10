@@ -1588,17 +1588,25 @@ def _fz_layers(b, F, i0, i1):
     return dict(Z=Z, ZONES=ZONES, Z_COLS=list(F["Z_COLS"]), READS=list(fz.READS))
 
 
-def _trend_avwap(b, sg, i0, i1):
-    """The engine's trend AVWAP over b[i0..i1], one segment per anchor: anchored at the first confirmed swing, then at
-    every trend flip on the swing the flip makes the anchor (the last swing high after a bearish flip, the last swing low
-    after a bullish one); the engine reads it from the bar after the anchor is set. It qualifies the protected level and
-    decides whether a CHoCH flips the trend."""
+def trend_segments(sg):
+    """[(first bar, anchor bar)] of the engine's trend AVWAP: anchored at the first confirmed swing, then at every trend
+    flip on the swing the flip makes the anchor; each is read by the engine from `first bar` on (the bar after it is set)."""
     if not len(sg.sc): return []
     ch = [(int(sg.sc[0]) + 1, int(sg.sb[0]))]
     for j in range(len(sg.qi)):
         if sg.qflip[j]:
             s_ = int(sg.qhi[j] if sg.qd[j] == -1 else sg.qlo[j])
             ch.append((int(sg.qi[j]) + 1, int(sg.sb[s_])))
+    return ch
+
+
+def _trend_avwap(b, sg, i0, i1):
+    """The engine's trend AVWAP over b[i0..i1], one segment per anchor: anchored at the first confirmed swing, then at
+    every trend flip on the swing the flip makes the anchor (the last swing high after a bearish flip, the last swing low
+    after a bullish one); the engine reads it from the bar after the anchor is set. It qualifies the protected level and
+    decides whether a CHoCH flips the trend."""
+    ch = trend_segments(sg)
+    if not ch: return []
     out = []
     for n, (a, anc) in enumerate(ch):
         z = ch[n + 1][0] - 1 if n + 1 < len(ch) else len(b) - 1
