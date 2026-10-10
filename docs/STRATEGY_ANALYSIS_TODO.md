@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S66. Lab v2: the mechanical chop rules of an SMC note, validated on both halves. One holds: Choppiness Index below 38.2. Built as Strategy 46 (still losing on futures)
+
+| | |
+|---|---|
+| Where | Scratch `chop_study.py` (nothing saved), then `research/strategy_lab_v2/strategies/st46.py` (ST43 + Choppiness Index). 2026-10-11, the user pasted a note on telling chop from trend (standing instruction: validate; code it if profitable or worth a record). |
+| Definitions (fixed before the run; all read at the SETUP candle on 1-minute futures) | Choppiness Index CHOP(14) = 100 × log10(Σ true range over 14 / (highest high − lowest low of the 14)) / log10(14): "not chop" ≤ 61.8, "trend" < 38.2. ATR(14) above its value 30 candles ago. The 15 candles before the SETUP span at least 20 pts (the note's 20-point box). The previous CHoCH is at least 15 candles earlier (not a rapid alternation). Clock: 09:15–10:30 or 13:30–15:15 good, 11:00–13:00 chop. Not the middle: entry in the outer quarters of the session's range so far, and of the last 60 candles. Not testable here: heavyweight stocks (no data), order-block respect, the 15-minute anchor as drawn by hand. Split 2023-03-09. |
+| Impact | **Measured, Futures, 1 lot, after costs; PF H1 / H2, yes vs no.** On ST3 (0.36 / 0.36): **CHOP < 38.2: 0.53 / 0.49 vs 0.31 / 0.33 (488 / 381 trades; held under 30 min 48% / 46% vs 67% / 66%)**; CHOP ≤ 61.8: 0.36 / 0.38 vs 0.43 / 0.16 (it refuses only 4–9%); ATR rising 0.39 / 0.37 vs 0.33 / 0.35; 20-pt box 0.41 / 0.38 vs 0.26 / 0.22; slow CHoCH 0.38 / 0.36 vs 0.31 / 0.37; good clock 0.43 / 0.38 vs 0.28 / 0.33; chop window 0.27 / 0.37 vs 0.40 / 0.36 (H1 only); outer quarters of the session range 0.42 / 0.34 vs 0.31 / 0.39 (reverses); of the last 60 candles 0.37 / 0.36 vs 0.35 / 0.35. On ST43's filters (0.52 / 0.52): **CHOP < 38.2: 0.74 / 0.59 vs 0.29 / 0.47**; slow CHoCH 0.55 / 0.55 vs 0.37 / 0.31 (51 / 76 refused); clock 0.71 / 0.48 vs 0.26 / 0.59 (reverses); session-range edge 0.67 / 0.41 vs 0.36 / 0.71 (reverses); the four "not chop" rules together 0.74 / 0.49. **ST46 (ST43 + CHOP(14) < 38.2): 330 trades, ₹-2,35,375, PF 0.64, t -2.71; H1 155, ₹-57,198, PF 0.74, avg ₹-369; H2 175, ₹-1,78,177, PF 0.59, avg ₹-1,018; two of eight traded years positive (2018 ₹+634, 2026 ₹+14,889).** Options via futures, Jun 30 → Oct 9 2026: W-ATR2 20 trades, ₹+4,962, PF 1.97; W-ATM 20, ₹+5,193; M-ATR2 20, ₹+2,920; M-ATM 20, ₹+3,539 (20 trades: not evidence). |
+| Read | The Choppiness Index trend reading is the strongest stable entry filter found (it holds on ST3 and on ST43, on both halves), and the best futures book so far, yet it still loses: the second half's average loss per trade (₹-1,018) is again the cost of a futures round trip. The clock and "not the middle" rules look good on the first half and reverse on the second: not rules. The 20-point box and rapid-CHoCH rules are real but small, and the box is already covered by ST43's 20-pt stop. |
+| Fix sketch | None proposed. ST46's futures numbers are in-sample (38.2 is the indicator's standard level, but the choice to keep it was made on the whole history). Its option books are the test to repeat when the option history is in the store. |
+| Effort | **S**. |
+| Priority | _Open; numbers recorded._ Related: S62–S65. |
+
+---
+
 ### S65. Lab v2 Strategies 44 and 45: the two structural entry ideas (a sweep of a real extreme; a higher-degree pivot as the broken level). Measured before building: both mark the worse trades
 
 | | |
