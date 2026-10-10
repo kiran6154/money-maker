@@ -60,7 +60,7 @@ python backtest.py ST1 --defined # every backtest listed in the strategy file
    protected level, CHoCH / BOS, swings and candidates, volume, FZ zone bands and gate letters, rainbow ribbon), a
    crosshair readout (with the FZ zone card), CE and PE panes that open on the day's ATM CE / ATM PE (nearest weekly expiry, strike nearest the index at the day's first candle; shown whether or not the run traded it, with the index against the strike) and list the contracts the run traded that day, day / range
    navigation, "Full period", PNG snapshot, drag to resize. Drag (or scroll sideways) past the first / last candle and more sessions load on that side with the view kept where it was; a load only follows the reader's own move, so zooming out cannot run away.
-6. **Tabs:** Trades (sortable, filterable, charges breakdown, signals not taken) · Performance · Cumulative P&L ·
+6. **Tabs:** Trades (sortable, filterable, charges breakdown, signals not taken; **Download CSV** of the listed trades with every stored column; max profit / max loss with the time each was reached and a **First** column saying which came first — `mfe_time`, `mae_time`, `first_move`, on runs made after 2026-10-11) · Performance · Cumulative P&L ·
    Drawdowns · Distribution · Monte Carlo · Robustness (slippage / charges sensitivity by repricing every trade, month by
    month, other timeframes, expiry × strike) · Breakdown · Daily P&L with the heatmap calendar · Signals · Zone gate
    (FZ) · Journal (learner) · Config · Rules.

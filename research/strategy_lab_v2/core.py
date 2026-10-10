@@ -814,13 +814,20 @@ def price_trade(ctx, rec):
 
 
 def excursion(b, rec, long):
-    """Max favourable / adverse move after the entry candle up to and including the exit candle (before slippage)."""
+    """Max favourable / adverse move after the entry candle up to and including the exit candle (before slippage), the
+    candle each was first reached on (mfe_time / mae_time) and which came first (first_move: 'profit', 'loss', 'same
+    candle' when both extremes are on one candle - their order inside it is not known - or '' when there was neither)."""
     i0 = int(np.searchsorted(b.t, rec["entry_time"], "right")); i1 = int(np.searchsorted(b.t, rec["exit_time"], "right")) - 1
     if i1 < i0:
-        rec.update(mfe=0.0, mae=0.0); return rec
-    hi, lo, e = float(b.h[i0:i1 + 1].max()), float(b.l[i0:i1 + 1].min()), rec["entry_px"]
+        rec.update(mfe=0.0, mae=0.0, mfe_time=None, mae_time=None, first_move=""); return rec
+    h_, l_ = b.h[i0:i1 + 1], b.l[i0:i1 + 1]
+    hi, lo, e = float(h_.max()), float(l_.min()), rec["entry_px"]
     fav, adv = (hi - e, lo - e) if long else (e - lo, e - hi)
-    rec.update(mfe=round(max(fav, 0.0), 2), mae=round(min(adv, 0.0), 2))
+    kf, ka = (int(np.argmax(h_)), int(np.argmin(l_))) if long else (int(np.argmin(l_)), int(np.argmax(h_)))   # first candle at each extreme
+    mfe, mae = round(max(fav, 0.0), 2), round(min(adv, 0.0), 2)
+    tf_, ta_ = (int(b.t[i0 + kf]) if mfe > 0 else None), (int(b.t[i0 + ka]) if mae < 0 else None)
+    first = "" if tf_ is None and ta_ is None else "profit" if ta_ is None else "loss" if tf_ is None else         "same candle" if tf_ == ta_ else "profit" if tf_ < ta_ else "loss"
+    rec.update(mfe=mfe, mae=mae, mfe_time=tf_, mae_time=ta_, first_move=first)
     return rec
 
 
@@ -1328,7 +1335,7 @@ def run_type(ctx):
 # ================================================================ backtest + results
 TRADE_COLS = ("position", "opt_type", "instrument", "strike", "expiry", "signal", "choch_time", "entry_time", "entry_px", "sl",
               "exit_time", "exit_px", "exit_reason", "pts", "gross", "charges", "net", "open", "lots", "tranche", "label",
-              "und_entry", "und_exit", "stale", "mfe", "mae", "scan", "gate", "zone_id", "reenter_reason", "fill_used", "kind",
+              "und_entry", "und_exit", "stale", "mfe", "mae", "mfe_time", "mae_time", "first_move", "scan", "gate", "zone_id", "reenter_reason", "fill_used", "kind",
               "chg_parts")
 
 
@@ -1340,7 +1347,9 @@ def trade_rows(trs):
     rows = []
     for x in trs:
         d = dict(x, charges=x["chg"]["total"], entry_time=tstr(x["entry_time"]), exit_time=tstr(x["exit_time"]),
-                 choch_time=tstr(x["choch_time"]), chg_parts={k: round(v, 2) for k, v in x["chg"].items() if k != "total"})
+                 choch_time=tstr(x["choch_time"]), chg_parts={k: round(v, 2) for k, v in x["chg"].items() if k != "total"},
+                 mfe_time=tstr(x["mfe_time"]) if x.get("mfe_time") is not None else None,
+                 mae_time=tstr(x["mae_time"]) if x.get("mae_time") is not None else None)
         rows.append([_r2(d.get(k)) if k not in ("entry_px", "exit_px", "sl") else d.get(k) for k in TRADE_COLS])
     return rows
 

@@ -119,10 +119,16 @@ def excursion(tl, hl, ll, rec, long):
     Uses candles after the entry candle up to and including the exit candle."""
     i0 = bisect.bisect_right(tl, rec["entry_time"]); i1 = bisect.bisect_right(tl, rec["exit_time"]) - 1
     if i1 < i0:
-        rec.update(mfe=0.0, mae=0.0); return rec
-    hi, lo, e = max(hl[i0:i1 + 1]), min(ll[i0:i1 + 1]), rec["entry_px"]
+        rec.update(mfe=0.0, mae=0.0, mfe_time=None, mae_time=None, first_move=""); return rec
+    hs, ls = list(hl[i0:i1 + 1]), list(ll[i0:i1 + 1])
+    hi, lo, e = max(hs), min(ls), rec["entry_px"]
     fav, adv = (hi - e, lo - e) if long else (e - lo, e - hi)
-    rec.update(mfe=round(max(fav, 0.0), 2), mae=round(min(adv, 0.0), 2))
+    mfe, mae = round(max(fav, 0.0), 2), round(min(adv, 0.0), 2)
+    # v2 addition (no decision reads it): the candle each extreme was first reached on and which came first, as core.excursion
+    kf, ka = (hs.index(hi), ls.index(lo)) if long else (ls.index(lo), hs.index(hi))
+    tf_, ta_ = (tl[i0 + kf] if mfe > 0 else None), (tl[i0 + ka] if mae < 0 else None)
+    first = "" if tf_ is None and ta_ is None else "profit" if ta_ is None else "loss" if tf_ is None else         "same candle" if tf_ == ta_ else "profit" if tf_ < ta_ else "loss"
+    rec.update(mfe=mfe, mae=mae, mfe_time=tf_, mae_time=ta_, first_move=first)
     return rec
 
 

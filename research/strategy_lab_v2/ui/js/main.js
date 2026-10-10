@@ -404,13 +404,19 @@ function renderTrades(el) {
     ["Exit", (r) => r[C.exit_time], "l"], ["Exit px", (r) => r[C.exit_px], "r"], ["Reason", (r) => r[C.exit_reason], "l"],
     ...(lots ? [["Lots", (r) => r[C.lots], "r"]] : []),
     ...(fb ? [["Fut in → out", (r) => r[C.und_entry], "r"]] : []),
-    ["Max profit", (r) => r[C.mfe], "r"], ["Max loss", (r) => r[C.mae], "r"], ["Points", (r) => r[C.pts], "r"],
+    ["Max profit", (r) => r[C.mfe], "r"], ["Max loss", (r) => r[C.mae], "r"],
+    ...(C.first_move != null ? [["First", (r) => r[C.first_move] || "", "l"]] : []), ["Points", (r) => r[C.pts], "r"],
     ["Gross", (r) => r[C.gross], "r"], ["Charges", (r) => r[C.charges], "r"], ["Net", (r) => r[C.net], "r"], ["Cum. net", null, "r"]];
   const f = ($("#t-filter")?.value || "").toLowerCase();
-  const list = rows.map((r, i) => ({ r, i })).filter(({ r }) => !f || r.join(" ").toLowerCase().includes(f));
+  const list = rows.map((r, i) => ({ r, i })).filter(({ r }) => !f || (r.join(" ") + (r[C.first_move] ? ` ${r[C.first_move]} first` : "")).toLowerCase().includes(f));
   let cum = 0; const cumOf = new Map(); for (const { r, i } of [...list].sort((a, b) => (a.r[C.entry_time] < b.r[C.entry_time] ? -1 : 1))) { cum += r[C.net]; cumOf.set(i, cum); }
   if (S.sortCol != null && cols[S.sortCol] && cols[S.sortCol][1]) { const g = cols[S.sortCol][1]; list.sort((a, b) => { const x = g(a.r), y = g(b.r); return (x < y ? -1 : x > y ? 1 : 0) * S.sortDir; }); }
   else list.reverse();
+  // when the extreme was reached: the time, with the date when it is not the entry day (positional trades)
+  const hm = (t) => (t ? ` <span class="muted small">${esc(t.slice(11, 16))}</span>` : "");
+  const FIRST_LBL = { profit: "profit first", loss: "loss first", "same candle": "same candle" };
+  const FIRST_TIP = { profit: "the best point (max profit) came before the worst point (max loss)", loss: "the worst point (max loss) came before the best point (max profit)",
+                      "same candle": "the best and the worst point are on the same candle: their order inside it is not known" };
   const cell = (name, r, i) => {
     const v = (k) => r[C[k]];
     switch (name) {
@@ -423,8 +429,9 @@ function renderTrades(el) {
       case "Reason": return `<span class="pill">${esc(reasonTag(v("exit_reason")))}</span>`;
       case "Lots": return v("lots");
       case "Fut in → out": return `${num(v("und_entry"), 1)} → ${num(v("und_exit"), 1)}`;
-      case "Max profit": return `<span title="${inr((v("mfe") || 0) * (S.result.lot_size || 65))} per lot">${num(v("mfe"), 1)}</span>`;
-      case "Max loss": return `<span title="${inr((v("mae") || 0) * (S.result.lot_size || 65))} per lot">${num(v("mae"), 1)}</span>`;
+      case "Max profit": return `<span title="${inr((v("mfe") || 0) * (S.result.lot_size || 65))} per lot">${num(v("mfe"), 1)}</span>${hm(v("mfe_time"))}`;
+      case "Max loss": return `<span title="${inr((v("mae") || 0) * (S.result.lot_size || 65))} per lot">${num(v("mae"), 1)}</span>${hm(v("mae_time"))}`;
+      case "First": { const fm = v("first_move"); return fm ? `<span class="pill ${fm === "profit" ? "pl" : fm === "loss" ? "ps" : ""}" title="${FIRST_TIP[fm]}">${FIRST_LBL[fm]}</span>` : '<span class="muted">–</span>'; }
       case "Points": return `<span class="${cls(v("pts"))}">${num(v("pts"), 1)}</span>`;
       case "Gross": return `<span class="${cls(v("gross"))}">${inr(v("gross"))}</span>`;
       case "Charges": { const p = v("chg_parts") || {}; return `<span title="${esc(Object.entries(p).map(([k, x]) => `${k} ₹${x}`).join("\n"))}">${inr(v("charges"))}</span>`; }
@@ -435,13 +442,29 @@ function renderTrades(el) {
   };
   const sk = S.result.skipped, why = (p) => sk.filter((x) => String(x.why || "").startsWith(p)).length;
   const nLock = why("strike locked"), nDecl = why("learner skipped"), nData = sk.length - nLock - nDecl;
-  el.innerHTML = `<div class="row between wrap gap"><div class="muted small">${list.length} of ${rows.length} trades · click a row to open it on the chart · click a header to sort</div>
-      <input id="t-filter" type="search" placeholder="filter (date, reason, strike…)" value="${esc(f)}"></div>
+  const fmCount = (k) => list.filter(({ r }) => r[C.first_move] === k).length;
+  const firstLine = C.first_move == null ? ` · <span class="warn">re-run this backtest to see whether max profit or max loss came first</span>`
+    : ` · max profit came first in <b>${fmCount("profit")}</b>, max loss first in <b>${fmCount("loss")}</b>, same candle ${fmCount("same candle")}`;
+  el.innerHTML = `<div class="row between wrap gap"><div class="muted small">${list.length} of ${rows.length} trades · click a row to open it on the chart · click a header to sort${firstLine}</div>
+      <div class="row gap"><input id="t-filter" type="search" placeholder="filter (date, reason, strike, profit first…)" value="${esc(f)}">
+      <button id="t-csv" title="Download the trades listed below (after the filter) as a CSV file">Download CSV</button></div></div>
     <div class="tablewrap tall"><table class="tbl"><tr>${cols.map(([h, , a], k) => `<th class="${a === "l" ? "l" : ""}" data-k="${k}">${h}${S.sortCol === k ? (S.sortDir > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}</tr>
       ${list.map(({ r, i }) => `<tr class="click" data-i="${i}">${cols.map(([h, , a]) => `<td class="${a === "l" ? "l" : ""}">${cell(h, r, i)}</td>`).join("")}</tr>`).join("")}</table></div>
     <details class="skipped"><summary>${sk.length} signal(s) not taken: ${nData} without option data or other · ${nLock} strike lock · ${nDecl} declined by the learner</summary>
       <div class="tablewrap"><table class="tbl"><tr><th class="l">time</th><th class="l">position</th><th class="l">right</th><th class="l">instrument</th><th class="l">why</th></tr>
       ${sk.slice(0, 3000).map((x) => `<tr><td class="l">${esc(x.entry_time)}</td><td class="l">${esc(x.position)}</td><td class="l">${esc(x.opt_type)}</td><td class="l">${esc(x.instrument)}</td><td class="l">${esc(x.why)}</td></tr>`).join("")}</table></div></details>`;
+  $("#t-csv").onclick = () => {
+    // every stored column of the listed trades, oldest first, plus the cumulative net; charges split into their parts
+    const names = S.result.cols.filter((k) => k !== "chg_parts"), parts = [...new Set(list.flatMap(({ r }) => Object.keys(r[C.chg_parts] || {})))];
+    const q = (x) => { const t = x == null ? "" : String(x); return /[",\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+    const sorted = [...list].sort((a, b) => (a.r[C.entry_time] < b.r[C.entry_time] ? -1 : 1));
+    const lines = [[...names, ...parts.map((p) => "charge_" + p), "cum_net"].join(",")];
+    for (const { r, i } of sorted) lines.push([...names.map((k) => q(r[C[k]])), ...parts.map((p) => q((r[C.chg_parts] || {})[p])), q(Math.round(cumOf.get(i) * 100) / 100)].join(","));
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));   // BOM: Excel reads ₹ and · correctly
+    a.download = `${S.code}_${S.run || "run"}_${S.type}_${S.side && S.side !== "all" ? S.side + "_" : ""}${f ? "filtered_" : ""}trades.csv`.replace(/[^\w.\-]+/g, "_");
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
   $("#t-filter").oninput = () => { const p = $("#t-filter").selectionStart; renderTrades(el); const n = $("#t-filter"); n.focus(); n.setSelectionRange(p, p); };
   $$("th", el).forEach((th) => th.onclick = () => { const k = +th.dataset.k; if (S.sortCol === k) S.sortDir = -S.sortDir; else { S.sortCol = k; S.sortDir = 1; } renderTrades(el); });
   $$("tr.click", el).forEach((tr) => tr.onclick = () => {
