@@ -4,7 +4,10 @@
     {
       "name": "strategy-lab-v2",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["research/strategy_lab_v2/server.py", "8780"],
+      "runtimeArgs": [
+        "research/strategy_lab_v2/server.py",
+        "8780"
+      ],
       "port": 8780
     }
   ]
