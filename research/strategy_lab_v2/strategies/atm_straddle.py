@@ -28,6 +28,8 @@ SPEC["straddle"]["mode"]:
                previous swing of the combined premium, or the next CHoCH), or at the square-off. One entry a side at a time.
                With `exit: "target_only"` the straddle trade's stop and CHoCH exit are not used: a leg leaves at its
                target, or at the square-off.
+               With `real: "long"` the short straddle is imaginary (a signal on the chart, never an order): only the
+               bullish SETUP's leg is bought.
 A leg's fill is its own candle close at the straddle trade's entry and exit candles (also when the exit is the stop: the
 stop is a level of the combined premium, which no single leg trades at).
 """
@@ -189,6 +191,7 @@ def _both_sides(ctx, S, eng, b, i_day, k, exp, chain, legs, trs, skipped):
         te = int(b.t[ke]); up = x["dir"] == "up"; pos = "LONG" if up else "SHORT"
         cut = core.square_off_at(sq, te)
         base = dict(dir=x["dir"], signal="BULLISH" if up else "BEARISH", strike=k, expiry=exp, choch_time=int(b.t[x["choch"]]))
+        if S.get("real") == "long" and not up: continue                 # the short straddle is imaginary
         if cut and te >= cut:
             skipped.append(dict(base, position=pos, opt_type="", instrument=f"{k} straddle", entry_time=te, why="entry at or after the square-off time")); continue
         if te <= free[x["dir"]]:

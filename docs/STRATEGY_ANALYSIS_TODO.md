@@ -457,6 +457,21 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S75. Lab v2 Strategy 62: only the long scalp of Strategy 61 (the short straddle imaginary). Measured: loses. The "72k" is the legs that reached the target, a set known only afterwards, and two thirds of it came from the shorts
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/atm_straddle.py` (`mode: both_sides`, `exit: target_only`, `real: long`), `st62.py`. 2026-10-11, the user's instruction after Strategy 61: "this will not short any, short is imaginary; this will scalp only those long positions which made 72k". |
+| What the 72k is | Strategy 60's legs that left at the 20 point target: 61 legs, ₹+71,184 (S73). 41 of them are SHORT legs (₹+47,928) and 20 are LONG legs (₹+23,256). They are the winners picked out after the exit; at the entry nothing distinguishes them from the other 291 legs. No rule in this strategy can take "only those". |
+| What was built | Every bullish SETUP on the derived straddle candles buys the rising leg (Strategy 58's definition); nothing is sold; the only exit is the 20 point target on the leg's own premium, else the square-off (15:14). One long at a time. |
+| Impact | **Measured, Options (via futures) W-ATM, 1 lot, after costs, first trade 2026-07-01, last 2026-10-05, 36 sessions with a trade: 49 trades, ₹-26,464, PF 0.52, t -1.70, 57% winners.** Target reached: 24 trades ₹+27,943 (₹1,164 each). Not reached, closed at 15:14: 25 trades ₹-54,407 (₹-2,176 each; 4 of them closed with a small profit; worst ₹-9,060). CE 25 trades ₹-18,157; PE 24 trades ₹-8,307. First half 26 trades ₹-16,721 (PF 0.46); second half 23 trades ₹-9,743 (PF 0.59). 18 of 36 days positive. 61 buy signals not taken because a long was still open. The same long side with Strategy 3's stop and CHoCH exit (the long rows of Strategy 60): 104 trades, ₹-32,645, 20 reach the target. |
+| Read | About half the longs reach 20 points; a bought option that does not is held while its premium decays, and loses about twice what a winner makes. One quarter of data. |
+| Open (the user's call) | Unquantified: a rule known at the entry that separates the legs that reach 20 points from the rest (time of day, the size of the leg's move at the entry, the straddle's own trend, days to expiry) would have to be defined first and checked on a pick / check split; a fixed stop beside the target. |
+| Effort | **M** for the separating study. |
+| Priority | _Open; first numbers recorded._ Related: S74, S73, S70. |
+
+---
+
 ### S74. Lab v2 Strategy 61: Strategy 60 with the 20 point target as the only exit. Measured: 64% winners, still loses; the legs that never reach 20 points are closed at 15:14 with losses far larger than 20 points
 
 | | |
