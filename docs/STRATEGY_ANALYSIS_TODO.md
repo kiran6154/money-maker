@@ -457,6 +457,21 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S74. Lab v2 Strategy 61: Strategy 60 with the 20 point target as the only exit. Measured: 64% winners, still loses; the legs that never reach 20 points are closed at 15:14 with losses far larger than 20 points
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/atm_straddle.py` (`mode: both_sides` with `exit: target_only`), `st61.py`. 2026-10-11, the user's instruction after Strategy 60: "derive a new strategy, same conditions, but we will do only those 20 points target trades, nothing else". |
+| How it was read | "The target is the only exit": no stop, no CHoCH exit. The other reading, "take only the entries that reach 20 points", cannot be traded: which entry will reach it is not known at the entry. For the record, those legs in Strategy 60 are 61 legs, ₹+71,184 (S73); that is a selection made after the fact, not a result. |
+| Build choices (fixed before the run) | (1) A leg that has not reached its target is closed at the square-off (15:14): the book is intraday and the pair is the day's own. (2) One entry a side at a time, as Strategy 60: a side is free when every leg of its last entry is closed, so a leg that is stuck blocks that side's later signals (143 signals not taken). Everything else is Strategy 60's. |
+| Impact | **Measured, Options (via futures) W-ATM, 1 lot a leg, after costs, first trade 2026-07-01, last 2026-10-05, 41 sessions: 137 legs, ₹-45,019, PF 0.67, t -1.50, 64% winners; gross ₹-36,075.** First half 74 legs ₹-21,792, PF 0.70; second half 63 legs ₹-23,227, PF 0.63. 16 of 41 days positive; worst days ₹-12,591 and ₹-11,988, best ₹+4,682. **Short legs 88: ₹-18,555** = target 51 legs ₹+59,714; closed at 15:14: 37 legs ₹-78,269 (worst leg ₹-16,669). **Long legs 49: ₹-26,464** = target 24 legs ₹+27,943; closed at 15:14: 25 legs ₹-54,407 (worst ₹-9,060). Same window: Strategy 60 ₹-62,197 (PF 0.62), Strategy 59 ₹-14,953 (0.87). |
+| Read | 75 of 137 legs (55%) reach 20 points and make about ₹1,170 each; the 62 that do not lose about ₹2,140 each on average. A fixed target without a stop wins often and loses big. One quarter of data. |
+| Open (the user's call) | Unquantified: a leg-level stop of a fixed size beside the target (the 1:1 case is a 20 point stop); a different target size; shorts only. |
+| Effort | **S** each. |
+| Priority | _Open; first numbers recorded._ Related: S73, S72. |
+
+---
+
 ### S73. Lab v2 Strategy 60: sell both legs on a sell signal, buy the rising leg on a buy signal, nothing bought back, 20 point target on every leg. Measured: loses on both halves; the target cuts the winners, the stop and CHoCH exits keep the losers
 
 | | |

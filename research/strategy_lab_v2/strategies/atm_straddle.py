@@ -26,6 +26,8 @@ SPEC["straddle"]["mode"]:
                own premium (touched on its own 1-minute candles: filled at the target, or at the open when the candle
                gaps through it); an entry's legs still open leave at that straddle trade's own exit (the stop at the
                previous swing of the combined premium, or the next CHoCH), or at the square-off. One entry a side at a time.
+               With `exit: "target_only"` the straddle trade's stop and CHoCH exit are not used: a leg leaves at its
+               target, or at the square-off.
 A leg's fill is its own candle close at the straddle trade's entry and exit candles (also when the exit is the stop: the
 stop is a level of the combined premium, which no single leg trades at).
 """
@@ -192,6 +194,7 @@ def _both_sides(ctx, S, eng, b, i_day, k, exp, chain, legs, trs, skipped):
         if te <= free[x["dir"]]:
             skipped.append(dict(base, position=pos, opt_type="", instrument=f"{k} straddle", entry_time=te, why=f"one {pos.lower()} entry at a time: open until {core.tstr(free[x['dir']])}")); continue
         kx, why, still = x["exit"], x["exit_reason"], x["open"]
+        if S.get("exit") == "target_only": kx, why, still = len(b) - 1, "open", True      # no stop, no CHoCH exit
         if cut and (b.t[kx] > cut or still):
             kc = int(np.searchsorted(b.t, cut, "right")) - 1
             if kc >= ke: kx, why, still = kc, "eod", False

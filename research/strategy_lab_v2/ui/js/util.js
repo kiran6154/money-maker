@@ -168,6 +168,11 @@ export function algorithm(spec) {
       ...(p.reverse ? [S(`Stop and reverse: when the INITIAL stop is hit, open the opposite position at the stop (same lots and rules), at most ${p.reverse.max} time(s) per signal.`)] : []),
       ...(p.square_off ? [S(`${sqOf(p)}: whatever is still open closes (intraday).`)] : [S("No square-off: positions are held overnight (positional).")]),
       S("The contract's last candle in the data → expiry.")]));
+  } else if (sd && sd.exit === "target_only") {
+    steps.push(S("Exit — the target is the only exit:", [
+      S(`A leg leaves when its own premium has moved ${sd.target_pts} points in its favour (the target above).`),
+      S("No stop. No CHoCH exit. A SETUP of the other side does not close anything."),
+      S(`${sqOf(p)}: a leg that has not reached its target is closed at that candle's close.`)]));
   } else if (sd && sd.mode === "managed_short") {      // its exits are the management step above
   } else {
     const sl = { prev_swing: "the latest confirmed swing low (long) / swing high (short)", choch_candle: "the CHoCH candle's low (long) / high (short)", none: "none" }[r.sl_rule] || r.sl_rule;
