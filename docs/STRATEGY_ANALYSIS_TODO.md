@@ -527,7 +527,8 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Open (the user's call) | Unquantified: the restart on Strategies 57 - 64 (their numbers were measured without it; 26 of 67 sessions gave Strategy 57 no trade at all); a gap measured on the index instead of each chart. |
 | Effort | **S** each. |
 | Addendum 2026-10-11 (the rule asked for again; measured on Strategy 65 as it stands after S83: flat 50 point stop, no previous-low filter) | Same window, two lots an entry. No restart at all: 124 entries, 40 days, ₹-73,556, PF 0.61 (halves ₹-62,379 / ₹-11,177). The rule in the strategy (first candle opens outside the previous session's range): 176 entries, 57 days, ₹-92,050, PF 0.61 (₹-64,283 / ₹-27,767). Restart on ANY gap (open not equal to the previous close: every day in practice): 187 entries, 61 days, ₹-83,095, PF 0.67 (₹-66,635 / ₹-16,460). More days trade with a restart; the profit factor barely moves. Not changed: which definition is the user's call. |
-| Priority | _Open; before / after recorded._ Related: S79, S78, S70. |
+| Changed 2026-10-11 (the user: "do it") | Strategy 65 now restarts on ANY gap (`gap_restart: "any"`: the first candle opens at any other price than the previous close). Before (range gap): 176 entries, ₹-92,050, PF 0.61; halves ₹-64,283 / ₹-27,767. After: 187 entries (374 lots), 61 days, ₹-83,095, PF 0.67, t -2.88, 40% winners; halves ₹-66,635 (PF 0.46) / ₹-16,460 (PF 0.87); 24 of 61 days positive. Lot T1 ₹-49,552: target 61 lots ₹+71,364; next bearish CHoCH 84 ₹-76,778; close 37 ₹-27,229; stop 5 ₹-16,909. Lot TRAIL ₹-33,543: moved stop 56 ₹+81,951; next CHoCH 86 ₹-72,144; close 40 ₹-26,440; stop 5 ₹-16,909. Bought on the straddle's sell signal 88 entries ₹-8,555 (PF 0.89); on its buy signal 99 entries ₹-74,540 (PF 0.56). |
+| Priority | _Open; before / after of each change recorded._ Related: S79, S78, S70. |
 
 ---
 

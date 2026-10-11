@@ -58,7 +58,8 @@ SPEC["straddle"]["mode"]:
                "bos_swing" = to the latest confirmed swing low (long) / high (short) at that BOS.
 SPEC["straddle"]["gap_restart"] (optional, any mode's charts that it is applied to: the straddle chart, and the option's own
 chart in leg_structure): on a session whose first candle OPENS above the previous session's high or below its low (that
-chart's own candles), the structure starts again: the engine runs from the session's first candle only, with no memory of
+chart's own candles; with the value "any": opens at any other price than the previous session's last close), the
+structure starts again: the engine runs from the session's first candle only, with no memory of
 the earlier sessions.
 A leg's fill is its own candle close at the straddle trade's entry and exit candles (also when the exit is the stop: the
 stop is a level of the combined premium, which no single leg trades at).
@@ -108,11 +109,13 @@ def combined(ce, pe, d_from, d_to, minutes):
     return core.Bars(bucket[q0], op[q0], hi, lo, cl[q1], vol), ia[q1], ib[q1]
 
 
-def gap_start(b, d):
-    """The candle of b at which session d starts again after a gap (its first candle, when that candle opens outside
-    the previous session's high - low range on this chart), else 0 (no gap, or no session before it)."""
+def gap_start(b, d, rule=True):
+    """The candle of b at which session d starts again after a gap, else 0 (no gap, or no session before it).
+    rule True: its first candle opens outside the previous session's high - low range on this chart.
+    rule "any": its first candle opens at any other price than the previous session's last close."""
     i = int(np.searchsorted(b.day, d))
     if i == 0 or i >= len(b): return 0
+    if rule == "any": return i if b.o[i] != b.c[i - 1] else 0
     j = int(np.searchsorted(b.day, b.day[i - 1]))
     return i if (b.o[i] > b.h[j:i].max() or b.o[i] < b.l[j:i].min()) else 0
 
@@ -145,7 +148,7 @@ def run(ctx):
         if got is None: continue
         b, ia, ib = got
         if S.get("gap_restart"):
-            g = gap_start(b, d)
+            g = gap_start(b, d, S["gap_restart"])
             if g: b, ia, ib = cut_bars(b, g), ia[g:], ib[g:]; gaps.append(core.dstr(d))
         eng = core.foundation(b, spec["rules"])
         i_day = int(np.searchsorted(b.day, d)); free_at = -1
@@ -288,7 +291,7 @@ def _leg_structure(ctx, S, eng, b, i_day, d, d_from, k, exp, chain, legs, trs, s
         if not arms[right]: continue
         a0, a1 = int(np.searchsorted(os_.day, d_from)), int(np.searchsorted(os_.day, d, "right"))
         ob = core.Bars(os_.t[a0:a1], os_.o[a0:a1], os_.h[a0:a1], os_.l[a0:a1], os_.c[a0:a1], os_.v[a0:a1])
-        if S.get("gap_restart"): ob = cut_bars(ob, gap_start(ob, d))
+        if S.get("gap_restart"): ob = cut_bars(ob, gap_start(ob, d, S["gap_restart"]))
         oe = core.foundation(ob, spec["rules"]); o_day = int(np.searchsorted(ob.day, d)); free_at = -1
         if S.get("entry") == "signal":
             _at_signal(ctx, S, oe, ob, os_, b, arms[right], right, k, exp, chain.name(exp, k, right), trs, skipped); continue
@@ -436,7 +439,7 @@ def chart_main(ctx, body, day, to):
         got = combined(ce, pe, d_from, d, minutes)
         if got is None: legs.append(dict(day=core.dstr(d), why="the CE and the PE share no candle")); continue
         b, ia, ib = got
-        g = gap_start(b, d) if spec["straddle"].get("gap_restart") else 0
+        g = gap_start(b, d, spec["straddle"]["gap_restart"]) if spec["straddle"].get("gap_restart") else 0
         if g: b, ia, ib = cut_bars(b, g), ia[g:], ib[g:]
         eng = core.foundation(b, spec["rules"]); i0 = int(np.searchsorted(b.day, d)); i1 = len(b) - 1
         if i0 > i1: continue
