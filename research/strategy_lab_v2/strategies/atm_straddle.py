@@ -16,6 +16,11 @@ SPEC["straddle"]["mode"]:
   rising_leg   bullish SETUPs only: buy the one leg that is going up - the leg with the larger change of its close over
                the last `lookback` candles up to the entry candle - and leave it when the straddle trade ends (its stop
                or the next CHoCH on the straddle chart: the sell side), or at the square-off.
+  managed_short  a short straddle managed leg by leg on the SETUPs of the straddle chart (no stop, no CHoCH exit):
+               bearish SETUP -> be short both legs: sell every leg not held (both when flat; the one bought back earlier);
+               bullish SETUP -> buy back the leg that is going up (the larger change of its close over `lookback`
+               candles), when it is held; the other leg stays short;
+               the square-off closes what is left.
 A leg's fill is its own candle close at the straddle trade's entry and exit candles (also when the exit is the stop: the
 stop is a level of the combined premium, which no single leg trades at).
 """
@@ -72,7 +77,7 @@ def signals(bars, spec):
 def run(ctx):
     """{choice: dict(trades, skipped, signals)}: one engine run per session on that session's ATM pair."""
     spec, S = ctx["spec"], ctx["spec"]["straddle"]
-    if S["mode"] not in ("both", "rising_leg"): raise ValueError("straddle.mode is 'both' or 'rising_leg'")
+    if S["mode"] not in ("both", "rising_leg", "managed_short"): raise ValueError("straddle.mode is 'both', 'rising_leg' or 'managed_short'")
     chain = core.OptionChain("minute"); sp = core.series("spot", "minute")
     minutes = core.TF_MIN[ctx["tf"]]; sq = ctx["square_off"]; lots = ctx["position"]["lots"]
     ss = core.sessions(); days = ss[(ss >= core.dnum(ctx["date_from"])) & (ss <= core.dnum(ctx["date_to"]))]
@@ -93,6 +98,8 @@ def run(ctx):
             if eng.qi[j] >= i_day:
                 sigs.append(dict(time=int(b.t[eng.qi[j]]), dir="up" if eng.qd[j] == 1 else "down", flipped=bool(eng.qflip[j]),
                                  lvl=float(eng.qlvl[j]), av=float(eng.qav[j]), hi=None, lo=None, setup=None))
+        if S["mode"] == "managed_short":
+            _managed(ctx, S, eng, b, i_day, d, k, exp, chain, (("CE", ce, ia), ("PE", pe, ib)), trs, skipped); continue
         for x in eng.trades():
             ke = x["entry"]
             if ke < i_day: continue
@@ -127,6 +134,41 @@ def run(ctx):
     return {ch: dict(trades=trs, skipped=skipped, signals=sigs) for ch in core.choice_keys(spec, "OPT_FUT_SIGNAL")}
 
 
+def _managed(ctx, S, eng, b, i_day, d, k, exp, chain, legs, trs, skipped):
+    """One session of the managed short straddle: every SETUP of the session in candle order (see the module text)."""
+    sq, lots, n = ctx["square_off"], ctx["position"]["lots"], S["lookback"]
+    cut = core.square_off_at(sq, int(b.t[i_day])); held = {}          # right -> (entry candle, the SETUP that opened it)
+    kc = (int(np.searchsorted(b.t, cut, "right")) - 1) if cut else len(b) - 1
+
+    def close(right, kx, why, still=False):
+        ke, x = held.pop(right); os_, ix = next((o_, i_) for r_, o_, i_ in legs if r_ == right)
+        rec = dict(dir="down", signal="BEARISH", strike=k, expiry=exp, choch_time=int(b.t[x["choch"]]), position="SHORT", opt_type=right,
+                   kind="OPT", instrument=chain.name(exp, k, right), entry_time=int(os_.t[ix[ke]]), entry_px=float(os_.c[ix[ke]]),
+                   exit_time=int(os_.t[ix[kx]]), exit_px=float(os_.c[ix[kx]]), exit_reason=why, open=bool(still), sl=None,
+                   und_entry=float(b.c[ke]), und_exit=float(b.c[kx]), stale=False, lots=lots, tranche="", label=f"SHORT {right}")
+        core.excursion(os_, rec, False)
+        trs.append(core.price_trade(ctx, rec))
+
+    for x in eng.trades():
+        ke = x["entry"]
+        if ke < i_day: continue
+        te = int(b.t[ke]); up = x["dir"] == "up"
+        base = dict(dir=x["dir"], signal="BULLISH" if up else "BEARISH", strike=k, expiry=exp, choch_time=int(b.t[x["choch"]]))
+        if cut and (te >= cut or ke >= kc):
+            if not up: skipped.append(dict(base, position="SHORT", opt_type="", instrument=f"{k} straddle", entry_time=te, why="entry at or after the square-off time"))
+            continue
+        if not up:
+            for right, _, _ in legs:
+                if right not in held: held[right] = (ke, x)
+            continue
+        k0 = max(ke - n, 0); ce, ia = legs[0][1], legs[0][2]; pe, ib = legs[1][1], legs[1][2]
+        rising = "CE" if float(ce.c[ia[ke]] - ce.c[ia[k0]]) >= float(pe.c[ib[ke]] - pe.c[ib[k0]]) else "PE"
+        if rising in held and held[rising][0] < ke: close(rising, ke, "buy_signal")
+    for right in list(held):
+        if held[right][0] < kc or not cut: close(right, kc, "eod" if cut else "open", still=not cut)
+        else: held.pop(right)
+
+
 def chart_main(ctx, body, day, to):
     """The lab's main chart for these strategies: the derived straddle candles of sessions day..to (each session its own
     day-open ATM pair) with the engine's layers computed on them, and one marker row per straddle trade placed on the
@@ -155,6 +197,12 @@ def chart_main(ctx, body, day, to):
         else:
             for k2 in LISTS: ov[k2] += list(o_.get(k2) or [])
         legs.append(dict(day=core.dstr(d), strike=k, expiry=exp, index_open=idx_open))
+        if spec["straddle"]["mode"] == "managed_short":             # each leg is managed on its own: one row a leg
+            for r0 in body["trades"]:
+                if core.dnum(str(r0[C["entry_time"]])[:10]) != d: continue
+                r = list(r0); r[C["entry_px"]] = r0[C["und_entry"]]; r[C["exit_px"]] = r0[C["und_exit"]]
+                rows.append(r)
+            continue
         for x in eng.trades():
             if x["entry"] < i0: continue
             te = int(os_t(ce, ia, x["entry"])); pos = "LONG" if x["dir"] == "up" else "SHORT"

@@ -64,6 +64,7 @@ LINEAGE = {
     "ST55": ("ST3", "A trade is taken only after a same-side signal of the TradingFinder SMLS order-block indicator within 30 candles."),
     "ST57": ("ST3", "The same rules read on a different chart: the candles of the day-open ATM straddle (CE + PE). A buy signal buys both legs, a sell signal sells both."),
     "ST58": ("ST57", "Buy signals only, and only the leg (CE or PE) that is going up; exit when the straddle chart turns to the sell side."),
+    "ST59": ("ST57", "A managed short straddle: a sell signal sells both legs; a buy signal buys back only the leg that is going up and keeps the other; the next sell signal sells the missing leg again. No stop."),
     "ST56": (None, "A separate idea: the TradingFinder SMLS indicator's own Long / Short signals; stop at the order block's far edge; flat by the square-off."),
 }
 

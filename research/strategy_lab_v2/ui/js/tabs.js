@@ -81,7 +81,7 @@ const SIDE = { all: 'Long + short', LONG: 'Long', SHORT: 'Short', CE: 'Long + sh
 const TYPE = { FUT: 'Futures', OPT_FUT_SIGNAL: 'Options (via futures)', OPT_NATIVE: 'Options (standalone)' };
 const EXP = { W: 'Weekly', M: 'Monthly' };
 const sideOf = (c, side) => !c ? null : side === 'all' || !side ? c : ({ LONG: c.long, SHORT: c.short, CE: c.ce, PE: c.pe })[side] || null;
-const WHY = { stop_loss: 'Stop loss', next_choch: 'Next CHoCH', expiry: 'Expiry', open: 'Open at end', band_reclaim: 'Band reclaim', trail_stop: 'Trail stop', eod: 'End of day', band_exit: 'Band exit', choch: 'CHoCH' };
+const WHY = { stop_loss: 'Stop loss', next_choch: 'Next CHoCH', expiry: 'Expiry', open: 'Open at end', band_reclaim: 'Band reclaim', trail_stop: 'Trail stop', eod: 'End of day', buy_signal: 'Buy signal (leg bought back)', band_exit: 'Band exit', choch: 'CHoCH' };
 const sigName = (t, type) => !t.sig ? '—' : type === 'OPT_NATIVE' ? (t.sig === 'BULLISH' ? 'Bullish (option chart)' : 'Bearish (option chart)') : (t.sig === 'BULLISH' ? 'Future long' : 'Future short');
 const holdOf = (run, spec) => run.holding || (spec.position && spec.position.square_off ? `intraday ${spec.position.square_off}` : 'positional');
 const fewNote = n => n < 50 ? note(`Only ${n} trades — treat these ratios as indicative; a few trades move them a lot.`) : '';

@@ -38,6 +38,7 @@ export function reasonTag(r) {
   if (r === "trail_stop") return "TRAIL";
   if (r === "next_choch" || r === "choch") return "CHoCH";
   if (r === "eod") return "EOD";
+  if (r === "buy_signal") return "BUY SIGNAL";
   if (r === "expiry") return "EXPIRY";
   if (r === "open") return "OPEN*";
   if (r.startsWith("target")) return r.replace("target ", "T ");
@@ -81,6 +82,16 @@ export function algorithm(spec) {
   const dirs = S("Direction → position: bullish = futures LONG · options LONG CE and SHORT PE; bearish = futures SHORT · options LONG PE and SHORT CE (each option leg is its own position).");
   const dirsOpt = S(`Direction → position on that option: bullish SETUP = LONG (buy it), bearish = SHORT (sell it); ${ns.one_per_side ? "one position per side (CE / PE) at a time; " : ""}first SETUP wins.`);
   if (rule === "setup_v1") steps.push(S("Entry: every SETUP is a position.", [setup, onOpt ? dirsOpt : dirs]));
+  else if (rule === "straddle_v1" && sd.mode === "managed_short") {
+    steps.push(S("Entry: a bearish SETUP on the derived straddle candles (the combined premium turning down) → be SHORT the straddle.", [setup,
+      S("Flat → SELL the CE and SELL the PE."),
+      S("One leg was bought back earlier → SELL that leg again (the re-entry); the leg still held is left as it is."),
+      S("Each leg is its own position and fills at its own candle close at that candle.")]));
+    steps.push(S("Management: a bullish SETUP on the derived straddle candles (the combined premium turning up) → BUY BACK one leg, keep the other.", [
+      S(`The leg bought back is the one going up: the CE or the PE whose own close rose more over the last ${sd.lookback} candles (a tie: the CE).`),
+      S("That leg is not held (already bought back) → nothing happens; the other leg stays short."),
+      S(`No stop and no CHoCH exit. ${sqOf(p)}: every leg still open is closed at that candle's close.`)]));
+  }
   else if (rule === "straddle_v1") steps.push(S("Entry: a SETUP on the derived straddle candles.", [setup,
     sd.mode === "rising_leg"
       ? S(`Bullish SETUP only (the combined premium turning up) → BUY ONE leg: the CE or the PE whose own close rose more over the last ${sd.lookback} candles. A bearish SETUP is not traded: it is the exit.`)
@@ -152,6 +163,7 @@ export function algorithm(spec) {
       ...(p.reverse ? [S(`Stop and reverse: when the INITIAL stop is hit, open the opposite position at the stop (same lots and rules), at most ${p.reverse.max} time(s) per signal.`)] : []),
       ...(p.square_off ? [S(`${sqOf(p)}: whatever is still open closes (intraday).`)] : [S("No square-off: positions are held overnight (positional).")]),
       S("The contract's last candle in the data → expiry.")]));
+  } else if (sd && sd.mode === "managed_short") {      // its exits are the management step above
   } else {
     const sl = { prev_swing: "the latest confirmed swing low (long) / swing high (short)", choch_candle: "the CHoCH candle's low (long) / high (short)", none: "none" }[r.sl_rule] || r.sl_rule;
     steps.push(S(spec.straddle ? "Exit — read on the derived straddle candles, first of (each leg then fills at its own candle close):" : "Exit — first of:", [

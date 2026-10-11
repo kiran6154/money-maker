@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S72. Lab v2 Strategy 59: the short straddle managed leg by leg on the straddle chart. Measured: loses a little; the legs bought back on a buy signal lose more than the legs held to the close make
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/atm_straddle.py` (`mode: managed_short`, `_managed`), `st59.py`. 2026-10-11, the user's description after seeing only long positions in Strategy 58: "we will be doing the straddle as is on the sell side, and on a buy we will exit one side and keep the other and enter again; we will manage it". Strategy 58 is kept as built. |
+| Build choices (not in the description; fixed before the run) | (1) Sell side = a bearish SETUP on the derived straddle candles: sell every leg not held (both when flat; the leg bought back earlier otherwise). (2) Buy side = a bullish SETUP: buy back the leg that is going up (Strategy 58's definition: the larger change of its close over the last 5 candles, a tie to the CE) when it is held; the other stays short; when the rising leg is not held nothing happens. (3) No stop and no CHoCH exit: the straddle trade's own stop (previous swing of the combined premium) is NOT used. (4) Flat by the square-off (15:14); no entry from then. (5) Each leg 1 lot, filled at its own candle close. |
+| Impact | **Measured, Options (via futures) W-ATM, after costs, first trade 2026-07-01, last 2026-10-05, 39 sessions with a trade: 141 legs, ₹-14,953, PF 0.87, t -0.61, 39% winners; gross before costs ₹-5,710.** By exit: **bought back on a buy signal 68 legs ₹-88,450 (4% winners, PF 0.05); held to the close 73 legs ₹+73,496 (71% winners, PF 3.99)**. CE 63 legs ₹-2,307; PE 78 legs ₹-12,646. First half (to 2026-08-12) 80 legs ₹-18,176, PF 0.74; second half 61 legs ₹+3,222, PF 1.07. 18 of 39 days positive; worst day ₹-6,882, best ₹+3,440. For comparison on the same window: Strategy 57 ₹-56,971 (PF 0.72), Strategy 58 ₹-22,496 (PF 0.63). |
+| Read | Better than 57 and 58, still not positive. The buy-back is a stop that is hit after the leg has already moved (4% of those legs close in profit); the decay collected on the legs held to the close almost pays for it. One quarter, 39 sessions: not evidence either way. |
+| Open (the user's call) | Unquantified, each needs its own run: the buy-back using the straddle trade's stop or the CHoCH instead of waiting for the bullish SETUP; a leg-level stop; re-entry at a new ATM strike instead of the day-open one; no buy-back at all (short straddle held to the close from the first sell signal). |
+| Effort | **S** each. |
+| Priority | _Open; first numbers recorded._ Related: S70, S64. |
+
+---
+
 ### S71. Lab v2: every intraday position is closed at 15:14 from 2026-06-01 (all strategies). Before / after recorded
 
 | | |
