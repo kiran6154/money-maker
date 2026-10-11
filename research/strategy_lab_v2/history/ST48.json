@@ -282,6 +282,290 @@
      }
     }
    }
+  },
+  {
+   "version": 2,
+   "at": "2026-10-11T14:47:02",
+   "key": "91b6dc59defb",
+   "code": "74fdba74a148",
+   "definition": {
+    "code": "ST48",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 2,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "close",
+     "avwap_weight": "volume",
+     "sl_rule": "prev_swing",
+     "entry_rule": "chop_risk_ci_ob_v1",
+     "exit_rule": "next_choch"
+    },
+    "chop": {
+     "slope": {
+      "on": true,
+      "bars": 6,
+      "min_pts": 2.0
+     },
+     "trend": {
+      "on": false
+     },
+     "pivot_age": {
+      "on": true,
+      "min_bars": 10
+     },
+     "displace": {
+      "on": false,
+      "body_atr": 0.8,
+      "atr_period": 14,
+      "close_pct": 30
+     },
+     "separation": {
+      "on": false,
+      "min_pts": 10.0
+     },
+     "notes": "the middle of the ranges in the 2026-10-11 brief, fixed before any run; switch a filter off with on: False"
+    },
+    "risk": {
+     "on": true,
+     "min_pts": 20.0,
+     "notes": "entry to stop in futures points; from the holding-time study (S64), which used the whole history"
+    },
+    "chop_index": {
+     "on": true,
+     "period": 14,
+     "max": 38.2,
+     "notes": "the indicator's standard trend level, on the strategy's own candles at the SETUP candle"
+    },
+    "smc": {
+     "rule": "ob_internal",
+     "lookback": 10,
+     "notes": "internal structure length 5, order blocks with the ATR(200) volatility filter and High / Low mitigation: the defaults of the user's Smart Money Concepts Pine script (strategies/smc.py port())"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM2",
+      "ITM1",
+      "OTM1",
+      "OTM2",
+      "OTM3",
+      "OTM4"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14,
+     "native_scan": {
+      "choices": [
+       "ATR2",
+       "ATM",
+       "ITM1",
+       "OTM1"
+      ],
+      "every_minutes": 5,
+      "one_per_side": true
+     }
+    }
+   },
+   "changes": [
+    "code changed (core.py, the strategy file or its family module)"
+   ],
+   "results": {
+    "all-data_1m": {
+     "FUT": {
+      "-": {
+       "trades": 109,
+       "wins": 37,
+       "pts": 645.95,
+       "net_inr": 3295.54,
+       "pf": 1.02,
+       "max_dd_inr": -58225.94,
+       "t_stat": 0.06
+      }
+     },
+     "OPT_FUT_SIGNAL": {
+      "W-ATR2": {
+       "trades": 4,
+       "wins": 2,
+       "pts": 25.95,
+       "net_inr": 1441.52,
+       "pf": 2.36,
+       "max_dd_inr": -1056.82,
+       "t_stat": 0.61
+      },
+      "W-ATM": {
+       "trades": 4,
+       "wins": 2,
+       "pts": 25.7,
+       "net_inr": 1416.62,
+       "pf": 2.23,
+       "max_dd_inr": -1150.07,
+       "t_stat": 0.59
+      },
+      "W-ITM2": {
+       "trades": 4,
+       "wins": 2,
+       "pts": 32.4,
+       "net_inr": 1824.7,
+       "pf": 2.33,
+       "max_dd_inr": -1375.16,
+       "t_stat": 0.64
+      },
+      "W-ITM1": {
+       "trades": 4,
+       "wins": 2,
+       "pts": 28.75,
+       "net_inr": 1601.88,
+       "pf": 2.19,
+       "max_dd_inr": -1341.77,
+       "t_stat": 0.59
+      },
+      "W-OTM1": {
+       "trades": 4,
+       "wins": 2,
+       "pts": 23.35,
+       "net_inr": 1275.23,
+       "pf": 2.21,
+       "max_dd_inr": -1056.82,
+       "t_stat": 0.58
+      },
+      "W-OTM2": {
+       "trades": 4,
+       "wins": 2,
+       "pts": 19.95,
+       "net_inr": 1064.13,
+       "pf": 2.23,
+       "max_dd_inr": -867.01,
+       "t_stat": 0.55
+      },
+      "W-OTM3": {
+       "trades": 4,
+       "wins": 2,
+       "pts": 17.2,
+       "net_inr": 893.88,
+       "pf": 2.21,
+       "max_dd_inr": -739.71,
+       "t_stat": 0.53
+      },
+      "W-OTM4": {
+       "trades": 4,
+       "wins": 2,
+       "pts": 15.35,
+       "net_inr": 780.46,
+       "pf": 2.19,
+       "max_dd_inr": -655.59,
+       "t_stat": 0.5
+      },
+      "M-ATR2": {
+       "trades": 4,
+       "wins": 2,
+       "pts": 9.55,
+       "net_inr": 322.25,
+       "pf": 1.17,
+       "max_dd_inr": -1869.17,
+       "t_stat": 0.13
+      },
+      "M-ATM": {
+       "trades": 4,
+       "wins": 2,
+       "pts": 20.55,
+       "net_inr": 1028.05,
+       "pf": 1.78,
+       "max_dd_inr": -1319.26,
+       "t_stat": 0.47
+      },
+      "M-ITM2": {
+       "trades": 4,
+       "wins": 2,
+       "pts": 18.3,
+       "net_inr": 856.22,
+       "pf": 1.51,
+       "max_dd_inr": -1673.23,
+       "t_stat": 0.34
+      },
+      "M-ITM1": {
+       "trades": 4,
+       "wins": 2,
+       "pts": 13.45,
+       "net_inr": 554.41,
+       "pf": 1.3,
+       "max_dd_inr": -1874.57,
+       "t_stat": 0.22
+      },
+      "M-OTM1": {
+       "trades": 4,
+       "wins": 2,
+       "pts": 6.3,
+       "net_inr": 113.79,
+       "pf": 1.06,
+       "max_dd_inr": -1869.17,
+       "t_stat": 0.05
+      },
+      "M-OTM2": {
+       "trades": 4,
+       "wins": 2,
+       "pts": 13.7,
+       "net_inr": 605.57,
+       "pf": 1.44,
+       "max_dd_inr": -1376.18,
+       "t_stat": 0.3
+      },
+      "M-OTM3": {
+       "trades": 4,
+       "wins": 2,
+       "pts": 9.25,
+       "net_inr": 326.4,
+       "pf": 1.24,
+       "max_dd_inr": -1371.2,
+       "t_stat": 0.17
+      },
+      "M-OTM4": {
+       "trades": 4,
+       "wins": 2,
+       "pts": 10.7,
+       "net_inr": 429.86,
+       "pf": 1.37,
+       "max_dd_inr": -1161.89,
+       "t_stat": 0.25
+      }
+     }
+    }
+   }
   }
  ]
 }

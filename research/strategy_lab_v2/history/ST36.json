@@ -524,6 +524,121 @@
      }
     }
    }
+  },
+  {
+   "version": 5,
+   "at": "2026-10-11T14:44:32",
+   "key": "8499e927d275",
+   "code": "b026acff3a71",
+   "definition": {
+    "code": "ST36",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 2,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "swing_short_v1",
+     "exit_rule": "next_choch"
+    },
+    "sma_filter": {
+     "period": 200,
+     "trend": "slope",
+     "want": "rising",
+     "notes": "rising = SMA at the entry candle above the SMA one candle before, on the option's own candles over the contract's whole series"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "position",
+     "stop": {
+      "futures_pts": 50,
+      "option_pct": 30
+     },
+     "trail": null,
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM2",
+      "ITM1",
+      "OTM1",
+      "OTM2",
+      "OTM3",
+      "OTM4"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14,
+     "native_scan": {
+      "choices": [
+       "ATR2",
+       "ATM",
+       "ITM1",
+       "OTM1"
+      ],
+      "every_minutes": 5,
+      "one_per_side": true
+     }
+    }
+   },
+   "changes": [
+    "code changed (core.py, the strategy file or its family module)"
+   ],
+   "results": {
+    "all-data_1m": {
+     "OPT_NATIVE": {
+      "W-SCAN": {
+       "trades": 176,
+       "wins": 93,
+       "pts": 398.59,
+       "net_inr": 15261.27,
+       "pf": 1.11,
+       "max_dd_inr": -10688.94,
+       "t_stat": 0.57
+      },
+      "M-SCAN": {
+       "trades": 134,
+       "wins": 72,
+       "pts": 577.13,
+       "net_inr": 27866.0,
+       "pf": 1.26,
+       "max_dd_inr": -13119.04,
+       "t_stat": 1.07
+      }
+     }
+    }
+   }
   }
  ]
 }

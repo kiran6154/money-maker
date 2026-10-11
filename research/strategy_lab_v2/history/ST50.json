@@ -280,6 +280,288 @@
      }
     }
    }
+  },
+  {
+   "version": 2,
+   "at": "2026-10-11T14:48:42",
+   "key": "1087fe616aaa",
+   "code": "076de13af86d",
+   "definition": {
+    "code": "ST50",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 2,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "close",
+     "avwap_weight": "volume",
+     "sl_rule": "prev_swing",
+     "entry_rule": "chop_risk_ci_internal_bias_v1",
+     "exit_rule": "next_choch"
+    },
+    "chop": {
+     "slope": {
+      "on": true,
+      "bars": 6,
+      "min_pts": 2.0
+     },
+     "trend": {
+      "on": false
+     },
+     "pivot_age": {
+      "on": true,
+      "min_bars": 10
+     },
+     "displace": {
+      "on": false,
+      "body_atr": 0.8,
+      "atr_period": 14,
+      "close_pct": 30
+     },
+     "separation": {
+      "on": false,
+      "min_pts": 10.0
+     },
+     "notes": "the middle of the ranges in the 2026-10-11 brief, fixed before any run; switch a filter off with on: False"
+    },
+    "risk": {
+     "on": true,
+     "min_pts": 20.0,
+     "notes": "entry to stop in futures points; from the holding-time study (S64), which used the whole history"
+    },
+    "chop_index": {
+     "on": true,
+     "period": 14,
+     "max": 38.2,
+     "notes": "the indicator's standard trend level, on the strategy's own candles at the SETUP candle"
+    },
+    "smc": {
+     "rule": "internal_bias"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM2",
+      "ITM1",
+      "OTM1",
+      "OTM2",
+      "OTM3",
+      "OTM4"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14,
+     "native_scan": {
+      "choices": [
+       "ATR2",
+       "ATM",
+       "ITM1",
+       "OTM1"
+      ],
+      "every_minutes": 5,
+      "one_per_side": true
+     }
+    }
+   },
+   "changes": [
+    "code changed (core.py, the strategy file or its family module)"
+   ],
+   "results": {
+    "all-data_1m": {
+     "FUT": {
+      "-": {
+       "trades": 320,
+       "wins": 83,
+       "pts": -1657.7,
+       "net_inr": -222568.34,
+       "pf": 0.65,
+       "max_dd_inr": -253320.62,
+       "t_stat": -2.58
+      }
+     },
+     "OPT_FUT_SIGNAL": {
+      "W-ATR2": {
+       "trades": 20,
+       "wins": 9,
+       "pts": 92.45,
+       "net_inr": 4828.7,
+       "pf": 1.94,
+       "max_dd_inr": -2295.07,
+       "t_stat": 1.05
+      },
+      "W-ATM": {
+       "trades": 20,
+       "wins": 10,
+       "pts": 97.4,
+       "net_inr": 5120.94,
+       "pf": 1.95,
+       "max_dd_inr": -2445.56,
+       "t_stat": 1.08
+      },
+      "W-ITM2": {
+       "trades": 20,
+       "wins": 11,
+       "pts": 127.25,
+       "net_inr": 6919.43,
+       "pf": 2.05,
+       "max_dd_inr": -2886.84,
+       "t_stat": 1.19
+      },
+      "W-ITM1": {
+       "trades": 20,
+       "wins": 10,
+       "pts": 112.2,
+       "net_inr": 6016.88,
+       "pf": 1.99,
+       "max_dd_inr": -2793.91,
+       "t_stat": 1.13
+      },
+      "W-OTM1": {
+       "trades": 20,
+       "wins": 9,
+       "pts": 82.75,
+       "net_inr": 4224.37,
+       "pf": 1.88,
+       "max_dd_inr": -2160.83,
+       "t_stat": 1.0
+      },
+      "W-OTM2": {
+       "trades": 20,
+       "wins": 10,
+       "pts": 68.5,
+       "net_inr": 3344.16,
+       "pf": 1.81,
+       "max_dd_inr": -1883.84,
+       "t_stat": 0.92
+      },
+      "W-OTM3": {
+       "trades": 20,
+       "wins": 10,
+       "pts": 57.15,
+       "net_inr": 2643.27,
+       "pf": 1.75,
+       "max_dd_inr": -1627.23,
+       "t_stat": 0.84
+      },
+      "W-OTM4": {
+       "trades": 20,
+       "wins": 9,
+       "pts": 47.0,
+       "net_inr": 2012.42,
+       "pf": 1.68,
+       "max_dd_inr": -1426.25,
+       "t_stat": 0.74
+      },
+      "M-ATR2": {
+       "trades": 20,
+       "wins": 10,
+       "pts": 67.0,
+       "net_inr": 2903.84,
+       "pf": 1.43,
+       "max_dd_inr": -3954.42,
+       "t_stat": 0.59
+      },
+      "M-ATM": {
+       "trades": 20,
+       "wins": 10,
+       "pts": 80.6,
+       "net_inr": 3756.98,
+       "pf": 1.57,
+       "max_dd_inr": -3660.55,
+       "t_stat": 0.75
+      },
+      "M-ITM2": {
+       "trades": 20,
+       "wins": 12,
+       "pts": 100.5,
+       "net_inr": 4918.29,
+       "pf": 1.68,
+       "max_dd_inr": -3538.43,
+       "t_stat": 0.89
+      },
+      "M-ITM1": {
+       "trades": 20,
+       "wins": 11,
+       "pts": 79.4,
+       "net_inr": 3616.17,
+       "pf": 1.5,
+       "max_dd_inr": -4244.85,
+       "t_stat": 0.68
+      },
+      "M-OTM1": {
+       "trades": 20,
+       "wins": 10,
+       "pts": 61.1,
+       "net_inr": 2547.47,
+       "pf": 1.4,
+       "max_dd_inr": -3810.18,
+       "t_stat": 0.55
+      },
+      "M-OTM2": {
+       "trades": 20,
+       "wins": 9,
+       "pts": 77.15,
+       "net_inr": 3643.13,
+       "pf": 1.7,
+       "max_dd_inr": -2424.66,
+       "t_stat": 0.86
+      },
+      "M-OTM3": {
+       "trades": 20,
+       "wins": 9,
+       "pts": 65.55,
+       "net_inr": 2936.49,
+       "pf": 1.57,
+       "max_dd_inr": -2795.93,
+       "t_stat": 0.71
+      },
+      "M-OTM4": {
+       "trades": 20,
+       "wins": 9,
+       "pts": 69.5,
+       "net_inr": 3236.02,
+       "pf": 1.79,
+       "max_dd_inr": -2031.76,
+       "t_stat": 0.9
+      }
+     }
+    }
+   }
   }
  ]
 }

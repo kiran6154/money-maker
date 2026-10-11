@@ -457,6 +457,33 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S71. Lab v2: every intraday position is closed at 15:14 from 2026-06-01 (all strategies). Before / after recorded
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/config/data.json` `intraday_close` (`core.close_time`, `core.square_off_at`; the learner's `rl_lab.square_off_at` and `lib_rl.feasible_arms`). 2026-10-11, the user's instruction: "for all strategies, for intraday, from June 2026 onwards close is at 15:14". |
+| What changed | From the session of 2026-06-01 an intraday square-off happens at 15:14 when that is earlier than the strategy's own (15:25 everywhere today), and an entry at or after 15:14 is not taken. Earlier sessions keep 15:25. Positional runs (ST15–ST18's defaults, the learner's overnight profiles) have no square-off and do not change. Not changed: ST25–ST28 (positional; their own 15:15 ladder check is a rule of that strategy, still at 15:15, now one minute after the intraday close), the entry cut-off constants inside ST36 / ST37 / ST56 (15:25; the lab's square-off skips anything from 15:14 anyway). `config/data.v1.json` does not carry the rule, so `tests/test_parity.py` still compares v1 and v2 at v1's 15:25. |
+| Impact | **Measured: every stored backtest re-run on the same windows (755 results compared; 273 changed: 80 better, 193 worse; all small).** Futures, All data (2018-01-03 → 2026-10-09), net before → after: ST1 ₹-81,99,748 → ₹-81,91,873 (8,336 → 8,326 trades); ST3 ₹-48,98,447 → ₹-48,97,686; ST9 ₹-54,59,910 → ₹-54,78,855; ST29 ₹-99,28,338 → ₹-99,60,164; ST30 ₹-55,58,551 → ₹-56,24,946; ST43 ₹-7,15,100 → ₹-7,16,514; ST46 ₹-2,35,375 → ₹-2,33,938; ST47 ₹-9,722 → ₹-9,274; ST48 ₹+2,308 → ₹+3,296; ST56 ₹-13,16,043 → ₹-13,15,597. Options standalone W-SCAN (Jun 30 → Oct 9 2026): ST32 ₹-92,030 → ₹-86,766 (672 → 652 trades); ST33 ₹-3,01,961 → ₹-2,90,414; ST34 ₹-3,41,184 → ₹-3,25,143; ST35 ₹-3,07,953 → ₹-2,92,197; **ST36 ₹+22,580 → ₹+15,261 (PF 1.17 → 1.11); ST37 ₹+24,144 → ₹+20,311 (1.27 → 1.23)**. Options via futures W-ATR2: ST43 ₹+7,570 → ₹+4,772 (90 → 88 trades, PF 1.24 → 1.15); ST42 ₹+4,225 → ₹+1,428; ST47 ₹+8,079 → ₹+7,946. No PF moves by more than 0.1. The short option books lose a little (eleven minutes less time decay per day). No result changes sign. |
+| Open | The other chat flagged index candles after 15:15 from August 2026 as unreliable in both data sources; this rule keeps the lab's intraday exits before that. Whether ST25–ST28's 15:15 ladder should move to 15:14 is the user's call. |
+| Effort | **S**. |
+| Priority | _Done; numbers recorded._ |
+
+---
+
+### S70. Lab v2 Strategies 57 and 58: Strategy 3 read on the day-open ATM straddle's candles. Measured: both lose; the money is in the positions held to the close
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/atm_straddle.py` (family module with its own `run`), `st57.py`, `st58.py`. 2026-10-11, the user's request: "apply Strategy 3 on the day-open ATM straddle candles; a variant: when we see a buy trade in this, buy only the one that is going up, and exit that on the sell side". |
+| Build choices (not in the request; fixed before any run) | (1) The chart: CE + PE of the strike nearest the index's first candle of the day (nearest weekly expiry at least 1 day out, the same day's when the next is not in the data), within 2 strikes of the ATM or the day is skipped; candles as the explorer's straddle chart (open / close summed, high / low from the summed open and close). (2) One engine run per session on that session's own pair, warmed up on the pair's two sessions before, so the structure does not jump when the strike changes overnight; only SETUPs entered in the session trade. (3) ST57: bullish SETUP = buy both legs, bearish = sell both; ST58: bullish only, one leg. (4) "The leg that is going up" = the larger change of its close over the last 5 candles up to the entry (a tie to the CE). (5) "Exit on the sell side" = the straddle trade's own exit: its stop at the previous swing of the combined premium or the next CHoCH, or the square-off. (6) A leg fills at its own candle close at the straddle's entry and exit candles, also when the exit is the stop (the stop is a level of the combined premium). One straddle trade at a time. |
+| Impact | **Measured, Options (via futures) W-ATM, 1 lot a leg, after costs, the full-chain window (first trade 2026-07-01, last 2026-10-05; 41 sessions with a trade), 15:14 close.** **ST57: 456 legs (228 straddle trades), ₹-56,971, PF 0.72, t -1.94; as straddles 18% winners, PF 0.48.** Bought (bullish) 208 legs ₹-31,788, PF 0.59; sold (bearish) 248 legs ₹-25,182, PF 0.80. CE legs ₹-47,203, PE legs ₹-9,768. First half ₹-42,942 (0.65), second ₹-14,029 (0.82). By exit: next CHoCH 222 legs ₹-49,171; stop 156 legs ₹-50,462 (PF 0.23); **held to the close 78 legs ₹+42,662 (PF 2.26)**. Gross before costs ₹-27,944. Median hold 18 minutes. **ST58: 104 trades, ₹-22,496, PF 0.63, t -1.17, 13% winners**; CE 46 trades ₹-21,814, PE 58 trades ₹-682; stop 46 trades ₹-28,179 (2% winners), next CHoCH 52 ₹-23,048, **held to the close 6 trades ₹+28,731**. |
+| Read | The same picture as on futures (S64): the positions that survive to the close pay, the ones stopped or reversed inside minutes lose more than that. Buying the leg that has just risen (ST58) wins 13% of the time: it buys after the move. One quarter, 41 sessions: not evidence either way. |
+| Fix sketch | None proposed. The lab's main chart for these two still shows the futures for reference; the signals are on the straddle chart of the chart explorer (no trade markers there yet). |
+| Effort | **S** for the markers. |
+| Priority | _Open; first numbers recorded._ Related: S64, S60. |
+
+---
+
 ### S69. Lab v2 Strategies 55 and 56: the TradingFinder "Smart Money Liquidity Structure - OB Signal Setups" indicator, ported. The user's manual TradingView backtest was profitable; the lab's is not, alone or with Strategy 3
 
 | | |
