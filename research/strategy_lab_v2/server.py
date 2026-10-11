@@ -132,6 +132,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if u.path == "/api/explorer/expiries":
                 with run_lock:
                     return self.reply(200, core.explorer_expiries(q.get("tf") or "minute"))
+            if u.path == "/api/explorer/straddle":
+                with run_lock:
+                    return self.reply(200, core.explorer_straddle(q["code"], q["from"], q["to"], q.get("tf") or "minute"))
             if u.path == "/api/explorer/strikes":
                 with run_lock:
                     return self.reply(200, core.explorer_strikes(q["expiry"], q.get("tf") or "minute", q.get("date") or None))

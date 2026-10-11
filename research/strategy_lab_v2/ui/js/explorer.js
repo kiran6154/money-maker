@@ -1,6 +1,6 @@
 // Chart explorer: one instrument's candles over a chosen range with a strategy's rules applied to them (/api/explorer/*).
 // Controls in three groups (Strategy · Instrument · Range); every change applies at once; Refresh stays in the header.
-import { $, $$, api, esc, inr, num, cls, pref, tsOf, TF_LABEL, reasonTag } from "./util.js";
+import { $, $$, api, esc, inr, num, cls, css, pref, tsOf, TF_LABEL, reasonTag } from "./util.js";
 import { ChartView } from "./chart.js";
 
 const S = Object.assign({ inst: "FUT", right: "CE", start: "days", end: "date", before: "1", liq: "10", hold: "own" }, pref("explorer2") || {});
@@ -183,8 +183,56 @@ function render() {
     if (c) try { c.timeScale().setVisibleRange({ from: t - 2400, to: t + 2400 }); } catch (e) {}
     $("#x-chart").scrollIntoView({ behavior: "smooth", block: "center" });
   });
+  straddle();
   $("#x-sk-sum").textContent = `Not taken (${d.skipped.length})`;
   $("#x-sk").innerHTML = d.skipped.map((s) => `<div class="small">${esc(s.entry_time)} · ${esc(s.position)} · ${esc(s.why)}</div>`).join("");
+}
+
+// The day-open ATM straddle under the main chart: CE + PE premium (thick), each leg (thin), their volume; it covers the
+// sessions the main chart shows and follows its time range.
+let stChart = null, stReq = 0, stKey = "";
+async function straddle() {
+  const d = data; if (!d) return;
+  const m = d.meta, range = m.range || [m.first_shown, m.date], key = [m.code, m.tf, range[0], range[1]].join("|");
+  const host = $("#x-straddle"), msg = $("#x-st-msg");
+  const follow = () => {                           // the main chart is rebuilt on every draw: (re)attach to the new one
+    const main = view.charts[0]; if (!main || !stChart) return;
+    const set = (r) => { if (r && stChart) try { stChart.timeScale().setVisibleRange(r); } catch (e) {} };
+    main.timeScale().subscribeVisibleTimeRangeChange(set); set(main.timeScale().getVisibleRange());
+  };
+  if (key === stKey && stChart) return follow();
+  const my = ++stReq; msg.textContent = "loading…";
+  let r;
+  try { r = await api("/api/explorer/straddle?" + new URLSearchParams({ code: m.code, from: range[0], to: range[1], tf: m.tf })); }
+  catch (e) { if (my === stReq) { msg.textContent = e.message; if (stChart) { stChart.remove(); stChart = null; } stKey = ""; } return; }
+  if (my !== stReq) return;
+  stKey = key;
+  if (stChart) stChart.remove();
+  stChart = LightweightCharts.createChart(host, { autoSize: true, layout: { background: { color: css("--card") }, textColor: css("--muted"), fontSize: 11 },
+    grid: { vertLines: { color: css("--line") }, horzLines: { color: css("--line") } }, crosshair: { mode: 0 },
+    timeScale: { timeVisible: true, secondsVisible: false, borderColor: css("--line"), rightOffset: 0 }, rightPriceScale: { borderColor: css("--line") },
+    handleScroll: { mouseWheel: true, pressedMouseMove: true }, handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true } });
+  const line = (o, k) => { const x = stChart.addLineSeries({ priceLineVisible: false, ...o }); x.setData(r.rows.map((q) => ({ time: q[0], value: q[k] }))); return x; };
+  const vs = stChart.addHistogramSeries({ priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false, color: "rgba(120,130,150,.45)" });
+  stChart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+  vs.setData(r.rows.map((q) => ({ time: q[0], value: q[4] })));
+  line({ color: "#2962ff", lineWidth: 1, title: "CE", lastValueVisible: false }, 2);
+  line({ color: "#f23645", lineWidth: 1, title: "PE", lastValueVisible: false }, 3);
+  const main = line({ color: "#7b1fa2", lineWidth: 2, title: "CE + PE" }, 1);
+  main.priceScale().applyOptions({ scaleMargins: { top: 0.06, bottom: 0.24 } });
+  // one marker per session: the strike it used (flagged when it is not the true ATM)
+  const firstT = new Map(); for (const q of r.rows) { const dd = new Date(q[0] * 1000).toISOString().slice(0, 10); if (!firstT.has(dd)) firstT.set(dd, q[0]); }
+  main.setMarkers(r.legs.filter((g) => g.strike && firstT.has(g.day)).map((g) => ({ time: firstT.get(g.day), position: "aboveBar", shape: "circle", size: 0.6,
+    color: g.off ? "#f5a524" : "#7b1fa2", text: `${g.strike}${g.off ? " (ATM " + g.true_atm + " missing)" : ""}` })));
+  const ok = r.legs.filter((g) => g.strike), bad = r.legs.filter((g) => !g.strike), off = ok.filter((g) => g.off);
+  const g0 = ok[ok.length - 1];
+  msg.innerHTML = !ok.length ? `<span class="warn">No day in this range has both an ATM CE and PE in the data (${esc(bad[0]?.why || "")}).</span>`
+    : `${ok.length} session${ok.length > 1 ? "s" : ""} · ${esc(g0.day)}: strike <b>${g0.strike}</b> (index opened ${num(g0.index_open, 1)}), expiry ${esc(g0.expiry)}, ` +
+      `combined premium ${num(g0.first)} → ${num(g0.last)} <span class="${cls(g0.last - g0.first)}">(${g0.last - g0.first >= 0 ? "+" : ""}${num(g0.last - g0.first)})</span>` +
+      (off.length ? ` · <span class="warn">${off.length} session(s) use the nearest strike with candles, not the true ATM</span>` : "") +
+      (bad.length ? ` · <span class="warn">${bad.length} session(s) without a CE + PE pair in the data</span>` : "") +
+      ` · purple = CE + PE, blue = CE, red = PE, bars = volume of both`;
+  follow();
 }
 
 start().catch((e) => { $("#x-msg").textContent = "Server not reachable: " + e.message; });

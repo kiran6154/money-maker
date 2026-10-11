@@ -65,7 +65,7 @@ python backtest.py ST1 --defined # every backtest listed in the strategy file
    month, other timeframes, expiry × strike) · Breakdown · Daily P&L with the heatmap calendar · Signals · Zone gate
    (FZ) · Journal (learner) · Config · Rules.
 
-`ui/explorer.html` — any session, any instrument (near-month futures, the index, any option contract with candles that
+`ui/explorer.html` — under the main chart, the **day-open ATM straddle**: per session the strike nearest the index's first candle, CE + PE premium per candle with each leg and their volume (`/api/explorer/straddle`), following the main chart's time range. Any session, any instrument (near-month futures, the index, any option contract with candles that
 day), a strategy's rules applied to that instrument's own candles: a visualization, nothing stored.
 
 Every run appends to `history/<CODE>.json` (versioned): a new version whenever the strategy's definition or the code

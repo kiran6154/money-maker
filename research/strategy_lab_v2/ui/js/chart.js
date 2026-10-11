@@ -13,7 +13,7 @@ const ZONE_COLORS = { A: "#8e4ec6", B: "#0090ff" };
 export class ChartView {
   constructor(root, hooks) {
     this.root = root; this.hooks = hooks || {};
-    this.layers = Object.assign(Object.fromEntries(LAYERS.map(([k]) => [k, true])), pref("layers2") || {});
+    this.layers = Object.assign(Object.fromEntries(LAYERS.map(([k]) => [k, true])), pref("layers3") || {});
     this.charts = []; this.req = 0;
     (window.__charts = window.__charts || []).push(this);   // for inspecting the charts from the browser console
     root.innerHTML = `
@@ -215,7 +215,7 @@ export class ChartView {
     const host0 = $(".ch-layers", this.root);
     host0.innerHTML = LAYERS.filter(([k]) => has[k] !== false).map(([k, l, col]) =>
       `<button class="chip-t lay ${this.layers[k] ? "on" : ""}" data-layer="${k}"><i style="background:${col}"></i>${l}</button>`).join("");
-    $$("button", host0).forEach((b) => b.onclick = () => { this.layers[b.dataset.layer] = !this.layers[b.dataset.layer]; pref("layers2", this.layers); this.redraw(); });
+    $$("button", host0).forEach((b) => b.onclick = () => { this.layers[b.dataset.layer] = !this.layers[b.dataset.layer]; pref("layers3", this.layers); this.redraw(); });
     const main = this.draw($(".ch-main", this.root), d, { own: this.ctx.type === "FUT" && this.ctx.run.underlying !== "INDEX", main: true });
     this.legend(d);
     // row 2: the CE pane and the PE pane, side by side
@@ -272,13 +272,13 @@ export class ChartView {
       s.setData([{ time: this.snapT(times, a), value: hi }, { time: tN, value: hi }]);
     }
     const cs = ch.addCandlestickSeries({ upColor: UP, downColor: DN, wickUpColor: UP, wickDownColor: DN, borderVisible: false });
-    cs.priceScale().applyOptions({ scaleMargins: { top: 0.06, bottom: 0.2 } });
+    cs.priceScale().applyOptions({ scaleMargins: { top: 0.06, bottom: on.vol ? 0.27 : 0.06 } });   // the candles end above the volume band
     cs.setData(C0.map((c) => ({ time: c[0], open: c[1], high: c[2], low: c[3], close: c[4] })));
     const line = (opt, data) => { const s = ch.addLineSeries({ ...base, ...opt }); s.setData(data); return s; };
     if (on.vol) {
       const vs = ch.addHistogramSeries({ priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
-      ch.priceScale("vol").applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
-      vs.setData(C0.map((c) => ({ time: c[0], value: c[5], color: c[4] >= c[1] ? "rgba(8,153,129,.35)" : "rgba(242,54,69,.35)" })));
+      ch.priceScale("vol").applyOptions({ scaleMargins: { top: 0.77, bottom: 0 } });       // the bottom quarter of the chart
+      vs.setData(C0.map((c) => ({ time: c[0], value: c[5], color: c[4] >= c[1] ? "rgba(8,153,129,.6)" : "rgba(242,54,69,.6)" })));
     }
     const snap = (t) => this.snapT(times, t);
     const M = [];
