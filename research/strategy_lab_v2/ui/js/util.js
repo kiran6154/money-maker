@@ -218,6 +218,12 @@ export function algorithm(spec) {
       ...(p.square_off ? [S(`${sqOf(p)}: still open → exit at that candle's close (intraday).`)] : [S("No square-off: held overnight (positional).")]),
       S("The contract's last candle in the data → expiry.")]));
   }
+  if (spec.gap_reset) {                            // Strategy 66: the structure starts again on a gap day
+    const k = steps.findIndex((x) => /^Market structure/.test(x.t));
+    steps.splice(k < 0 ? 0 : k, 0, S(`Gap day: the session's first candle opens ${spec.gap_reset.pts} points or more above or below the previous session's last close → the structure is RESET.`, [
+      S("Swings, protected level, trend, CHoCH / BOS and the AVWAP anchors of the earlier sessions are forgotten; everything is built again from the day's first candle."),
+      S("Not a gap day → the structure carries over from the day before.")]));
+  }
   const t = spec.types || {};
   steps.push(S(`Costs: slippage per side ${t.FUT?.slippage_pts ?? "–"} pts futures, ${t.OPT_FUT_SIGNAL?.slippage_pts ?? "–"} pts options; charges per the broker schedule (brokerage, STT, exchange, SEBI, stamp, GST); lot size ${spec.lot_size}.`));
   return steps;

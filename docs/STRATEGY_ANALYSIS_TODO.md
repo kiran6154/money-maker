@@ -457,6 +457,21 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S84. Lab v2 Strategy 66: Strategy 1 with the CHoCH / BOS structure reset on a gap day. Measured on 2018 - 2026: twice the trades at the same loss a trade (PF 0.30 both). The reset wakes the structure up on the days Strategy 1 sits silent; it does not make the trades better
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/gap_reset.py` (family module: the candles are cut at every gap day's first candle, `core._engine` runs unchanged on each piece, the pieces are joined into one `core.Signals`), `st66.py` (`gap_reset: {pts: 20}`). 2026-10-11, the user's instruction: "extend Strategy 1: if the day's open is greater than or less than 20 - 30 points, reset the CHoCH / BOS and start from the day's first candle". Strategy 1 and `core.py` are untouched. Checked: with no gap the joined result equals the engine's; a piece's trades, stops and AVWAPs equal a stand-alone run on that piece. |
+| Build choices (not in the instruction) | (1) Gap = the session's first candle OPEN against the previous session's last CLOSE, on the candles the signals are read on (near-month futures by default), 20 points or more either way. 20 is the low end of the range given; 25 and 30 are measured below. (2) On a gap day everything starts again from the first candle: swings, protected level, trend, CHoCH / BOS, AVWAP anchors. On other days the structure carries over. (3) A position open at a piece's last candle is closed there by the engine; the intraday run has squared it off before. |
+| How often | Measured on the near-month futures, 2,163 sessions from 2018-01-03: a gap of 20 points or more on 1,586 (73%); 25 points: 1,454 (67%); 30 points: 1,309 (61%); 50 points: 880 (41%); 100 points: 377 (17%). At 20 - 30 points the reset is the normal day, not the exception. |
+| Impact | **Measured, Futures type, 1 lot, 5 points slippage a side, after costs, intraday (15:25, 15:14 from 2026-06-01), 2018-01-03 → 2026-10-09. Strategy 1: 8,326 trades, ₹-81,91,873, PF 0.30, 15% winners; split at 2023-03-09 ₹-36,37,094 / ₹-45,54,779; no positive year. Strategy 66 (20 points): 16,581 trades, ₹-1,59,30,654, PF 0.30, 14% winners; ₹-83,67,266 / ₹-75,63,387; no positive year.** 25 points: 16,248 trades, ₹-1,55,90,887, PF 0.30. 30 points: 15,928 trades, ₹-1,52,94,780, PF 0.30. Strategy 66 by exit: stop 4,738 trades ₹-97,97,361 (none a winner); next CHoCH 10,255 ₹-1,01,85,690; held to the close 1,582 ₹+40,30,202 (PF 8.16, positive in all 9 years). **Days with a trade: Strategy 1 1,071 of 2,163; Strategy 66 1,953.** Inside 2020-11-04 → 2022-03-07 (Strategy 1's silent stretch, S58): Strategy 1 14 trades on 2 days; Strategy 66 2,354 trades on 290 days, ₹-21,20,086, PF 0.32. Outside it: Strategy 1 ₹-985 a trade, Strategy 66 ₹-971 a trade. Options on the full-chain window (2026-06-30 →): via futures W-ATR2 Strategy 1 566 trades ₹-42,856 (PF 0.76), Strategy 66 1,072 trades ₹-1,15,240 (PF 0.69); own chart W-SCAN 1,096 trades ₹-1,46,714 (0.63) against 1,125 trades ₹-1,60,763 (0.59). |
+| Read | Two findings. (1) The reset does what was asked and answers S58: Strategy 1's structure gets stuck behind a far-away protected level after a gap and trades on only half the sessions; with the reset it trades on 90% of them, the silent 16 months included. (2) The trades it adds are the same quality as the rest: the loss a trade is unchanged (₹-971 against ₹-985), so twice the trades is twice the loss. The gap size inside 20 - 30 does not matter. As everywhere in this family (S64), the positions that reach the close pay and the ones stopped or reversed first lose more. |
+| Open (the user's call) | Unquantified: the reset on Strategy 3 and on the filtered books that came closest to break-even (ST46 - ST48: S66 - S68), where more trading days at an unchanged edge could matter; a larger gap (50 / 100 points) as the trigger. |
+| Effort | **S** each (the module takes any rules). |
+| Priority | _Open; first numbers recorded._ Related: S58, S61, S64, S80. |
+
+---
+
 ### S83. Lab v2 Strategy 65: buy only when the option's price is above its previous-session low. Before ₹-92,050 (176 entries, PF 0.61), after ₹-83,749 (111 entries, PF 0.52): fewer trades, each one worse
 
 | | |
