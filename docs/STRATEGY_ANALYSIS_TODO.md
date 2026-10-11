@@ -457,6 +457,21 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S80. Lab v2 Strategy 65: on a gap day the structure starts again from the day's first candle. Before ₹-34,769 (87 entries), after ₹-84,417 (122 entries). The straddle chart gaps on 45 of 67 sessions
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/st65.py` (`straddle.gap_restart: true`), `atm_straddle.py` (`gap_start`, `cut_bars`; applied in `run`, `_leg_structure`, `chart_main`). 2026-10-11, the user's instruction: "if there is a gap up or down, start from the close of the first candle again; do it in the same strategy". Answers to the two questions asked before building: a gap = the chart's first candle of the day opens above the previous session's high or below its low; both charts restart (the derived straddle candles and the option's own candles, each on its own gap). Everything else in Strategy 65 is as in S79. Strategies 57 - 64 do not carry the flag and are unchanged (Strategy 64 re-run: 41 trades, ₹+1,261, as before). |
+| What it does | On a gap day that chart's engine runs on the session's candles only: no swings, protected level, trend or CHoCH from the earlier sessions. The first candle is the first candle of the structure. |
+| How often | Measured, 67 sessions with a day-open ATM pair (2026-06-30 → 2026-10-09): the straddle chart gaps on 45 (67%); of the 134 option charts (CE and PE each day) 46 gap. The straddle's gap is nearly always down: the pair's premium at the open is below the whole of the previous session's range (a day's decay, and the strike is a new one chosen at this open). |
+| Impact | **Measured, Options (via futures) W-ATM, two lots an entry, after costs, same window. Before (S79): 87 entries, ₹-34,769, PF 0.72; halves ₹-31,190 / ₹-3,579; 39 days with a trade. After: 122 entries (244 lots), ₹-84,417, PF 0.52, t -3.55, 30% winners; halves ₹-41,268 (PF 0.50) / ₹-43,149 (PF 0.54); 51 days with a trade, 14 positive; worst day ₹-13,843, best ₹+9,580.** Entries on the straddle chart's gap days: 82 entries ₹-60,666 (PF 0.52); on the other days: 40 entries ₹-23,751 (PF 0.53). Lot T1 ₹-48,472: target 33 lots ₹+38,586; next bearish CHoCH 58 ₹-60,510; first stop 18 ₹-12,144; close 13 ₹-14,404. Lot TRAIL ₹-35,945: moved stop 32 lots ₹+51,644; next CHoCH 58 ₹-60,510; first stop 18 ₹-12,144; close 14 ₹-14,935. Bought on the straddle's sell signal 38 entries ₹-14,735 (it was ₹+5,106 on 23 entries before); on its buy signal 84 entries ₹-69,682. Signals not taken: 82 with the CHoCH level not below the entry, 59 with no CHoCH of the option yet (29 before: after a restart the option has none until its first one of the day), 41 with the leg still in a trade. |
+| Read | The restart does what was asked: 12 more sessions now give signals (without it the gapped straddle chart sat far from yesterday's protected level and printed no CHoCH all day). The signals it adds lose at the same rate as the rest (PF 0.52 on gap days, 0.53 on the others), so more trades is more loss. The small positive on the sell-signal entries in S79 did not survive. One quarter of data, both halves negative. |
+| Open (the user's call) | Unquantified: the restart on Strategies 57 - 64 (their numbers were measured without it; 26 of 67 sessions gave Strategy 57 no trade at all); a gap measured on the index instead of each chart. |
+| Effort | **S** each. |
+| Priority | _Open; before / after recorded._ Related: S79, S78, S70. |
+
+---
+
 ### S79. Lab v2 Strategy 65: the first stop changed from the option's latest swing low to its previous CHoCH candle's low less 10%. Before ₹-82,367 (198 entries), after ₹-34,769 (87 entries); 75 signals have no usable stop under the new rule
 
 | | |

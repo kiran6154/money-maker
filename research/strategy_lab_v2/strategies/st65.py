@@ -9,6 +9,9 @@
   lot TRAIL  its stop does not move until the option has traded at entry + trail_after_pts (20); from then it sits at
              the level of the latest bullish BOS of the option since the entry and follows every later one, never back
   exit    both: the stop, the option's next bearish CHoCH (that candle's close), or the square-off
+  gap     a session whose first candle opens above the previous session's high or below its low starts again: that
+          chart's structure is built from the session's first candle only (the straddle chart and the option's own
+          chart, each on its own gap; SPEC["straddle"]["gap_restart"]; added 2026-10-11: S80)
 One entry a leg at a time (free when both lots are out).
 Built 2026-10-11 and changed three times the same day at the user's word (long only, not the option's sells; enter at
 the straddle signal's candle, not at the option's SETUP; two lots with the stop moved only after 20 points). The numbers
@@ -28,7 +31,7 @@ SPEC = {'code': 'ST65',
            'sl_rule': 'prev_swing',
            'entry_rule': 'straddle_v1',
            'exit_rule': 'next_choch'},
- 'straddle': {'mode': 'leg_structure', 'lookback': 5, 'window': 'day', 'sides': 'long', 'arm': 'both', 'entry': 'signal', 'stop': {'rule': 'prev_choch', 'buffer_pct': 10}, 'two_lots': {'target_pts': 20, 'trail_after_pts': 20}, 'trail': 'bos_level', 'notes': 'the day-open ATM pair and its candles: strategies/atm_straddle.py'},
+ 'straddle': {'mode': 'leg_structure', 'lookback': 5, 'window': 'day', 'sides': 'long', 'arm': 'both', 'entry': 'signal', 'gap_restart': True, 'stop': {'rule': 'prev_choch', 'buffer_pct': 10}, 'two_lots': {'target_pts': 20, 'trail_after_pts': 20}, 'trail': 'bos_level', 'notes': 'the day-open ATM pair and its candles: strategies/atm_straddle.py'},
  'lot_size': 65,
  'capital': {'futures_margin': 120000, 'short_option_margin': 150000},
  'position': {'lots': 1, 'square_off': '15:25', 'lock': 'strike', 'scale_out': []},

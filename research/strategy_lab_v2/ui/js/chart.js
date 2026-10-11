@@ -417,7 +417,7 @@ export class ChartView {
     const n = d.trades.length, net = d.trades.reduce((a, r) => a + r[d.cols.indexOf("net")], 0);
     $(".ch-legend", this.root).innerHTML =
       (d.reference ? `<b>Futures for reference only: the signals are read on each option's own chart (CE / PE below).</b> ` : "") +
-      (d.derived ? `<b>Derived candles: ${esc(d.derived.what)} (${esc(d.derived.legs.filter((g) => g.strike).map((g) => `${g.day.slice(5)}: ${g.strike}`).join(", "))}). ` +
+      (d.derived ? `<b>Derived candles: ${esc(d.derived.what)} (${esc(d.derived.legs.filter((g) => g.strike).map((g) => `${g.day.slice(5)}: ${g.strike}${g.gap_restart ? " (gap: restarted)" : ""}`).join(", "))}). ` +
                    `The market structure and the signals are read on these candles; the legs are below.</b> ` : "") +
       `${esc(this.day)}${this.to && this.to !== this.day ? " → " + esc(this.to) : ""} · ${d.sessions} session${d.sessions > 1 ? "s" : ""} · ` +
       `${d.candles.length} candles · ${n} trade${n === 1 ? "" : "s"} <span class="${net > 0 ? "pos" : net < 0 ? "neg" : ""}">${inr(net)}</span>` +
