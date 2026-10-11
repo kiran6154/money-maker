@@ -103,6 +103,9 @@ export function algorithm(spec) {
       S("Entry at that candle's close. One trade a leg at a time.")]));
     steps.push(S("Exit — on the option's own candles, first of:", [
       S("Stop: the option's latest confirmed swing low (long) / swing high (short) — exits when touched (fill: the stop, or the open if the candle gaps through it)."),
+      ...(sd.trail ? [S(sd.trail === "bos_level"
+        ? "The stop follows the BOS: each BOS of the option in the trade's direction moves the stop to the level that BOS broke (the swing high it took out, for a long), from the next candle. It never moves back. An exit at a moved stop is shown as TRAIL."
+        : "The stop follows the BOS: each BOS of the option in the trade's direction moves the stop to the latest confirmed swing low (long) / high (short), from the next candle. It never moves back. An exit at a moved stop is shown as TRAIL.")] : []),
       S("The option's next CHoCH → exit at that candle's close."),
       S(`${sqOf(p)}: still open → exit at that candle's close.`)]));
   }

@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S77. Lab v2 Strategy 64: Strategy 63 with the stop following the option's BOS. Measured: the trade that prompted it turns into a small win; the book as a whole does not improve (₹+1,261 against ₹+5,908)
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/atm_straddle.py` (`straddle.trail`, `_trail`), `st64.py`. 2026-10-11, the user's instruction after asking why Strategy 63's trade of 2026-09-23 14:03 (23350 CE, +20.5 points at 14:29, closed at the next CHoCH for ₹-305) was a loss: "keep moving the stop to the BOS". Strategy 63 is kept as built. |
+| Build choices (not in the instruction; fixed before the run) | (1) At every bullish BOS of the option's own chart while the long is open, the stop moves to the level that BOS broke (the latest swing high confirmed before it), from the next candle; it never moves back (`trail: bos_level`). (2) Fill at the stop, or at the open when the candle opens beyond it. With BOS by touch the BOS candle can close below the level it broke; the next candle then exits at once. (3) Measured beside it, not built as a strategy: the stop at the latest confirmed swing low at that BOS (`trail: bos_swing`). |
+| Impact | **Measured, Options (via futures) W-ATM, 1 lot, after costs, 2026-06-30 → 2026-10-09, 41 trades in each.** No trail (Strategy 63): ₹+5,908, PF 1.30, 22% winners; halves ₹+12,706 / ₹-6,798; without its best day ₹-6,014. **Stop to the BOS level (Strategy 64): ₹+1,261, PF 1.08, 27% winners; halves ₹+9,545 (PF 2.31) / ₹-8,285 (PF 0.04); without its best day ₹-9,311.** By exit: moved stop 23 trades ₹+11,264 (43% winners); first stop 11 trades ₹-8,221; next CHoCH 4 trades ₹-2,634; close 3 trades ₹+852. Stop to the swing low behind the BOS: ₹+5,749, PF 1.34, 29% winners; halves ₹+8,903 / ₹-3,154; without its best day ₹-4,359. The trade of 2026-09-23 14:03: ₹-305 → ₹+224 (out at 181.90 at 14:17) → ₹+272 with the swing-low stop (out at 182.65 at 14:34). The trade of 2026-07-08 13:47: ₹+11,503 (held to the close at 419.80) → ₹+10,582 (out at 405.60 at 14:11). |
+| Read | The trail does what it was asked to on the trade that prompted it, and costs about as much elsewhere: 23 of 41 trades now leave at a moved stop, most of them for a few points, and the eight positions that used to run to the close (₹+16,938) become three. Every version still rests on the same single day and loses in the second half. 41 trades in one quarter cannot separate the three. |
+| Open (the user's call) | Unquantified: moving the stop only from the second BOS; a buffer below the BOS level; the trail on Strategy 3 itself on futures, where there are 8 years of data to judge it. |
+| Effort | **S** each. |
+| Priority | _Open; first numbers recorded. Re-run when the option history is longer._ Related: S76, S64. |
+
+---
+
 ### S76. Lab v2 Strategy 63: the straddle chart's long scenario arms the rising leg, Strategy 3 then trades that option's own chart. Measured: ₹+5,908 on 41 trades, all of it one day; second half negative
 
 | | |

@@ -37,6 +37,9 @@ SPEC["straddle"]["mode"]:
                previous swing, exit at the stop or the option's next CHoCH, flat by the square-off. One trade a leg at a time.
                `window`: "day" = armed until the close; "scenario" = armed only until that straddle trade's own exit.
                `sides`: "long" = only the option's bullish SETUPs (buy it); "both" = its bearish SETUPs sell it too.
+               `trail` (optional): the stop follows the option's own BOS in the trade's direction, from the candle
+               after it, and never moves back. "bos_level" = to the level that BOS broke (the swing high for a long);
+               "bos_swing" = to the latest confirmed swing low (long) / high (short) at that BOS.
 A leg's fill is its own candle close at the straddle trade's entry and exit candles (also when the exit is the stop: the
 stop is a level of the combined premium, which no single leg trades at).
 """
@@ -269,13 +272,37 @@ def _leg_structure(ctx, S, eng, b, i_day, d, d_from, k, exp, chain, legs, trs, s
             if cut and (ob.t[kx] > cut or still):
                 kc = int(np.searchsorted(ob.t, cut, "right")) - 1
                 if kc >= ke: kx, why, still, xpx = kc, "eod", False, float(ob.c[kc])
+            sl_last, moves = x["sl"], 0
+            if S.get("trail") and x["sl"] is not None:
+                kx, why, still, xpx, sl_last, moves = _trail(S["trail"], oe, ob, ke, kx, why, still, xpx, x["sl"], up)
             free_at = int(ob.t[kx])
             u = lambda t_: float(b.c[max(int(np.searchsorted(b.t, t_, "right")) - 1, 0)])       # the straddle's close then (for its chart)
             rec = dict(base, position=pos, opt_type=right, kind="OPT", instrument=name, entry_time=te, entry_px=float(ob.c[ke]),
                        exit_time=int(ob.t[kx]), exit_px=float(xpx), exit_reason=why, open=bool(still), sl=x["sl"],
-                       und_entry=u(te), und_exit=u(int(ob.t[kx])), stale=False, lots=lots, tranche="", label=f"{pos} {right}")
+                       **({"sl_last": round(float(sl_last), 2), "sl_moves": moves} if S.get("trail") else {}), und_entry=u(te), und_exit=u(int(ob.t[kx])), stale=False, lots=lots, tranche="", label=f"{pos} {right}")
             core.excursion(os_, rec, up)
             trs.append(core.price_trade(ctx, rec))
+
+
+def _trail(mode, oe, ob, ke, kx, why, still, xpx, sl, up):
+    """The trade re-walked candle by candle with the stop following the BOS in its direction (see `trail` in the module
+    text). Returns (exit candle, reason, open, exit price, the last stop, how many times it moved)."""
+    sg = 1 if up else -1
+    ev = {}                                                          # candle -> the stop a BOS at that candle asks for
+    for j in range(len(oe.ei)):
+        i = int(oe.ei[j])
+        if oe.ek[j] != 0 or oe.ed[j] != sg or i <= ke or i > kx: continue
+        kind = sg if mode == "bos_level" else -sg                    # the swing broken, or the swing behind the move
+        m = np.nonzero((oe.sk == kind) & (oe.sc < i if mode == "bos_level" else oe.sc <= i))[0]
+        if len(m): ev[i] = float(oe.sp[m[-1]])
+    moves = 0
+    for i in range(ke + 1, kx + 1):
+        o_, h_, l_ = float(ob.o[i]), float(ob.h[i]), float(ob.l[i])
+        if (l_ <= sl) if up else (h_ >= sl):
+            px = (min(o_, sl) if up else max(o_, sl))
+            return i, ("trail_stop" if moves else "stop_loss"), False, px, sl, moves
+        if i in ev and ((ev[i] > sl) if up else (ev[i] < sl)): sl = ev[i]; moves += 1
+    return kx, why, still, xpx, sl, moves
 
 
 def chart_main(ctx, body, day, to):
