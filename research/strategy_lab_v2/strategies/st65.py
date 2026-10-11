@@ -3,8 +3,8 @@
   entry   ANY SETUP on the day-open ATM straddle's candles (its buy signal or its sell signal) -> at that same candle's
           close BUY the winning leg: the CE or the PE with the larger change of its close over SPEC["straddle"]["lookback"]
           candles. TWO lots. No SETUP of the option is waited for. Nothing is ever sold.
-  stop    both lots: the low of the option's own latest CHoCH candle at or before the entry, less 10% of that low
-          (SPEC["straddle"]["stop"]; until 2026-10-11 it was the option's latest swing low: S79)
+  stop    both lots: 50 points below the entry premium, flat (SPEC["straddle"]["stop"]). Earlier the same day it was
+          the option's latest swing low (S78), then its previous CHoCH candle's low less 10% (S79); changed: S81
   lot T1     out at entry + SPEC["straddle"]["two_lots"]["target_pts"] (20) points
   lot TRAIL  its stop does not move until the option has traded at entry + trail_after_pts (20); from then it sits at
              the level of the latest bullish BOS of the option since the entry and follows every later one, never back
@@ -21,7 +21,7 @@ import core
 
 SPEC = {'code': 'ST65',
  'name': 'Straddle signal → buy the winning option, 2 lots · one out at 20 pts, one trailed after 20 pts · 1m',
- 'description': "Strategy 65's entry (any SETUP on the day-open ATM straddle's candles buys the winning leg at that candle) with two lots: one leaves at +20 points; the other keeps the first stop until the option has traded 20 points up, then its stop follows the option's bullish BOS. First stop: the low of the option's previous CHoCH candle less 10%. Both leave at the stop, the option's next bearish CHoCH or the square-off.",
+ 'description': "Strategy 65's entry (any SETUP on the day-open ATM straddle's candles buys the winning leg at that candle) with two lots: one leaves at +20 points; the other keeps the first stop until the option has traded 20 points up, then its stop follows the option's bullish BOS. First stop: 50 points below the entry premium. Both leave at the stop, the option's next bearish CHoCH or the square-off.",
  'timeframe': 'minute',
  'underlying': 'FUT',
  'warmup_days': 2,
@@ -31,7 +31,7 @@ SPEC = {'code': 'ST65',
            'sl_rule': 'prev_swing',
            'entry_rule': 'straddle_v1',
            'exit_rule': 'next_choch'},
- 'straddle': {'mode': 'leg_structure', 'lookback': 5, 'window': 'day', 'sides': 'long', 'arm': 'both', 'entry': 'signal', 'gap_restart': True, 'stop': {'rule': 'prev_choch', 'buffer_pct': 10}, 'two_lots': {'target_pts': 20, 'trail_after_pts': 20}, 'trail': 'bos_level', 'notes': 'the day-open ATM pair and its candles: strategies/atm_straddle.py'},
+ 'straddle': {'mode': 'leg_structure', 'lookback': 5, 'window': 'day', 'sides': 'long', 'arm': 'both', 'entry': 'signal', 'gap_restart': True, 'stop': {'rule': 'fixed', 'pts': 50}, 'two_lots': {'target_pts': 20, 'trail_after_pts': 20}, 'trail': 'bos_level', 'notes': 'the day-open ATM pair and its candles: strategies/atm_straddle.py'},
  'lot_size': 65,
  'capital': {'futures_margin': 120000, 'short_option_margin': 150000},
  'position': {'lots': 1, 'square_off': '15:25', 'lock': 'strike', 'scale_out': []},

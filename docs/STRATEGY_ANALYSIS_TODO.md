@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S81. Lab v2 Strategy 65: the first stop changed to a flat 50 points. Before ₹-84,417 (122 entries), after ₹-92,050 (176 entries). The stop is hit 4 times; the loss is the option's next bearish CHoCH and the close
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/st65.py` (`straddle.stop: {rule: fixed, pts: 50}`), `atm_straddle.py` (`_at_signal`). 2026-10-11, the user's instruction: "the stop is 50 points flat". Everything else in Strategy 65 is as in S80 (entry at the straddle signal's candle on both signals, two lots, +20 target on one, the other trailed after +20, gap restart, the option's next bearish CHoCH, square-off). |
+| What it does | The first stop of both lots is the entry premium less 50 points. A signal on an option whose premium is 50 points or less is not taken (16 cases). No signal is skipped for want of a CHoCH any more. |
+| Impact | **Measured, Options (via futures) W-ATM, two lots an entry, after costs, 2026-06-30 → 2026-10-09. Before (S80, stop at the previous CHoCH low less 10%): 122 entries, ₹-84,417, PF 0.52; halves ₹-41,268 / ₹-43,149. After: 176 entries (352 lots), ₹-92,050, PF 0.61, t -3.29, 37% winners; halves ₹-64,283 (PF 0.48) / ₹-27,767 (PF 0.76).** 21 of 57 days positive; worst day ₹-11,889, best ₹+6,594. Lot T1 ₹-54,015: target 53 lots ₹+62,044; **next bearish CHoCH 82 lots ₹-76,159 (5% winners)**; close 37 ₹-26,376; **first stop 4 lots ₹-13,525**. Lot TRAIL ₹-38,035: moved stop 45 lots ₹+69,819; next CHoCH 86 ₹-69,275; close 41 ₹-25,054; first stop 4 ₹-13,525. Bought on the straddle's sell signal 83 entries ₹-15,260 (PF 0.81); on its buy signal 93 entries ₹-76,790 (PF 0.52). Not taken because the leg was still in a trade: 112 signals. |
+| Read | With 50 points the stop is almost never the exit (4 of 176 entries). 53 entries (30%) reach +20. Nearly half the entries (82) are closed by the option's own bearish CHoCH at an average loss of about ₹930 a lot, and another 37 drift to the close at a loss: a 20 point target against exits that give back 15 points or more cannot pay at a 30% hit rate. More entries than before only because no signal is dropped for a missing stop level. |
+| Open (the user's call) | Unquantified: dropping the next-CHoCH exit (stop, target / trail and the close only); the buy-signal half removed (the sell-signal half loses less in every build since S79). |
+| Effort | **S** each. |
+| Priority | _Open; before / after recorded._ Related: S80, S79, S78. |
+
+---
+
 ### S80. Lab v2 Strategy 65: on a gap day the structure starts again from the day's first candle. Before ₹-34,769 (87 entries), after ₹-84,417 (122 entries). The straddle chart gaps on 45 of 67 sessions
 
 | | |

@@ -102,7 +102,7 @@ export function algorithm(spec) {
     if (sd.entry === "signal") steps.push(S("Entry: at that same candle's close, BUY the picked option. No SETUP of the option is waited for.", [
       S("Long only: nothing is sold, also on the straddle chart's sell signal."),
       S(`The option's own 1-minute candles carry the same structure rules (its ${spec.warmup_days} sessions before warm them up); they give the stop and the exit, not the entry.`),
-      S(sd.stop?.rule === "prev_choch"
+      S(sd.stop?.rule === "fixed" ? `Initial stop: ${sd.stop.pts} points below the entry premium, flat.` : sd.stop?.rule === "prev_choch"
         ? `Initial stop: the low of the option's latest CHoCH candle at or before the entry, less ${sd.stop.buffer_pct}% of that low. No CHoCH yet, or that level is not below the entry → the signal is skipped.`
         : "Initial stop: the option's latest confirmed swing low below the entry price. None → the signal is skipped."),
       ...(sd.two_lots ? [S(`TWO lots are bought: lot T1 (out at +${sd.two_lots.target_pts} points) and lot TRAIL (trailed).`)] : []),
@@ -112,7 +112,7 @@ export function algorithm(spec) {
       S(sd.sides === "both" ? "The option's bullish SETUP → BUY it. Its bearish SETUP → SELL it." : "The option's bullish SETUP, after it was armed → BUY the option. Its bearish SETUPs are not traded."),
       S("Entry at that candle's close. One trade a leg at a time.")]));
     steps.push(S("Exit — on the option's own candles, first of:", [
-      S(sd.stop?.rule === "prev_choch" ? "Stop: the level above — exits when touched (fill: the stop, or the open if the candle opens below it)."
+      S(sd.stop?.rule === "prev_choch" || sd.stop?.rule === "fixed" ? "Stop: the level above — exits when touched (fill: the stop, or the open if the candle opens below it)."
                                        : "Stop: the option's latest confirmed swing low (long) / swing high (short) — exits when touched (fill: the stop, or the open if the candle gaps through it)."),
       ...(sd.two_lots ? [
         S(`Lot T1: target ${sd.two_lots.target_pts} points above the entry premium → out there (at the open if the candle opens above it). Its stop never moves.`),
