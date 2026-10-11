@@ -39,6 +39,9 @@ SPEC["straddle"]["mode"]:
                `sides`: "long" = only the option's bullish SETUPs (buy it); "both" = its bearish SETUPs sell it too.
                `arm` (optional): "both" = a bearish SETUP on the straddle chart arms the leg that is going up as well
                (default: only the bullish one does).
+               `entry` (optional): "signal" = no SETUP of the option is waited for: the leg is BOUGHT at the straddle
+               signal's own candle (its close). The option's own structure then manages it: stop at its latest
+               confirmed swing low below the entry, `trail`, exit at its next bearish CHoCH, flat by the square-off.
                `trail` (optional): the stop follows the option's own BOS in the trade's direction, from the candle
                after it, and never moves back. "bos_level" = to the level that BOS broke (the swing high for a long);
                "bos_swing" = to the latest confirmed swing low (long) / high (short) at that BOS.
@@ -249,12 +252,14 @@ def _leg_structure(ctx, S, eng, b, i_day, d, d_from, k, exp, chain, legs, trs, s
         if ke < i_day or (x["dir"] != "up" and S.get("arm") != "both"): continue
         right = "CE" if float(ce.c[ia[ke]] - ce.c[ia[max(ke - n, 0)]]) >= float(pe.c[ib[ke]] - pe.c[ib[max(ke - n, 0)]]) else "PE"
         until = int(b.t[x["exit"]]) if S["window"] == "scenario" and not x["open"] else int(b.t[-1]) + DAY
-        arms[right].append((int(b.t[ke]), until))
+        arms[right].append((int(b.t[ke]), until, x["dir"]))
     for right, os_, _ in legs:
         if not arms[right]: continue
         a0, a1 = int(np.searchsorted(os_.day, d_from)), int(np.searchsorted(os_.day, d, "right"))
         ob = core.Bars(os_.t[a0:a1], os_.o[a0:a1], os_.h[a0:a1], os_.l[a0:a1], os_.c[a0:a1], os_.v[a0:a1])
         oe = core.foundation(ob, spec["rules"]); o_day = int(np.searchsorted(ob.day, d)); free_at = -1
+        if S.get("entry") == "signal":
+            _at_signal(ctx, S, oe, ob, os_, b, arms[right], right, k, exp, chain.name(exp, k, right), trs, skipped); continue
         for x in oe.trades():
             ke = x["entry"]
             if ke < o_day: continue
@@ -286,6 +291,36 @@ def _leg_structure(ctx, S, eng, b, i_day, d, d_from, k, exp, chain, legs, trs, s
             trs.append(core.price_trade(ctx, rec))
 
 
+def _at_signal(ctx, S, oe, ob, os_, b, arms, right, k, exp, name, trs, skipped):
+    """One leg of one session, bought at the straddle signals' own candles (see `entry` in the module text)."""
+    sq, lots = ctx["square_off"], ctx["position"]["lots"]; free_at = -1
+    for t_arm, _, sdir in arms:
+        ke = int(np.searchsorted(ob.t, t_arm))
+        if ke >= len(ob) or ob.t[ke] != t_arm: continue
+        e = float(ob.c[ke]); cut = core.square_off_at(sq, t_arm)
+        base = dict(dir="up", signal="BULLISH" if sdir == "up" else "BEARISH", strike=k, expiry=exp, choch_time=t_arm, straddle_signal=sdir)
+        skip = lambda why: skipped.append(dict(base, position="LONG", opt_type=right, instrument=name, entry_time=t_arm, why=why))
+        if cut and t_arm >= cut: skip("entry at or after the square-off time"); continue
+        if t_arm <= free_at: skip(f"one trade a leg at a time: open until {core.tstr(free_at)}"); continue
+        m = np.nonzero((oe.sk == -1) & (oe.sc <= ke) & (oe.sp < e))[0]      # the option's confirmed swing lows below the entry
+        if not len(m): skip("the option has no confirmed swing low below the entry: no stop"); continue
+        sl = float(oe.sp[m[-1]])
+        nx = np.nonzero((oe.ek == 1) & (oe.ed == -1) & (oe.ei > ke))[0]      # the option's next bearish CHoCH
+        if len(nx): kx = int(oe.ei[nx[0]]); why, still = "next_choch", False
+        else: kx, why, still = len(ob) - 1, "open", True
+        if cut and (ob.t[kx] > cut or still):
+            kc = int(np.searchsorted(ob.t, cut, "right")) - 1
+            if kc >= ke: kx, why, still = kc, "eod", False
+        kx, why, still, xpx, sl_last, moves = _trail(S.get("trail") or "none", oe, ob, ke, kx, why, still, float(ob.c[kx]), sl, True)
+        free_at = int(ob.t[kx])
+        u = lambda t_: float(b.c[max(int(np.searchsorted(b.t, t_, "right")) - 1, 0)])
+        rec = dict(base, position="LONG", opt_type=right, kind="OPT", instrument=name, entry_time=t_arm, entry_px=e, exit_time=int(ob.t[kx]),
+                   exit_px=float(xpx), exit_reason=why, open=bool(still), sl=sl, sl_last=round(float(sl_last), 2), sl_moves=moves,
+                   und_entry=u(t_arm), und_exit=u(int(ob.t[kx])), stale=False, lots=lots, tranche="", label=f"LONG {right}")
+        core.excursion(os_, rec, True)
+        trs.append(core.price_trade(ctx, rec))
+
+
 def _trail(mode, oe, ob, ke, kx, why, still, xpx, sl, up):
     """The trade re-walked candle by candle with the stop following the BOS in its direction (see `trail` in the module
     text). Returns (exit candle, reason, open, exit price, the last stop, how many times it moved)."""
@@ -293,7 +328,7 @@ def _trail(mode, oe, ob, ke, kx, why, still, xpx, sl, up):
     ev = {}                                                          # candle -> the stop a BOS at that candle asks for
     for j in range(len(oe.ei)):
         i = int(oe.ei[j])
-        if oe.ek[j] != 0 or oe.ed[j] != sg or i <= ke or i > kx: continue
+        if mode == "none" or oe.ek[j] != 0 or oe.ed[j] != sg or i <= ke or i > kx: continue
         kind = sg if mode == "bos_level" else -sg                    # the swing broken, or the swing behind the move
         m = np.nonzero((oe.sk == kind) & (oe.sc < i if mode == "bos_level" else oe.sc <= i))[0]
         if len(m): ev[i] = float(oe.sp[m[-1]])

@@ -98,7 +98,12 @@ export function algorithm(spec) {
       S(`The option picked (armed) is the leg going up: the CE or the PE whose own close rose more over the last ${sd.lookback} candles (a tie: the CE).`),
       S(sd.window === "day" ? "Once armed, a leg stays armed until the close. A later long scenario can arm the other leg too."
                             : "A leg is armed only while that straddle SETUP is alive: until its stop (the previous swing of the combined premium) or the next CHoCH on the straddle chart.")]));
-    steps.push(S("Entry: Strategy 3 on the ARMED OPTION'S OWN 1-minute candles (not the straddle, not the futures).", [
+    if (sd.entry === "signal") steps.push(S("Entry: at that same candle's close, BUY the picked option. No SETUP of the option is waited for.", [
+      S("Long only: nothing is sold, also on the straddle chart's sell signal."),
+      S(`The option's own 1-minute candles carry the same structure rules (its ${spec.warmup_days} sessions before warm them up); they give the stop and the exit, not the entry.`),
+      S("Initial stop: the option's latest confirmed swing low below the entry price. None → the signal is skipped."),
+      S("One trade a leg at a time.")]));
+    else steps.push(S("Entry: Strategy 3 on the ARMED OPTION'S OWN 1-minute candles (not the straddle, not the futures).", [
       S(`The same structure rules run on the option's own candles (its ${spec.warmup_days} sessions before warm it up): swings, protected level, CHoCH, SETUP.`),
       S(sd.sides === "both" ? "The option's bullish SETUP → BUY it. Its bearish SETUP → SELL it." : "The option's bullish SETUP, after it was armed → BUY the option. Its bearish SETUPs are not traded."),
       S("Entry at that candle's close. One trade a leg at a time.")]));
@@ -107,7 +112,7 @@ export function algorithm(spec) {
       ...(sd.trail ? [S(sd.trail === "bos_level"
         ? "The stop follows the BOS: each BOS of the option in the trade's direction moves the stop to the level that BOS broke (the swing high it took out, for a long), from the next candle. It never moves back. An exit at a moved stop is shown as TRAIL."
         : "The stop follows the BOS: each BOS of the option in the trade's direction moves the stop to the latest confirmed swing low (long) / high (short), from the next candle. It never moves back. An exit at a moved stop is shown as TRAIL.")] : []),
-      S("The option's next CHoCH → exit at that candle's close."),
+      S(sd.entry === "signal" ? "The option's next bearish CHoCH → exit at that candle's close." : "The option's next CHoCH → exit at that candle's close."),
       S(`${sqOf(p)}: still open → exit at that candle's close.`)]));
   }
   else if (rule === "straddle_v1" && sd.mode === "both_sides") steps.push(S("Entry: a SETUP on the derived straddle candles.", [setup,
