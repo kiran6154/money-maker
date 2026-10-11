@@ -3,8 +3,8 @@
   entry   ANY SETUP on the day-open ATM straddle's candles (its buy signal or its sell signal) -> at that same candle's
           close BUY the winning leg: the CE or the PE with the larger change of its close over SPEC["straddle"]["lookback"]
           candles. TWO lots. No SETUP of the option is waited for. Nothing is ever sold.
-  filter  bought only when the entry premium is above the low that option made in the session before
-          (SPEC["straddle"]["above_prev_low"]; added 2026-10-11: S83)
+  filter  none. "Only above the option's previous-session low" (SPEC["straddle"]["above_prev_low"]) was tried on
+          2026-10-11 and switched off again the same day at the user's word (result version 7 shown again): S83
   stop    both lots: 50 points below the entry premium, flat (SPEC["straddle"]["stop"]). Earlier the same day it was
           the option's latest swing low (S78), then its previous CHoCH candle's low less 10% (S79); changed: S81
   lot T1     out at entry + SPEC["straddle"]["two_lots"]["target_pts"] (20) points
@@ -33,7 +33,7 @@ SPEC = {'code': 'ST65',
            'sl_rule': 'prev_swing',
            'entry_rule': 'straddle_v1',
            'exit_rule': 'next_choch'},
- 'straddle': {'mode': 'leg_structure', 'lookback': 5, 'window': 'day', 'sides': 'long', 'arm': 'both', 'entry': 'signal', 'above_prev_low': True, 'gap_restart': True, 'stop': {'rule': 'fixed', 'pts': 50}, 'two_lots': {'target_pts': 20, 'trail_after_pts': 20}, 'trail': 'bos_level', 'notes': 'the day-open ATM pair and its candles: strategies/atm_straddle.py'},
+ 'straddle': {'mode': 'leg_structure', 'lookback': 5, 'window': 'day', 'sides': 'long', 'arm': 'both', 'entry': 'signal', 'above_prev_low': False, 'gap_restart': True, 'stop': {'rule': 'fixed', 'pts': 50}, 'two_lots': {'target_pts': 20, 'trail_after_pts': 20}, 'trail': 'bos_level', 'notes': 'the day-open ATM pair and its candles: strategies/atm_straddle.py'},
  'lot_size': 65,
  'capital': {'futures_margin': 120000, 'short_option_margin': 150000},
  'position': {'lots': 1, 'square_off': '15:25', 'lock': 'strike', 'scale_out': []},

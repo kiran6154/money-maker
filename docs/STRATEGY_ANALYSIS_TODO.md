@@ -467,7 +467,7 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Read | The filter removes 80 signals and what is left loses more a trade (PF 0.61 → 0.52 or 0.50): the options trading below yesterday's low were not the bad entries. The rupee total is smaller only because 9 days drop out for want of data. One quarter of data, both halves negative. |
 | Open (the user's call) | Unquantified: the opposite side (buy only below yesterday's low); yesterday's low of the index or of the straddle instead of the option. The 9 days: check the store for those contracts after the next download and rebuild. |
 | Effort | **S** each. |
-| Priority | _Open; before / after recorded._ Related: S81, S82. |
+| Priority | _Switched off again 2026-10-11 at the user's word ("show the version 7"): `above_prev_low: false`, Strategy 65 is back at S81's rules and numbers (176 entries, ₹-92,050; result version 9 = version 7). The option stays in the code._ Related: S81, S82. |
 
 ---
 
