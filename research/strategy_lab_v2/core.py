@@ -877,9 +877,23 @@ def tranches(P, rec, b):
     return out
 
 
+# config/data.json "intraday_close": [{"from": "YYYY-MM-DD", "time": "HH:MM"}]: from that session on, every intraday
+# square-off happens at that time if it is earlier than the strategy's own (positional runs have no square-off: untouched)
+_CLOSE = sorted(((dnum(r["from"]), r["time"]) for r in DATA.get("intraday_close", [])), reverse=True)
+
+
+def close_time(day, sq):
+    """The square-off time 'HH:MM' in force on `day` (a day number or 'YYYY-MM-DD') for a strategy whose own is `sq`."""
+    if not sq: return sq
+    d = dnum(day) if isinstance(day, str) else int(day)
+    for frm, t in _CLOSE:
+        if d >= frm: return min(sq, t)
+    return sq
+
+
 def square_off_at(sq, entry_time):
     """The session-end cut (int time) for a position entered at entry_time, or None."""
-    return None if not sq else entry_time - entry_time % DAY + hhmm_sec(sq)
+    return None if not sq else entry_time - entry_time % DAY + hhmm_sec(close_time(entry_time // DAY, sq))
 
 
 def eod_cut(sq, rec, b):

@@ -74,6 +74,20 @@ its results come from changes, with the headline numbers of each run made on it.
 The first run after a data change is slower. The CSVs are parsed into `cache/` once and numba compiles the engine once
 (also cached).
 
+### The strategy tree (`ui/lineage.html`)
+
+Every strategy under the one it was derived from, with: the one change that makes it a new strategy; every setting that
+differs from its parent (computed from the two strategy files); its exits in one line (stop, targets, trail, square-off);
+its widest stored result; and "also tried" - variations measured on it without becoming a strategy, and things asked
+about that were not tried. One search box over all of it ("1R", "trail", "sweep", "not tried" …). The parent, the change
+and the studies are kept in `strategies/lineage.py`: add a line there with every new strategy or study.
+
+### Intraday close
+
+`config/data.json` `intraday_close`: from 2026-06-01 every intraday position is squared off at **15:14** (when that is
+earlier than the strategy's own square-off; an entry at or after it is not taken). Positional runs are unaffected.
+`data.v1.json` does not carry it, so the v1 parity test still squares off as v1 does.
+
 ## Data
 
 Index and futures: the Breeze Parquet store `D:/nifty_data` (written by `../strategy_lab/tools/breeze_store.py`, another

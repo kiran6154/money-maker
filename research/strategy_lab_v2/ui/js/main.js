@@ -537,7 +537,9 @@ async function start() {
   $("#algo-box").ontoggle = () => pref("algoOpen", $("#algo-box").open);
   try { await load(); } catch (e) { $("#cards").innerHTML = `<div class="warn">Server not reachable: ${esc(e.message)}</div>`; return; }
   renderFilters(); renderCards();
-  const code = pref("code"); if (code && S.list.some((x) => x.spec.code === code)) { select(code, false); renderCards(); }
+  const code = new URLSearchParams(location.search).get("code") || pref("code");       // ?code=ST3: a link from the strategy tree
+  if (code && S.list.some((x) => x.spec.code === code)) { select(code, false); renderCards(); }
+  api("/api/config").then((c) => { const r = (c.intraday_close || [])[0]; if (r) $("#close-note").textContent = `intraday close ${r.time} from ${r.from}`; }).catch(() => {});
   poll();
 }
 start();

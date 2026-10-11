@@ -47,6 +47,86 @@ def spec_view(m):
     return s
 
 
+# ------------------------------------------------------------------ the strategy tree (ui/lineage.html)
+_SKIP = {"code", "name", "description", "backtests", "notes", "capital", "types", "lot_size"}
+
+
+def _flat(d, pre=""):
+    out = {}
+    for k, v in d.items():
+        if k in _SKIP or k.startswith("_"): continue
+        if isinstance(v, dict): out.update(_flat(v, f"{pre}{k}."))
+        else: out[pre + k] = v
+    return out
+
+
+def spec_diff(child, parent):
+    """Every SPEC setting that differs between a strategy and the one it was derived from: [(key, parent's, its own)]."""
+    a, b = _flat(parent), _flat(child)
+    show = lambda v: "–" if v is None else json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else str(v)
+    return [[k, show(a.get(k)) if k in a else "(not set)", show(b.get(k)) if k in b else "(not set)"]
+            for k in sorted(set(a) | set(b)) if a.get(k, "\0") != b.get(k, "\0")]
+
+
+def exits_of(spec):
+    """Stop, targets, trail and square-off of a strategy, in one line (what 'did we try 1:1?' is read from)."""
+    r, P = spec["rules"], core.position_of(spec)
+    rule = r.get("entry_rule", "setup_v1")
+    sq = f"flat by {P['square_off']}" if P.get("square_off") else "positional (held overnight)"
+    oc = core.DATA.get("intraday_close") or []
+    if P.get("square_off") and oc: sq += f" ({oc[0]['time']} from {oc[0]['from']})"
+    if rule == "c2c_v1":
+        c = spec["c2c"]
+        return f"stop {c['stop_pct']}% of premium then a {c['trail_pts']}-pt trail ({c.get('stop_fill', 'close')}); exit on a bullish flip or the {c['ladder']['time']} ladder; positional"
+    if rule == "rl_v1":
+        L = spec["rl"]
+        return f"the learner picks the stop ({' / '.join(str(x) for x in L['stops_pts'])} pts) and an exit profile ({', '.join(L['profiles'])}); reward {L['reward']}"
+    if P["exit"] == "position":
+        st = P["stop"] or {}
+        stop = ("the signal's own stop (" + {"choch_candle": "CHoCH candle", "prev_swing": "previous swing"}.get(r.get("sl_rule"), "set by the entry rule") + ")"
+                if st.get("from") == "signal" else f"{st.get('futures_pts')} pts on futures / {st.get('option_pct')}% of premium on options")
+        tg = ", ".join(f"{x['lots']} lot at {x['target_r']}R" if "target_r" in x else f"{x['lots']} lot at +{x['target_pts']} pts" for x in P["scale_out"]) or "none"
+        tr = f"from {P['trail']['start_r']}R, {P['trail']['lag_r']}R behind" if P.get("trail") else "none"
+        return (f"{P['lots']} lot(s); stop = 1R = {stop}; targets: {tg}; trail: {tr}"
+                + (f"; stop and reverse x{P['reverse']['max']}" if P.get("reverse") else "") + f"; {sq}")
+    stop = {"prev_swing": "previous swing", "choch_candle": "CHoCH candle low / high", "none": "none"}.get(r.get("sl_rule"), r.get("sl_rule"))
+    return f"{P['lots']} lot; stop: {stop}; no target; exit at the stop or the next CHoCH; {sq}"
+
+
+def headline(code, spec):
+    """The widest stored backtest of a strategy: its All-data run if there is one, else its default; futures first."""
+    base = os.path.join(core.RESULTS, code)
+    runs = [r for r in (os.listdir(base) if os.path.isdir(base) else []) if os.path.exists(os.path.join(base, r, "meta.json"))]
+    if not runs: return None
+    dflt = next((core.run_key(b_, spec)[0] for b_ in spec["backtests"] if b_.get("default")), None)
+    plain = [r for r in runs if r.startswith("all-data") and not r.endswith(("_idx", "_pos", "_intra"))]
+    order = sorted(plain, key=lambda r: r != f"all-data_{core.TF_LABEL[spec['timeframe']]}") + ([dflt] if dflt in runs else []) + runs
+    best = None
+    for r in order:
+        m = json.load(open(os.path.join(base, r, "meta.json"), encoding="utf-8"))
+        for typ, want in (("FUT", "-"), ("OPT_NATIVE", "W-SCAN"), ("OPT_FUT_SIGNAL", f"W-{spec['options'].get('strike_default')}")):
+            tm = m["types"].get(typ) or {}
+            ch = (tm.get("choices") or {})
+            c = ch.get(want) or (next(iter(ch.values())) if ch else None)
+            if tm.get("status") == "ok" and c and c.get("trades"):
+                return dict(run=r, label=m["label"], type=tm.get("label") or typ, choice=want if want in ch else next(iter(ch)), date_from=tm.get("date_from"),
+                            date_to=m.get("date_to"), trades=c["trades"], wins=c.get("wins"), net=c.get("net_inr"), pf=c.get("pf"), t=c.get("t_stat"), at=m.get("at"))
+        best = best or dict(run=r, label=m["label"], trades=0)
+    return best
+
+
+def lineage_view():
+    mods = core.load_strategies(); L = core.family("lineage")
+    out = []
+    for code, m in mods.items():
+        sp = m.SPEC; par, change = L.LINEAGE.get(code, (None, "(no entry in strategies/lineage.py yet)"))
+        out.append(dict(code=code, name=sp["name"], family=family_of(sp), timeframe=sp["timeframe"], parent=par if par in mods else None, change=change,
+                        diff=spec_diff(sp, mods[par].SPEC) if par in mods else [], exits=exits_of(sp), types=list(getattr(m, "TYPES", ("FUT", "OPT_FUT_SIGNAL", "OPT_NATIVE"))),
+                        result=headline(code, sp),
+                        studies=[dict(kind=k, what=w, result=r, ref=ref) for c_, k, w, r, ref in L.STUDIES if c_ == code]))
+    return dict(nodes=out, intraday_close=core.DATA.get("intraday_close", []))
+
+
 def submit(q):
     mods = core.load_strategies()
     code = str(q.get("code", ""))
@@ -132,6 +212,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if u.path == "/api/explorer/expiries":
                 with run_lock:
                     return self.reply(200, core.explorer_expiries(q.get("tf") or "minute"))
+            if u.path == "/api/lineage":
+                return self.reply(200, lineage_view())
+            if u.path == "/api/config":
+                return self.reply(200, dict(intraday_close=core.DATA.get("intraday_close", [])))
             if u.path == "/api/explorer/straddle":
                 with run_lock:
                     return self.reply(200, core.explorer_straddle(q["code"], q["from"], q["to"], q.get("tf") or "minute"))

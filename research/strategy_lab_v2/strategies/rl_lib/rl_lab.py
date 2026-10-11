@@ -173,7 +173,7 @@ class StrikeLock:
 
 def square_off_at(st, entry_time):
     """The session-end cut for a position entered at entry_time ("YYYY-MM-DD HH:MM:00"), or None (position.square_off)."""
-    T = position_cfg(st).get("square_off")
+    T = core.close_time(entry_time[:10], position_cfg(st).get("square_off"))      # v2: config/data.json intraday_close
     return f"{entry_time[:10]} {T}:00" if T else None
 
 

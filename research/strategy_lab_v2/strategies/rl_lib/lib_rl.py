@@ -148,7 +148,7 @@ def base_arm_of(cfg, arms):
 def feasible_arms(cfg, arms, entry_time):
     """Which actions exist at this SETUP: an intraday profile cannot be entered at or after its square-off time."""
     hm = entry_time[11:16]
-    ok = {p: v["square_off"] is None or hm < v["square_off"] for p, v in cfg["profiles"].items()}
+    ok = {p: v["square_off"] is None or hm < lab.core.close_time(entry_time[:10], v["square_off"]) for p, v in cfg["profiles"].items()}   # v2: intraday_close
     return [a[0] == "skip" or ok[a[0]] for a in arms]
 
 

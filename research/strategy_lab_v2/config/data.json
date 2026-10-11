@@ -21,5 +21,12 @@
       "cache/store/options"
     ],
     "_extra_dirs": "more option folders in the weekly_dir layout; an expiry found in several is read from the first one with a full chain (the store's expiries are exported only once their whole window is downloaded)"
-  }
+  },
+  "intraday_close": [
+    {
+      "from": "2026-06-01",
+      "time": "15:14"
+    }
+  ],
+  "_intraday_close": "from that session on every intraday position is squared off at this time when it is earlier than the strategy's own square-off (an entry at or after it is not taken); positional runs are not affected. Set by the user 2026-10-11. Not in data.v1.json, so the v1 parity test still squares off as v1 does"
 }

@@ -1,0 +1,101 @@
+"""Which strategy each strategy was derived from, what changed, and what else was tried on it (the Strategy tree page).
+
+LINEAGE  code -> (parent code or None, the one change that makes it this strategy). The page also shows, computed from the
+         two strategy files, every SPEC setting that differs from the parent.
+STUDIES  variations that were measured on a strategy without becoming a strategy file (scratch studies recorded in
+         docs/STRATEGY_ANALYSIS_TODO.md), and things asked about that were NOT tried: (strategy, kind, what, result, S-entry).
+         kind: 'exit' | 'entry filter' | 'stop' | 'timing' | 'data' | 'not tried'.
+Add a line here when a strategy is added or a study is run; nothing else reads this file (it is not part of any backtest).
+"""
+
+LINEAGE = {
+    "ST1": (None, "The base: Foundation on 1-minute futures. Swings, protected level, CHoCH by touch, SETUP; stop at the previous swing; exit at the stop or the next CHoCH; flat by the square-off."),
+    "ST2": ("ST1", "5-minute candles; the stop is the CHoCH candle's low / high instead of the previous swing."),
+    "ST3": ("ST1", "A CHoCH needs a candle to CLOSE beyond the protected level (ST1: a touch)."),
+    "ST4": ("ST2", "A CHoCH needs a close beyond the protected level (ST2: a touch). The 5-minute twin of ST3."),
+    "ST5": ("ST1", "Each SETUP goes through the Foundation-Zone gate (bands born at protected levels; TAKE / WATCH / BLOCK)."),
+    "ST6": ("ST2", "The Foundation-Zone gate (bands) on the 5-minute base."),
+    "ST7": ("ST5", "Zone gate v2: rooms (bands the market sat in, retired when not visited) instead of bands that never retire."),
+    "ST8": ("ST6", "Zone gate v2 (rooms) on the 5-minute base."),
+    "ST9": ("ST1", "Managed exits instead of the CHoCH exit: 3 lots, stop 50 pts (5% of premium on options) = 1R, one lot out at 1R, one at 2R, the last trails from 3R, 1R behind."),
+    "ST10": ("ST2", "The same managed exits (3 lots, 1R / 2R targets, trail from 3R) on the 5-minute base."),
+    "ST11": ("ST9", "Stop and reverse: when the initial stop is hit, the opposite position opens there (once per signal)."),
+    "ST12": ("ST10", "Stop and reverse on the 5-minute managed strategy."),
+    "ST15": ("ST9", "Positional (held overnight): no targets, 3 lots trail from 3R kept 2R behind."),
+    "ST16": ("ST15", "The 5-minute twin of ST15."),
+    "ST17": ("ST15", "Targets at 2R and 4R, the last lot trails from 4R kept 2R behind."),
+    "ST18": ("ST15", "Stop 75 pts (ST15: 50); targets at 1R and 2R, trail from 3R kept 2R behind."),
+    "ST19": ("ST9", "A learner (contextual bandit) decides at every SETUP: skip, or an exit profile x stop (35 / 50 / 75 pts) x lots. Reward: net rupees."),
+    "ST20": ("ST19", "The 5-minute twin of ST19."),
+    "ST21": ("ST19", "Learner reward = R multiples instead of net rupees."),
+    "ST22": ("ST21", "The 5-minute twin of ST21."),
+    "ST23": ("ST19", "Learner reward = profit factor instead of net rupees."),
+    "ST24": ("ST23", "The 5-minute twin of ST23."),
+    "ST25": (None, "A separate idea: CHoCH to CHoCH put retest on 5-minute candles. Buy a put on a bearish flip + a swing-high retest of the anchored VWAP; PCR filter on; stops on a candle close."),
+    "ST26": ("ST25", "PCR filter off."),
+    "ST27": ("ST25", "Stops on a touch instead of a candle close."),
+    "ST28": ("ST26", "PCR filter off and stops on a touch."),
+    "ST29": (None, "A separate idea: the rainbow ribbon (EMA ribbon) on 1-minute futures. Enter on a fresh close outside the ribbon; managed trail."),
+    "ST30": ("ST29", "Widner's recursive SMA ribbon on 5-minute candles instead of the EMA ribbon on 1-minute."),
+    "ST31": ("ST1", "A trade is taken only in the direction of the latest 1-hour CHoCH."),
+    "ST32": ("ST1", "Everything is read on each option's own chart (not futures), and a trade needs the option's SMA 200 sloping its way."),
+    "ST33": ("ST32", "Managed exits (ST9's): 3 lots, stop 5% of premium = 1R, lots out at 1R and 2R, trail from 3R."),
+    "ST34": ("ST33", "The stop (= 1R) is the CHoCH candle's low / high on the option's chart instead of 5% of premium."),
+    "ST35": ("ST34", "The entry must also be on the trend's side of the SMA 200 (long above it, short below it)."),
+    "ST36": (None, "A separate idea, shorts only: sell the option at a confirmed swing high on its own chart while its SMA 200 is rising; stop 30% of premium or the square-off."),
+    "ST37": ("ST34", "Shorts only: ST34's long is followed on paper; when its trailing stop is hit, the option is sold for real. Stop 30% of premium or the square-off."),
+    "ST38": ("ST3", "Five anti-chop filters on the SETUP: AVWAP slope size, close beyond the trend AVWAP, age of the broken swing, displacement candle, AVWAP separation 10 pts."),
+    "ST39": ("ST3", "Liquidity filters on the SETUP: a sweep of any confirmed swing before the CHoCH + a displacement candle or fair-value gap."),
+    "ST40": ("ST38", "ST38's five filters plus ST39's sweep and displacement."),
+    "ST41": ("ST39", "Only the sweep, tightened: the swept swing must be at least 40 candles old (displacement dropped)."),
+    "ST42": ("ST38", "Only ST38's slope-size and swing-age filters, plus ST41's aged sweep."),
+    "ST43": ("ST38", "Only the filters that held on both halves: slope size + swing age, plus a new one: the stop at least 20 pts from the entry."),
+    "ST44": ("ST43", "Plus a sweep of the session's or the previous day's extreme before the CHoCH."),
+    "ST45": ("ST43", "Plus: the swing the CHoCH broke must be a 15-candle pivot."),
+    "ST46": ("ST43", "Plus: the 14-candle Choppiness Index below 38.2 (trending) at the SETUP."),
+    "ST47": ("ST46", "Plus: the SETUP candle closes inside a heavy volume zone that is still open (the living-zones rule)."),
+    "ST48": ("ST46", "Plus: price tapped a live internal order block within 10 candles (LuxAlgo definition)."),
+    "ST49": ("ST46", "Plus: the swing-structure (50) bias agrees with the trade."),
+    "ST50": ("ST46", "Plus: the internal-structure (5) bias agrees with the trade."),
+    "ST51": ("ST46", "Plus: price tapped a live swing order block within 10 candles."),
+    "ST52": ("ST46", "Plus: price tapped a live 5-minute fair-value gap within 10 candles."),
+    "ST53": ("ST46", "Plus: equal highs / lows were swept in the 30 candles before the CHoCH."),
+    "ST54": ("ST46", "Plus: a long in discount / a short in premium of the swing range."),
+    "ST55": ("ST3", "A trade is taken only after a same-side signal of the TradingFinder SMLS order-block indicator within 30 candles."),
+    "ST56": (None, "A separate idea: the TradingFinder SMLS indicator's own Long / Short signals; stop at the order block's far edge; flat by the square-off."),
+}
+
+STUDIES = [
+    # ---- Foundation base
+    ("ST1", "data", "The 8-year futures history (Jan 2018 → Oct 2026) instead of Oct 2021 on", "No CHoCH and no trade from 2020-11-04 to 2022-03-07 (16 months) on one continuous run; every traded year loses.", "S58, S61"),
+    ("ST1", "timing", "Short entries: sell at the CHoCH close instead of the SETUP close; a pullback to the SETUP level; the first up-candle (on option charts)", "The SETUP is late (42% of the drop gone). CHoCH close beats a no-signal seller by about 1 pt; pullback entries add nothing.", "S60"),
+    # ---- ST3 and its filters
+    ("ST3", "not tried", "A fixed 1:1 (or 1:2) risk : reward target on ST3", "NOT TRIED on ST3. Nearest: ST9 (on ST1: fixed 50-pt stop, lots out at 1R and 2R, trail), ST33 (on options: 1R / 2R), and 1R / 2R / 3R targets on the SMLS signals (S69: all worse than no target).", ""),
+    ("ST3", "exit", "Move the stop to break-even once the trade is +10 / +15 / +20 / +30 pts in profit", "Worse at every level on both halves (PF 0.36 → 0.26–0.34): it removes more winners than losers.", "S64"),
+    ("ST3", "timing", "Trades by holding time", "Trades held under 30 minutes are 63% of the trades and 121% of the loss; those held over an hour are profitable.", "S64"),
+    ("ST3", "entry filter", "Stop distance at least 20 / 25 pts; entry before 12:15 or 11:15; CHoCH-to-entry delay", "Stop ≥ 20 helps on both halves (became ST43). Time of day helps the first half only. The delay is 2 minutes for nearly every trade.", "S64"),
+    ("ST3", "entry filter", "Each of the five anti-chop filters on its own", "Slope size and swing age help; the trend-AVWAP filter never binds; displacement points the wrong way; 10-pt separation removes 95%.", "S62"),
+    ("ST3", "entry filter", "Liquidity sweep before the CHoCH: any swing / a swing 40 candles old / also the extreme of 30 candles / the session's or previous day's extreme", "Any swing passes 99.7%; aged 91%; extreme halves the trades with no change; session / previous-day sweeps help one half and hurt the other.", "S63, S64, S65"),
+    ("ST3", "entry filter", "Equal highs / lows at the broken level; displacement or fair-value gap on the SETUP candle; a 15- or 30-candle pivot as the broken level", "No effect (equal levels), slightly wrong way twice (displacement), worse (higher-degree pivot).", "S63, S65"),
+    ("ST3", "entry filter", "Choppiness Index, ATR rising, 20-point box, rapid alternating CHoCHs, clock windows, not the middle of the range", "Choppiness Index < 38.2 holds on both halves (became ST46). The box and rapid-CHoCH rules are real but small. Clock and middle-of-range reverse between halves.", "S66"),
+    ("ST3", "entry filter", "Relative volume on the CHoCH / SETUP candle; premium / discount; distance from the session's highest-volume price", "High-volume CHoCH slightly better; premium / discount is backwards for these entries; entries at the POC are worse.", "S67"),
+    ("ST3", "entry filter", "The LuxAlgo-style SMC rules and the living-zones rule, each on its own", "On raw ST3 none separates. On top of ST46 the heavy zone and the internal order block help (ST47, ST48).", "S68"),
+    ("ST3", "entry filter", "The TradingFinder SMLS signal within 10 / 30 / 60 candles, same side and opposite side", "Makes ST3 worse (PF 0.32 / 0.16 at 30 candles; became ST55 for the record).", "S69"),
+    # ---- the best filtered base
+    ("ST43", "exit", "Break-even stop after +X pts on the filtered base", "Lowers PF on both halves (0.46 / 0.50 → 0.40 / 0.43 at +20).", "S64"),
+    ("ST46", "entry filter", "Every ported SMC rule on top of ST46", "Built as ST47–ST54. Only the heavy volume zone and the internal order block help on both halves.", "S68"),
+    ("ST46", "not tried", "Combining ST47 and ST48 (zone + order block)", "NOT TRIED on purpose: another pick from the same ~110 trades.", "S68"),
+    # ---- option-chart strategies
+    ("ST32", "stop", "Stop at the CHoCH candle / CHoCH + next candle / last swing / 2nd swing back (on ST35's entries)", "Wider is less bad; every one loses before costs. 2nd swing best weekly (PF 0.65), not monthly.", "S60"),
+    ("ST32", "stop", "14 stops with a first-half pick / second-half check: structural, 10–30% of premium, 2–6x the option's 1-minute range, previous day", "No stop is profitable on the check half. The previous day's level is 35–65% of the premium away and missing for a quarter of the SETUPs.", "S60"),
+    ("ST32", "entry filter", "15 indicator filters against the SMA 200 slope (on shorts): EMAs, VWAP, RSI, MACD, Supertrend, index trend", "The SMA 200 slope does not help shorts; none beats no filter on both books and halves.", "S60"),
+    ("ST32", "timing", "Why the entries lose: direction after entry, stop vs 1-minute noise, costs", "Direction is a coin flip; the stop is inside the noise (touched 81% of the time, 39% of those then reach +2R); costs are 35% of 1R.", "S60"),
+    ("ST35", "entry filter", "Shorts only", "Weekly shorts are better than longs; only a 30%-of-premium stop stays flat on the check half.", "S60"),
+    ("ST36", "entry filter", "Sell swing highs with the SMA 200 or the session VWAP sloping DOWN (the user's first idea)", "Earns nothing after costs on both books; the rising-slope version is the one that held (ST36).", "S60"),
+    ("ST36", "data", "The same short rules on the futures / index chart over 5 years", "Loses every year (PF 0.62); futures have no time decay and the round trip costs about 16 pts.", "S60"),
+    ("ST37", "data", "The same rule on the futures / index chart over 5 years", "Loses every year (PF 0.57 / 0.46).", "S60"),
+    ("ST36", "timing", "A no-signal option seller (sell every 15 minutes) as the reference", "Earns most of what the signals earn: the short books are mostly time decay.", "S60"),
+    # ---- SMLS
+    ("ST56", "exit", "1R / 2R / 3R targets; One / Two / Midway setups separately; long and short separately; 3-, 5- and 15-minute candles", "Before any cost the signals average +0.2 / +1.7 pts a trade; every variant loses after costs.", "S69"),
+    ("ST56", "not tried", "The exact order-block edges of the script's refiner library", "NOT TRIED: the library's source was not supplied; blocks use the origin candle's full range.", "S69"),
+]
