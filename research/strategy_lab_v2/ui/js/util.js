@@ -101,6 +101,7 @@ export function algorithm(spec) {
                             : "A leg is armed only while that straddle SETUP is alive: until its stop (the previous swing of the combined premium) or the next CHoCH on the straddle chart.")]));
     if (sd.entry === "signal") steps.push(S("Entry: at that same candle's close, BUY the picked option. No SETUP of the option is waited for.", [
       S("Long only: nothing is sold, also on the straddle chart's sell signal."),
+      ...(sd.above_prev_low ? [S("Filter: the option's price at the entry must be ABOVE the low that same option made in the session before. At or below it → not bought.")] : []),
       S(`The option's own 1-minute candles carry the same structure rules (its ${spec.warmup_days} sessions before warm them up); they give the stop and the exit, not the entry.`),
       S(sd.stop?.rule === "fixed" ? `Initial stop: ${sd.stop.pts} points below the entry premium, flat.` : sd.stop?.rule === "prev_choch"
         ? `Initial stop: the low of the option's latest CHoCH candle at or before the entry, less ${sd.stop.buffer_pct}% of that low. No CHoCH yet, or that level is not below the entry → the signal is skipped.`

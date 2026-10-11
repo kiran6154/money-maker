@@ -45,6 +45,9 @@ SPEC["straddle"]["mode"]:
                With `stop: {rule: "prev_choch", buffer_pct}` (entry "signal" only) the first stop is the low of the
                option's latest CHoCH candle at or before the entry, less buffer_pct percent of that low - instead of
                the latest swing low. With `stop: {rule: "fixed", pts}` it is the entry premium less pts points.
+               With `above_prev_low: true` (entry "signal" only) the leg is bought only when its entry premium is
+               above the low that same option made in the session before (no candles of it that session: not bought,
+               unless `prev_low_missing: "take"`).
                With `two_lots: {target_pts, trail_after_pts}` (entry "signal" only) the entry is two lots of
                `position.lots` each: lot T1 leaves at entry + target_pts (the first stop until then, never moved);
                lot TRAIL keeps the first stop until the option has traded at entry + trail_after_pts, then its stop
@@ -331,6 +334,11 @@ def _at_signal(ctx, S, oe, ob, os_, b, arms, right, k, exp, name, trs, skipped):
         skip = lambda why: skipped.append(dict(base, position="LONG", opt_type=right, instrument=name, entry_time=t_arm, why=why))
         if cut and t_arm >= cut: skip("entry at or after the square-off time"); continue
         if t_arm <= free_at: skip(f"one trade a leg at a time: open until {core.tstr(free_at)}"); continue
+        if S.get("above_prev_low"):
+            j1 = int(np.searchsorted(os_.day, t_arm // DAY))                  # the option's own candles before this session
+            if j1 == 0 and S.get("prev_low_missing") != "take": skip("the option has no candles in the session before: no previous low"); continue
+            j0 = int(np.searchsorted(os_.day, os_.day[j1 - 1])) if j1 else 0; plow = float(os_.l[j0:j1].min()) if j1 else -1.0
+            if e <= plow: skip(f"the premium {e:.2f} is not above the option's previous-session low {plow:.2f}"); continue
         if (S.get("stop") or {}).get("rule") == "fixed":
             sl = round(e - float(S["stop"]["pts"]), 2)
             if sl <= 0: skip(f"the premium is not above the {S['stop']['pts']} point stop"); continue

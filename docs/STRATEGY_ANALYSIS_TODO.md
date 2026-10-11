@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S83. Lab v2 Strategy 65: buy only when the option's price is above its previous-session low. Before ₹-92,050 (176 entries, PF 0.61), after ₹-83,749 (111 entries, PF 0.52): fewer trades, each one worse
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/st65.py` (`straddle.above_prev_low: true`), `atm_straddle.py` (`_at_signal`). 2026-10-11, the user's instruction: "enter only if the option price is greater than yesterday's low". Everything else in Strategy 65 is as in S81 (the big-red-candle exit of S82 is not built). |
+| What it does | At the straddle signal's candle the winning leg is bought only when its close (the entry premium) is above the lowest low that same option made in the session before. At or below it: not bought (80 signals). When the option has no candle in the session before, there is no previous low and the signal is not taken: 58 signals on 9 days (2026-07-01, 07-03, 07-07, 07-24, 07-29, 08-04, 08-11, 09-08, 09-11), a gap in the option data, not a market fact. |
+| Impact | **Measured, Options (via futures) W-ATM, two lots an entry, after costs, 2026-06-30 → 2026-10-09. Before (S81): 176 entries, ₹-92,050, PF 0.61; halves ₹-64,283 / ₹-27,767. After: 111 entries (222 lots), ₹-83,749, PF 0.52, t -3.46, 32% winners; halves ₹-51,215 (PF 0.40) / ₹-32,534 (PF 0.63).** 15 of 49 days positive; worst day ₹-14,380. Lot T1 ₹-48,341: target 32 lots ₹+37,439; next bearish CHoCH 58 ₹-60,764 (none a winner); close 18 ₹-14,851; stop 3 ₹-10,165. Lot TRAIL ₹-35,408: moved stop 30 lots ₹+50,117; next CHoCH 59 ₹-60,623; close 19 ₹-14,737; stop 3 ₹-10,165. Bought on the straddle's sell signal 40 entries ₹-11,035 (PF 0.72); on its buy signal 71 entries ₹-72,714 (PF 0.46). **With the 9 data-gap days traded instead of skipped (`prev_low_missing: take`): 138 entries, ₹-105,675, PF 0.50; halves ₹-72,744 / ₹-32,931.** |
+| Read | The filter removes 80 signals and what is left loses more a trade (PF 0.61 → 0.52 or 0.50): the options trading below yesterday's low were not the bad entries. The rupee total is smaller only because 9 days drop out for want of data. One quarter of data, both halves negative. |
+| Open (the user's call) | Unquantified: the opposite side (buy only below yesterday's low); yesterday's low of the index or of the straddle instead of the option. The 9 days: check the store for those contracts after the next download and rebuild. |
+| Effort | **S** each. |
+| Priority | _Open; before / after recorded._ Related: S81, S82. |
+
+---
+
 ### S82. Lab v2 Strategy 65, two checks before building (2026-10-11): exit the trailed lot on the first big red candle after a rally (helps a little, both halves); buy the other leg at a trail exit (loses under every target and stop tried)
 
 | | |
