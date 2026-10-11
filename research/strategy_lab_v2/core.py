@@ -1619,6 +1619,12 @@ def trend_segments(sg):
         if sg.qflip[j]:
             s_ = int(sg.qhi[j] if sg.qd[j] == -1 else sg.qlo[j])
             ch.append((int(sg.qi[j]) + 1, int(sg.sb[s_])))
+    pieces = getattr(sg, "pieces", None)              # an engine run piece by piece (strategies/gap_reset.py): each piece
+    if pieces:                                        # starts with no trend AVWAP (anchor -1) until its first confirmed swing
+        for bar, sw in pieces[1:]:
+            ch.append((int(bar), -1))
+            if sw < len(sg.sc) and int(sg.sb[sw]) >= bar: ch.append((int(sg.sc[sw]) + 1, int(sg.sb[sw])))
+        ch.sort(key=lambda x: x[0])
     return ch
 
 
@@ -1633,7 +1639,7 @@ def _trend_avwap(b, sg, i0, i1):
     for n, (a, anc) in enumerate(ch):
         z = ch[n + 1][0] - 1 if n + 1 < len(ch) else len(b) - 1
         lo, hi = max(a, i0), min(z, i1)
-        if lo > hi: continue
+        if lo > hi or anc < 0: continue
         out.append(dict(anchor=tstr(b.t[anc]), pts=[[int(b.t[k]), round(sg.av(anc, k), 2)] for k in range(lo, hi + 1)]))
     return out
 

@@ -34,9 +34,9 @@ def foundation(bars, rules, pts):
     BAR = {1, 3, 10, 13, 22, 23, 25, 26, 27, 30, 34}                   # candle indices: + the piece's first candle
     SWING = {17, 20, 21}                                               # swing indices (-1 = none): + the swings before
     CUM = {7, 8}                                                       # cumulative sums, one longer than the candles
-    parts = [[] for _ in range(37)]; n_sw = 0; off = [0.0, 0.0]
+    parts = [[] for _ in range(37)]; n_sw = 0; off = [0.0, 0.0]; pieces = []
     for a, e in zip(starts, ends):
-        a, e = int(a), int(e)
+        a, e = int(a), int(e); pieces.append((a, n_sw))
         out = core._engine(bars.o[a:e], bars.h[a:e], bars.l[a:e], bars.c[a:e], w[a:e], bars.day[a:e], touch, ch_touch, sl_rule)
         for k, x in enumerate(out):
             if k in BAR: x = x + a
@@ -45,4 +45,6 @@ def foundation(bars, rules, pts):
                 x = x + off[k - 7]; off[k - 7] = float(x[-1]); x = x[:-1] if e < len(bars) else x
             parts[k].append(x)
         n_sw += len(out[0])
-    return core.Signals(bars, tuple(np.concatenate(p) for p in parts))
+    sg = core.Signals(bars, tuple(np.concatenate(p) for p in parts))
+    sg.pieces = pieces                                 # (first candle, first swing) of each piece: the chart's trend AVWAP restarts there
+    return sg
