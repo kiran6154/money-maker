@@ -49,6 +49,12 @@ export function reasonTag(r) {
 // ------------------------------------------------------------------ the strategy as numbered steps
 // algorithm(spec) -> [{t: text, sub: [...]}] read straight from the strategy's SPEC, so it always says what the code runs:
 // 1 candles, 2 structure, 3 entry (3.1 ... conditions), 4 when a signal is not taken, 5 stop and exits, 6 costs.
+// a strategy's square-off as shown to the reader: its own time, and the intraday close in force later (config/data.json)
+export function sqOf(p) {
+  const c = globalThis.__intradayClose;
+  return p.square_off + (c && c.time < p.square_off ? ` (${c.time} from ${c.from})` : "");
+}
+
 export function algorithm(spec) {
   const r = spec.rules || {}, p = spec.position || {}, o = spec.options || {}, rule = r.entry_rule || "setup_v1";
   const TF = { minute: "1-minute", "3minute": "3-minute", "5minute": "5-minute", "15minute": "15-minute", "30minute": "30-minute", "60minute": "1-hour" };
@@ -57,10 +63,15 @@ export function algorithm(spec) {
   const steps = [];
   const onOpt = !!spec.sma_filter;                 // Strategy 32: everything is read on each option's own chart
   const ns = o.native_scan || {};
-  if (onOpt) steps.push(S(`Candles: ${TF[spec.timeframe] || spec.timeframe} candles of each option contract itself (not the index, not the futures); the first ${spec.warmup_days} session(s) only warm the indicators up.`, [
+  const sd = spec.straddle;                           // ST57 / ST58: everything is read on the derived straddle candles
+  if (sd) steps.push(S(`Candles: ${TF[spec.timeframe] || spec.timeframe} DERIVED candles of the day-open ATM straddle — not the futures, not the index, not one option.`, [
+    S(`Each day: take the strike nearest the NIFTY index at its first candle; the CE and the PE of that strike on the nearest weekly expiry at least ${o.expiry_min_days ?? 1} day out.`),
+    S("Each candle = CE + PE: open = the two opens added, close = the two closes added, high / low = the highest / lowest of that open and close, volume = both."),
+    S(`The pair's own candles of the ${spec.warmup_days} session(s) before warm the structure up; only SETUPs inside the day trade.`)]));
+  else if (onOpt) steps.push(S(`Candles: ${TF[spec.timeframe] || spec.timeframe} candles of each option contract itself (not the index, not the futures); the first ${spec.warmup_days} session(s) only warm the indicators up.`, [
     S(`Which contracts: every ${ns.every_minutes || 5} minutes, for CE and PE, the ${(ns.choices || []).join(" / ")} strike${(ns.choices || []).length > 1 ? "s" : ""} (from the index's last closed candle) on the nearest expiry; each is watched until the next scan.`)]));
   else steps.push(S(`Candles: ${TF[spec.timeframe] || spec.timeframe} candles of the ${spec.underlying === "INDEX" ? "NIFTY index (AVWAP equal-weighted: the index has no volume)" : "near-month NIFTY futures"}; the first ${spec.warmup_days} session(s) only warm the indicators up.`));
-  if (rule !== "rainbow_v1") steps.push(S("Market structure (Foundation engine), candle by candle:", [
+  if (rule !== "rainbow_v1") steps.push(S(sd ? "Market structure (Foundation engine), candle by candle ON THE DERIVED STRADDLE CANDLES (never on the futures or on a single option):" : "Market structure (Foundation engine), candle by candle:", [
     S(`Swing high / low: confirmed when a later candle breaks the swing candle's low / high — ${by(r.break_mode)}.`),
     S("Protected level: in an uptrend, the latest confirmed swing low that sat below the trend AVWAP; in a downtrend the mirror (swing high above it)."),
     S(`CHoCH: price breaks the protected level — ${by(r.choch_mode || r.break_mode)}. If it also breaks the trend AVWAP, the trend flips.`),
@@ -70,6 +81,11 @@ export function algorithm(spec) {
   const dirs = S("Direction → position: bullish = futures LONG · options LONG CE and SHORT PE; bearish = futures SHORT · options LONG PE and SHORT CE (each option leg is its own position).");
   const dirsOpt = S(`Direction → position on that option: bullish SETUP = LONG (buy it), bearish = SHORT (sell it); ${ns.one_per_side ? "one position per side (CE / PE) at a time; " : ""}first SETUP wins.`);
   if (rule === "setup_v1") steps.push(S("Entry: every SETUP is a position.", [setup, onOpt ? dirsOpt : dirs]));
+  else if (rule === "straddle_v1") steps.push(S("Entry: a SETUP on the derived straddle candles.", [setup,
+    sd.mode === "rising_leg"
+      ? S(`Bullish SETUP only (the combined premium turning up) → BUY ONE leg: the CE or the PE whose own close rose more over the last ${sd.lookback} candles. A bearish SETUP is not traded: it is the exit.`)
+      : S("Bullish SETUP (the combined premium turning up) → BUY the CE and BUY the PE. Bearish SETUP → SELL the CE and SELL the PE. Each leg is its own position."),
+    S("Each leg fills at its own candle close at the straddle's entry candle. One straddle trade at a time.")]));
   else if (rule === "htf_v1") {
     const h = spec.htf || {};
     steps.push(S("Entry: a SETUP is taken only in the higher-timeframe direction.", [setup,
@@ -108,7 +124,7 @@ export function algorithm(spec) {
     const f = spec.sma_filter;
     steps[steps.length - 1].sub.push(S(`Trend filter, on the same option chart: its SMA ${f.period} at the entry candle versus the candle before — LONG needs it rising, SHORT needs it falling; otherwise the trade is not taken (listed with the reason). The SMA starts at the contract's first candle, so it exists from its 200th.`));
   }
-  const skip = [S("The entry time is at or after the square-off time" + (p.square_off ? ` (${p.square_off})` : "") + "."),
+  const skip = [S("The entry time is at or after the square-off time" + (p.square_off ? ` (${sqOf(p)})` : "") + "."),
                 S("The same instrument (option strike + expiry + right, or the futures contract) already has an open position (strike lock)."),
                 S("Options: no candle for the picked strike at the entry (strike from the index: " + (o.strike_default || "") + ", " + (o.expiry_types || []).join(" / ").toLowerCase() + " expiry ≥ " + (o.expiry_min_days ?? 1) + " day out).")];
   if (rule !== "c2c_v1") steps.push(S("A signal is not taken when:", skip));
@@ -134,15 +150,15 @@ export function algorithm(spec) {
       ...so,
       ...(p.trail ? [S(`Trail: once ${p.trail.start_r}R is reached, the stop moves to (best R − ${p.trail.lag_r})R and only ever tightens, from the next candle.`)] : []),
       ...(p.reverse ? [S(`Stop and reverse: when the INITIAL stop is hit, open the opposite position at the stop (same lots and rules), at most ${p.reverse.max} time(s) per signal.`)] : []),
-      ...(p.square_off ? [S(`${p.square_off}: whatever is still open closes (intraday).`)] : [S("No square-off: positions are held overnight (positional).")]),
+      ...(p.square_off ? [S(`${sqOf(p)}: whatever is still open closes (intraday).`)] : [S("No square-off: positions are held overnight (positional).")]),
       S("The contract's last candle in the data → expiry.")]));
   } else {
     const sl = { prev_swing: "the latest confirmed swing low (long) / swing high (short)", choch_candle: "the CHoCH candle's low (long) / high (short)", none: "none" }[r.sl_rule] || r.sl_rule;
-    steps.push(S("Exit — first of:", [
+    steps.push(S(spec.straddle ? "Exit — read on the derived straddle candles, first of (each leg then fills at its own candle close):" : "Exit — first of:", [
       S(`Stop: ${sl}${r.sl_rule !== "none" ? " — exits when touched (fill: the stop, or the open if the candle gaps through it; a session's first candle fills at its close)" : ""}.`),
       S("The next CHoCH → exit at that candle's close."),
       ...(rule === "fz_v1" || rule === "fz_v2" ? [S("REENTER positions only: a close back through the band's middle → exit at that close.")] : []),
-      ...(p.square_off ? [S(`${p.square_off}: still open → exit at that candle's close (intraday).`)] : [S("No square-off: held overnight (positional).")]),
+      ...(p.square_off ? [S(`${sqOf(p)}: still open → exit at that candle's close (intraday).`)] : [S("No square-off: held overnight (positional).")]),
       S("The contract's last candle in the data → expiry.")]));
   }
   const t = spec.types || {};
@@ -175,7 +191,7 @@ export function rulesSentence(spec) {
     parts.push(`stop ${r.sl_rule.replace("_", " ")}, exit ${r.exit_rule.replace("_", " ")}`);
   }
   if (r.entry_rule === "c2c_v1") parts.push(`stop ${spec.c2c?.stop_pct}% then ${spec.c2c?.trail_pts}-pt trail, exit on a bullish flip or the ${spec.c2c?.ladder?.time} ladder`);
-  parts.push(p.square_off ? `flat by ${p.square_off}` : "positional");
+  parts.push(p.square_off ? `flat by ${sqOf(p)}` : "positional");
   parts.push(`warm-up ${spec.warmup_days} sessions`);
   return parts.join(" · ");
 }

@@ -216,7 +216,7 @@ export class ChartView {
     host0.innerHTML = LAYERS.filter(([k]) => has[k] !== false).map(([k, l, col]) =>
       `<button class="chip-t lay ${this.layers[k] ? "on" : ""}" data-layer="${k}"><i style="background:${col}"></i>${l}</button>`).join("");
     $$("button", host0).forEach((b) => b.onclick = () => { this.layers[b.dataset.layer] = !this.layers[b.dataset.layer]; pref("layers3", this.layers); this.redraw(); });
-    const main = this.draw($(".ch-main", this.root), d, { own: this.ctx.type === "FUT" && this.ctx.run.underlying !== "INDEX", main: true });
+    const main = this.draw($(".ch-main", this.root), d, { own: !!d.own || (this.ctx.type === "FUT" && this.ctx.run.underlying !== "INDEX"), main: true });
     this.legend(d);
     // row 2: the CE pane and the PE pane, side by side
     const host = $(".ch-panes", this.root);
@@ -417,6 +417,8 @@ export class ChartView {
     const n = d.trades.length, net = d.trades.reduce((a, r) => a + r[d.cols.indexOf("net")], 0);
     $(".ch-legend", this.root).innerHTML =
       (d.reference ? `<b>Futures for reference only: the signals are read on each option's own chart (CE / PE below).</b> ` : "") +
+      (d.derived ? `<b>Derived candles: ${esc(d.derived.what)} (${esc(d.derived.legs.filter((g) => g.strike).map((g) => `${g.day.slice(5)}: ${g.strike}`).join(", "))}). ` +
+                   `The market structure and the signals are read on these candles; the legs are below.</b> ` : "") +
       `${esc(this.day)}${this.to && this.to !== this.day ? " → " + esc(this.to) : ""} · ${d.sessions} session${d.sessions > 1 ? "s" : ""} · ` +
       `${d.candles.length} candles · ${n} trade${n === 1 ? "" : "s"} <span class="${net > 0 ? "pos" : net < 0 ? "neg" : ""}">${inr(net)}</span>` +
       ` · arrow = entry, dot = exit (reason, pts), dashed = path, dotted red = stop` + (d.fz ? " · purple / blue boxes = FZ bands (A / B), T W B R = gate" : "") +

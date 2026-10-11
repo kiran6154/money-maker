@@ -539,7 +539,7 @@ async function start() {
   renderFilters(); renderCards();
   const code = new URLSearchParams(location.search).get("code") || pref("code");       // ?code=ST3: a link from the strategy tree
   if (code && S.list.some((x) => x.spec.code === code)) { select(code, false); renderCards(); }
-  api("/api/config").then((c) => { const r = (c.intraday_close || [])[0]; if (r) $("#close-note").textContent = `intraday close ${r.time} from ${r.from}`; }).catch(() => {});
+  api("/api/config").then((c) => { const r = (c.intraday_close || [])[0]; if (r) { globalThis.__intradayClose = r; $("#close-note").textContent = `intraday close ${r.time} from ${r.from}`; if (S.code) select(S.code, false); } }).catch(() => {});
   poll();
 }
 start();

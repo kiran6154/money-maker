@@ -42,6 +42,7 @@ SPEC = {'code': 'ST57',
 _F = core.family("atm_straddle")
 ENTRY_RULES, TYPES, UNDERLYINGS, OWN_COVERAGE, REFUSED_WHY = _F.ENTRY_RULES, _F.TYPES, _F.UNDERLYINGS, _F.OWN_COVERAGE, _F.REFUSED_WHY
 run = _F.run
+chart_main = _F.chart_main        # the lab's main chart is the derived straddle candles, with the structure on them
 
 
 def signals(bars, spec):

@@ -1712,6 +1712,8 @@ def chart(code, run, typ, choice, day, inst=None, to=None, atm=None):
     cols = {k: i for i, k in enumerate(body["cols"])}
     d0, d1 = dnum(day), dnum(to or day)
     trades = body["trades"]
+    if not inst and not atm and hasattr(mod, "chart_main"):       # a strategy whose signals are read on candles of its own
+        return _jsonable(mod.chart_main(ctx, body, day, to or day))   # (the derived straddle candles): that chart, not the futures
     zones = None
     spot0 = None
     if atm:                                           # the ATM CE / PE of the day, whether or not the run traded it

@@ -125,3 +125,55 @@ def run(ctx):
                 trs.append(core.price_trade(ctx, rec))
     trs.sort(key=lambda r: (r["entry_time"], r["opt_type"]))
     return {ch: dict(trades=trs, skipped=skipped, signals=sigs) for ch in core.choice_keys(spec, "OPT_FUT_SIGNAL")}
+
+
+def chart_main(ctx, body, day, to):
+    """The lab's main chart for these strategies: the derived straddle candles of sessions day..to (each session its own
+    day-open ATM pair) with the engine's layers computed on them, and one marker row per straddle trade placed on the
+    combined premium (entry / exit = the combined close at those candles; points and rupees = the legs' own, summed)."""
+    spec = ctx["spec"]; chain = core.OptionChain("minute"); sp = core.series("spot", "minute")
+    minutes = core.TF_MIN[ctx["tf"]]; ss = core.sessions()
+    days = ss[(ss >= core.dnum(day)) & (ss <= core.dnum(to))]
+    C = {k: i for i, k in enumerate(body["cols"])}
+    by = {}                                                       # (entry time, position) -> the stored leg rows
+    for r in body["trades"]: by.setdefault((core.ts(r[C["entry_time"]]), r[C["position"]]), []).append(r)
+    candles, rows, legs, ov = [], [], [], None
+    LISTS = ("cand", "swings", "events", "flips", "prot", "setups", "pair", "tav", "trig")
+    for d in days:
+        d = int(d); got = pair_of(chain, sp, spec, d)
+        if isinstance(got, str): legs.append(dict(day=core.dstr(d), why=got)); continue
+        exp, k, ce, pe, idx_open = got
+        k_ = int(np.searchsorted(ss, d)); d_from = int(ss[max(0, k_ - ctx["warmup"])])
+        got = combined(ce, pe, d_from, d, minutes)
+        if got is None: legs.append(dict(day=core.dstr(d), why="the CE and the PE share no candle")); continue
+        b, ia, ib = got
+        eng = core.foundation(b, spec["rules"]); i0 = int(np.searchsorted(b.day, d)); i1 = len(b) - 1
+        if i0 > i1: continue
+        candles += core._chart_bars(b, i0, i1)
+        o_ = core._overlays(b, eng, i0, i1, pair=True)
+        if ov is None: ov = {k2: list(o_.get(k2) or []) for k2 in LISTS}
+        else:
+            for k2 in LISTS: ov[k2] += list(o_.get(k2) or [])
+        legs.append(dict(day=core.dstr(d), strike=k, expiry=exp, index_open=idx_open))
+        for x in eng.trades():
+            if x["entry"] < i0: continue
+            te = int(os_t(ce, ia, x["entry"])); pos = "LONG" if x["dir"] == "up" else "SHORT"
+            mine = by.get((te, pos))
+            if not mine: continue                                 # a SETUP the strategy did not take (square-off, lock, mode)
+            r = list(mine[0]); rights = "+".join(m[C["opt_type"]] for m in mine)
+            r[C["instrument"]] = f"{k} {rights} (straddle chart)"; r[C["opt_type"]] = rights
+            r[C["entry_px"]] = mine[0][C["und_entry"]]; r[C["exit_px"]] = mine[0][C["und_exit"]]; r[C["sl"]] = x["sl"]
+            for f in ("pts", "gross", "charges", "net"): r[C[f]] = round(sum(m[C[f]] for m in mine), 2)
+            r[C["label"]] = f"{pos} {rights}"
+            rows.append(r)
+    if not candles: raise ValueError(f"no day-open ATM straddle candles from {day}" + (f" to {to}" if to != day else "") + (f": {legs[0].get('why')}" if legs else ""))
+    out = dict(day=day, to=to, inst=None, candles=candles, cols=body["cols"], trades=rows, own=True,
+               sessions=len([g for g in legs if g.get("strike")]),
+               derived=dict(what="CE + PE of the strike nearest the index at each day's open", legs=legs))
+    out.update(ov or {})
+    return out
+
+
+def os_t(os_, ix, k):
+    """The time a leg's trade at combined candle k is recorded at (its own last 1-minute candle in that candle)."""
+    return os_.t[ix[k]]
