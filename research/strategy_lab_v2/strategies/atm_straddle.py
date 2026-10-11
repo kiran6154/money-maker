@@ -42,6 +42,11 @@ SPEC["straddle"]["mode"]:
                `entry` (optional): "signal" = no SETUP of the option is waited for: the leg is BOUGHT at the straddle
                signal's own candle (its close). The option's own structure then manages it: stop at its latest
                confirmed swing low below the entry, `trail`, exit at its next bearish CHoCH, flat by the square-off.
+               With `two_lots: {target_pts, trail_after_pts}` (entry "signal" only) the entry is two lots of
+               `position.lots` each: lot T1 leaves at entry + target_pts (the first stop until then, never moved);
+               lot TRAIL keeps the first stop until the option has traded at entry + trail_after_pts, then its stop
+               goes to the level of the latest bullish BOS since the entry and follows every later one. Both leave at
+               the stop, the option's next bearish CHoCH, or the square-off.
                `trail` (optional): the stop follows the option's own BOS in the trade's direction, from the candle
                after it, and never moves back. "bos_level" = to the level that BOS broke (the swing high for a long);
                "bos_swing" = to the latest confirmed swing low (long) / high (short) at that BOS.
@@ -311,14 +316,42 @@ def _at_signal(ctx, S, oe, ob, os_, b, arms, right, k, exp, name, trs, skipped):
         if cut and (ob.t[kx] > cut or still):
             kc = int(np.searchsorted(ob.t, cut, "right")) - 1
             if kc >= ke: kx, why, still = kc, "eod", False
-        kx, why, still, xpx, sl_last, moves = _trail(S.get("trail") or "none", oe, ob, ke, kx, why, still, float(ob.c[kx]), sl, True)
-        free_at = int(ob.t[kx])
         u = lambda t_: float(b.c[max(int(np.searchsorted(b.t, t_, "right")) - 1, 0)])
-        rec = dict(base, position="LONG", opt_type=right, kind="OPT", instrument=name, entry_time=t_arm, entry_px=e, exit_time=int(ob.t[kx]),
-                   exit_px=float(xpx), exit_reason=why, open=bool(still), sl=sl, sl_last=round(float(sl_last), 2), sl_moves=moves,
-                   und_entry=u(t_arm), und_exit=u(int(ob.t[kx])), stale=False, lots=lots, tranche="", label=f"LONG {right}")
-        core.excursion(os_, rec, True)
-        trs.append(core.price_trade(ctx, rec))
+        two = S.get("two_lots")
+        plans = ([("T1", dict(target=e + float(two["target_pts"]))), ("TRAIL", dict(mode=S.get("trail") or "none", unlock=e + float(two["trail_after_pts"])))]
+                 if two else [("", dict(mode=S.get("trail") or "none"))])
+        for tranche, kw in plans:
+            kx2, why2, still2, xpx, sl_last, moves = _walk(oe, ob, ke, kx, why, still, float(ob.c[kx]), sl, **kw)
+            free_at = max(free_at, int(ob.t[kx2]))
+            rec = dict(base, position="LONG", opt_type=right, kind="OPT", instrument=name, entry_time=t_arm, entry_px=e, exit_time=int(ob.t[kx2]),
+                       exit_px=float(xpx), exit_reason=why2, open=bool(still2), sl=sl, sl_last=round(float(sl_last), 2), sl_moves=moves,
+                       und_entry=u(t_arm), und_exit=u(int(ob.t[kx2])), stale=False, lots=lots, tranche=tranche,
+                       label=f"LONG {right}" + (f" {tranche}" if tranche else ""))
+            core.excursion(os_, rec, True)
+            trs.append(core.price_trade(ctx, rec))
+
+
+def _walk(oe, ob, ke, kx, why, still, xpx, sl, mode="none", unlock=None, target=None):
+    """A long re-walked candle by candle from the entry to its structure exit (candle kx). Each candle: the stop first
+    (filled at the stop, or the open when it opens below); then the target (filled at the target, or the open when it opens
+    above); then the stop may move for the next candle: to the level of the latest bullish BOS since the entry - held
+    back until the option has traded at `unlock` when that is given. Returns (exit candle, reason, open, exit price, the
+    last stop, how many times it moved)."""
+    ev = {}
+    for j in range(len(oe.ei)):
+        i = int(oe.ei[j])
+        if mode == "none" or oe.ek[j] != 0 or oe.ed[j] != 1 or i <= ke or i > kx: continue
+        m = np.nonzero((oe.sk == 1) & (oe.sc < i))[0] if mode == "bos_level" else np.nonzero((oe.sk == -1) & (oe.sc <= i))[0]
+        if len(m): ev[i] = float(oe.sp[m[-1]])
+    moves, want, free = 0, None, unlock is None
+    for i in range(ke + 1, kx + 1):
+        o_, h_, l_ = float(ob.o[i]), float(ob.h[i]), float(ob.l[i])
+        if l_ <= sl: return i, ("trail_stop" if moves else "stop_loss"), False, min(o_, sl), sl, moves
+        if target is not None and h_ >= target: return i, "target 1", False, max(o_, target), sl, moves
+        if not free and h_ >= unlock: free = True
+        if i in ev: want = ev[i] if want is None else max(want, ev[i])
+        if free and want is not None and want > sl: sl = want; moves += 1
+    return kx, why, still, xpx, sl, moves
 
 
 def _trail(mode, oe, ob, ke, kx, why, still, xpx, sl, up):

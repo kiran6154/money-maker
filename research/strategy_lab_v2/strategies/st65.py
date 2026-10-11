@@ -1,22 +1,23 @@
-"""ST65 - Strategy 65: buy the winning leg at the straddle chart's signal, buy or sell; the option's own structure manages it.
+"""ST65 - Strategy 65: buy the winning leg at the straddle chart's signal, two lots - one out at 20 points, one trailed.
 
   entry   ANY SETUP on the day-open ATM straddle's candles (its buy signal or its sell signal) -> at that same candle's
           close BUY the winning leg: the CE or the PE with the larger change of its close over SPEC["straddle"]["lookback"]
-          candles. No SETUP of the option is waited for. Nothing is ever sold.
-  stop    the option's own latest confirmed swing low below the entry; at every bullish BOS of the option it moves up to
-          the level that BOS broke, never back
-  exit    the stop, the option's next bearish CHoCH (that candle's close), or the square-off
-One trade a leg at a time. 1 lot.
-Built 2026-10-11 and corrected twice the same day at the user's word: first build sold the option on its own sell
-signals ("no, not that ... long only; when you get a sell in the combined chart, enter long in the winning one"); the
-second waited for the option's own SETUP ("we are entering late; enter at the same time as the derived chart's signal").
-All three sets of numbers: STRATEGY_ANALYSIS_TODO S78.
+          candles. TWO lots. No SETUP of the option is waited for. Nothing is ever sold.
+  stop    both lots: the option's own latest confirmed swing low below the entry
+  lot T1     out at entry + SPEC["straddle"]["two_lots"]["target_pts"] (20) points
+  lot TRAIL  its stop does not move until the option has traded at entry + trail_after_pts (20); from then it sits at
+             the level of the latest bullish BOS of the option since the entry and follows every later one, never back
+  exit    both: the stop, the option's next bearish CHoCH (that candle's close), or the square-off
+One entry a leg at a time (free when both lots are out).
+Built 2026-10-11 and changed three times the same day at the user's word (long only, not the option's sells; enter at
+the straddle signal's candle, not at the option's SETUP; two lots with the stop moved only after 20 points). The numbers
+of every build: STRATEGY_ANALYSIS_TODO S78.
 """
 import core
 
 SPEC = {'code': 'ST65',
- 'name': 'Straddle buy or sell signal → buy the winning option at once · stop follows the BOS · 1m',
- 'description': "Any SETUP on the day-open ATM straddle's candles (buy or sell) buys the winning leg (the CE or the PE going up) at that same candle's close. Long only. Stop at the option's own last swing low, moved up to the level each bullish BOS of the option broke; exit at the stop, the option's next bearish CHoCH or the square-off.",
+ 'name': 'Straddle signal → buy the winning option, 2 lots · one out at 20 pts, one trailed after 20 pts · 1m',
+ 'description': "Strategy 65's entry (any SETUP on the day-open ATM straddle's candles buys the winning leg at that candle) with two lots: one leaves at +20 points; the other keeps the first stop until the option has traded 20 points up, then its stop follows the option's bullish BOS. Both leave at the stop, the option's next bearish CHoCH or the square-off.",
  'timeframe': 'minute',
  'underlying': 'FUT',
  'warmup_days': 2,
@@ -26,7 +27,7 @@ SPEC = {'code': 'ST65',
            'sl_rule': 'prev_swing',
            'entry_rule': 'straddle_v1',
            'exit_rule': 'next_choch'},
- 'straddle': {'mode': 'leg_structure', 'lookback': 5, 'window': 'day', 'sides': 'long', 'arm': 'both', 'entry': 'signal', 'trail': 'bos_level', 'notes': 'the day-open ATM pair and its candles: strategies/atm_straddle.py'},
+ 'straddle': {'mode': 'leg_structure', 'lookback': 5, 'window': 'day', 'sides': 'long', 'arm': 'both', 'entry': 'signal', 'two_lots': {'target_pts': 20, 'trail_after_pts': 20}, 'trail': 'bos_level', 'notes': 'the day-open ATM pair and its candles: strategies/atm_straddle.py'},
  'lot_size': 65,
  'capital': {'futures_margin': 120000, 'short_option_margin': 150000},
  'position': {'lots': 1, 'square_off': '15:25', 'lock': 'strike', 'scale_out': []},
