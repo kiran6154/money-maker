@@ -457,6 +457,21 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S82. Lab v2 Strategy 65, two checks before building (2026-10-11): exit the trailed lot on the first big red candle after a rally (helps a little, both halves); buy the other leg at a trail exit (loses under every target and stop tried)
+
+| | |
+|---|---|
+| Where | A study on Strategy 65's stored trades as of S81 (176 entries, ₹-92,050; `results/ST65/all-data_1m`, Options (via futures) W-ATM, 2026-06-30 → 2026-10-09). Nothing in the lab was changed. The user's request: "if there is a rally then exit on the first big red candle; validate, if we buy the other side on the trail exit, whether that will give 20 points or 10 points". |
+| Definitions (fixed before running; none was given) | **Rally**: the option has traded R points above the entry, R = 20 (the trail's own unlock) or 10. **Big red candle**: a 1-minute candle of the option closing below its open with a body of at least K times the mean body of the 14 candles before it, K = 1.5, 2, 3. The trailed lot leaves at that candle's close when it comes before its stored exit. Knock-on effects (the leg free earlier, so later signals taken) are not counted. **Other side**: at each trail-stop exit of the trailed lot (45 cases) buy the other option of the same strike and expiry at that minute's close; costs 1 point slippage and ₹63 charges a lot. |
+| Impact A (big red candle) | **Measured, change to the trailed lots' total (stored: 176 lots, ₹-38,035).** Rally +20: K 1.5 fires on 37 lots, ₹+2,613 (halves +3,032 / -419); K 2 on 23 lots, ₹+6,620 (+3,907 / +2,714; better on 17, worse on 6); K 3 on 11 lots, ₹+2,785 (+2,603 / +182). Rally +10: K 1.5 on 88 lots, ₹+14,888 (+8,086 / +6,802; better on 56, worse on 32); K 2 on 70 lots, ₹+14,261 (+6,445 / +7,816); K 3 on 38 lots, ₹+9,701 (+8,379 / +1,323). |
+| Impact B (other leg) | **Measured, 45 buys, median premium 92.** Traded +10 at some point before the close: 26 (58%); +20: 11 (24%). Held to the close without target or stop: ₹-17,706 (14 winners). Target 10 with stop 50 / 20 / 10: ₹-10,813 / ₹-10,586 / ₹-5,808 (target reached 25 / 23 / 20 times). Target 20 with stop 50 / 20 / 10: ₹-20,797 / ₹-20,550 / ₹-14,538 (target reached 11 / 10 / 7 times). Every line negative in both halves. |
+| Read | A: the rule is positive for every definition tried and in both halves for most; the best (rally +10, K 1.5 or 2) takes back about ₹14,500 of the trailed lot's ₹-38,035. It does not make the strategy positive (₹-92,050 would be about ₹-77,500). Six definitions on 176 lots: the size of the gain is not established, the sign looks stable. B: buying the other leg when the trailed leg stops out does not pay: it gives 10 points more often than not but the rest lose more, and 20 points one time in four. |
+| Open (the user's call) | A is not built: which definition (rally 10 or 20, K) to put in Strategy 65 is the user's to choose; rule 0(c): before / after on the same window when it is built. B: not built, no reason to. |
+| Effort | **S** to build A. |
+| Priority | _Open; awaiting the user's choice on A._ Related: S81. |
+
+---
+
 ### S81. Lab v2 Strategy 65: the first stop changed to a flat 50 points. Before ₹-84,417 (122 entries), after ₹-92,050 (176 entries). The stop is hit 4 times; the loss is the option's next bearish CHoCH and the close
 
 | | |
