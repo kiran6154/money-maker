@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S73. Lab v2 Strategy 60: sell both legs on a sell signal, buy the rising leg on a buy signal, nothing bought back, 20 point target on every leg. Measured: loses on both halves; the target cuts the winners, the stop and CHoCH exits keep the losers
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/atm_straddle.py` (`mode: both_sides`, `_both_sides`), `st60.py`. 2026-10-11, the user's instruction after Strategy 59: "don't exit any, manage it with buy; keep a 20 points target for all entries; the stop-loss exit will remain the same". Answers to the three questions asked before building: on a buy signal buy the rising leg; the target is on each leg's own premium; the stop is Strategy 3's stop + the next CHoCH. Strategy 59 is kept as built. |
+| Build choices (not in the instruction; fixed before the run) | (1) The target is checked on the leg's own 1-minute candles after the entry candle and before the exit candle: filled at the target, or at the open when the candle gaps through it. On the exit candle itself the stop / CHoCH wins. (2) One entry a side at a time (a side is free when all legs of its last entry are closed); a short entry and a long entry can be open together. (3) The legs of an entry that have not reached the target leave at that straddle trade's own exit, at their own candle close. (4) `target_pts: 20` and `lookback: 5` are in the strategy's SPEC. |
+| Impact | **Measured, Options (via futures) W-ATM, 1 lot a leg, after costs, first trade 2026-07-01, last 2026-10-05, 41 sessions: 352 legs, ₹-62,197, PF 0.62, t -3.36, 44% winners; gross ₹-39,266.** First half (to 2026-08-12) 209 legs ₹-32,156, PF 0.67; second half 143 legs ₹-30,040, PF 0.56. 10 of 41 days positive; worst day ₹-7,160, best ₹+3,122. **Short legs 248: ₹-29,552 (PF 0.73)** = target 41 legs ₹+47,928; next CHoCH 99 ₹-34,967; stop 62 ₹-21,334; close 46 ₹-21,179. **Long legs 104: ₹-32,645 (PF 0.42, 21% winners)** = target 20 legs ₹+23,256; next CHoCH 38 ₹-28,519; stop 45 ₹-27,134. For comparison, same window: Strategy 59 ₹-14,953 (PF 0.87), Strategy 57 ₹-56,971 (0.72), Strategy 58 ₹-22,496 (0.63). |
+| Read | 61 of 352 legs (17%) reach 20 points. In Strategy 59 the short legs held to the close made ₹+73,496; here the legs that would have run are taken out at 20 points and what reaches the close is the remainder (₹-21,179). A fixed target with the structure stop is the wrong way round for a short-premium book: it caps the decay collected and keeps every adverse move. One quarter of data. |
+| Open (the user's call) | Unquantified: other target sizes, a target on the combined premium, the target only on the long leg (shorts left to decay). |
+| Effort | **S** each. |
+| Priority | _Open; first numbers recorded._ Related: S72, S70. |
+
+---
+
 ### S72. Lab v2 Strategy 59: the short straddle managed leg by leg on the straddle chart. Measured: loses a little; the legs bought back on a buy signal lose more than the legs held to the close make
 
 | | |

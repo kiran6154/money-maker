@@ -92,6 +92,11 @@ export function algorithm(spec) {
       S("That leg is not held (already bought back) → nothing happens; the other leg stays short."),
       S(`No stop and no CHoCH exit. ${sqOf(p)}: every leg still open is closed at that candle's close.`)]));
   }
+  else if (rule === "straddle_v1" && sd.mode === "both_sides") steps.push(S("Entry: a SETUP on the derived straddle candles.", [setup,
+    S("Bearish SETUP (the combined premium turning down) → SELL the CE and SELL the PE."),
+    S(`Bullish SETUP (the combined premium turning up) → BUY ONE leg: the CE or the PE whose own close rose more over the last ${sd.lookback} candles. A short still open is NOT bought back.`),
+    S("Each leg fills at its own candle close at that candle. One entry a side at a time; a short entry and a long entry can be open together."),
+    S(`Target, every leg: ${sd.target_pts} points on its own premium (short: entry − ${sd.target_pts}; long: entry + ${sd.target_pts}), touched on the leg's own 1-minute candles → that leg exits there (at the open if the candle gaps through).`)]));
   else if (rule === "straddle_v1") steps.push(S("Entry: a SETUP on the derived straddle candles.", [setup,
     sd.mode === "rising_leg"
       ? S(`Bullish SETUP only (the combined premium turning up) → BUY ONE leg: the CE or the PE whose own close rose more over the last ${sd.lookback} candles. A bearish SETUP is not traded: it is the exit.`)
