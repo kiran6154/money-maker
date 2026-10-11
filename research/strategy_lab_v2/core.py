@@ -1950,16 +1950,19 @@ def explorer_chart(date, inst, code, tf="minute", expiry=None, strike=None, righ
     return _jsonable(out)
 
 def explorer_straddle(code, frm, to, tf="minute"):
-    """The day-open ATM straddle, session by session from `frm` to `to`: on each session the strike nearest the index's
-    first candle (no look-ahead) for which both the CE and the PE have candles that day, on the strategy's nearest weekly
-    expiry (options.expiry_min_days out), and per candle the CE close + the PE close (candles both legs have).
-    rows = [time, combined, ce, pe, volume of both]; legs = one entry per session (strike, expiry, the index open, how far
-    the strike is from the true ATM when the ATM has no candles)."""
+    """The day-open ATM straddle as candles, session by session from `frm` to `to`: on each session the strike nearest the
+    index's first candle (no look-ahead) for which both the CE and the PE have candles that day, on the strategy's nearest
+    weekly expiry (options.expiry_min_days out; the one expiring that day when the next is not in the data yet).
+    The combined premium is built on the 1-minute candles both legs have: open = CE open + PE open, close = CE close + PE
+    close. A candle of `tf` takes the first open and the last close of its minutes, and its high / low are the highest /
+    lowest combined open or close among them (the two legs' own highs come at different moments, so adding them would
+    overstate the range; on 1-minute candles the wick therefore only reaches the open or the close).
+    rows = [time, open, high, low, close, ce close, pe close, volume of both]; legs = one entry per session."""
     if tf not in TF_MIN: raise ValueError(f"tf must be one of {tuple(TF_MIN)}")
     spec = load_strategies()[code].SPEC; o = spec["options"]; step = o["strike_step"]
     ss = sessions(); days = ss[(ss >= dnum(frm)) & (ss <= dnum(to))]
     if not len(days): raise ValueError(f"no session from {frm} to {to}")
-    ch = OptionChain(tf); sp = series("spot", "minute")
+    ch = OptionChain("minute"); sp = series("spot", "minute"); width = TF_MIN[tf]
     rows, legs = [], []
     for d in days:
         d = int(d); i = int(np.searchsorted(sp.day, d))
@@ -1979,13 +1982,18 @@ def explorer_straddle(code, frm, to, tf="minute"):
         if not found: legs.append(dict(day=dstr(d), expiry=exp, why=f"no CE + PE pair near {k0} with candles")); continue
         k, ce, pe, a0, a1, b0, b1 = found
         t, ia, ib = np.intersect1d(ce.t[a0:a1], pe.t[b0:b1], return_indices=True)
+        if not len(t): legs.append(dict(day=dstr(d), expiry=exp, why="the CE and the PE share no candle that day")); continue
         ia += a0; ib += b0
-        for q in range(len(t)):
-            rows.append([int(t[q]), round(float(ce.c[ia[q]] + pe.c[ib[q]]), 2), float(ce.c[ia[q]]), float(pe.c[ib[q]]),
-                         float(ce.v[ia[q]] + pe.v[ib[q]])])
+        op, cl = ce.o[ia] + pe.o[ib], ce.c[ia] + pe.c[ib]
+        tod = t % DAY; bucket = t - tod + (555 + ((tod // 60 - 555) // width) * width) * 60      # 09:15-aligned candles of `tf`
+        cuts = np.concatenate([[0], np.nonzero(np.diff(bucket))[0] + 1, [len(t)]])
+        for q0, q1 in zip(cuts[:-1], cuts[1:]):
+            hi = max(float(op[q0:q1].max()), float(cl[q0:q1].max())); lo = min(float(op[q0:q1].min()), float(cl[q0:q1].min()))
+            rows.append([int(bucket[q0]), round(float(op[q0]), 2), round(hi, 2), round(lo, 2), round(float(cl[q1 - 1]), 2),
+                         float(ce.c[ia[q1 - 1]]), float(pe.c[ib[q1 - 1]]), float(ce.v[ia[q0:q1]].sum() + pe.v[ib[q0:q1]].sum())])
         legs.append(dict(day=dstr(d), expiry=exp, strike=int(k), index_open=float(sp.o[i]), true_atm=k0, off=int(k - k0),
-                         first=round(float(ce.c[ia[0]] + pe.c[ib[0]]), 2) if len(t) else None,
-                         last=round(float(ce.c[ia[-1]] + pe.c[ib[-1]]), 2) if len(t) else None))
+                         first=round(float(op[0]), 2), last=round(float(cl[-1]), 2),
+                         high=round(max(float(op.max()), float(cl.max())), 2), low=round(min(float(op.min()), float(cl.min())), 2)))
     return _jsonable(dict(code=code, tf=tf, rows=rows, legs=legs))
 
 
