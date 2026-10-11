@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S76. Lab v2 Strategy 63: the straddle chart's long scenario arms the rising leg, Strategy 3 then trades that option's own chart. Measured: ₹+5,908 on 41 trades, all of it one day; second half negative
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/atm_straddle.py` (`mode: leg_structure`, `_leg_structure`), `st63.py`. 2026-10-11, the user's instruction after Strategy 62: "derive another from this: when this long scenario comes, start applying our Strategy 3 on the options directly and start to trade". |
+| Build choices (not in the instruction; fixed before the run) | (1) The long scenario = a bullish SETUP on the derived straddle candles; it trades nothing and arms the leg going up (Strategy 58's definition). (2) From the next candle Strategy 3 runs on that option's own 1-minute candles (warmed up on the option's own two sessions before): its bullish SETUP buys the option, stop at the option's previous swing low (filled at the stop, or the open on a gap), exit at the stop or the option's next CHoCH, flat at 15:14. No fixed target. (3) Default `window: day` (armed to the close; "start" has no end in the instruction) and `sides: long` (Strategy 62 sells nothing). (4) One trade a leg at a time. |
+| Impact | **Measured, Options (via futures) W-ATM, 1 lot, after costs, 2026-06-30 → 2026-10-09. The strategy as built (armed to the close, buy only): 41 trades, ₹+5,908, PF 1.30, 22% winners; 23 days with a trade, 6 positive, best day ₹+11,922, worst ₹-2,622. First half (to 2026-08-12) 25 trades ₹+12,706 (PF 2.27); second half 16 trades ₹-6,798 (PF 0.31).** By exit: held to the close 8 trades ₹+16,938; next CHoCH 19 trades ₹-311; stop 14 trades ₹-10,718 (none a winner). PE 25 trades ₹+10,857; CE 16 trades ₹-4,949. **Without its best day the book is ₹-6,014.** The other three combinations, same window: armed to the close, buy and sell: 96 trades ₹-2,531 (PF 0.94; the sells 55 trades ₹-8,439). Armed only while the straddle SETUP is alive, buy only: 8 trades ₹+7,255 (one trade ₹+11,503; second half 1 trade). The same, buy and sell: 14 trades ₹+4,662. |
+| Read | The first positive line in this family, and not evidence: one position held to the close on one day carries it, the second half loses, 22% of trades win. The pattern of S64 again: the trades that survive to the close pay, the stopped ones lose every time. Comparison, same window: Strategy 62 (the same scenario bought directly, 20 point target) ₹-26,464; Strategy 32 (Strategy 3 on every option chart, no scenario) ₹-86,766 on 652 trades (S71). |
+| Open (the user's call) | Unquantified: more option history is needed before this can be judged (the store keeps downloading; rebuild with `tools/build_from_store.py` and re-run); disarming on a bearish straddle SETUP; the arming applied to Strategy 32's filters. |
+| Effort | **S** each. |
+| Priority | _Open; first numbers recorded. Re-run when the option history is longer._ Related: S75, S70, S64. |
+
+---
+
 ### S75. Lab v2 Strategy 62: only the long scalp of Strategy 61 (the short straddle imaginary). Measured: loses. The "72k" is the legs that reached the target, a set known only afterwards, and two thirds of it came from the shorts
 
 | | |

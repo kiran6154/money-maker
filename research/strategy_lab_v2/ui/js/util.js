@@ -92,6 +92,20 @@ export function algorithm(spec) {
       S("That leg is not held (already bought back) → nothing happens; the other leg stays short."),
       S(`No stop and no CHoCH exit. ${sqOf(p)}: every leg still open is closed at that candle's close.`)]));
   }
+  else if (rule === "straddle_v1" && sd.mode === "leg_structure") {
+    steps.push(S("The long scenario: a bullish SETUP on the derived straddle candles (the combined premium turning up). It trades nothing; it picks the option.", [setup,
+      S(`The option picked (armed) is the leg going up: the CE or the PE whose own close rose more over the last ${sd.lookback} candles (a tie: the CE).`),
+      S(sd.window === "day" ? "Once armed, a leg stays armed until the close. A later long scenario can arm the other leg too."
+                            : "A leg is armed only while that straddle SETUP is alive: until its stop (the previous swing of the combined premium) or the next CHoCH on the straddle chart.")]));
+    steps.push(S("Entry: Strategy 3 on the ARMED OPTION'S OWN 1-minute candles (not the straddle, not the futures).", [
+      S(`The same structure rules run on the option's own candles (its ${spec.warmup_days} sessions before warm it up): swings, protected level, CHoCH, SETUP.`),
+      S(sd.sides === "both" ? "The option's bullish SETUP → BUY it. Its bearish SETUP → SELL it." : "The option's bullish SETUP, after it was armed → BUY the option. Its bearish SETUPs are not traded."),
+      S("Entry at that candle's close. One trade a leg at a time.")]));
+    steps.push(S("Exit — on the option's own candles, first of:", [
+      S("Stop: the option's latest confirmed swing low (long) / swing high (short) — exits when touched (fill: the stop, or the open if the candle gaps through it)."),
+      S("The option's next CHoCH → exit at that candle's close."),
+      S(`${sqOf(p)}: still open → exit at that candle's close.`)]));
+  }
   else if (rule === "straddle_v1" && sd.mode === "both_sides") steps.push(S("Entry: a SETUP on the derived straddle candles.", [setup,
     sd.real === "long" ? S("Bearish SETUP (the combined premium turning down) → NOTHING is sold: the short straddle is imaginary.")
                        : S("Bearish SETUP (the combined premium turning down) → SELL the CE and SELL the PE."),
@@ -169,6 +183,7 @@ export function algorithm(spec) {
       ...(p.reverse ? [S(`Stop and reverse: when the INITIAL stop is hit, open the opposite position at the stop (same lots and rules), at most ${p.reverse.max} time(s) per signal.`)] : []),
       ...(p.square_off ? [S(`${sqOf(p)}: whatever is still open closes (intraday).`)] : [S("No square-off: positions are held overnight (positional).")]),
       S("The contract's last candle in the data → expiry.")]));
+  } else if (sd && sd.mode === "leg_structure") {      // its exits are listed with the entry above
   } else if (sd && sd.exit === "target_only") {
     steps.push(S("Exit — the target is the only exit:", [
       S(`A leg leaves when its own premium has moved ${sd.target_pts} points in its favour (the target above).`),

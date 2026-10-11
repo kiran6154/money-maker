@@ -68,6 +68,7 @@ LINEAGE = {
     "ST60": ("ST57", "A sell signal sells both legs; a buy signal buys only the leg that is going up, and no short is bought back. A 20 point target on every leg's own premium; stop and CHoCH exit unchanged."),
     "ST61": ("ST60", "The 20 point target is the only exit: no stop and no CHoCH exit; a leg that has not reached it is closed at the square-off."),
     "ST62": ("ST61", "Nothing is sold: the short straddle is imaginary. Only the long leg of a buy signal is traded, out at the 20 point target or the square-off."),
+    "ST63": ("ST62", "The buy signal on the straddle chart no longer buys: it arms the rising leg, and Strategy 3 then runs on that option's own candles (buy on its SETUP, its own stop and CHoCH exit). No fixed target."),
     "ST56": (None, "A separate idea: the TradingFinder SMLS indicator's own Long / Short signals; stop at the order block's far edge; flat by the square-off."),
 }
 
