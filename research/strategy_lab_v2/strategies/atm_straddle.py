@@ -37,6 +37,8 @@ SPEC["straddle"]["mode"]:
                previous swing, exit at the stop or the option's next CHoCH, flat by the square-off. One trade a leg at a time.
                `window`: "day" = armed until the close; "scenario" = armed only until that straddle trade's own exit.
                `sides`: "long" = only the option's bullish SETUPs (buy it); "both" = its bearish SETUPs sell it too.
+               `arm` (optional): "both" = a bearish SETUP on the straddle chart arms the leg that is going up as well
+               (default: only the bullish one does).
                `trail` (optional): the stop follows the option's own BOS in the trade's direction, from the candle
                after it, and never moves back. "bos_level" = to the level that BOS broke (the swing high for a long);
                "bos_swing" = to the latest confirmed swing low (long) / high (short) at that BOS.
@@ -244,7 +246,7 @@ def _leg_structure(ctx, S, eng, b, i_day, d, d_from, k, exp, chain, legs, trs, s
     arms = {"CE": [], "PE": []}                                       # per leg: (armed after this time, until this time)
     for x in eng.trades():
         ke = x["entry"]
-        if ke < i_day or x["dir"] != "up": continue
+        if ke < i_day or (x["dir"] != "up" and S.get("arm") != "both"): continue
         right = "CE" if float(ce.c[ia[ke]] - ce.c[ia[max(ke - n, 0)]]) >= float(pe.c[ib[ke]] - pe.c[ib[max(ke - n, 0)]]) else "PE"
         until = int(b.t[x["exit"]]) if S["window"] == "scenario" and not x["open"] else int(b.t[-1]) + DAY
         arms[right].append((int(b.t[ke]), until))

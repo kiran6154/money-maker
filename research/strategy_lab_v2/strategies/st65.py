@@ -1,19 +1,20 @@
-"""ST65 - Strategy 65: Strategy 64 trading both the buy and the sell signals of the armed option.
+"""ST65 - Strategy 65: Strategy 64 with the straddle chart's sell signal arming the winning leg too. Long only.
 
 Strategy 64: a bullish SETUP on the day-open ATM straddle's candles arms the leg that is going up; Strategy 3 then runs on
-that option's own candles; the stop follows the option's BOS.
-The change: the armed option's bearish SETUPs are traded too.
-  option's bullish SETUP   BUY it;  stop at its previous swing low,  moved up to the level each bullish BOS broke
-  option's bearish SETUP   SELL it; stop at its previous swing high, moved down to the level each bearish BOS broke
-Exit at the stop, the option's next CHoCH, or the square-off. One trade a leg at a time. 1 lot.
-Built 2026-10-11 from the user's instruction ("in this, do it for both sell and buy signals"). First numbers:
-STRATEGY_ANALYSIS_TODO S78.
+that option's own candles and buys it on its bullish SETUP; the stop follows the option's BOS.
+The change: a bearish SETUP on the straddle chart (its sell signal) arms a leg as well - the winning one, the same
+definition: the CE or the PE with the larger change of its close over SPEC["straddle"]["lookback"] candles. Nothing is
+ever sold: the armed option is bought on its own bullish SETUP, stop at its previous swing low, moved up to the level each
+bullish BOS broke; exit at the stop, the option's next CHoCH, or the square-off. One trade a leg at a time. 1 lot.
+Built 2026-10-11. The first build (the armed option's own sell signals traded as shorts) was not what the user asked for
+and was replaced the same day: "this is also long only; when you get a sell in the combined chart, enter long in the
+winning one". Both sets of numbers: STRATEGY_ANALYSIS_TODO S78.
 """
 import core
 
 SPEC = {'code': 'ST65',
- 'name': 'Straddle long scenario → Strategy 3 on the rising option, buy and sell · stop follows the BOS · 1m',
- 'description': "Strategy 64 with both sides of the armed option traded: its bullish SETUP buys it, its bearish SETUP sells it; the stop follows the option's BOS in the trade's direction (to the level that BOS broke, never back). Exit at the stop, the option's next CHoCH or the square-off.",
+ 'name': 'Straddle buy or sell signal → Strategy 3 long on the winning option · stop follows the BOS · 1m',
+ 'description': "Strategy 64 with both signals of the day-open ATM straddle's candles arming a leg: a bullish or a bearish SETUP there arms the option (CE or PE) that is going up; Strategy 3 on that option's own candles then buys it on its bullish SETUP. Long only. The stop follows the option's BOS; exit at the stop, its next CHoCH or the square-off.",
  'timeframe': 'minute',
  'underlying': 'FUT',
  'warmup_days': 2,
@@ -23,7 +24,7 @@ SPEC = {'code': 'ST65',
            'sl_rule': 'prev_swing',
            'entry_rule': 'straddle_v1',
            'exit_rule': 'next_choch'},
- 'straddle': {'mode': 'leg_structure', 'lookback': 5, 'window': 'day', 'sides': 'both', 'trail': 'bos_level', 'notes': 'the day-open ATM pair and its candles: strategies/atm_straddle.py'},
+ 'straddle': {'mode': 'leg_structure', 'lookback': 5, 'window': 'day', 'sides': 'long', 'arm': 'both', 'trail': 'bos_level', 'notes': 'the day-open ATM pair and its candles: strategies/atm_straddle.py'},
  'lot_size': 65,
  'capital': {'futures_margin': 120000, 'short_option_margin': 150000},
  'position': {'lots': 1, 'square_off': '15:25', 'lock': 'strike', 'scale_out': []},

@@ -457,16 +457,17 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
-### S78. Lab v2 Strategy 65: Strategy 64 trading the armed option's sell signals too. Measured: the sells lose (₹-6,946 on 55 trades) and turn the book negative
+### S78. Lab v2 Strategy 65: Strategy 64 with the straddle chart's sell signal arming the winning leg too (long only). Measured: the added trades lose (44 trades, ₹-7,069) and turn the book negative
 
 | | |
 |---|---|
-| Where | `research/strategy_lab_v2/strategies/st65.py` (`straddle.sides: both` with `trail: bos_level`; no new code in `atm_straddle.py`). 2026-10-11, the user's instruction, naming Strategy 64: "in this, do it for both sell and buy signals". The message ended "of v" (cut off); read as the buy and sell signals of the armed option's own chart. Strategy 64 is kept as built. |
-| What was built | The armed option (the rising leg at the straddle chart's bullish SETUP, armed to the close) is traded on both of its own SETUPs: bullish = buy it (stop at its previous swing low, moved up to the level each bullish BOS broke); bearish = sell it (stop at its previous swing high, moved down to the level each bearish BOS broke). Exit at the stop, the option's next CHoCH, or the square-off. One trade a leg at a time. The straddle chart's own sell signal still arms nothing. |
-| Impact | **Measured, Options (via futures) W-ATM, 1 lot, after costs, 2026-06-30 → 2026-10-09: 96 trades, ₹-5,686, PF 0.80, t -0.46, 34% winners.** First half (to 2026-08-12) 57 trades ₹+3,000 (PF 1.19); second half 39 trades ₹-8,686 (PF 0.34). 9 of 26 days positive; best day ₹+10,022; without it ₹-15,707. **Buys 41 trades ₹+1,261 (Strategy 64 exactly). Sells 55 trades ₹-6,946, PF 0.46, 40% winners**: moved stop 38 trades ₹+874; first stop 9 trades ₹-5,849 (none a winner); next CHoCH 5 trades ₹-1,911; close 3 trades ₹-61. CE 42 trades ₹-5,040; PE 54 trades ₹-646. The same two sides without the trail (S76): 96 trades ₹-2,531, the sells ₹-8,439. |
-| Read | Selling the option that the straddle chart has just picked as the rising one loses, with or without the trail. One quarter of data. |
-| Open (the user's call) | Unquantified: if "sell signals" meant the straddle chart's own bearish SETUP (arming a leg to be sold, or the falling leg), that is a different strategy and has not been built. |
-| Effort | **S**. |
+| Where | `research/strategy_lab_v2/strategies/st65.py` (`straddle.arm: both`, `sides: long`, `trail: bos_level`), `atm_straddle.py` (`arm`). 2026-10-11. The user's instruction, naming Strategy 64: "in this, do it for both sell and buy signals", then, after the first build: "no, not that; correct ST65; this is also long only; when you get a sell in the combined chart, enter long in the winning one". Strategy 64 is kept as built. |
+| First build (wrong reading, replaced the same day) | The armed option's own bearish SETUPs traded as shorts. Measured before it was replaced, same window: 96 trades, ₹-5,686, PF 0.80; the sells 55 trades ₹-6,946 (PF 0.46). Not in the lab any more. |
+| What is built | A bearish SETUP on the derived straddle candles arms a leg as the bullish one does: the leg going up (the larger change of its close over the last 5 candles), armed to the close. Strategy 3 on that option's own candles buys it on its bullish SETUP; stop at its previous swing low, moved up to the level each bullish BOS broke; exit at the stop, the option's next CHoCH, or the square-off. Nothing is sold. The buy is the option's own SETUP after the arming, not an immediate buy at the straddle's sell signal. |
+| Impact | **Measured, Options (via futures) W-ATM, 1 lot, after costs, 2026-06-30 → 2026-10-09: 85 trades, ₹-5,808, PF 0.78, t -0.48, 31% winners.** First half (to 2026-08-12) 47 trades ₹+7,824 (PF 1.69); second half 38 trades ₹-13,632 (PF 0.07). 9 of 30 days positive; best day ₹+10,572; without it ₹-16,380. **The 41 trades Strategy 64 also takes: ₹+1,261. The 44 trades the sell signal adds: ₹-7,069, PF 0.30, 34% winners.** By exit: moved stop 54 trades ₹+11,066 (46% winners); first stop 21 trades ₹-13,781 (none a winner); next CHoCH 7 trades ₹-3,945; close 3 trades ₹+852. CE 40 trades ₹-6,344; PE 45 trades ₹+536. |
+| Read | Arming on the straddle's sell signal roughly doubles the trades and the added half loses. When the combined premium is turning down, the leg that rose over the last five candles is rising inside a shrinking straddle, and buying it afterwards has not paid. One quarter of data. |
+| Open (the user's call) | Unquantified: buying the winning leg at once at the straddle's sell signal (no SETUP on the option needed); arming only on the sell signal. |
+| Effort | **S** each. |
 | Priority | _Open; first numbers recorded._ Related: S77, S76. |
 
 ---

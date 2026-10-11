@@ -93,7 +93,8 @@ export function algorithm(spec) {
       S(`No stop and no CHoCH exit. ${sqOf(p)}: every leg still open is closed at that candle's close.`)]));
   }
   else if (rule === "straddle_v1" && sd.mode === "leg_structure") {
-    steps.push(S("The long scenario: a bullish SETUP on the derived straddle candles (the combined premium turning up). It trades nothing; it picks the option.", [setup,
+    steps.push(S(sd.arm === "both" ? "The scenario: ANY SETUP on the derived straddle candles — a buy signal (the combined premium turning up) or a sell signal (turning down). It trades nothing; it picks the option."
+                                   : "The long scenario: a bullish SETUP on the derived straddle candles (the combined premium turning up). It trades nothing; it picks the option.", [setup,
       S(`The option picked (armed) is the leg going up: the CE or the PE whose own close rose more over the last ${sd.lookback} candles (a tie: the CE).`),
       S(sd.window === "day" ? "Once armed, a leg stays armed until the close. A later long scenario can arm the other leg too."
                             : "A leg is armed only while that straddle SETUP is alive: until its stop (the previous swing of the combined premium) or the next CHoCH on the straddle chart.")]));
