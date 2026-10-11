@@ -526,6 +526,7 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Read | The restart does what was asked: 12 more sessions now give signals (without it the gapped straddle chart sat far from yesterday's protected level and printed no CHoCH all day). The signals it adds lose at the same rate as the rest (PF 0.52 on gap days, 0.53 on the others), so more trades is more loss. The small positive on the sell-signal entries in S79 did not survive. One quarter of data, both halves negative. |
 | Open (the user's call) | Unquantified: the restart on Strategies 57 - 64 (their numbers were measured without it; 26 of 67 sessions gave Strategy 57 no trade at all); a gap measured on the index instead of each chart. |
 | Effort | **S** each. |
+| Addendum 2026-10-11 (the rule asked for again; measured on Strategy 65 as it stands after S83: flat 50 point stop, no previous-low filter) | Same window, two lots an entry. No restart at all: 124 entries, 40 days, ₹-73,556, PF 0.61 (halves ₹-62,379 / ₹-11,177). The rule in the strategy (first candle opens outside the previous session's range): 176 entries, 57 days, ₹-92,050, PF 0.61 (₹-64,283 / ₹-27,767). Restart on ANY gap (open not equal to the previous close: every day in practice): 187 entries, 61 days, ₹-83,095, PF 0.67 (₹-66,635 / ₹-16,460). More days trade with a restart; the profit factor barely moves. Not changed: which definition is the user's call. |
 | Priority | _Open; before / after recorded._ Related: S79, S78, S70. |
 
 ---
