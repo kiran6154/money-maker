@@ -101,7 +101,9 @@ export function algorithm(spec) {
     if (sd.entry === "signal") steps.push(S("Entry: at that same candle's close, BUY the picked option. No SETUP of the option is waited for.", [
       S("Long only: nothing is sold, also on the straddle chart's sell signal."),
       S(`The option's own 1-minute candles carry the same structure rules (its ${spec.warmup_days} sessions before warm them up); they give the stop and the exit, not the entry.`),
-      S("Initial stop: the option's latest confirmed swing low below the entry price. None → the signal is skipped."),
+      S(sd.stop?.rule === "prev_choch"
+        ? `Initial stop: the low of the option's latest CHoCH candle at or before the entry, less ${sd.stop.buffer_pct}% of that low. No CHoCH yet, or that level is not below the entry → the signal is skipped.`
+        : "Initial stop: the option's latest confirmed swing low below the entry price. None → the signal is skipped."),
       ...(sd.two_lots ? [S(`TWO lots are bought: lot T1 (out at +${sd.two_lots.target_pts} points) and lot TRAIL (trailed).`)] : []),
       S("One trade a leg at a time.")]));
     else steps.push(S("Entry: Strategy 3 on the ARMED OPTION'S OWN 1-minute candles (not the straddle, not the futures).", [
@@ -109,7 +111,8 @@ export function algorithm(spec) {
       S(sd.sides === "both" ? "The option's bullish SETUP → BUY it. Its bearish SETUP → SELL it." : "The option's bullish SETUP, after it was armed → BUY the option. Its bearish SETUPs are not traded."),
       S("Entry at that candle's close. One trade a leg at a time.")]));
     steps.push(S("Exit — on the option's own candles, first of:", [
-      S("Stop: the option's latest confirmed swing low (long) / swing high (short) — exits when touched (fill: the stop, or the open if the candle gaps through it)."),
+      S(sd.stop?.rule === "prev_choch" ? "Stop: the level above — exits when touched (fill: the stop, or the open if the candle opens below it)."
+                                       : "Stop: the option's latest confirmed swing low (long) / swing high (short) — exits when touched (fill: the stop, or the open if the candle gaps through it)."),
       ...(sd.two_lots ? [
         S(`Lot T1: target ${sd.two_lots.target_pts} points above the entry premium → out there (at the open if the candle opens above it). Its stop never moves.`),
         S(`Lot TRAIL: its stop stays at the first stop until the option has traded ${sd.two_lots.trail_after_pts} points above the entry. From then it sits at the level of the latest bullish BOS since the entry and follows every later BOS; it never moves back. An exit at a moved stop is shown as TRAIL.`),

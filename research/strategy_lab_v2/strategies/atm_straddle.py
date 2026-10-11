@@ -42,6 +42,9 @@ SPEC["straddle"]["mode"]:
                `entry` (optional): "signal" = no SETUP of the option is waited for: the leg is BOUGHT at the straddle
                signal's own candle (its close). The option's own structure then manages it: stop at its latest
                confirmed swing low below the entry, `trail`, exit at its next bearish CHoCH, flat by the square-off.
+               With `stop: {rule: "prev_choch", buffer_pct}` (entry "signal" only) the first stop is the low of the
+               option's latest CHoCH candle at or before the entry, less buffer_pct percent of that low - instead of
+               the latest swing low.
                With `two_lots: {target_pts, trail_after_pts}` (entry "signal" only) the entry is two lots of
                `position.lots` each: lot T1 leaves at entry + target_pts (the first stop until then, never moved);
                lot TRAIL keeps the first stop until the option has traded at entry + trail_after_pts, then its stop
@@ -307,9 +310,15 @@ def _at_signal(ctx, S, oe, ob, os_, b, arms, right, k, exp, name, trs, skipped):
         skip = lambda why: skipped.append(dict(base, position="LONG", opt_type=right, instrument=name, entry_time=t_arm, why=why))
         if cut and t_arm >= cut: skip("entry at or after the square-off time"); continue
         if t_arm <= free_at: skip(f"one trade a leg at a time: open until {core.tstr(free_at)}"); continue
-        m = np.nonzero((oe.sk == -1) & (oe.sc <= ke) & (oe.sp < e))[0]      # the option's confirmed swing lows below the entry
-        if not len(m): skip("the option has no confirmed swing low below the entry: no stop"); continue
-        sl = float(oe.sp[m[-1]])
+        if (S.get("stop") or {}).get("rule") == "prev_choch":
+            m = np.nonzero((oe.ek == 1) & (oe.ei <= ke))[0]                   # the option's CHoCH candles so far
+            if not len(m): skip("the option has no CHoCH before the entry: no stop"); continue
+            sl = round(float(ob.l[int(oe.ei[m[-1]])]) * (1 - float(S["stop"]["buffer_pct"]) / 100), 2)
+            if sl >= e: skip("the previous CHoCH's low less the buffer is not below the entry: no stop"); continue
+        else:
+            m = np.nonzero((oe.sk == -1) & (oe.sc <= ke) & (oe.sp < e))[0]  # the option's confirmed swing lows below the entry
+            if not len(m): skip("the option has no confirmed swing low below the entry: no stop"); continue
+            sl = float(oe.sp[m[-1]])
         nx = np.nonzero((oe.ek == 1) & (oe.ed == -1) & (oe.ei > ke))[0]      # the option's next bearish CHoCH
         if len(nx): kx = int(oe.ei[nx[0]]); why, still = "next_choch", False
         else: kx, why, still = len(ob) - 1, "open", True

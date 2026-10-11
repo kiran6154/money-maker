@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S79. Lab v2 Strategy 65: the first stop changed from the option's latest swing low to its previous CHoCH candle's low less 10%. Before ₹-82,367 (198 entries), after ₹-34,769 (87 entries); 75 signals have no usable stop under the new rule
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/st65.py` (`straddle.stop: {rule: prev_choch, buffer_pct: 10}`), `atm_straddle.py` (`_at_signal`). 2026-10-11, the user's instruction after asking what the stop was (the latest swing low: median 6.65 points below the entry, 61% of entries stopped there): "the stop is the previous CHoCH - 10%". Everything else in Strategy 65 is as in S78 (fourth build). |
+| How it was read | The option's own chart: the low of the latest CHoCH candle (either direction) at or before the entry candle, less 10% of that low. Not read as the combined chart's CHoCH: a level of the combined premium is not a price of one leg. When that level is not below the entry price (the CHoCH happened when the premium was more than about 11% higher) there is no stop and the signal is not taken. |
+| Impact | **Measured, Options (via futures) W-ATM, after costs, same window (2026-06-30 → 2026-10-09). Before: 198 entries (396 lots), ₹-82,367, PF 0.57; halves ₹-64,464 / ₹-17,904. After: 87 entries (174 lots), ₹-34,769, PF 0.72, t -1.53, 37% winners; halves ₹-31,190 (PF 0.62) / ₹-3,579 (PF 0.91).** 14 of 39 days positive; worst day ₹-7,811, best ₹+8,058. Stop distance: median 34.7 points (quartiles 23.0 and 71.0) against 6.65 before. **Signals not taken: 75 with the CHoCH level not below the entry, 29 with no CHoCH of the option yet in its warm-up window, 37 because the leg was still in a trade** (the wider stop keeps positions open longer). Lot T1: ₹-26,379 = target 30 lots ₹+34,974; next bearish CHoCH 40 ₹-44,582 (none a winner); first stop 7 ₹-4,622; close 10 ₹-12,150. Lot TRAIL: ₹-8,390 = moved stop 30 lots ₹+52,963; next CHoCH 40 ₹-44,582; first stop 7 ₹-4,622; close 10 ₹-12,150. Bought on the straddle's sell signal: 46 lots ₹+5,106 (PF 1.35); on its buy signal: 128 lots ₹-39,875 (PF 0.63). |
+| Read | The stop is no longer the problem: 7 of 87 entries reach it. The loss has moved to the option's next bearish CHoCH (40 entries, about ₹1,115 a lot, never a winner) and to positions carried to the close. 30 of 87 entries (34%) reach +20 points, against 19% before. Part of the improvement is fewer trades, and which trades are left is decided by where an old CHoCH happened to be, not by anything about the signal. The sell-signal half is positive on 23 entries: too few to read. One quarter of data. |
+| Open (the user's call) | Unquantified: what to do with the 75 signals whose CHoCH level is above the entry (skip as now; or use the latest CHoCH whose low is below the entry; or a plain 10% below the entry); whether the next-CHoCH exit should stay now that the stop is wide. |
+| Effort | **S** each. |
+| Priority | _Open; before / after recorded._ Related: S78. |
+
+---
+
 ### S78. Lab v2 Strategy 65: buy the winning leg at the straddle chart's signal candle, two lots (one out at +20 points, one trailed with the stop moved only after +20). Four builds in one day, each measured; the current one is the worst: 198 entries, ₹-82,367
 
 | | |
