@@ -1,23 +1,29 @@
-"""ST67 - Strategy 67: Foundation on 5-minute candles with five SMAs of the candle LOW drawn on the chart.
+"""ST67 - Strategy 67: short when a candle closes down through an SMA of the low; 30 point stop, 30 point target; intraday.
 
-The trades are Strategy 2's (Foundation rules on 5-minute candles: every SETUP, stop at the previous swing, exit at the
-stop or the next CHoCH). Added, on the same 5-minute candles the signals are read on:
-  SMA 20, 50, 100, 200, 500 of the candle LOW (SPEC["sma_low"]["periods"]), each in its own colour (SPEC["sma_low"]["colors"])
-  - on the futures chart (Futures and Options via futures), from the futures candles
-  - on each option's own chart (Options standalone: the engine runs on the option's candles), from that option's candles,
-    over the contract's whole series
-The SMAs are DRAWN ONLY: no entry, stop or exit reads them yet. The warm-up is 8 sessions (not Strategy 2's 2) so that
-the SMA 500 (500 five-minute candles = 6.7 sessions) is formed at the first shown candle.
-Built 2026-10-13 from the user's instruction ("create a new strategy, add the 20, 50, 100, 200, 500 SMA of the low on
-5-minute candles, different colours, directly on futures and on options as well"). First numbers:
-STRATEGY_ANALYSIS_TODO S85.
+On 5-minute candles, with the SMA 20, 50, 100, 200 and 500 of the candle LOW (SPEC["sma_low"]: periods, colours; drawn
+on the chart):
+  entry   a candle CLOSES below an SMA whose value the previous candle closed at or above (a cross down), for any SMA of
+          SPEC["sma_cross"]["periods"] -> SHORT at that close. One position at a time.
+  stop    entry + SPEC["sma_cross"]["stop_pts"] (30): touched -> out at the stop (at the open if the candle opens above it)
+  target  entry - SPEC["sma_cross"]["target_pts"] (30): touched -> out at the target (at the open if it opens below it)
+          In one candle the stop is checked before the target.
+  close   intraday: no entry at or after the square-off; a position still open then is closed at that candle's close.
+Applied directly on what is traded:
+  Futures               the futures' own candles and SMAs; 30 points of the futures.
+  Options standalone    each option's own candles and SMAs; the option itself is SOLD; 30 points of its premium (an option
+                        priced at or under the target distance is not sold: the target cannot be reached).
+  Options via futures   the futures signal; a short buys a put, in and out at the futures trade's candles.
+Nothing of the Foundation engine trades here: its structure is only still drawn.
+Built 2026-10-13 from the user's instructions ("add the 20, 50, 100, 200, 500 SMA of the low on 5-minute candles ...
+directly on futures and on options"; then "the strategy is: if the SMA is crossed down do a short; stop and profit 30
+points; intraday"). Which SMA was not said: any of the five; each alone is measured in STRATEGY_ANALYSIS_TODO S85.
 """
 import numpy as np
 import core
 
 SPEC = {'code': 'ST67',
- 'name': 'Foundation · 5m · SMA-of-low ribbon (20 / 50 / 100 / 200 / 500)',
- 'description': "Foundation rules on 5-minute candles (Strategy 2's trades) with the SMA 20, 50, 100, 200 and 500 of the candle LOW drawn in five colours: on the futures chart, and on each option's own chart. The SMAs are drawn only; no rule reads them yet.",
+ 'name': 'SMA-of-low cross down · short · 30 / 30 pts · 5m',
+ 'description': "On 5-minute candles: when a candle closes down through the SMA 20, 50, 100, 200 or 500 of the candle LOW, go short at that close; stop 30 points, target 30 points, intraday. On the futures' own chart, and on each option's own chart (the option is sold). The five SMAs are drawn in five colours.",
  'timeframe': '5minute',
  'underlying': 'FUT',
  'warmup_days': 8,
@@ -25,11 +31,13 @@ SPEC = {'code': 'ST67',
            'choch_mode': 'touch',
            'avwap_weight': 'volume',
            'sl_rule': 'choch_candle',
-           'entry_rule': 'setup_v1',
+           'entry_rule': 'sma_cross_v1',
            'exit_rule': 'next_choch'},
  'sma_low': {'periods': [20, 50, 100, 200, 500], 'source': 'low',
              'colors': ['#e5484d', '#f5a524', '#30a46c', '#0090ff', '#8e4ec6'],
-             'notes': 'drawn only (red 20, amber 50, green 100, blue 200, purple 500); no rule reads them'},
+             'notes': 'red 20, amber 50, green 100, blue 200, purple 500'},
+ 'sma_cross': {'periods': [20, 50, 100, 200, 500], 'side': 'short', 'stop_pts': 30, 'target_pts': 30,
+               'notes': 'a close below an SMA the previous close was at or above; any of the periods'},
  'lot_size': 65,
  'capital': {'futures_margin': 120000, 'short_option_margin': 150000},
  'position': {'lots': 1, 'square_off': '15:25', 'lock': 'strike', 'scale_out': []},
@@ -92,10 +100,34 @@ def sma_low(s, period):
     return _SMA[key][1]
 
 
+ENTRY_RULES = ("sma_cross_v1",)
+
+
 def signals(bars, spec):
-    """Foundation SETUPs on these candles (Strategy 2's), with the SMAs of the low as the chart's own lines."""
-    sg = core.foundation(bars, spec["rules"])
-    sg.lines = [sma_low(bars, n) for n in _P["periods"]]
+    """Shorts at a close down through an SMA of the low, each walked to its stop, its target or the square-off."""
+    X = spec["sma_cross"]; stop_pts, tgt_pts = float(X["stop_pts"]), float(X["target_pts"]); sq = spec["position"]["square_off"]
+    o, h, l, c, t_ = bars.o, bars.h, bars.l, bars.c, bars.t; n = len(bars)
+    cross = np.zeros(n, bool)
+    for p_ in X["periods"]:
+        v = sma_low(bars, p_)
+        with np.errstate(invalid="ignore"):
+            cross[1:] |= (c[:-1] >= v[:-1]) & (c[1:] < v[1:]) & (bars.day[1:] == bars.day[:-1])
+    trades, free = [], -1
+    for i in np.nonzero(cross)[0]:
+        i = int(i)
+        if i <= free: continue                                    # one position at a time
+        e = float(c[i]); cut = core.square_off_at(sq, int(t_[i]))
+        if cut and t_[i] >= cut: continue
+        if e <= tgt_pts: continue                                 # an option under the target distance: it cannot be reached
+        sl, tg = e + stop_pts, e - tgt_pts
+        last = (int(np.searchsorted(t_, cut, "right")) - 1) if cut else n - 1
+        x, px, why, still = last, float(c[last]), ("eod" if cut else "open"), not cut
+        for k in range(i + 1, last + 1):
+            if h[k] >= sl: x, px, why, still = k, max(float(o[k]), sl), "stop_loss", False; break
+            if l[k] <= tg: x, px, why, still = k, min(float(o[k]), tg), "target 1", False; break
+        trades.append(dict(entry=i, exit=x, exit_px=px, dir="down", choch=i, sl=sl, pts=e - px, open=still, exit_reason=why))
+        free = x
+    sg = core.foundation(bars, spec["rules"]).with_trades(trades, [sma_low(bars, p_) for p_ in _P["periods"]])
     sg.line_names, sg.line_colors = list(LINE_COLORS), list(LINE_COLORS.values())
     return sg
 

@@ -72,7 +72,7 @@ LINEAGE = {
     "ST64": ("ST63", "The stop follows the option's BOS: at every bullish BOS while the trade is open it moves to the level that BOS broke, and never back."),
     "ST65": ("ST64", "The straddle chart's sell signal counts as well as its buy signal; the winning leg is bought at that signal's own candle (no SETUP of the option waited for), two lots: one out at +20 points, the other trailed, its stop moved to the BOS level only after the option has traded 20 points up. Long only."),
     "ST66": ("ST1", "On a day that opens 20 points or more from the previous close, the CHoCH / BOS structure is reset and built again from the day's first candle."),
-    "ST67": ("ST2", "The same trades, with the SMA 20 / 50 / 100 / 200 / 500 of the candle LOW drawn in five colours on the futures chart and on each option's own chart. Drawn only; warm-up 8 sessions."),
+    "ST67": (None, "A separate idea on 5-minute candles: short when a candle closes down through the SMA 20 / 50 / 100 / 200 / 500 of the candle LOW; 30 point stop, 30 point target, intraday; on the futures' own chart and on each option's own chart."),
     "ST56": (None, "A separate idea: the TradingFinder SMLS indicator's own Long / Short signals; stop at the order block's far edge; flat by the square-off."),
 }
 

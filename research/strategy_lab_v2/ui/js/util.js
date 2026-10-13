@@ -62,6 +62,23 @@ export function algorithm(spec) {
   const by = (m) => (m === "close" ? "a candle closing beyond it" : "a candle touching it (high / low)");
   const S = (t, sub) => ({ t, sub: sub || [] });
   const steps = [];
+  if (spec.rules?.entry_rule === "sma_cross_v1") {     // Strategy 67: no Foundation rule trades; its own short list
+    const x = spec.sma_cross, m = spec.sma_low, P0 = spec.position || {};
+    return [
+      S(`Candles: ${TF[spec.timeframe] || spec.timeframe} candles of what is traded — the near-month NIFTY futures (Futures), or each option's own candles (Options standalone). The first ${spec.warmup_days} sessions only form the SMAs.`),
+      S(`Indicators: the SMA ${m.periods.join(", ")} of the candle LOW (the average of the last N candle lows), each in its own colour on the chart.`),
+      S(`Entry: a candle CLOSES below an SMA that the previous candle closed at or above (a cross down), for any of the SMA ${x.periods.join(" / ")} → SHORT at that close.`, [
+        S("Futures: sell the futures. Options standalone: SELL that option. Options via futures: the futures signal buys a put."),
+        S("One position at a time: a cross while a position is open is ignored."),
+        S(`An option priced at or under ${x.target_pts} is not sold (the target could not be reached).`)]),
+      S("Exit — first of:", [
+        S(`Stop: ${x.stop_pts} points above the entry → out at the stop (at the open if the candle opens above it).`),
+        S(`Target: ${x.target_pts} points below the entry → out at the target (at the open if the candle opens below it).`),
+        S("In one candle the stop is checked before the target."),
+        S(`${sqOf(P0)}: no new entry from then; a position still open is closed at that candle's close (intraday).`)]),
+      S("The Foundation layers (swings, CHoCH / BOS, AVWAPs) may still be switched on in the chart; nothing here trades on them."),
+      S(`Costs: slippage per side ${spec.types?.FUT?.slippage_pts ?? "–"} pts futures, ${spec.types?.OPT_NATIVE?.slippage_pts ?? "–"} pts options; charges per the broker schedule; lot size ${spec.lot_size}.`)];
+  }
   const onOpt = !!spec.sma_filter;                 // Strategy 32: everything is read on each option's own chart
   const ns = o.native_scan || {};
   const sd = spec.straddle;                           // ST57 / ST58: everything is read on the derived straddle candles
@@ -219,9 +236,6 @@ export function algorithm(spec) {
       ...(p.square_off ? [S(`${sqOf(p)}: still open → exit at that candle's close (intraday).`)] : [S("No square-off: held overnight (positional).")]),
       S("The contract's last candle in the data → expiry.")]));
   }
-  if (spec.sma_low) steps.push(S(`On the chart: SMA ${spec.sma_low.periods.join(", ")} of the candle LOW, on the same ${TF[spec.timeframe] || spec.timeframe} candles — on the futures chart from the futures candles, on each option's own chart from that option's candles.`, [
-    S("Each SMA has its own colour (named on the chart)."),
-    S("Drawn only: no entry, stop or exit reads them.")]));
   if (spec.gap_reset) {                            // Strategy 66: the structure starts again on a gap day
     const k = steps.findIndex((x) => /^Market structure/.test(x.t));
     steps.splice(k < 0 ? 0 : k, 0, S(`Gap day: the session's first candle opens ${spec.gap_reset.pts} points or more above or below the previous session's last close → the structure is RESET.`, [
