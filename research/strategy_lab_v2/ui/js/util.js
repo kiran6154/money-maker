@@ -69,7 +69,9 @@ export function algorithm(spec) {
       S(`Indicators: the SMA ${m.periods.join(", ")} of the candle LOW (the average of the last N candle lows), each in its own colour on the chart.`),
       S(`Entry: a candle CLOSES below an SMA that the previous candle closed at or above (a cross down), for any of the SMA ${x.periods.join(" / ")} → SHORT at that close.`, [
         S("Futures: sell the futures. Options standalone: SELL that option. Options via futures: the futures signal buys a put."),
+        ...(x.falling ? [S("The SMA that is crossed must be FALLING at that candle: its value below its value one candle before. A cross down through a flat or rising SMA is not traded.")] : []),
         S("One position at a time: a cross while a position is open is ignored."),
+        S("No entry on the last candle before the square-off."),
         S(`An option priced at or under ${x.target_pts} is not sold (the target could not be reached).`)]),
       S("Exit — first of:", [
         S(`Stop: ${x.stop_pts} points above the entry → out at the stop (at the open if the candle opens above it).`),
