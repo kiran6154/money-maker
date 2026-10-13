@@ -457,6 +457,21 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S88. Lab v2 Strategies 71 and 72: Strategies 69 / 70 with everything on 5-minute candles (the SMA cross and the structure). Measured: half the trades now reach the target, but the stop is 32 - 35 points away and costs twice what a target pays; futures PF 0.35 and 0.29, no positive year
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/st71.py` (Strategy 2's rules: CHoCH by touch), `st72.py` (Strategy 4's: CHoCH by close), both `timeframe: 5minute` on `strategies/sma_cross.py` `signals_arm`. 2026-10-13, the user, after learning that Strategies 69 / 70 read the structure on 1-minute candles: "try everything on 5 minutes". Strategies 69 / 70 are kept. |
+| What changed | Only the timeframe of the structure: swings, protected level, CHoCH / BOS, SETUP and the stop (previous swing high) are read on the same 5-minute candles as the SMA cross. Everything else is S87's: the cross of a falling SMA arms the day, bearish SETUPs only, one position at a time, target 30 points, square-off, no CHoCH exit. |
+| Impact, futures | **Measured, Futures type, 1 lot, after costs, 2018-01-11 → 2026-10-09. Strategy 71: 578 trades on 452 days, ₹-4,99,852, PF 0.35, 50% winners; target 281 (₹+2,62,593), stop 222 (₹-6,76,386, 41.6 points a trade with slippage), close 75 (₹-86,060); split at 2023-03-09 ₹-2,19,134 / ₹-2,80,718; no positive year in 8; stop distance median 31.9 points (quartiles 22.0 and 50.0). Strategy 72: 371 trades on 318 days, ₹-3,91,430, PF 0.29, 45% winners; target 167, stop 149, close 55; ₹-1,86,158 / ₹-2,05,272; no positive year; stop distance median 35.0 points.** A trade: Strategy 71 ₹-865, Strategy 72 ₹-1,055 (Strategy 69 ₹-1,075, Strategy 70 ₹-1,069, Strategy 68 ₹-992). |
+| Impact, options (from 2026-06-30, one quarter) | Stored All data runs. Strategy 71: options on their own chart, the option sold, weekly scan 128 trades ₹-23,512 (PF 0.71), monthly 111 trades ₹-12,232; options via futures W-ATR2 (a put bought) 34 trades ₹+6,582 (PF 2.06). Strategy 72: weekly scan 89 trades ₹-6,531 (PF 0.88), monthly 85 trades ₹-10,096; via futures 20 trades ₹-5,804 (PF 0.36). |
+| Read | On 5-minute candles the stop is where the target is (about 32 points against 30) and the target is reached as often as the stop (281 against 222, 167 against 149): the same coin as the cross traded directly (S85), with a quarter of its trades. After 10 points of slippage a target nets 20 points and a stop costs 42, so an even coin loses. Strategy 71's positive option line is 34 trades in the one falling quarter, and Strategy 72's same line is negative. The 5-minute structure trades on 452 and 318 of about 2,150 sessions (S58). |
+| Open (the user's call) | Unquantified: a target larger than the stop (the structure's stop as 1R, target 2R); the long side on a cross up. |
+| Effort | **S** each. |
+| Priority | _Open; first numbers recorded._ Related: S87, S85, S58. |
+
+---
+
 ### S87. Lab v2 Strategies 69 and 70: the SMA cross of Strategy 68 switches Strategy 1 / Strategy 3 on (shorts only; the structure's stop; 30 point target; intraday). Measured: worse than the cross traded directly (futures PF 0.19 and 0.21): the structure's stop is about 13 points away and is hit 2.5 times as often as the 30 point target
 
 | | |

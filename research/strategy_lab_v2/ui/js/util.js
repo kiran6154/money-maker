@@ -66,10 +66,10 @@ export function algorithm(spec) {
     const x = spec.sma_cross, m = spec.sma_low, P0 = spec.position || {};
     return [
       S(`Candles: ${TF[spec.timeframe] || spec.timeframe} candles of what is traded — the near-month NIFTY futures (Futures), or each option's own candles (Options standalone). The first ${spec.warmup_days} sessions only form the SMAs and the structure.`),
-      S(`The signal, on ${x.candles_min}-minute candles built from them: SMA ${m.periods.join(", ")} of the candle LOW. A ${x.candles_min}-minute candle CLOSES below an SMA that the previous one closed at or above${x.falling ? ", while that SMA is falling (below its value one candle before)" : ""} — any of the SMA ${x.periods.join(" / ")}.`, [
+      S(`The signal, on ${x.candles_min}-minute candles${spec.timeframe === "5minute" ? " (the same candles)" : " built from them"}: SMA ${m.periods.join(", ")} of the candle LOW. A ${x.candles_min}-minute candle CLOSES below an SMA that the previous one closed at or above${x.falling ? ", while that SMA is falling (below its value one candle before)" : ""} — any of the SMA ${x.periods.join(" / ")}.`, [
         S("It trades nothing. From the next candle until the square-off the day is ARMED."),
         S("Before the first such cross of the day nothing is traded.")]),
-      S("Market structure (Foundation engine), candle by candle on the 1-minute candles:", [
+      S(`Market structure (Foundation engine), candle by candle on the ${TF[spec.timeframe] || spec.timeframe} candles:`, [
         S(`Swing high / low: confirmed when a later candle breaks the swing candle's low / high — ${by(r.break_mode)}.`),
         S("Protected level: in an uptrend, the latest confirmed swing low that sat below the trend AVWAP; in a downtrend the mirror."),
         S(`CHoCH: price breaks the protected level — ${by(r.choch_mode || r.break_mode)}.`),

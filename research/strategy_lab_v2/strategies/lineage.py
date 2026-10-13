@@ -76,6 +76,8 @@ LINEAGE = {
     "ST68": ("ST67", "The SMA that is crossed must be falling at the cross candle (below its value one candle before)."),
     "ST69": ("ST68", "The cross no longer trades: it arms the day, and Strategy 1's bearish SETUPs on 1-minute candles are shorted from then; stop at the previous swing high, target 30 points, no CHoCH exit."),
     "ST70": ("ST68", "As Strategy 69 with Strategy 3's rules (a CHoCH needs a close beyond the protected level)."),
+    "ST71": ("ST69", "Everything on 5-minute candles: the structure (entry and stop) is read on the same 5-minute candles as the SMA cross, not on 1-minute candles."),
+    "ST72": ("ST70", "Everything on 5-minute candles: the structure (entry and stop) is read on the same 5-minute candles as the SMA cross, not on 1-minute candles."),
     "ST56": (None, "A separate idea: the TradingFinder SMLS indicator's own Long / Short signals; stop at the order block's far edge; flat by the square-off."),
 }
 
