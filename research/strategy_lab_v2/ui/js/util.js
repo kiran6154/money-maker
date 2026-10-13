@@ -62,6 +62,28 @@ export function algorithm(spec) {
   const by = (m) => (m === "close" ? "a candle closing beyond it" : "a candle touching it (high / low)");
   const S = (t, sub) => ({ t, sub: sub || [] });
   const steps = [];
+  if (spec.rules?.entry_rule === "sma_arm_v1") {       // Strategies 69 / 70: the SMA cross arms the day, Foundation trades
+    const x = spec.sma_cross, m = spec.sma_low, P0 = spec.position || {};
+    return [
+      S(`Candles: ${TF[spec.timeframe] || spec.timeframe} candles of what is traded — the near-month NIFTY futures (Futures), or each option's own candles (Options standalone). The first ${spec.warmup_days} sessions only form the SMAs and the structure.`),
+      S(`The signal, on ${x.candles_min}-minute candles built from them: SMA ${m.periods.join(", ")} of the candle LOW. A ${x.candles_min}-minute candle CLOSES below an SMA that the previous one closed at or above${x.falling ? ", while that SMA is falling (below its value one candle before)" : ""} — any of the SMA ${x.periods.join(" / ")}.`, [
+        S("It trades nothing. From the next candle until the square-off the day is ARMED."),
+        S("Before the first such cross of the day nothing is traded.")]),
+      S("Market structure (Foundation engine), candle by candle on the 1-minute candles:", [
+        S(`Swing high / low: confirmed when a later candle breaks the swing candle's low / high — ${by(r.break_mode)}.`),
+        S("Protected level: in an uptrend, the latest confirmed swing low that sat below the trend AVWAP; in a downtrend the mirror."),
+        S(`CHoCH: price breaks the protected level — ${by(r.choch_mode || r.break_mode)}.`),
+        S("SETUP: after a CHoCH, both AVWAPs slope its way and a candle closes beyond the CHoCH candle.")]),
+      S("Entry: a BEARISH SETUP while the day is armed → SHORT at that candle's close.", [
+        S("Futures: sell the futures. Options standalone: SELL that option. Options via futures: the futures signal buys a put."),
+        S("Bullish SETUPs are not traded. One position at a time.")]),
+      S("Exit — first of:", [
+        S("Stop: the latest confirmed swing high at the entry (the engine's own stop) → out at the stop (at the open if the candle opens above it)."),
+        S(`Target: ${x.target_pts} points below the entry → out at the target (at the open if the candle opens below it).`),
+        S("In one candle the stop is checked before the target. The next CHoCH is NOT an exit."),
+        S(`${sqOf(P0)}: no new entry from then; a position still open is closed at that candle's close (intraday).`)]),
+      S(`Costs: slippage per side ${spec.types?.FUT?.slippage_pts ?? "–"} pts futures, ${spec.types?.OPT_NATIVE?.slippage_pts ?? "–"} pts options; charges per the broker schedule; lot size ${spec.lot_size}.`)];
+  }
   if (spec.rules?.entry_rule === "sma_cross_v1") {     // Strategy 67: no Foundation rule trades; its own short list
     const x = spec.sma_cross, m = spec.sma_low, P0 = spec.position || {};
     return [

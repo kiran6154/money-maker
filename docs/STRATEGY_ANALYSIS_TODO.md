@@ -457,6 +457,21 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S87. Lab v2 Strategies 69 and 70: the SMA cross of Strategy 68 switches Strategy 1 / Strategy 3 on (shorts only; the structure's stop; 30 point target; intraday). Measured: worse than the cross traded directly (futures PF 0.19 and 0.21): the structure's stop is about 13 points away and is hit 2.5 times as often as the 30 point target
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/sma_cross.py` (`signals_arm`, `htf`: the 5-minute candles built from the 1-minute ones), `st69.py` (Strategy 1's rules), `st70.py` (Strategy 3's rules). 2026-10-13, the user's instruction: "extend this strategy and create a new one, and apply Strategy 1 or 3 after you get the signal in the SMA; the SMA cross-over is the signal to start Strategy 1 or 3; entry is with Strategy 1 or 3, the stop is Strategy 1's or 3's; the target is 30 points or intraday". Both were built. Strategies 67 and 68 are kept. |
+| Build choices (not in the instruction; fixed before the run) | (1) The signal is Strategy 68's: a 5-minute candle closing down through a falling SMA 20 / 50 / 100 / 200 / 500 of the low, any of the five. (2) It arms the rest of that day (to the square-off); it does not carry to the next day and nothing disarms it. (3) Strategy 1 / 3 run on 1-minute candles, their own timeframe; the 5-minute candles are built from the same 1-minute candles, and a 5-minute SMA value is used only from the candle that completes it. (4) The cross is a short signal, so only bearish SETUPs are traded, every one while armed, one position at a time. (5) Stop = the engine's (previous swing high). Target 30 points. No next-CHoCH exit ("the target is 30 points or intraday"). Stop checked before the target in one candle. (6) Warm-up 8 sessions. On an option's own chart the option is sold. |
+| Impact, futures | **Measured, Futures type, 1 lot, after costs, 2018-01-11 → 2026-10-09. Strategy 69 (Strategy 1's rules): 2,657 trades on 865 days, ₹-28,57,043, PF 0.19, 28% winners; target 710 (₹+6,62,407), stop 1,758 (₹-33,62,425, 24 points a trade with slippage), close 189 (₹-1,57,025); split at 2023-03-09 ₹-12,23,408 / ₹-16,33,635; no positive year in 8. Stop distance at the entry: median 12.8 points (quartiles 8.7 and 19.2). Strategy 70 (Strategy 3's rules): 1,684 trades on 726 days, ₹-17,99,471, PF 0.21, 30% winners; target 495, stop 1,081, close 108; ₹-7,91,687 / ₹-10,07,784; no positive year; stop distance median 14.6 points.** For comparison a trade: Strategy 68 ₹-992, Strategy 69 ₹-1,075, Strategy 70 ₹-1,069. |
+| Impact, options (from 2026-06-30, one quarter) | Strategy 69: options on their own chart, the option sold, weekly scan 395 trades ₹-62,542 (PF 0.61; target 37, stop 297); monthly 382 trades ₹-42,950; options via futures W-ATR2 (a put bought) 188 trades ₹-44,373 (PF 0.33). Strategy 70: weekly 282 trades ₹-43,961 (PF 0.64); monthly 280 ₹-30,247; via futures 116 trades ₹-26,424 (PF 0.41). |
+| Read | Waiting for the structure's SETUP after the cross does not improve the short. The entry is later and the stop much nearer than the target (13 - 15 points against 30), so the stop is reached 2.2 - 2.5 times as often and the 27 - 29% of trades that reach 30 points cannot pay for it after costs. Both structure engines also sit silent on the long run (865 and 726 trading days of 2,150: S58). |
+| Open (the user's call) | Unquantified: a 30 point stop with the structure's entry (the user's earlier 30 / 30 with the later entry); the long side on a cross up; arming only by the slow SMAs. |
+| Effort | **S** each. |
+| Priority | _Open; first numbers recorded._ Related: S86, S85, S58. |
+
+---
+
 ### S86. Lab v2 Strategy 68: Strategy 67 with the crossed SMA required to be falling. Measured: about a quarter fewer trades, the same result a trade (futures PF 0.30 against 0.29, no positive year)
 
 | | |

@@ -74,6 +74,8 @@ LINEAGE = {
     "ST66": ("ST1", "On a day that opens 20 points or more from the previous close, the CHoCH / BOS structure is reset and built again from the day's first candle."),
     "ST67": (None, "A separate idea on 5-minute candles: short when a candle closes down through the SMA 20 / 50 / 100 / 200 / 500 of the candle LOW; 30 point stop, 30 point target, intraday; on the futures' own chart and on each option's own chart."),
     "ST68": ("ST67", "The SMA that is crossed must be falling at the cross candle (below its value one candle before)."),
+    "ST69": ("ST68", "The cross no longer trades: it arms the day, and Strategy 1's bearish SETUPs on 1-minute candles are shorted from then; stop at the previous swing high, target 30 points, no CHoCH exit."),
+    "ST70": ("ST68", "As Strategy 69 with Strategy 3's rules (a CHoCH needs a close beyond the protected level)."),
     "ST56": (None, "A separate idea: the TradingFinder SMLS indicator's own Long / Short signals; stop at the order block's far edge; flat by the square-off."),
 }
 
