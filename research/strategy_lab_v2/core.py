@@ -1685,6 +1685,7 @@ def _overlays(b, sg, i0, i1, pair=True):
     out["trig"] = trig
     if sg.lines is not None:
         out["lines"] = [[[int(t[i]), round(float(ln[i]), 2)] for i in rng if not np.isnan(ln[i])] for ln in sg.lines]
+        if getattr(sg, "line_names", None): out["line_names"], out["line_colors"] = list(sg.line_names), list(sg.line_colors)
     return out
 
 
@@ -1778,8 +1779,9 @@ def chart(code, run, typ, choice, day, inst=None, to=None, atm=None):
         out["spot"] = [[int(t_), float(sp.c[jj])] for t_, jj, o_ in zip(b.t[i0:i1 + 1], j, okj) if o_]
     if inst and hasattr(mod, "option_lines"):         # a strategy's own lines on an option's chart (e.g. its SMA filter)
         k = np.searchsorted(s.t, b.t)                 # computed on the contract's whole series, as the filter reads it
-        out["olines"] = [dict(name=nm_, pts=[[int(b.t[i]), round(float(v[k[i]]), 2)] for i in range(i0, i1 + 1)
-                                             if k[i] < len(s) and s.t[k[i]] == b.t[i] and not np.isnan(v[k[i]])])
+        out["olines"] = [dict(name=nm_, color=getattr(mod, "LINE_COLORS", {}).get(nm_),
+                              pts=[[int(b.t[i]), round(float(v[k[i]]), 2)] for i in range(i0, i1 + 1)
+                                   if k[i] < len(s) and s.t[k[i]] == b.t[i] and not np.isnan(v[k[i]])])
                          for nm_, v in mod.option_lines(s)]
     return _jsonable(out)
 
@@ -1951,8 +1953,9 @@ def explorer_chart(date, inst, code, tf="minute", expiry=None, strike=None, righ
         out["spot"] = [[int(t_), float(sp.c[jj])] for t_, jj, o_ in zip(b.t[i0:i1 + 1], j, okj) if o_]
         out["strike"] = int(strike)
         if hasattr(mod, "option_lines"):              # the strategy's own lines (Strategy 32: SMA 200 from the contract's first candle)
-            out["olines"] = [dict(name=nm_, pts=[[int(b.t[i]), round(float(v[a + i]), 2)] for i in range(i0, i1 + 1)
-                                                 if not np.isnan(v[a + i])]) for nm_, v in mod.option_lines(src)]
+            out["olines"] = [dict(name=nm_, color=getattr(mod, "LINE_COLORS", {}).get(nm_),
+                                  pts=[[int(b.t[i]), round(float(v[a + i]), 2)] for i in range(i0, i1 + 1) if not np.isnan(v[a + i])])
+                             for nm_, v in mod.option_lines(src)]
     elif hasattr(mod, "TYPES") and "FUT" not in mod.TYPES:
         out["meta"]["note"] += f" · {spec['code']} does not trade this instrument: " + str(getattr(mod, "REFUSED_WHY", ""))
     return _jsonable(out)

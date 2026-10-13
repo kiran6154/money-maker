@@ -457,6 +457,19 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S85. Lab v2 Strategy 67: Foundation on 5-minute candles with the SMA 20 / 50 / 100 / 200 / 500 of the candle LOW drawn (futures chart and each option's own chart). The SMAs are drawn only; the rule that should read them is not given yet
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/st67.py` (`sma_low`: periods, colours; `signals` attaches the lines to the futures chart, `option_lines` to an option's own chart), `core.py` (a strategy's lines may carry names and colours), `ui/js/chart.js`. 2026-10-13, the user's instruction: "create a new strategy, add the 20, 50, 100, 200, 500 SMA of the low for the 5-minute candle, different colours for the SMAs, apply it directly on futures, and on options as well". |
+| Build choices (not in the instruction) | (1) The base is Strategy 2 (Foundation rules on 5-minute candles); no entry, stop or exit reads an SMA. (2) "SMA low" = the simple average of the candle LOWS. (3) On an option's chart the SMAs are of that option's own lows, over the contract's whole series. (4) Warm-up 8 sessions instead of Strategy 2's 2, so the SMA 500 (500 five-minute candles = 6.7 sessions) is formed at the first shown candle. Colours: 20 red, 50 amber, 100 green, 200 blue, 500 purple. |
+| Impact | **Measured: the trades are Strategy 2's, to the rupee (Strategy 2 re-run the same day on the same data).** All data, 5-minute, 15:14 close from 2026-06-01. Futures (2018-01-11 → 2026-10-09): 1,595 trades, ₹-12,25,688, PF 0.59. Options via futures W-ATR2 (2026-06-30 →): 122 trades, ₹-7,819, PF 0.89. Options on their own chart W-SCAN: 301 trades, ₹-64,936, PF 0.66. This month (2026-10-01 → 10-09): no futures trade (the 5-minute structure is stuck behind an old protected level: S58); W-SCAN 15 trades, ₹-4,178. |
+| Open (the user's call) | Unquantified, because not defined: what the SMAs should do (for example: long only above some or all of them, short only below; a stack order of the five; an SMA as the stop or the trail). Each needs its definition from the user, then a before / after on the same windows. |
+| Effort | **S** once the rule is given (the values are already computed per candle). |
+| Priority | _Open; awaiting the rule._ Related: S58. |
+
+---
+
 ### S84. Lab v2 Strategy 66: Strategy 1 with the CHoCH / BOS structure reset on a gap day. Measured on 2018 - 2026: twice the trades at the same loss a trade (PF 0.30 both). The reset wakes the structure up on the days Strategy 1 sits silent; it does not make the trades better
 
 | | |

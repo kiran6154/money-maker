@@ -3,7 +3,7 @@
 // on request (/api/chart). Layers can be switched off; the choice and the chart height are remembered per viewer.
 import { $, $$, api, esc, inr, num, css, tsOf, dayOf, pref, reasonTag } from "./util.js";
 
-const LAYERS = [["trades", "Trades", "#111111"], ["rlevels", "1R / 2R / 3R", "#089981"], ["rainbow", "Rainbow", "#ff9800"],
+const LAYERS = [["trades", "Trades", "#111111"], ["rlevels", "1R / 2R / 3R", "#089981"], ["rainbow", "Rainbow / SMAs", "#ff9800"],
                 ["avwap", "AVWAP pair", "#ff6d00"], ["tav", "Trend AVWAP", "#37474f"], ["trig", "SETUP level", "#0b8043"],
                 ["prot", "Protected", "#7b1fa2"], ["struct", "CHoCH/BOS", "#9e9e9e"],
                 ["swings", "Swings", "#089981"], ["vol", "Volume", "#c3c7cf"], ["zones", "Zones", "#2962ff"],
@@ -310,7 +310,8 @@ export class ChartView {
       M.push({ time: snap(m.ts), position: "aboveBar", color: "#8e4ec6", shape: "square", size: 0.8, text: m.label });
     }
     if (on.olines && d.olines) for (const ln of d.olines)       // e.g. the option's SMA 200 (Strategy 32's filter)
-      if (ln.pts.length) line({ color: "#a1887f", lineWidth: 2, lineStyle: 2, title: ln.name, lastValueVisible: true }, ln.pts.map(([x, v]) => ({ time: x, value: v })));
+      if (ln.pts.length) line(ln.color ? { color: ln.color, lineWidth: 2, title: ln.name, lastValueVisible: true }
+                                       : { color: "#a1887f", lineWidth: 2, lineStyle: 2, title: ln.name, lastValueVisible: true }, ln.pts.map(([x, v]) => ({ time: x, value: v })));
     // the trend AVWAP: anchored at the swing of the last trend flip; qualifies the protected level and decides a flip
     if (on.tav && d.tav) d.tav.forEach((sgm, k, all) => { if (sgm.pts.length)
       line({ color: "#37474f", lineWidth: 2, title: k === all.length - 1 ? "trend AVWAP" : "", lastValueVisible: k === all.length - 1 }, sgm.pts.map(([x, v]) => ({ time: x, value: v }))); });
@@ -320,7 +321,9 @@ export class ChartView {
            g.a === g.z ? [{ time: g.a, value: g.p }] : [{ time: snap(g.a), value: g.p }, { time: snap(g.z), value: g.p }]);
     if (on.rainbow && d.lines) {
       const RB = ["#e5484d", "#f76b15", "#f5a524", "#e2c93a", "#7ac943", "#30a46c", "#12a594", "#0090ff", "#3e63dd", "#8e4ec6"];
-      d.lines.forEach((ln, k, all) => { if (ln.length) line({ color: RB[all.length > 1 ? Math.round(9 * k / (all.length - 1)) : 0], lineWidth: 1 }, ln.map(([x, v]) => ({ time: x, value: v }))); });
+      d.lines.forEach((ln, k, all) => { if (ln.length) line(d.line_names                    // a strategy's named lines (Strategy 67's SMAs): its own colours
+        ? { color: d.line_colors[k], lineWidth: 2, title: d.line_names[k], lastValueVisible: true }
+        : { color: RB[all.length > 1 ? Math.round(9 * k / (all.length - 1)) : 0], lineWidth: 1 }, ln.map(([x, v]) => ({ time: x, value: v }))); });
     }
     if (on.avwap && d.pair) for (const a of d.pair) {
       const col = a.side === "H" ? ORANGE : BLUE;
@@ -424,7 +427,9 @@ export class ChartView {
       ` · arrow = entry, dot = exit (reason, pts), dashed = path, dotted red = stop` + (d.fz ? " · purple / blue boxes = FZ bands (A / B), T W B R = gate" : "") +
       (d.pair && d.pair.length ? " · orange / blue = AVWAP pair from the last SH / SL at each CHoCH (dotted: back to the anchor)" : "") +
       (d.tav && d.tav.length ? " · dark grey = trend AVWAP" : "") + (d.trig && d.trig.length ? " · green / red short line = SETUP level (CHoCH candle high / low; solid = a SETUP came)" : "") +
-      (d.olines && d.olines.length ? ` · brown dashed = ${esc(d.olines.map((l) => l.name).join(", "))}` : "") +
+      (d.line_names ? " · " + d.line_names.map((nm, k) => `<span style="color:${d.line_colors[k]};font-weight:600">${esc(nm)}</span>`).join(" ") : "") +
+      (d.olines && d.olines.length ? (d.olines[0].color ? " · " + d.olines.map((l) => `<span style="color:${l.color};font-weight:600">${esc(l.name)}</span>`).join(" ")
+                                                        : ` · brown dashed = ${esc(d.olines.map((l) => l.name).join(", "))}`) : "") +
       " · drag or scroll sideways past the first / last candle to load more sessions · mouse wheel zooms · drag the bottom edge to resize";
   }
 

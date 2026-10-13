@@ -219,6 +219,9 @@ export function algorithm(spec) {
       ...(p.square_off ? [S(`${sqOf(p)}: still open → exit at that candle's close (intraday).`)] : [S("No square-off: held overnight (positional).")]),
       S("The contract's last candle in the data → expiry.")]));
   }
+  if (spec.sma_low) steps.push(S(`On the chart: SMA ${spec.sma_low.periods.join(", ")} of the candle LOW, on the same ${TF[spec.timeframe] || spec.timeframe} candles — on the futures chart from the futures candles, on each option's own chart from that option's candles.`, [
+    S("Each SMA has its own colour (named on the chart)."),
+    S("Drawn only: no entry, stop or exit reads them.")]));
   if (spec.gap_reset) {                            // Strategy 66: the structure starts again on a gap day
     const k = steps.findIndex((x) => /^Market structure/.test(x.t));
     steps.splice(k < 0 ? 0 : k, 0, S(`Gap day: the session's first candle opens ${spec.gap_reset.pts} points or more above or below the previous session's last close → the structure is RESET.`, [
