@@ -457,6 +457,19 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S91. Lab v2, measured but not built (2026-10-14): the SMA family with 15-minute candles for everything. The cross traded directly on 15-minute candles loses like the 5-minute one; with the structure on 15-minute candles too there are 93 trades in 8.7 years, around zero
+
+| | |
+|---|---|
+| Where | A measurement on the existing code (`strategies/sma_cross.py`), the strategies' SPECs run on the 15-minute timeframe; nothing in the lab changed. The user's question: "have you tried with 15-minute candles SMA?" Tried before this: the 15-minute SMA with the structure on 5-minute and 1-minute candles (Strategies 73 - 80: S89, S90). Not tried before: the two below. |
+| Impact | **Measured, Futures type, 1 lot, after costs, 2018-02-01 → 2026-10-09, warm-up 21 sessions.** (a) The cross traded directly on 15-minute candles, stop 30 / target 30 (Strategy 67's rules): 3,081 trades, ₹-29,79,210, PF 0.31; target 1,405, stop 1,324; no positive year. With the falling condition (Strategy 68's rules): 1,976 trades, ₹-18,78,202, PF 0.32; 907 / 836; no positive year. (b) Everything on 15-minute candles: the cross of a falling SMA arms the day, Strategy 1's rules on 15-minute candles give the short, the average still valid at the entry. Swing-high stop 1:1: 93 trades, ₹-20,725, PF 0.83 (target 29, stop 19, close 45; median stop distance 58 points). Swing-high stop 1:2: 93 trades, ₹-17,501, PF 0.87. **SMA-high stop 1:1: 93 trades, ₹+10,373, PF 1.08, 58% winners; halves ₹-4,126 / ₹+14,499; 6 positive years of 7; target 21, stop 11, close 61; stop distance 81 points.** SMA-high stop 1:2: 93 trades, ₹+1,977, PF 1.02; ₹-5,245 / ₹+7,222; target 4, stop 11, close 78. |
+| Read | (a) The 15-minute cross is the same coin as the 5-minute one. (b) On 15-minute structure the trade is so wide (58 - 81 points of stop) and so rare (about 11 a year) that two thirds end at the square-off; the two lines above zero are ₹112 and ₹21 a trade on 93 trades, first half negative: not distinguishable from zero. It continues the direction of S89 (wider = less cost drag) to its end: the costs stop mattering when there are almost no trades. |
+| Open (the user's call) | Whether to build (b) as strategies (S; they are SPEC values). Unquantified: the same on the index or with options, where 93 signals leave too few trades in the one quarter of option data. |
+| Effort | **S**. |
+| Priority | _Open; numbers recorded, nothing built._ Related: S90, S89, S85. |
+
+---
+
 ### S90. Lab v2 Strategies 73 - 80: every entry now needs the moving average still valid (the crossed SMA falling and the price below it). Before / after on futures 2018 - 2026: 17 - 42% fewer trades, a slightly better result a trade in seven of eight, all eight still negative (best: Strategy 76, ₹-63,771, PF 0.87)
 
 | | |
