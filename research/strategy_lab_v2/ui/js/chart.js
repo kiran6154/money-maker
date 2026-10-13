@@ -34,6 +34,7 @@ export class ChartView {
       <div class="ch-read mono small"></div>
       <div class="ch-box"><div class="ch-main"></div>
 </div>
+      <div class="ch-views"></div>
       <div class="ch-panes"></div>`;
     $('[data-k="prev"]', root).onclick = () => this.step(-1);
     $('[data-k="next"]', root).onclick = () => this.step(1);
@@ -218,9 +219,10 @@ export class ChartView {
     $$("button", host0).forEach((b) => b.onclick = () => { this.layers[b.dataset.layer] = !this.layers[b.dataset.layer]; pref("layers3", this.layers); this.redraw(); });
     const main = this.draw($(".ch-main", this.root), d, { own: !!d.own || (this.ctx.type === "FUT" && this.ctx.run.underlying !== "INDEX"), main: true });
     this.legend(d);
+    this.drawViews($(".ch-views", this.root), d, "main");
     // row 2: the CE pane and the PE pane, side by side
     const host = $(".ch-panes", this.root);
-    if (this.hooks.static) { host.innerHTML = ""; return; }
+    if (this.hooks.static) { host.innerHTML = ""; this.sync(); return; }
     const note = this.paneSrc?.note || "";
     host.innerHTML = ["CE", "PE"].map((r) => {
       const p = this.panes[r] || { insts: [] };
@@ -233,14 +235,27 @@ export class ChartView {
         <span class="muted small">· from the session before${p.pick === "ATM" && A ? (offAtm ? ` · <b>not the ATM</b>: the ATM ${A.true_atm} (index ${num(A.index_open, 1)} at the open) has no candles in the data; nearest strike with candles, ${Math.abs(A.off)} pts ${A.off > 0 ? "above" : "below"}`
                                  : ` · strike nearest the index at the open (${num(A.index_open, 1)}); expiry ${A.expiry}, the nearest weekly at least 1 day out`) : ""}${
           nTraded ? ` · ${nTraded} traded ${r} contract${nTraded > 1 ? "s" : ""} in the list` : (this.paneSrc?.rows ? ` · no ${r} position in this range` : "")}${note ? " · " + esc(note) : ""}${p.data?.error ? " · " + esc(p.data.error) : ""}</span></div>
-        <div class="pane-c">${p.data?.error ? `<div class="pane-empty muted small">${esc(p.data.error)}</div>` : ""}</div></div>`;
+        <div class="pane-c">${p.data?.error ? `<div class="pane-empty muted small">${esc(p.data.error)}</div>` : ""}</div><div class="pane-views"></div></div>`;
     }).join("");
     for (const r of ["CE", "PE"]) {
       const p = this.panes[r]; const el = $(`.pane[data-r="${r}"]`, host);
       const sel = $("select", el); if (sel) sel.onchange = async (e) => { await this.loadPane(r, e.target.value, this.req); this.redraw(); };
-      if (p?.data && !p.data.error) this.draw($(".pane-c", el), p.data, { own: true });
+      if (p?.data && !p.data.error) { this.draw($(".pane-c", el), p.data, { own: true }); this.drawViews($(".pane-views", el), p.data, "pane"); }
     }
     this.sync();
+  }
+
+  // the same instrument on the strategy's other timeframes (the 15- / 5-minute signal candles, the 1-minute candles), one
+  // chart below another under the chart they belong to; each carries the SMAs of the signal candles and the same trades
+  drawViews(host, d, kind) {
+    if (!host) return;
+    const views = d.views || [];
+    host.innerHTML = views.map((v, k) => `<div class="view"><div class="view-h small"><b>${esc(v.label)}</b>
+      <span class="muted">· ${v.candles.length} candles · ${v.line_names.map((nm, n) => `<span style="color:${v.line_colors[n]};font-weight:600">${esc(nm)}</span>`).join(" ")}</span></div>
+      <div class="view-c ${kind}" data-k="${k}"></div></div>`).join("");
+    views.forEach((v, k) => this.draw($(`.view-c[data-k="${k}"]`, host),
+      { day: d.day, to: d.to, inst: d.inst, cols: d.cols, trades: d.trades, candles: v.candles, lines: v.lines, line_names: v.line_names, line_colors: v.line_colors, sessions: d.sessions },
+      { own: true }));
   }
 
   sync() {

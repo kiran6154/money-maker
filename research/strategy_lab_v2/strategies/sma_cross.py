@@ -179,3 +179,46 @@ def signals_arm(bars, spec):
     sg = eng.with_trades(trades, [htf_line(bars, p_, m) for p_ in spec["sma_low"]["periods"]])
     sg.line_names, sg.line_colors = list(colors(spec)), list(colors(spec).values())
     return sg
+
+
+# ---------------------------------------------------------------- the same instrument on the other timeframes (the charts)
+_OHLC = {}
+
+
+def _resample(s1, minutes):
+    """(t, o, h, l, c, v) of the `minutes`-minute candles of a 1-minute series (09:15-aligned), cached per series."""
+    key = (id(s1), minutes, len(s1))
+    if key not in _OHLC or _OHLC[key][0] is not s1:
+        t = s1.t; tod = t % core.DAY
+        bucket = t - tod + (555 + ((tod // 60 - 555) // minutes) * minutes) * 60
+        cuts = np.concatenate([[0], np.nonzero(np.diff(bucket))[0] + 1, [len(t)]]); q0, q1 = cuts[:-1], cuts[1:] - 1
+        out = (bucket[q0], s1.o[q0], np.maximum.reduceat(s1.h, q0), np.minimum.reduceat(s1.l, q0), s1.c[q1], np.add.reduceat(s1.v, q0))
+        while len(_OHLC) > 60: del _OHLC[next(iter(_OHLC))]
+        _OHLC[key] = (s1, out)
+    return _OHLC[key][1]
+
+
+def chart_views(spec, s1, t_from, t_to, main_min):
+    """The instrument's other timeframes for the charts under the main one: the signal candles (where the SMAs are read),
+    the strategy's own candles and the 1-minute candles - every one that is not the main chart's - coarsest first. Each is
+    dict(tf_min, label, candles [[t, o, h, l, c, v]], lines [[t, value]] per SMA, line_names, line_colors). The SMAs are
+    those of the signal candles' lows over the instrument's whole 1-minute series: one value per candle on the signal
+    chart; on a finer chart a step, each value from the candle that completes it."""
+    X = spec.get("sma_cross") or {}; names = colors(spec)
+    sig = int(X.get("candles_min") or core.TF_MIN[spec["timeframe"]]); own = core.TF_MIN[spec["timeframe"]]
+    ts_, _, _, ls, _, _ = _resample(s1, sig)
+    sma = [_sma(ls, n) for n in spec["sma_low"]["periods"]]
+    end_s = ts_ + sig * 60                                           # a signal candle is complete at its end
+    views = []
+    for m in sorted({sig, own, 1} - {int(main_min)}, reverse=True):
+        t, o, h, l, c, v = _resample(s1, m)
+        a, z = int(np.searchsorted(t, t_from)), int(np.searchsorted(t, t_to, "right"))
+        if z <= a: continue
+        if m == sig: idx = np.arange(a, z)                           # its own SMA value, candle by candle
+        else: idx = np.searchsorted(end_s, t[a:z] + m * 60, "right") - 1   # the last signal candle complete by this candle's end
+        lines = [[[int(t[a + k]), round(float(x[j]), 2)] for k, j in enumerate(idx) if j >= 0 and not np.isnan(x[j])] for x in sma]
+        what = ("the SMA signal candles" if m == sig else "") + (" · " if m == sig and m == own else "") + ("the structure candles" if m == own and "sma_arm" in spec["rules"]["entry_rule"] else "")
+        views.append(dict(tf_min=m, label=f"{m}-minute candles" + (f" — {what}" if what else ""),
+                          candles=[[int(t[k]), float(o[k]), float(h[k]), float(l[k]), float(c[k]), float(v[k])] for k in range(a, z)],
+                          lines=lines, line_names=[f"{nm} ({sig}m)" for nm in names], line_colors=list(names.values())))
+    return views

@@ -85,3 +85,8 @@ def signals(bars, spec):
 def option_lines(s):
     """The same SMAs on an option's own chart, from the option's own candles."""
     return _F.option_lines(s, SPEC)
+
+
+def chart_views(s1, t_from, t_to, main_min):
+    """The same instrument on the other timeframes (signal candles, 1-minute), for the charts under the main one."""
+    return _F.chart_views(SPEC, s1, t_from, t_to, main_min)

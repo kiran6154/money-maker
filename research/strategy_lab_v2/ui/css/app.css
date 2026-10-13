@@ -120,6 +120,11 @@ main { padding: 16px; max-width: 1500px; margin: 0 auto; }
 .pane { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; min-width: 0; }
 .pane-h { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .pane-c { height: 320px; position: relative; }
+.ch-views .view, .pane-views .view { margin-top: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); overflow: hidden; }
+.pane-views .view { border-width: 1px 0 0; border-radius: 0; margin-top: 0; }
+.view-h { padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.view-c { position: relative; height: 340px; }
+.view-c.pane { height: 280px; }
 .pane-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 10px; }
 
 /* tables */

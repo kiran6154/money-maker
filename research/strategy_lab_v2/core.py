@@ -1730,11 +1730,13 @@ def chart(code, run, typ, choice, day, inst=None, to=None, atm=None):
         mine = [r for r in trades if r[cols["instrument"]] == inst]
         s = OptionChain(meta["timeframe"]).get(exp_, k_, atm)
         akey = (exp_, k_)
+        okey = (exp_, k_, atm)
     elif inst:
         mine = [r for r in trades if r[cols["instrument"]] == inst]
         if not mine: raise ValueError("no trades on that instrument in this run")
         r0 = mine[0]
         s = OptionChain(meta["timeframe"]).get(r0[cols["expiry"]], r0[cols["strike"]], r0[cols["opt_type"]])
+        okey = (r0[cols["expiry"]], r0[cols["strike"]], r0[cols["opt_type"]])
     if inst:
         if typ == "OPT_NATIVE":
             ob, _ = window(s, dstr(int(s.day[max(0, int(np.searchsorted(s.day, d0)) - 1)])) if atm else ctx["date_from"],
@@ -1777,6 +1779,10 @@ def chart(code, run, typ, choice, day, inst=None, to=None, atm=None):
         j = np.searchsorted(sp.t, b.t[i0:i1 + 1], "right") - 1
         okj = (j >= 0) & (sp.day[np.maximum(j, 0)] == b.day[i0:i1 + 1])
         out["spot"] = [[int(t_), float(sp.c[jj])] for t_, jj, o_ in zip(b.t[i0:i1 + 1], j, okj) if o_]
+    if hasattr(mod, "chart_views"):                   # the same instrument on the strategy's other timeframes, under this chart
+        s1 = OptionChain("minute").get(*okey) if inst else series("spot" if meta["underlying"] == "INDEX" else "fut", "minute")
+        if s1 is not None:
+            out["views"] = mod.chart_views(s1, int(b.t[i0]), int(b.t[i1]) + TF_MIN[meta["timeframe"]] * 60 - 1, TF_MIN[meta["timeframe"]])
     if inst and hasattr(mod, "option_lines"):         # a strategy's own lines on an option's chart (e.g. its SMA filter)
         k = np.searchsorted(s.t, b.t)                 # computed on the contract's whole series, as the filter reads it
         out["olines"] = [dict(name=nm_, color=getattr(mod, "LINE_COLORS", {}).get(nm_),
@@ -1958,6 +1964,10 @@ def explorer_chart(date, inst, code, tf="minute", expiry=None, strike=None, righ
                              for nm_, v in mod.option_lines(src)]
     elif hasattr(mod, "TYPES") and "FUT" not in mod.TYPES:
         out["meta"]["note"] += f" · {spec['code']} does not trade this instrument: " + str(getattr(mod, "REFUSED_WHY", ""))
+    if hasattr(mod, "chart_views"):                   # the same instrument on the strategy's other timeframes, under this chart
+        s1 = OptionChain("minute").get(expiry, int(strike), right) if inst == "OPT" else series("spot" if inst == "INDEX" else "fut", "minute")
+        if s1 is not None:
+            out["views"] = mod.chart_views(s1, int(b.t[i0]), int(b.t[i1]) + TF_MIN[tf] * 60 - 1, TF_MIN[tf])
     return _jsonable(out)
 
 def explorer_straddle(code, frm, to, tf="minute"):
