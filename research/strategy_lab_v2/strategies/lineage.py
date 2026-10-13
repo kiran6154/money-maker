@@ -78,6 +78,14 @@ LINEAGE = {
     "ST70": ("ST68", "As Strategy 69 with Strategy 3's rules (a CHoCH needs a close beyond the protected level)."),
     "ST71": ("ST69", "Everything on 5-minute candles: the structure (entry and stop) is read on the same 5-minute candles as the SMA cross, not on 1-minute candles."),
     "ST72": ("ST70", "Everything on 5-minute candles: the structure (entry and stop) is read on the same 5-minute candles as the SMA cross, not on 1-minute candles."),
+    "ST73": ("ST71", "The SMA cross is read on 15-minute candles; stop at the previous swing high; target 1 x the stop distance (1:1) instead of 30 points."),
+    "ST74": ("ST71", "The SMA cross is read on 15-minute candles; stop at the previous swing high; target 2 x the stop distance (1:2) instead of 30 points."),
+    "ST75": ("ST71", "The SMA cross is read on 15-minute candles; stop at the SMA of the highs (the crossed period); target 1 x the stop distance (1:1) instead of 30 points."),
+    "ST76": ("ST71", "The SMA cross is read on 15-minute candles; stop at the SMA of the highs (the crossed period); target 2 x the stop distance (1:2) instead of 30 points."),
+    "ST77": ("ST69", "The SMA cross is read on 15-minute candles; stop at the previous swing high; target 1 x the stop distance (1:1) instead of 30 points."),
+    "ST78": ("ST69", "The SMA cross is read on 15-minute candles; stop at the previous swing high; target 2 x the stop distance (1:2) instead of 30 points."),
+    "ST79": ("ST69", "The SMA cross is read on 15-minute candles; stop at the SMA of the highs (the crossed period); target 1 x the stop distance (1:1) instead of 30 points."),
+    "ST80": ("ST69", "The SMA cross is read on 15-minute candles; stop at the SMA of the highs (the crossed period); target 2 x the stop distance (1:2) instead of 30 points."),
     "ST56": (None, "A separate idea: the TradingFinder SMLS indicator's own Long / Short signals; stop at the order block's far edge; flat by the square-off."),
 }
 

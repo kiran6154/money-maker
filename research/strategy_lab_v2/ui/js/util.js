@@ -78,8 +78,11 @@ export function algorithm(spec) {
         S("Futures: sell the futures. Options standalone: SELL that option. Options via futures: the futures signal buys a put."),
         S("Bullish SETUPs are not traded. One position at a time.")]),
       S("Exit — first of:", [
-        S("Stop: the latest confirmed swing high at the entry (the engine's own stop) → out at the stop (at the open if the candle opens above it)."),
-        S(`Target: ${x.target_pts} points below the entry → out at the target (at the open if the candle opens below it).`),
+        S(x.stop === "sma_high"
+          ? `Stop: the SMA of the candle HIGHS on the ${x.candles_min}-minute candles, with the period of the SMA that was crossed last before the entry (the fastest when several were crossed together); its value at the entry candle, fixed from then. Not above the entry → the SETUP is not traded. Out at the stop (at the open if the candle opens above it).`
+          : "Stop: the latest confirmed swing high at the entry (the engine's own stop) → out at the stop (at the open if the candle opens above it)."),
+        S(x.target_r ? `Target: ${x.target_r} × the stop's distance below the entry (risk to reward 1:${x.target_r}) → out at the target (at the open if the candle opens below it).`
+                     : `Target: ${x.target_pts} points below the entry → out at the target (at the open if the candle opens below it).`),
         S("In one candle the stop is checked before the target. The next CHoCH is NOT an exit."),
         S(`${sqOf(P0)}: no new entry from then; a position still open is closed at that candle's close (intraday).`)]),
       S(`Costs: slippage per side ${spec.types?.FUT?.slippage_pts ?? "–"} pts futures, ${spec.types?.OPT_NATIVE?.slippage_pts ?? "–"} pts options; charges per the broker schedule; lot size ${spec.lot_size}.`)];
