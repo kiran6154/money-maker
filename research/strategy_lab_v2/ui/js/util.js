@@ -76,6 +76,8 @@ export function algorithm(spec) {
         S("SETUP: after a CHoCH, both AVWAPs slope its way and a candle closes beyond the CHoCH candle.")]),
       S("Entry: a BEARISH SETUP while the day is armed → SHORT at that candle's close.", [
         S("Futures: sell the futures. Options standalone: SELL that option. Options via futures: the futures signal buys a put."),
+        ...(x.valid_at_entry ? [S(`At EVERY entry the moving average must still be valid: the SMA of the low that was crossed is still falling on the ${x.candles_min}-minute candles AND the entry price is below it. Otherwise this SETUP is skipped; a later one is taken when the average is valid again.`)] : []),
+        S("After a stop the next bearish SETUP of the day is taken again: there is no limit on entries in a day."),
         S("Bullish SETUPs are not traded. One position at a time.")]),
       S("Exit — first of:", [
         S(x.stop === "sma_high"

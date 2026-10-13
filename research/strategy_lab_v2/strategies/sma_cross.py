@@ -21,6 +21,10 @@ ST69 / ST70 (entry_rule "sma_arm_v1"): the cross does not trade, it SWITCHES ON 
               candle after that close until the square-off the day is armed.
   entry       the Foundation engine on the strategy's own candles (SPEC["rules"]: Strategy 1's or Strategy 3's): each
               bearish SETUP while the day is armed -> SHORT at its close. One position at a time.
+              SPEC["sma_cross"]["valid_at_entry"]: the moving average must still be valid at EVERY entry - the SMA of the
+              low that was crossed (the same one the stop rule names) is still falling on the signal candles (its last
+              completed value below the one before) and the entry price is below it. Otherwise that SETUP is not traded;
+              a later one that day is, when the average is valid again.
   stop        SPEC["sma_cross"]["stop"]:
               "structure"  the engine's own: the previous swing high (rules.sl_rule)
               "sma_high"   the SMA of the candle HIGHS, same period and same signal candles as the SMA that was crossed
@@ -144,6 +148,7 @@ def signals_arm(bars, spec):
         crossed[1:][k] = p_
     sig = np.nonzero(crossed)[0]; sig_bar = q1[sig]               # the bar that completes each signal candle
     hi_sma = {p_: _sma(high5, p_) for p_ in X["periods"]} if by_sma else {}
+    lo_sma = {p_: _sma(low5, p_) for p_ in X["periods"]} if X.get("valid_at_entry") else {}
     eng = core.foundation(bars, spec["rules"])
     trades, free = [], -1
     for x in eng.trades():
@@ -153,6 +158,9 @@ def signals_arm(bars, spec):
         if j < 0 or d5[sig[j]] != bars.day[i]: continue           # the day is not armed (yet)
         e = float(c[i]); cut = core.square_off_at(sq, int(t_[i]))
         if cut and t_[i] >= cut: continue
+        if lo_sma:                                                # the average still valid: falling, and the price below it
+            v = lo_sma[int(crossed[sig[j]])]; d_ = int(done[i])
+            if d_ < 1 or not (v[d_] < v[d_ - 1] and e < v[d_]): continue
         if by_sma:
             sl = float(hi_sma[int(crossed[sig[j]])][done[i]]) if done[i] >= 0 else float("nan")
         else:

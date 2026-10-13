@@ -457,6 +457,21 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S90. Lab v2 Strategies 73 - 80: every entry now needs the moving average still valid (the crossed SMA falling and the price below it). Before / after on futures 2018 - 2026: 17 - 42% fewer trades, a slightly better result a trade in seven of eight, all eight still negative (best: Strategy 76, ₹-63,771, PF 0.87)
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/sma_cross.py` (`sma_cross.valid_at_entry`), `st73.py` - `st80.py` (the flag set in all eight). 2026-10-14. The user asked whether, after a stop, the strategies stop or keep entering "as long as the moving average is valid, that is down slope and price below it". As built they kept entering every later bearish SETUP of the armed day and never looked at the average again; the user asked for the check ("yes, go on all three", read as all of the strategies offered: 73 - 80). |
+| What changed | At each entry candle the SMA of the low that was crossed (the period of the last signal before the entry) must have its last completed 15-minute value below the one before it, and the entry price must be below that value. Otherwise the SETUP is skipped; a later SETUP the same day is taken when the average is valid again. Nothing else changed: re-entry after a stop stays, one position at a time, the stops and targets of S89. Strategies 69 - 72 do not carry the flag (69 and 71 re-run unchanged). |
+| Impact, futures | **Measured, Futures type, 1 lot, after costs, 2018-01-31 → 2026-10-09; before → after (trades, net, PF; positive years of 8).** 73: 353, ₹-2,92,422, 0.44, 0 → 284, ₹-2,22,717, 0.47, 0. 74: 345, ₹-2,32,168, 0.61, 1 → 277, ₹-1,74,116, 0.64, 2. 75: 309, ₹-1,30,277, 0.75, 2 → 256, ₹-96,228, 0.79, 2. **76: 305, ₹-91,283, 0.84, 2 → 253, ₹-63,771, 0.87, 3 (halves ₹-40,096 / ₹-23,675; target 22, stop 58, close 173; ₹-252 a trade).** 77: 1,570, ₹-17,16,247, 0.08 → 913, ₹-9,94,330, 0.09. 78: 1,480, ₹-15,51,129, 0.21 → 862, ₹-8,78,668, 0.24. 79: 830, ₹-8,97,857, 0.39 → 520, ₹-5,85,607, 0.46. 80: 753, ₹-7,67,099, 0.48 → 479, ₹-4,82,808, 0.55. A trade: 73 ₹-828 → ₹-784; 74 ₹-673 → ₹-629; 75 ₹-422 → ₹-376; 76 ₹-299 → ₹-252; 77 ₹-1,093 → ₹-1,089; 78 ₹-1,048 → ₹-1,019; 79 ₹-1,082 → ₹-1,126; 80 ₹-1,019 → ₹-1,008. |
+| Impact, options (stored All data runs, from 2026-06-30: one quarter; put bought via futures W-ATR2 / option sold on its own chart, weekly scan) | 73: 16 trades ₹+6,063 / 77 trades ₹-6,800. 74: 16 ₹+6,692 / 70 ₹-6,791. 75: 16 ₹+14,175 / 67 ₹+2,909. 76: 16 ₹+11,807 / 59 ₹+4,230. 77: 62 ₹-16,151 / 177 ₹-24,565. 78: 60 ₹-17,867 / 165 ₹-22,469. 79: 28 ₹-14,866 / 87 ₹-2,902. 80: 26 ₹-12,397 / 72 ₹+7,627. |
+| Read | The check removes mostly the 1-minute strategies' later re-entries (a third to 42% of their trades) and a sixth of the 5-minute ones. What is left is a little better a trade in seven of the eight, by ₹4 to ₹47: the direction is right, the size is small against a loss of ₹250 - ₹1,100 a trade. The ranking of S89 is unchanged. |
+| Open (the user's call) | Unquantified: as S89 (wider targets, the long side, the cost assumption); price below ALL the falling SMAs instead of the crossed one. |
+| Effort | **S** each. |
+| Priority | _Open; before / after recorded._ Related: S89, S88. |
+
+---
+
 ### S89. Lab v2 Strategies 73 - 80: the SMA cross on 15-minute candles, the structure on 5-minute or 1-minute candles, the stop at the swing high or at the SMA of the highs, the target 1:1 or 1:2. Measured, futures 2018 - 2026: all eight lose; the least bad is 5-minute structure, SMA-high stop, 1:2 (305 trades, ₹-91,283, PF 0.84, 2 positive years of 8)
 
 | | |
