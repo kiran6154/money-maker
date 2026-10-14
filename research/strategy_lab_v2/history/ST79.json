@@ -949,6 +949,482 @@
      }
     }
    }
+  },
+  {
+   "version": 3,
+   "at": "2026-10-14T08:25:11",
+   "key": "27bfce9ad0a9",
+   "code": "6d0d457b2bda",
+   "definition": {
+    "code": "ST79",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 21,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "choch_candle",
+     "entry_rule": "sma_arm_v1",
+     "exit_rule": "next_choch"
+    },
+    "sma_low": {
+     "periods": [
+      20,
+      50,
+      100,
+      200,
+      500
+     ],
+     "source": "low",
+     "colors": [
+      "#e5484d",
+      "#f5a524",
+      "#30a46c",
+      "#0090ff",
+      "#8e4ec6"
+     ],
+     "notes": "red 20, amber 50, green 100, blue 200, purple 500"
+    },
+    "sma_cross": {
+     "periods": [
+      20,
+      50,
+      100,
+      200,
+      500
+     ],
+     "side": "short",
+     "falling": true,
+     "candles_min": 15,
+     "valid_at_entry": "closed_below",
+     "stop": "sma_high",
+     "target_r": 1,
+     "notes": "the cross arms the day; the Foundation rules then give the entry and the stop"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM2",
+      "ITM1",
+      "OTM1",
+      "OTM2",
+      "OTM3",
+      "OTM4"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14,
+     "native_scan": {
+      "choices": [
+       "ATR2",
+       "ATM",
+       "ITM1",
+       "OTM1"
+      ],
+      "every_minutes": 5,
+      "one_per_side": true
+     }
+    }
+   },
+   "changes": [
+    "sma_cross.valid_at_entry: True -> 'closed_below'"
+   ],
+   "results": {
+    "all-data_1m": {
+     "FUT": {
+      "-": {
+       "trades": 421,
+       "wins": 167,
+       "pts": -5532.08,
+       "net_inr": -508656.58,
+       "pf": 0.46,
+       "max_dd_inr": -508656.58,
+       "t_stat": -6.21
+      }
+     },
+     "OPT_FUT_SIGNAL": {
+      "W-ATR2": {
+       "trades": 26,
+       "wins": 6,
+       "pts": -231.35,
+       "net_inr": -16622.23,
+       "pf": 0.31,
+       "max_dd_inr": -18606.52,
+       "t_stat": -2.24
+      },
+      "W-ATM": {
+       "trades": 26,
+       "wins": 6,
+       "pts": -253.7,
+       "net_inr": -18105.95,
+       "pf": 0.3,
+       "max_dd_inr": -19887.42,
+       "t_stat": -2.33
+      },
+      "W-ITM2": {
+       "trades": 26,
+       "wins": 5,
+       "pts": -331.95,
+       "net_inr": -23367.6,
+       "pf": 0.28,
+       "max_dd_inr": -25454.81,
+       "t_stat": -2.46
+      },
+      "W-ITM1": {
+       "trades": 26,
+       "wins": 6,
+       "pts": -296.55,
+       "net_inr": -20973.68,
+       "pf": 0.28,
+       "max_dd_inr": -22833.06,
+       "t_stat": -2.42
+      },
+      "W-OTM1": {
+       "trades": 26,
+       "wins": 6,
+       "pts": -219.5,
+       "net_inr": -15811.07,
+       "pf": 0.3,
+       "max_dd_inr": -17310.26,
+       "t_stat": -2.3
+      },
+      "W-OTM2": {
+       "trades": 26,
+       "wins": 6,
+       "pts": -188.7,
+       "net_inr": -13747.35,
+       "pf": 0.3,
+       "max_dd_inr": -14890.28,
+       "t_stat": -2.33
+      },
+      "W-OTM3": {
+       "trades": 26,
+       "wins": 6,
+       "pts": -155.55,
+       "net_inr": -11540.95,
+       "pf": 0.3,
+       "max_dd_inr": -12519.8,
+       "t_stat": -2.31
+      },
+      "W-OTM4": {
+       "trades": 26,
+       "wins": 6,
+       "pts": -129.5,
+       "net_inr": -9805.01,
+       "pf": 0.29,
+       "max_dd_inr": -10461.72,
+       "t_stat": -2.35
+      },
+      "M-ATR2": {
+       "trades": 26,
+       "wins": 8,
+       "pts": -228.4,
+       "net_inr": -16818.39,
+       "pf": 0.32,
+       "max_dd_inr": -18520.14,
+       "t_stat": -2.28
+      },
+      "M-ATM": {
+       "trades": 26,
+       "wins": 7,
+       "pts": -240.75,
+       "net_inr": -17653.36,
+       "pf": 0.3,
+       "max_dd_inr": -19457.5,
+       "t_stat": -2.34
+      },
+      "M-ITM2": {
+       "trades": 26,
+       "wins": 7,
+       "pts": -289.3,
+       "net_inr": -20976.08,
+       "pf": 0.29,
+       "max_dd_inr": -23125.1,
+       "t_stat": -2.42
+      },
+      "M-ITM1": {
+       "trades": 26,
+       "wins": 8,
+       "pts": -265.8,
+       "net_inr": -19361.67,
+       "pf": 0.28,
+       "max_dd_inr": -20757.54,
+       "t_stat": -2.47
+      },
+      "M-OTM1": {
+       "trades": 26,
+       "wins": 8,
+       "pts": -208.2,
+       "net_inr": -15463.11,
+       "pf": 0.34,
+       "max_dd_inr": -17242.15,
+       "t_stat": -2.16
+      },
+      "M-OTM2": {
+       "trades": 26,
+       "wins": 8,
+       "pts": -206.8,
+       "net_inr": -15303.26,
+       "pf": 0.31,
+       "max_dd_inr": -16826.18,
+       "t_stat": -2.3
+      },
+      "M-OTM3": {
+       "trades": 26,
+       "wins": 8,
+       "pts": -179.4,
+       "net_inr": -13458.24,
+       "pf": 0.34,
+       "max_dd_inr": -14924.82,
+       "t_stat": -2.13
+      },
+      "M-OTM4": {
+       "trades": 26,
+       "wins": 8,
+       "pts": -176.4,
+       "net_inr": -13203.83,
+       "pf": 0.31,
+       "max_dd_inr": -14294.72,
+       "t_stat": -2.33
+      }
+     },
+     "OPT_NATIVE": {
+      "W-SCAN": {
+       "trades": 76,
+       "wins": 35,
+       "pts": -16.76,
+       "net_inr": -5644.78,
+       "pf": 0.88,
+       "max_dd_inr": -10874.74,
+       "t_stat": -0.47
+      },
+      "M-SCAN": {
+       "trades": 71,
+       "wins": 34,
+       "pts": 14.38,
+       "net_inr": -4193.37,
+       "pf": 0.9,
+       "max_dd_inr": -11504.2,
+       "t_stat": -0.37
+      }
+     }
+    },
+    "this-month_1m": {
+     "FUT": {
+      "-": {
+       "trades": 0,
+       "wins": 0,
+       "pts": 0,
+       "net_inr": 0,
+       "pf": null,
+       "max_dd_inr": 0.0,
+       "t_stat": null
+      }
+     },
+     "OPT_FUT_SIGNAL": {
+      "W-ATR2": {
+       "trades": 0,
+       "wins": 0,
+       "pts": 0,
+       "net_inr": 0,
+       "pf": null,
+       "max_dd_inr": 0.0,
+       "t_stat": null
+      },
+      "W-ATM": {
+       "trades": 0,
+       "wins": 0,
+       "pts": 0,
+       "net_inr": 0,
+       "pf": null,
+       "max_dd_inr": 0.0,
+       "t_stat": null
+      },
+      "W-ITM2": {
+       "trades": 0,
+       "wins": 0,
+       "pts": 0,
+       "net_inr": 0,
+       "pf": null,
+       "max_dd_inr": 0.0,
+       "t_stat": null
+      },
+      "W-ITM1": {
+       "trades": 0,
+       "wins": 0,
+       "pts": 0,
+       "net_inr": 0,
+       "pf": null,
+       "max_dd_inr": 0.0,
+       "t_stat": null
+      },
+      "W-OTM1": {
+       "trades": 0,
+       "wins": 0,
+       "pts": 0,
+       "net_inr": 0,
+       "pf": null,
+       "max_dd_inr": 0.0,
+       "t_stat": null
+      },
+      "W-OTM2": {
+       "trades": 0,
+       "wins": 0,
+       "pts": 0,
+       "net_inr": 0,
+       "pf": null,
+       "max_dd_inr": 0.0,
+       "t_stat": null
+      },
+      "W-OTM3": {
+       "trades": 0,
+       "wins": 0,
+       "pts": 0,
+       "net_inr": 0,
+       "pf": null,
+       "max_dd_inr": 0.0,
+       "t_stat": null
+      },
+      "W-OTM4": {
+       "trades": 0,
+       "wins": 0,
+       "pts": 0,
+       "net_inr": 0,
+       "pf": null,
+       "max_dd_inr": 0.0,
+       "t_stat": null
+      },
+      "M-ATR2": {
+       "trades": 0,
+       "wins": 0,
+       "pts": 0,
+       "net_inr": 0,
+       "pf": null,
+       "max_dd_inr": 0.0,
+       "t_stat": null
+      },
+      "M-ATM": {
+       "trades": 0,
+       "wins": 0,
+       "pts": 0,
+       "net_inr": 0,
+       "pf": null,
+       "max_dd_inr": 0.0,
+       "t_stat": null
+      },
+      "M-ITM2": {
+       "trades": 0,
+       "wins": 0,
+       "pts": 0,
+       "net_inr": 0,
+       "pf": null,
+       "max_dd_inr": 0.0,
+       "t_stat": null
+      },
+      "M-ITM1": {
+       "trades": 0,
+       "wins": 0,
+       "pts": 0,
+       "net_inr": 0,
+       "pf": null,
+       "max_dd_inr": 0.0,
+       "t_stat": null
+      },
+      "M-OTM1": {
+       "trades": 0,
+       "wins": 0,
+       "pts": 0,
+       "net_inr": 0,
+       "pf": null,
+       "max_dd_inr": 0.0,
+       "t_stat": null
+      },
+      "M-OTM2": {
+       "trades": 0,
+       "wins": 0,
+       "pts": 0,
+       "net_inr": 0,
+       "pf": null,
+       "max_dd_inr": 0.0,
+       "t_stat": null
+      },
+      "M-OTM3": {
+       "trades": 0,
+       "wins": 0,
+       "pts": 0,
+       "net_inr": 0,
+       "pf": null,
+       "max_dd_inr": 0.0,
+       "t_stat": null
+      },
+      "M-OTM4": {
+       "trades": 0,
+       "wins": 0,
+       "pts": 0,
+       "net_inr": 0,
+       "pf": null,
+       "max_dd_inr": 0.0,
+       "t_stat": null
+      }
+     },
+     "OPT_NATIVE": {
+      "W-SCAN": {
+       "trades": 2,
+       "wins": 1,
+       "pts": 27.73,
+       "net_inr": 1691.21,
+       "pf": 6.45,
+       "max_dd_inr": -310.49,
+       "t_stat": 0.73
+      },
+      "M-SCAN": {
+       "trades": 0,
+       "wins": 0,
+       "pts": 0,
+       "net_inr": 0,
+       "pf": null,
+       "max_dd_inr": 0.0,
+       "t_stat": null
+      }
+     }
+    }
+   }
   }
  ]
 }

@@ -457,6 +457,22 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S92. Lab v2 Strategies 73 - 80: a short was taken with the last 15-minute candle closed back ABOVE the crossed SMA (found by the user on a chart). Fixed: the signal ends when a signal candle closes back above the average. Before / after on futures: better in the four 5-minute strategies (Strategy 76: ₹-63,771 → ₹-17,547, PF 0.96), no better a trade in the four 1-minute ones
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/sma_cross.py` (`valid_at_entry: "closed_below"`), `st73.py` - `st80.py`. 2026-10-14. The user, on the 15-minute chart of the 24100 CE (expiry 2026-08-25) in Strategy 79 / 80: "why is there a short here; cross-over is a body close below the SMA", then, zoomed in on 2026-08-21 13:15: "I am not seeing any cross-over here". |
+| What the trade was | The cross that armed the day was at the 11:30 candle (close 221.1 under the falling SMA 20 of the lows at 224.1; the candle before closed 227.8 above its 224.3). The short came at 13:21 from the 1-minute SETUP at 210.1. S90's check passed: the SMA 20 (213.6) was falling and the entry price was below it. But the last completed 15-minute candle, 13:00, had closed at 218.5, back ABOVE the SMA 20: on the signal chart the cross was undone. S90 compared the 1-minute entry price with the average, not the signal candle's close. |
+| What changed | In addition to S90's two conditions, the last completed signal candle must itself have closed below the crossed SMA. A signal candle closing back above the average ends the signal until the next cross down. With it the trade above is not taken (checked in the explorer for Strategies 79 and 80: no trade on 2026-08-21). |
+| Impact, futures | **Measured, Futures type, 1 lot, after costs, 2018-01-31 → 2026-10-09; S90 → now (trades, net, PF; positive years of 8).** 73: 284, ₹-2,22,717, 0.47, 0 → 251, ₹-1,74,901, 0.51, 0. 74: 277, ₹-1,74,116, 0.64, 2 → 245, ₹-1,13,963, 0.72, 2. 75: 256, ₹-96,228, 0.79, 2 → 226, ₹-50,371, 0.87, 3. **76: 253, ₹-63,771, 0.87, 3 → 224, ₹-17,547, 0.96, 4 (halves ₹-20,462 / ₹+2,915; target 20, stop 46, close 158; ₹-78 a trade).** 77: 913, ₹-9,94,330, 0.09 → 728, ₹-8,09,863, 0.09. 78: 862, ₹-8,78,668, 0.24 → 684, ₹-7,17,851, 0.23. 79: 520, ₹-5,85,607, 0.46 → 421, ₹-5,08,657, 0.46. 80: 479, ₹-4,82,808, 0.55 → 398, ₹-4,47,392, 0.53. A trade: 73 ₹-784 → ₹-697; 74 ₹-629 → ₹-465; 75 ₹-376 → ₹-223; 76 ₹-252 → ₹-78; 77 ₹-1,089 → ₹-1,112; 78 ₹-1,019 → ₹-1,049; 79 ₹-1,126 → ₹-1,208; 80 ₹-1,008 → ₹-1,124. |
+| Impact, options (stored All data runs, from 2026-06-30: one quarter; put bought via futures W-ATR2 / option sold on its own chart, weekly scan) | 73: 12 trades ₹+5,549 / 71 trades ₹-4,239. 74: 12 ₹+6,177 / 65 ₹-3,990. 75: 12 ₹+13,098 / 62 ₹+5,333. 76: 12 ₹+9,974 / 55 ₹+7,269. 77: 48 ₹-11,814 / 139 ₹-23,055. 78: 48 ₹-13,740 / 133 ₹-20,900. 79: 26 ₹-16,622 / 76 ₹-5,645. 80: 24 ₹-13,506 / 63 ₹+5,075. |
+| Read | The condition is what the user meant by a valid average, and on the 5-minute structure it removes losing trades (each of the four improves by ₹87 to ₹174 a trade). Strategy 76 is now ₹-78 a trade on 224 trades, t -0.25, 4 positive years of 8, second half ₹+2,915: at zero within noise, not above it; 158 of its 224 trades still end at the square-off. On the 1-minute structure the trades removed were no worse than the rest. |
+| Open (the user's call) | Unquantified: the slow SMAs only as signals; price below all five; all five falling (the options offered to the user on 2026-10-14). |
+| Effort | **S** each. |
+| Priority | _Fixed; before / after recorded._ Related: S90, S89. |
+
+---
+
 ### S91. Lab v2, measured but not built (2026-10-14): the SMA family with 15-minute candles for everything. The cross traded directly on 15-minute candles loses like the 5-minute one; with the structure on 15-minute candles too there are 93 trades in 8.7 years, around zero
 
 | | |

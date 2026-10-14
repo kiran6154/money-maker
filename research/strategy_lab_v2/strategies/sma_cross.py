@@ -23,7 +23,9 @@ ST69 / ST70 (entry_rule "sma_arm_v1"): the cross does not trade, it SWITCHES ON 
               bearish SETUP while the day is armed -> SHORT at its close. One position at a time.
               SPEC["sma_cross"]["valid_at_entry"]: the moving average must still be valid at EVERY entry - the SMA of the
               low that was crossed (the same one the stop rule names) is still falling on the signal candles (its last
-              completed value below the one before) and the entry price is below it. Otherwise that SETUP is not traded;
+              completed value below the one before) and the entry price is below it; with the value "closed_below"
+              also the last completed signal candle itself must have CLOSED below it (a candle closing back above the
+              average ends the signal until the next cross down). Otherwise that SETUP is not traded;
               a later one that day is, when the average is valid again.
   stop        SPEC["sma_cross"]["stop"]:
               "structure"  the engine's own: the previous swing high (rules.sl_rule)
@@ -161,6 +163,7 @@ def signals_arm(bars, spec):
         if lo_sma:                                                # the average still valid: falling, and the price below it
             v = lo_sma[int(crossed[sig[j]])]; d_ = int(done[i])
             if d_ < 1 or not (v[d_] < v[d_ - 1] and e < v[d_]): continue
+            if X["valid_at_entry"] == "closed_below" and not c5[d_] < v[d_]: continue   # the last signal candle closed back above it
         if by_sma:
             sl = float(hi_sma[int(crossed[sig[j]])][done[i]]) if done[i] >= 0 else float("nan")
         else:

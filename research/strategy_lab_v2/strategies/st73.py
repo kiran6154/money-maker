@@ -5,7 +5,9 @@
   entry       Strategy 2's rules on 5-minute candles (swings, protected level, CHoCH / BOS by touch, the AVWAP pair, SETUP):
               each bearish SETUP while the day is armed -> SHORT at its close. One position at a time.
               At every entry the moving average must still be valid: the SMA that was crossed still falling and the
-              entry price below it (SPEC["sma_cross"]["valid_at_entry"]; added 2026-10-14: S90). Otherwise not traded.
+              entry price below it, and the last completed 15-minute candle itself closed below it - a candle closing back
+              above the average ends the signal until the next cross down (SPEC["sma_cross"]["valid_at_entry"]; added
+              2026-10-14: S90, S92). Otherwise not traded.
   stop        the previous swing high of the structure.
   target      1 x the stop's distance below the entry (risk to reward 1:1).
   close       intraday: the square-off. The next-CHoCH exit is not used.
@@ -33,7 +35,7 @@ SPEC = {'code': 'ST73',
  'sma_low': {'periods': [20, 50, 100, 200, 500], 'source': 'low',
              'colors': ['#e5484d', '#f5a524', '#30a46c', '#0090ff', '#8e4ec6'],
              'notes': 'red 20, amber 50, green 100, blue 200, purple 500'},
- 'sma_cross': {'periods': [20, 50, 100, 200, 500], 'side': 'short', 'falling': True, 'candles_min': 15, 'valid_at_entry': True, 'stop': 'structure', 'target_r': 1,
+ 'sma_cross': {'periods': [20, 50, 100, 200, 500], 'side': 'short', 'falling': True, 'candles_min': 15, 'valid_at_entry': 'closed_below', 'stop': 'structure', 'target_r': 1,
                'notes': 'the cross arms the day; the Foundation rules then give the entry and the stop'},
  'lot_size': 65,
  'capital': {'futures_margin': 120000, 'short_option_margin': 150000},
