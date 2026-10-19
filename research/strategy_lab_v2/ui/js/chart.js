@@ -305,13 +305,22 @@ export class ChartView {
       s.setData([{ time: this.snapT(times, a), value: hi }, { time: tN, value: hi }]);
     }
     const cs = ch.addCandlestickSeries({ upColor: UP, downColor: DN, wickUpColor: UP, wickDownColor: DN, borderVisible: false });
-    cs.priceScale().applyOptions({ scaleMargins: { top: 0.06, bottom: on.vol ? 0.27 : 0.06 } });   // the candles end above the volume band
+    const oiBand = main && d.oi && (d.oi.ce || []).length;           // Strategy 81: the OI lines get their own band under the candles
+    cs.priceScale().applyOptions({ scaleMargins: { top: 0.04, bottom: oiBand ? (on.vol ? 0.46 : 0.3) : on.vol ? 0.27 : 0.06 } });   // the candles end above the bands
     cs.setData(C0.map((c) => ({ time: c[0], open: c[1], high: c[2], low: c[3], close: c[4] })));
     const line = (opt, data) => { const s = ch.addLineSeries({ ...base, ...opt }); s.setData(data); return s; };
     if (on.vol) {
       const vs = ch.addHistogramSeries({ priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
       ch.priceScale("vol").applyOptions({ scaleMargins: { top: 0.77, bottom: 0 } });       // the bottom quarter of the chart
       vs.setData(C0.map((c) => ({ time: c[0], value: c[5], color: c[4] >= c[1] ? "rgba(8,153,129,.6)" : "rgba(242,54,69,.6)" })));
+    }
+    if (oiBand) {                                                    // CE / PE cumulative dOI, in lakh, in the band between the candles and the volume
+      const fmt = { type: "custom", formatter: (v) => (v / 1e5).toFixed(1) + " L" };
+      for (const [k, col] of [["ce", "#f23645"], ["pe", "#089981"]]) {
+        const s = ch.addLineSeries({ priceScaleId: "oi", color: col, lineWidth: 2, priceLineVisible: false, lastValueVisible: true, title: k.toUpperCase() + " OI", priceFormat: fmt });
+        s.setData((d.oi[k] || []).map(([t, v]) => ({ time: t, value: v })));
+      }
+      ch.priceScale("oi").applyOptions({ scaleMargins: on.vol ? { top: 0.57, bottom: 0.25 } : { top: 0.72, bottom: 0.02 } });
     }
     const snap = (t) => this.snapT(times, t);
     const M = [];
