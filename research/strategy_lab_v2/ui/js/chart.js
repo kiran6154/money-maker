@@ -414,8 +414,8 @@ export class ChartView {
         if (r[ix("outcome_gate")] === "REENTER" && f && f !== r[ix("time")]) { const y = tsOf(f); if (y >= t0 && y <= tN) M.push({ time: snap(y), position: r[ix("dir")] === "up" ? "belowBar" : "aboveBar", color: PURPLE, shape: "circle", size: 0.3, text: "R" }); }
       }
     }
-    if (main && d.regimes) for (const [t, lab] of d.regimes)           // Strategy 81: the regime, where it changes
-      if (t >= t0 && t <= tN) M.push({ time: snap(t), position: "aboveBar", color: { "Sideways": "#6b7280", "BOS up": "#089981", "BOS down": "#f23645", "CHoCH": "#7b1fa2" }[lab] || "#9e9e9e", shape: "circle", size: 0.4, text: lab === "none" ? "·" : lab });
+    if (main && d.regimes) for (const [t, lab] of d.regimes)           // Strategy 81: the regime, where it changes (a CHoCH is already its event mark)
+      if (t >= t0 && t <= tN && lab !== "CHoCH") M.push({ time: snap(t), position: "aboveBar", color: { "Sideways": "#6b7280", "BOS up": "#089981", "BOS down": "#f23645", "CHoCH": "#7b1fa2" }[lab] || "#9e9e9e", shape: "circle", size: 0.4, text: lab === "none" ? "·" : lab });
     const placed = M.filter((m) => m.time != null && m.time >= t0 && m.time <= tN);
     placed.sort((a, b) => a.time - b.time);
     cs.setMarkers(placed);
