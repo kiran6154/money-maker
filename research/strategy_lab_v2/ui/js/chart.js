@@ -220,6 +220,7 @@ export class ChartView {
     const main = this.draw($(".ch-main", this.root), d, { own: !!d.own || (this.ctx.type === "FUT" && this.ctx.run.underlying !== "INDEX"), main: true });
     this.legend(d);
     this.drawViews($(".ch-views", this.root), d, "main");
+    this.drawOI($(".ch-views", this.root), d);
     // row 2: the CE pane and the PE pane, side by side
     const host = $(".ch-panes", this.root);
     if (this.hooks.static) { host.innerHTML = ""; this.sync(); return; }
@@ -256,6 +257,23 @@ export class ChartView {
     views.forEach((v, k) => this.draw($(`.view-c[data-k="${k}"]`, host),
       { day: d.day, to: d.to, inst: d.inst, cols: d.cols, trades: d.trades, candles: v.candles, lines: v.lines, line_names: v.line_names, line_colors: v.line_colors, sessions: d.sessions },
       { own: true }));
+  }
+
+  // Strategy 81: the CE and PE open-interest lines (the session's cumulative dOI of the 3 ATM strikes), under the main chart
+  drawOI(host, d) {
+    if (!host || !d.oi) return;
+    const box = document.createElement("div"); box.className = "view";
+    box.innerHTML = `<div class="view-h small"><b>Open interest</b> <span class="muted">· cumulative change in the session, 3 strikes around the ATM, nearest weekly expiry ·
+      <span style="color:#f23645;font-weight:600">CE dOI</span> <span style="color:#089981;font-weight:600">PE dOI</span>${d.status ? ` · position: ${esc(d.status)}` : ""}</span></div><div class="view-c"></div>`;
+    host.prepend(box);
+    const el = $(".view-c", box), ch = LightweightCharts.createChart(el, this.opts(el));
+    this.charts.push(ch); el._chart = ch;
+    for (const [k, col] of [["ce", "#f23645"], ["pe", "#089981"]]) {
+      const s = ch.addLineSeries({ color: col, lineWidth: 2, priceLineVisible: false, title: k.toUpperCase() + " dOI" });
+      s.setData((d.oi[k] || []).map(([t, v]) => ({ time: t, value: v })));
+    }
+    const z = ch.addLineSeries({ color: "#9e9e9e", lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+    z.setData(d.candles.map((c) => ({ time: c[0], value: 0 })));
   }
 
   sync() {
@@ -387,6 +405,8 @@ export class ChartView {
         if (r[ix("outcome_gate")] === "REENTER" && f && f !== r[ix("time")]) { const y = tsOf(f); if (y >= t0 && y <= tN) M.push({ time: snap(y), position: r[ix("dir")] === "up" ? "belowBar" : "aboveBar", color: PURPLE, shape: "circle", size: 0.3, text: "R" }); }
       }
     }
+    if (main && d.regimes) for (const [t, lab] of d.regimes)           // Strategy 81: the regime, where it changes
+      if (t >= t0 && t <= tN) M.push({ time: snap(t), position: "aboveBar", color: { "Sideways": "#6b7280", "BOS up": "#089981", "BOS down": "#f23645", "CHoCH": "#7b1fa2" }[lab] || "#9e9e9e", shape: "circle", size: 0.4, text: lab === "none" ? "·" : lab });
     const placed = M.filter((m) => m.time != null && m.time >= t0 && m.time <= tN);
     placed.sort((a, b) => a.time - b.time);
     cs.setMarkers(placed);

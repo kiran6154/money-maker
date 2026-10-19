@@ -62,6 +62,35 @@ export function algorithm(spec) {
   const by = (m) => (m === "close" ? "a candle closing beyond it" : "a candle touching it (high / low)");
   const S = (t, sub) => ({ t, sub: sub || [] });
   const steps = [];
+  if (spec.rules?.entry_rule === "oi_regime_v1") {     // Strategy 81: regime from CE / PE open interest + structure
+    const g = spec.oi_regime, P0 = spec.position || {};
+    return [
+      S(`Candles: ${TF[spec.timeframe] || spec.timeframe} candles of the ${spec.underlying === "INDEX" ? "NIFTY index" : "near-month NIFTY futures"} (the backtest's underlying).`),
+      S("1. Open interest, every bar:", [
+        S(`The 3 strikes around the ATM (ATM from the index close of the bar, ± one ${spec.options?.strike_step}-point step), nearest weekly expiry${g.expiry_min_days ? ` at least ${g.expiry_min_days} day out` : " (the expiry day included)"}.`),
+        S("CE dOI and PE dOI = each strike's open interest now minus the SAME strike's one bar before, summed over the 3 strikes (an ATM change does not jump the series). The premium change likewise."),
+        S("The two lines drawn = the session's cumulative CE dOI and PE dOI. From the option files' open_interest column; no ATR anywhere.")]),
+      S(`2. Structure: a swing high / low = a bar higher / lower than ${g.pivot} bars on each side, confirmed ${g.pivot} bars later.`, [
+        S("BOS up: a close above the last swing high while the trend is up. BOS down: a close below the last swing low while the trend is down."),
+        S("CHoCH up: a close above the last swing high while the trend is down. CHoCH down: a close below the last swing low while the trend is up."),
+        S("Each swing level is broken once; the trend is what the last BOS / CHoCH says.")]),
+      S(`3. Regime, every bar, first match (sums over the last ${g.n} bars):`, [
+        S("CHoCH: a CHoCH on this bar."),
+        S("BOS down: trend down AND CE short buildup dominant — CE dOI > 0, the CE premium fell, CE dOI > PE dOI."),
+        S("BOS up: trend up AND PE short buildup dominant — the mirror."),
+        S(`Sideways: CE dOI > 0 AND PE dOI > 0 (both sides written) AND the ${g.n}-bar high − low is at most ${g.tight_pts} points.`),
+        S("Otherwise: no regime, no trade.")]),
+      S(`4. Entry — only when flat, only on a fresh signal, none at or after ${g.last_entry}; one position at a time:`, [
+        S(`Sideways: SELL when the close is in the top ${Math.round(g.edge * 100)}% of the ${g.n}-bar range; BUY in the bottom ${Math.round(g.edge * 100)}% (fresh: the bar before was not in that zone).`),
+        S("BOS down: SELL on a bounce — the bar before closed up and this one closes down. No buys."),
+        S("BOS up: BUY on a dip — the bar before closed down and this one closes up. No sells.")]),
+      S("Exit — first of:", [
+        S(`Stop ${g.stop_pts} points; target ${g.target_pts} points (in one candle the stop is checked first).`),
+        S("A CHoCH (either way) → out at that bar's close."),
+        S(`${g.max_bars} bars held → out at that bar's close.`),
+        S(`${sqOf(P0)}: flat at that candle's close.`)]),
+      S(`Costs: slippage per side ${spec.types?.FUT?.slippage_pts ?? "–"} pts futures, ${spec.types?.OPT_FUT_SIGNAL?.slippage_pts ?? "–"} pts options; charges per the broker schedule; lot size ${spec.lot_size}.`)];
+  }
   if (spec.rules?.entry_rule === "sma_arm_v1") {       // Strategies 69 / 70: the SMA cross arms the day, Foundation trades
     const x = spec.sma_cross, m = spec.sma_low, P0 = spec.position || {};
     return [
