@@ -99,11 +99,18 @@ export class ChartView {
   edge(dir) {
     if (!this.userMoved || this.edgeBusy || this.edgeDone[dir]) return;
     this.userMoved = false; this.edgeBusy = true;
-    const keep = this.charts[0]?.timeScale().getVisibleRange();
+    const keep = this.keepOf(dir);
     const before = this.data?.candles?.length || 0;
     Promise.resolve(this.hooks.onEdge ? this.hooks.onEdge(dir, keep) : this.extend(dir))
       .then(() => { if ((this.data?.candles?.length || 0) <= before) this.edgeDone[dir] = true; })   // nothing more on that side
       .catch(() => {}).finally(() => { this.edgeBusy = false; });
+  }
+
+  // the view to keep across a reload that adds sessions on one side: the bar range on screen (it may run past the
+  // candles - a zoom-out - and the new candles fill it), shifted by the candles added in front of it
+  keepOf(dir) {
+    const ts = this.charts[0]?.timeScale();
+    return ts ? { logical: ts.getVisibleLogicalRange(), dir, oldLen: this.data?.candles?.length || 0, oldFirst: this.data?.candles?.[0]?.[0] } : null;
   }
 
   async extend(dir) {
@@ -112,7 +119,7 @@ export class ChartView {
     const MAX_SESSIONS = 60;
     if (this.extending || this.hooks.static || !this.data || (this.data.sessions || 1) >= MAX_SESSIONS) return;
     this.extending = true;
-    const keep = this.charts[0]?.timeScale().getVisibleRange();
+    const keep = this.keepOf(dir);
     const { code, run, type, choice } = this.ctx, start = this.day, end = this.to || this.day, span = this.data.sessions || 1;
     let d = new Date((dir < 0 ? start : end) + "T00:00:00Z");
     try {
@@ -504,7 +511,12 @@ export class ChartView {
     requestAnimationFrame(() => {
       if (main && this.keepRange) {                // an extension: keep the view the reader had
         const r = this.keepRange; this.keepRange = null;
-        try { ch.timeScale().setVisibleRange(r); } catch (e) { ch.timeScale().fitContent(); }
+        try {
+          if (r.logical) {                         // the same bars on screen: shift by the candles added before the old first one
+            const add = r.oldFirst != null ? C0.filter((c) => c[0] < r.oldFirst).length : 0;
+            ch.timeScale().setVisibleLogicalRange({ from: r.logical.from + add, to: r.logical.to + add });
+          } else ch.timeScale().setVisibleRange(r);
+        } catch (e) { ch.timeScale().fitContent(); }
       } else if (this.focusTime && main) {
         const t = this.focusTime; this.focusTime = null;
         try { ch.timeScale().setVisibleRange({ from: t - 3600, to: t + 3600 }); } catch (e) { ch.timeScale().fitContent(); }
