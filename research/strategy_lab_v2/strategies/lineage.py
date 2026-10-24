@@ -88,6 +88,8 @@ LINEAGE = {
     "ST80": ("ST69", "The SMA cross is read on 15-minute candles; stop at the SMA of the highs (the crossed period); target 2 x the stop distance (1:2) instead of 30 points."),
     "ST81": (None, "A separate idea from the user's build spec: the regime from the CE / PE open interest of the 3 ATM strikes plus a pivot structure (Sideways / BOS up / BOS down / CHoCH), entries by regime, stop / target in points, a bar cap, flat on a CHoCH and at the square-off."),
     "ST82": (None, "The user's document of 2026-10-24: CHoCH + Order Block retest on the index, the ATM option traded, filtered by the option's previous-day low; stop 40% of premium, 1.5R, 30-minute exit."),
+    "ST83": (None, "The user's IMPLEMENTATION_RULESET.md (ORR_V1): the 09:15 candle's body sets the side; a sweep and reclaim of the opposite opening boundary enters at the next minute's open; 50 / 50 points, 0.5 slippage, unlimited re-entry, flat at 15:15."),
+    "ST84": ("ST83", "The reclaim only arms the setup; the entry waits for the first BOS / CHoCH that way on the 1-minute structure (instead of the blind entry)."),
     "ST56": (None, "A separate idea: the TradingFinder SMLS indicator's own Long / Short signals; stop at the order block's far edge; flat by the square-off."),
 }
 

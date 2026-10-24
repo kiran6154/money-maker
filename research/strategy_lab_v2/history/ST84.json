@@ -1,0 +1,131 @@
+{
+ "code": "ST84",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-24T17:09:45",
+   "key": "d7d515703b22",
+   "code": "2ce613b9f558",
+   "definition": {
+    "code": "ST84",
+    "timeframe": "minute",
+    "underlying": "INDEX",
+    "warmup_days": 2,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "orr_v1",
+     "exit_rule": "next_choch"
+    },
+    "orr": {
+     "body_min": 0.6,
+     "body_max": 0.9,
+     "stop_pts": 50,
+     "target_pts": 50,
+     "slippage": 0.5,
+     "cutoff": "15:15",
+     "confirm": "structure",
+     "notes": "the ruleset ORR_V1 values: opening body 60% (inclusive) to 90% (exclusive) of its range, 50 / 50 point bracket from the slipped fill, 0.5 point adverse slippage per execution, entries before and force close at 15:15"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 0.5
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATM"
+     ],
+     "strike_default": "ATM",
+     "atr_period": 14
+    }
+   },
+   "changes": [],
+   "results": {
+    "ruleset-2025_1m_idx": {
+     "FUT": {
+      "-": {
+       "trades": 27,
+       "wins": 18,
+       "pts": 440.5,
+       "net_inr": 16240.75,
+       "pf": 1.56,
+       "max_dd_inr": -11158.42,
+       "t_stat": 1.08
+      }
+     }
+    },
+    "ruleset-2026_1m_idx": {
+     "FUT": {
+      "-": {
+       "trades": 30,
+       "wins": 17,
+       "pts": 269.85,
+       "net_inr": 3724.95,
+       "pf": 1.09,
+       "max_dd_inr": -13084.59,
+       "t_stat": 0.23
+      }
+     }
+    },
+    "all-data_1m_idx": {
+     "FUT": {
+      "-": {
+       "trades": 304,
+       "wins": 160,
+       "pts": 1381.45,
+       "net_inr": -14225.55,
+       "pf": 0.97,
+       "max_dd_inr": -90736.04,
+       "t_stat": -0.28
+      }
+     }
+    },
+    "1y_1m_idx": {
+     "FUT": {
+      "-": {
+       "trades": 39,
+       "wins": 23,
+       "pts": 489.45,
+       "net_inr": 13597.37,
+       "pf": 1.29,
+       "max_dd_inr": -13084.59,
+       "t_stat": 0.74
+      }
+     }
+    }
+   }
+  }
+ ]
+}

@@ -62,6 +62,30 @@ export function algorithm(spec) {
   const by = (m) => (m === "close" ? "a candle closing beyond it" : "a candle touching it (high / low)");
   const S = (t, sub) => ({ t, sub: sub || [] });
   const steps = [];
+  if (spec.rules?.entry_rule === "orr_v1") {           // Strategies 83 / 84: opening-range sweep / reclaim (ORR_V1)
+    const g = spec.orr, conf = g.confirm === "structure";
+    return [
+      S("Candles: 1-minute candles of the NIFTY index (a point-accounting proxy). A session is used only when every minute 09:15 – 15:29 is there."),
+      S(`Eligibility: the 09:15 candle's body is at least ${g.body_min * 100}% and under ${g.body_max * 100}% of its range (range > 0, not a doji).`, [
+        S("Bullish body → LONG only for the whole session; bearish body → SHORT only."),
+        S("The 09:15 high and low stay fixed all day.")]),
+      S("Setup, from the 09:16 candle, while flat:", [
+        S("LONG: a completed candle's low goes below the opening low (the sweep; the first one is latched), then a completed close above the opening low (the reclaim; the same candle may do both). Equality is neither."),
+        S("SHORT: the mirror on the opening high.")]),
+      conf ? S("Entry — with confirmation (the change from ORR_V1):", [
+               S("The reclaim only ARMS the setup. The entry comes at the next minute's open after the first BOS or CHoCH in the trade's direction on the same 1-minute candles (Foundation engine, Strategy 1's rules), at or after the reclaim candle."),
+               S("A new sweep of the boundary before the confirmation clears the arm: a fresh reclaim is needed."),
+               S(`Strictly before ${g.cutoff}.`)])
+           : S(`Entry: at the OPEN of the minute right after the reclaim candle (no other confirmation), strictly before ${g.cutoff}.`),
+      S(`Bracket: entry fill = open ± ${g.slippage} (adverse); stop ${g.stop_pts} and target ${g.target_pts} points from that fill.`),
+      S("Exit, checked from the entry minute itself, in this order:", [
+        S(`The ${g.cutoff} minute → out at its open (FORCE_CLOSE).`),
+        S("Open beyond the stop → out at that open (STOP_GAP); open beyond the target → out at the target."),
+        S("Low / high through the stop → the stop (checked before the target); through the target → the target."),
+        S(`Exit fill = raw exit ∓ ${g.slippage} (adverse).`)]),
+      S("Re-entry: unlimited, one position at a time; the exit minute is skipped, the sweep latch is cleared and a fresh sweep and reclaim is needed."),
+      S("Result in index points (the ruleset's unit); the rupee columns treat a point as one futures lot with futures charges, which the ruleset itself does not.")];
+  }
   if (spec.rules?.entry_rule === "ob_retest_v1") {     // Strategy 82: CHoCH + Order Block retest + the option's previous-day range
     const g = spec.ob, sell = g.short_as === "sell_pe";
     return [
