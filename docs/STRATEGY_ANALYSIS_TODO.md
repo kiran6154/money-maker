@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S102. Lab v2 Strategy 90: the day-open ATM option sold when it closes below its own previous-session low; a bullish CHoCH of the option exits a losing trade, a profitable one trails the stop at the bounce's top. Measured: ₹+74,643, PF 1.10, positive in both halves; the CE side carries it, the PE side loses
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/pdl_short.py` (family module, own runner and chart; option prices from the download store through `store_reader.py`), `st90.py` (`pdl.expiry_min_days`). 2026-10-24, the user: "one more strategy: if an option crosses below the previous day's low, sell; if CHoCH upside, exit if in loss, else trail". |
+| Build choices (not in the request; fixed before the run, all in the module text) | (1) Instrument: each session's day-open ATM CE and PE (the index's 09:15 open rounded to the strike), nearest weekly expiry at least 1 day out; each leg its own machine, one position per leg, both may be short at once. (2) Level: the same contract's low of the session before (none: no trade). (3) "Crosses below": a 1-minute CLOSE below the level (not a wick), sold at the next minute's open; after an exit a fresh cross is needed (a close back at or above the level first). (4) Structure: the Foundation engine on the option's own 1-minute candles (touch mode, the lab's default), warmed up on the two sessions before. (5) "Exit if in loss else trail": at each bullish CHoCH of the option, in loss (the CHoCH candle's close above the sale price) buy back at that close; in profit, the stop goes to the top of the bounce so far (the highest high since the option's latest confirmed swing low) and is lowered to each new confirmed swing high; a later bullish CHoCH applies the rule again. No stop before the first CHoCH (the request has none). (6) Flat at 15:15; 0.5 point slippage a side, option charges, 1 lot (65). |
+| Impact | **Measured, the store's options, 2024-09-20 → 2026-10-09, after costs: 1,101 trades on 490 days (587 CE, 514 PE), 41.2% winners, +2,217 premium points, ₹+74,643, PF 1.10; halves ₹+38,859 (PF 1.10) / ₹+35,784 (PF 1.11); worst trade ₹-10,023, best ₹+9,670.** By exit: 545 CHoCH-in-loss exits ₹-671,515 between them, 261 trail stops ₹+167,192, 295 held to 15:15 ₹+578,966. By leg: the CE ₹+85,674, the PE ₹-11,031 (second half: CE ₹+50,138, PE ₹-14,353). |
+| Read | The edge is in the trades that never see a bullish CHoCH (held to 15:15) and in the trailed ones; the CHoCH-in-loss exit is the stop, and it fires on half the trades (41% winners overall). The CE side pays and the PE side does not: a put that breaks its previous-day low is the market rising, and the bounce (a bullish CHoCH on the put) comes with the index's dips, which are sharper than its rises. Two years of one weekly-option regime; the previous-day low is a level every participant sees. |
+| Open (the user's call) | Unquantified: CE only; a stop before the first CHoCH (the request has none - the worst trade is ₹-10,023); the trail's definition (the bounce top here; the CHoCH level or break-even are the other readings); the level by the wick low against a close low. |
+| Effort | **S** each. |
+| Priority | _Open; first numbers recorded._ Related: S96 (options sold at a level), S70 (Strategy 65: an option bought on its own structure). |
+
+---
+
 ### S101. Lab v2 Strategy 86 with a ROLLING range (the previous W minutes' high / low in place of the 09:15 candle's), measured to bring in the one-way days. It loses at every window; the loss shrinks as W grows, back towards Strategy 86. No strategy created
 
 | | |

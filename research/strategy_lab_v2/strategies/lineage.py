@@ -91,6 +91,7 @@ LINEAGE = {
     "ST83": (None, "The user's IMPLEMENTATION_RULESET.md (ORR_V1): the 09:15 candle's body sets the side; a sweep and reclaim of the opposite opening boundary enters at the next minute's open; 50 / 50 points, 0.5 slippage, unlimited re-entry, flat at 15:15."),
     "ST84": ("ST83", "The reclaim only arms the setup; the entry waits for the first BOS / CHoCH that way on the 1-minute structure (instead of the blind entry)."),
     "ST85": ("ST83", "The same signals traded on options: a long signal sells the PE at the day's low, a short signal sells the CE at the day's high; out when the index closes back through the strike, else 15:15; both sides, one position per side."),
+    "ST90": (None, "The day-open ATM option sold when it closes below its own previous-session low; a bullish CHoCH of the option exits a losing trade, a profitable one trails the stop at the bounce's top."),
     "ST89": ("ST88", "Continuation only: the three-close breakout trigger without the sweep / reclaim entries."),
     "ST88": ("ST86", "Plus a continuation trigger: three consecutive 1-minute closes beyond the opening range sell the option at the day's other extreme; the reclaim entries stay."),
     "ST87": ("ST86", "The sweep by a wick: a low below the opening low (high above the opening high) is enough, the close need not be beyond."),

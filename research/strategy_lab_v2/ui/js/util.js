@@ -62,6 +62,21 @@ export function algorithm(spec) {
   const by = (m) => (m === "close" ? "a candle closing beyond it" : "a candle touching it (high / low)");
   const S = (t, sub) => ({ t, sub: sub || [] });
   const steps = [];
+  if (spec.rules?.entry_rule === "pdl_short_v1") {      // Strategy 90: the option sold below its previous-session low, managed by its own structure
+    const y = spec.pdl;
+    return [
+      S(`Instrument: each session's day-open ATM CE and PE (the index's 09:15 open rounded to the strike), nearest weekly expiry at least ${y.expiry_min_days} day out; each leg its own machine, one position per leg, both may be short at once. Prices from the download store's 1-minute option candles.`),
+      S("Level: the same option's LOW of the session before (no candles of it then: no trade)."),
+      S("Entry: a 1-minute CLOSE below that low (a wick is not a cross) → SELL at the next minute's open. After an exit the leg needs a fresh cross: a close at or above the level, then a close below it again."),
+      S("Structure: the Foundation engine (this strategy's rules) on the option's own 1-minute candles, warmed up on the sessions before.", [
+        S("At each bullish CHoCH of the option after the entry:", [
+          S("in LOSS (that candle's close above the sale price) → buy back at that close."),
+          S("in PROFIT → keep it and TRAIL: the stop goes to the top of the bounce so far (the highest high since the option's latest confirmed swing low); a later high reaching it buys back there (at the open when it opens above)."),
+          S("While trailing, each new confirmed swing high below the stop and above the close lowers the stop to it; a later bullish CHoCH applies the same rule again (never raises the stop).")]),
+        S("No stop before the first CHoCH.")]),
+      S(`Flat at ${spec.position?.square_off ?? "15:15"} (that minute's open).`),
+      S(`Costs: ${spec.types?.OPT_FUT_SIGNAL?.slippage_pts ?? "–"} points slippage per side; option charges per the broker schedule; lot size ${spec.lot_size}.`)];
+  }
   if (spec.rules?.entry_rule === "orr_opt_v1") {       // Strategy 85: ORR_V1's signals, options sold at the day's extreme
     const g = spec.orr, y = spec.orr_opt;
     return [
