@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S107. Lab v2 Strategy 94: Strategy 1's Foundation rules on the day-open ATM option's own 1-minute candles, buys only, each buy tagged by where its entry sits against the same option's previous-session range. Measured: 75% of the buys lose whichever side of the range they start on (inside 1,431 of 1,899; above 414 of 551; below 495 of 663); the whole thing ₹-288,781, PF 0.82
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/foundation_opt.py` (family module; the legs from `pdl_short.py`, the previous-session high added), `st94.py` (`fopt.sides`, `fopt.expiry_min_days`). 2026-10-25, the user: "extend Foundation 1, apply it on options directly; see how many of the buys are losses when taken inside the previous day's range". |
+| Build choices | (1) Instrument: each session's day-open ATM CE and PE, nearest weekly expiry at least 1 day out, each leg its own chart (as Strategies 90 / 65). (2) Strategy 1's rules (touch, stop at the previous swing, exit at the stop or the next CHoCH, flat 15:25) on the option's candles warmed up on the two sessions before; only SETUPs whose entry candle is in the session; one trade a leg at a time; the entry at the SETUP candle's close, the exit at the engine's price (the straddle family's leg_structure fills). (3) Buys only (`sides: long`). (4) The tag: the entry premium against the same contract's previous-session high / low - inside, above, below (recorded, never acted on). (5) 0.5 slippage a side, option charges, lot 65. |
+| Impact | **Measured, the store's options, 2024-09-20 → 2026-10-09, after costs: 3,113 buys, 2,340 losses (75.2%), ₹-288,781, PF 0.82; halves ₹-183,221 (PF 0.79) / ₹-105,560 (PF 0.86). By the tag: inside the previous-day range 1,899 buys, 1,431 losses (75.4%), ₹-189,170, PF 0.81; above the range 551, 414 losses (75.1%), ₹-26,291, PF 0.91; below 663, 495 losses (74.7%), ₹-73,320, PF 0.76.** Exits: 941 stops, 1,863 next CHoCH, 309 at 15:25. Inside by leg: CE 943 buys ₹-128,336 (PF 0.75), PE 956 ₹-60,834 (PF 0.88). The mean losing trade is about the same on every tag (₹-714 inside, ₹-734 above, ₹-620 below). The halves disagree on the outside tags (above: ₹+15,542 then ₹-41,833; below: ₹-59,269 then ₹-14,050). |
+| Read | The answer to the question is three in four, and it is three in four everywhere: the previous-day range does not separate the buys - the loss rate is 75% inside, above and below, and the mean loss is the same size. What the run shows instead is that Strategy 1's rules do not work as a buying rule on an option's own chart at all: a 1-minute option chart makes a bullish SETUP every few minutes (3,113 in two years, six a session), most are bought at a premium that then decays or reverses, and the next CHoCH or the previous swing takes it out small; the 24.8% winners do not pay for them. This is the same lesson as Strategy 65's lineage (S70 - S75): the option's own structure is a management tool, not an entry signal. |
+| Open (the user's call) | Unquantified: the position inside the range (thirds) - the rows do not carry prev_high / prev_low (price_trade keeps the fixed columns; the label carries the tag); a filter on the index's structure instead; sells (`sides: both`). |
+| Effort | **S** each. |
+| Priority | _Closed by measurement for the question asked; nothing adopted._ Related: S70, S102. |
+
+---
+
 ### S106. Lab v2 Strategies 91 - 93 validated on the stretch the far-strike download has reached (expiries 2026-07-07 → 2026-10-19; entries 2026-06-29 → 2026-10-09, all call-side). With every strike present: 91 ₹-3,990 over 14 positions, 92 ₹-2,357 over 5 (no position cut by a missing strike), 93 ₹+43,206 over 5 (3 targets); the hedge still costs what the shorts earn in 91 and 92
 
 | | |

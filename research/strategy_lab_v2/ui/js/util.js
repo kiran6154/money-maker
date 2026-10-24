@@ -62,6 +62,16 @@ export function algorithm(spec) {
   const by = (m) => (m === "close" ? "a candle closing beyond it" : "a candle touching it (high / low)");
   const S = (t, sub) => ({ t, sub: sub || [] });
   const steps = [];
+  if (spec.rules?.entry_rule === "foundation_opt_v1") {   // Strategy 94: Strategy 1 on the option's own candles, previous-day range tagged
+    const y = spec.fopt;
+    return [
+      S(`Instrument: each session's day-open ATM CE and PE (the index's 09:15 open rounded to the strike), nearest weekly expiry at least ${y.expiry_min_days} day out; each leg its own chart. Prices from the download store's 1-minute option candles.`),
+      S("Structure: the Foundation engine with this strategy's rules on the option's own 1-minute candles (warmed up on the sessions before): swings → protected level → CHoCH / BOS by touch → AVWAP pair → SETUP.", [
+        S(y.sides === "both" ? "A bullish SETUP BUYS the option, a bearish one SELLS it, at that candle's close." : "A bullish SETUP BUYS the option at that candle's close (bearish SETUPs are not traded)."),
+        S("Out at the stop (the previous swing) or the option's next CHoCH, else flat at the square-off; one trade a leg at a time.")]),
+      S("Tag (recorded, never acted on): where the entry premium sits against the SAME option's previous-session range — inside (between its high and low), above the high, below the low; no candles the session before: no_prev. The label and the trade's prev_high / prev_low carry it."),
+      S(`Flat at ${spec.position?.square_off ?? "15:25"}. Costs: ${spec.types?.OPT_FUT_SIGNAL?.slippage_pts ?? "–"} points slippage per side; option charges per the broker schedule; lot size ${spec.lot_size}.`)];
+  }
   if (spec.rules?.entry_rule === "cagr_hedge_v1") {     // Strategy 91: weekly shorts against the fair-value line, monthly longs
     const y = spec.cagr;
     return [
