@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S97. Lab v2 Strategies 83, 84, 85: the sweep must be a candle CLOSE beyond the opening high / low, not a wick (the user's rule). Before / after recorded; Strategy 83 no longer reproduces the ORR_V1 ruleset's figures
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/orr.py`, `orr_opt.py` (`orr.sweep`: "close" or "wick"), `st83.py`, `st84.py`, `st85.py` (`sweep: close`). 2026-10-24. The user asked why Strategy 83 shorted at 09:17 on 2026-07-14: the 09:15 candle was bearish (body 65.5% of its range, opening high 24,092.75); the 09:16 candle's HIGH went 1.3 points above it (24,094.05) and its close came back below (24,089.95), which ORR_V1 counts as a same-candle sweep and reclaim; the short entered at 09:17 open and was stopped at 09:22 (-50.5 points). The user: "body close should be considered is the rule, why is a poke still considered". |
+| What changed | The sweep is a completed candle CLOSING beyond the opening boundary (below the opening low for a long setup, above the opening high for a short one); the reclaim is a later candle closing back inside. A wick beyond the boundary is no longer a sweep. ORR_V1 as written stays available as `sweep: "wick"`. On 2026-07-14 the 09:17 short is gone; the day keeps its 09:41, 10:37 and 12:08 shorts. |
+| Impact | **Measured; wick (ORR_V1) → close, index points with 0.5 slippage a side, rupees as one futures lot with futures charges.** Strategy 83: the ruleset's 2025 sample 64 trades +759.4 points ₹+19,883 → 55 trades +430.2 points ₹+2,659; its 2026 sample 69 trades +837.4 ₹+22,713 → 55 trades +878.2 ₹+31,809; **all data 2018 - 2026: 724 trades +3,272.5 points PF 1.23 ₹-44,667 → 642 trades +3,349.4 points PF 1.28 ₹-8,275**; January 2024 10 trades → 9. Strategy 84: all data 304 trades +1,381.4 points ₹-14,226 → 275 trades +1,645.5 points PF 1.32 ₹+13,893; its samples ₹+16,241 → ₹+16,958 and ₹+3,725 → ₹+1,168. Strategy 85 (options sold at the day's extreme, October 2024 → October 2026): 346 trades ₹+58,177 → 298 trades ₹+51,119; halves ₹+8,434 / ₹+49,743 → ₹-3,281 / ₹+54,400. |
+| Read | Over 2018 - 2026 the close rule removes 82 of Strategy 83's trades and the points they cost, and the rupee loss after futures charges shrinks from ₹-44,667 to ₹-8,275; Strategy 84 turns slightly positive in rupees. It is worse on the ruleset's 2025 sample and better on its 2026 one, so the ruleset's published figures are no longer reproduced (its parity is in S95, and `sweep: "wick"` gives them back). Strategy 85 loses a little overall and its first half turns slightly negative. |
+| Open (the user's call) | Unquantified: whether the reclaim should also need the body back inside (it is a close already); a minimum distance of the sweep close beyond the boundary. |
+| Effort | **S**. |
+| Priority | _Done; before / after recorded._ Related: S95, S96. |
+
+---
+
 ### S96. Lab v2 Strategy 85: Strategy 83's ORR_V1 signals traded by selling the option at the day's high / low. Measured on the store's options (October 2024 → October 2026): positive after costs in both halves; keeping ORR_V1's body-side rule is better than letting both sides trade
 
 | | |

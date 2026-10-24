@@ -65,7 +65,7 @@ export function algorithm(spec) {
   if (spec.rules?.entry_rule === "orr_opt_v1") {       // Strategy 85: ORR_V1's signals, options sold at the day's extreme
     const g = spec.orr, y = spec.orr_opt;
     return [
-      S("Signals: Strategy 83's (ORR_V1) on the NIFTY index 1-minute candles — sessions whose 09:15 body is 60 – 90% of its range; a sweep beyond the opening low (high) and a 1-minute close back inside it."),
+      S(`Signals: Strategy 83's (ORR_V1) on the NIFTY index 1-minute candles — sessions whose 09:15 body is 60 – 90% of its range; a sweep beyond the opening low (high)${g.sweep === "close" ? " by a candle CLOSE (not a wick)" : ""} and a 1-minute close back inside it.`),
       S(y.align ? "Only the 09:15 body's side signals (ORR_V1's rule)." : "Both sides can signal on the same day: a LONG signal (opening low swept and reclaimed) and a SHORT signal (opening high swept and reclaimed)."),
       S("Trade, at the open of the minute after the reclaim:", [
         S("LONG signal → SELL a PE at the day's LOW so far, rounded down to the strike."),
@@ -87,7 +87,9 @@ export function algorithm(spec) {
         S("Bullish body → LONG only for the whole session; bearish body → SHORT only."),
         S("The 09:15 high and low stay fixed all day.")]),
       S("Setup, from the 09:16 candle, while flat:", [
-        S("LONG: a completed candle's low goes below the opening low (the sweep; the first one is latched), then a completed close above the opening low (the reclaim; the same candle may do both). Equality is neither."),
+        g.sweep === "close"
+          ? S("LONG: a completed candle CLOSES below the opening low (the sweep — a wick below it is not enough), then a later candle closes back above the opening low (the reclaim). Equality is neither.")
+          : S("LONG: a completed candle's low goes below the opening low (the sweep; the first one is latched), then a completed close above the opening low (the reclaim; the same candle may do both). Equality is neither."),
         S("SHORT: the mirror on the opening high.")]),
       conf ? S("Entry — with confirmation (the change from ORR_V1):", [
                S("The reclaim only ARMS the setup. The entry comes at the next minute's open after the first BOS or CHoCH in the trade's direction on the same 1-minute candles (Foundation engine, Strategy 1's rules), at or after the reclaim candle."),

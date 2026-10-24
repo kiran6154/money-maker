@@ -69,7 +69,8 @@ def run(ctx):
         for side in sides:                                # each side is its own machine: one position at a time
             i, swept = s0 + 1, False
             while i < s1 and t[i] < cut:
-                sweep = l[i] < ol if side > 0 else h[i] > oh
+                if X.get("sweep") == "close": sweep = c[i] < ol if side > 0 else c[i] > oh     # a close beyond, not a wick
+                else: sweep = l[i] < ol if side > 0 else h[i] > oh
                 reclaim = c[i] > ol if side > 0 else c[i] < oh
                 if sweep: swept = True
                 if not (swept and reclaim): i += 1; continue

@@ -7,6 +7,9 @@ NIFTY index 1-minute candles (a point-accounting proxy, as the ruleset says):
                 (compared in whole paise, no floating point). Bullish body -> LONG only, bearish -> SHORT only, for the
                 whole session. The session must have every minute from 09:15 to 15:29 (the lab's files end at 15:29;
                 the ruleset's 15:30 row does not exist here), else it is excluded.
+  sweep mode    SPEC["orr"]["sweep"]: "close" (the user's rule from 2026-10-24) - the sweep is a completed candle CLOSING
+                beyond the boundary, so the reclaim is always a later candle; "wick" (ORR_V1 as written) - a low / high
+                beyond it is enough, and the same candle may also reclaim.
   signal        from the 09:16 candle, while flat: LONG - a completed candle with low < the opening low latches the sweep
                 (the first one of the flat scan); then a completed close > the opening low reclaims (same candle allowed;
                 equality is neither). SHORT - the mirror on the opening high. Entry at the OPEN of the next consecutive
@@ -68,10 +71,11 @@ def run_day(b, a, z, X, ev=None):
     out, i, swept, armed = [], a + 1, False, None
     while i < z and t[i] < cut:
         # flat: look for the setup on this completed candle
+        body = X.get("sweep") == "close"                  # the sweep is a candle CLOSING beyond the boundary, not a wick poking
         if side > 0:
-            sweep, reclaim = l[i] < ol, c[i] > ol
+            sweep, reclaim = (c[i] < ol) if body else (l[i] < ol), c[i] > ol
         else:
-            sweep, reclaim = h[i] > oh, c[i] < oh
+            sweep, reclaim = (c[i] > oh) if body else (h[i] > oh), c[i] < oh
         if structure and armed is not None and sweep: armed = None; swept = False        # a new sweep: start again
         if sweep and not swept: swept, sw_i = True, i
         go = None
