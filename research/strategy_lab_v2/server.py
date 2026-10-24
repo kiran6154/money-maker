@@ -11,7 +11,6 @@ API
     GET  /api/chart?code=&run=&type=&choice=&day=[&to=][&inst= | &atm=CE|PE]   sessions day..to of a run, computed on request
                                                                          (atm: that day's ATM option, traded or not)
     GET  /api/history?code=ST1                             the strategy's versions (definition, changes, results per run)
-    GET  /api/summary?type=&mode=longest|default&from=&to=&year=&month=&group=none|year|month|week|day&code=   summary.html
     GET  /api/store/coverage | expiries | strikes?expiry=&date= | candles?inst=&from=&to=&tf=&expiry=&strike=&right=
          the Breeze store (D:/nifty_data) read directly, with open interest (charts.html; store_reader.py)
     GET  /api/candles?inst=INDEX|FUT|OPT&expiry=&strike=&right=CE|PE&from=&to=&tf=   plain candles (charts.html, the free option chart)
@@ -25,7 +24,6 @@ Nothing here places orders or touches a broker.
 import http.server, json, os, sys, threading, time, traceback, urllib.parse, datetime as D, mimetypes
 import core
 import store_reader
-import summary
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UI = os.path.join(HERE, "ui")
@@ -225,10 +223,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if u.path == "/api/explorer/straddle":
                 with run_lock:
                     return self.reply(200, core.explorer_straddle(q["code"], q["from"], q["to"], q.get("tf") or "minute"))
-            if u.path == "/api/summary":
-                return self.reply(200, summary.summary(q.get("type") or "FUT", q.get("mode") or "longest", q.get("from") or None,
-                                                       q.get("to") or None, q.get("year") or None, q.get("month") or None,
-                                                       q.get("group") or "none", q.get("code") or None))
             if u.path == "/api/store/coverage":
                 return self.reply(200, store_reader.coverage())
             if u.path == "/api/store/expiries":

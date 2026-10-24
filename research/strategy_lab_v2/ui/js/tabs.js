@@ -5,11 +5,11 @@ import {
   inr, inrk, fmt, pct, cl, esc, sum, isoOf, TFS, tradesOf, paramsOf, statsOf, reprice, repriceCheck, sessionsOf, tradeMin,
   dailySeries, streaks, weekKey, capitalFor, rMultiples, curve, underwater, ddEpisodes, monteCarlo, groupBy, entryBucket,
 } from './analytics.js';
-import { algorithmHtml } from './util.js';
+import { algorithmHtml, num } from './util.js';
 
 // ---------------------------------------------------------------- tab list
 const TABS = [['performance', 'Performance'], ['cumulative', 'Cumulative P&L'], ['drawdowns', 'Drawdowns'], ['distribution', 'Distribution'],
-  ['montecarlo', 'Monte Carlo'], ['robustness', 'Robustness'], ['breakdown', 'Breakdown'], ['daily', 'Daily P&L'], ['signals', 'Signals'],
+  ['montecarlo', 'Monte Carlo'], ['robustness', 'Robustness'], ['breakdown', 'Breakdown'], ['daily', 'Daily P&L'], ['summary', 'Summary'], ['signals', 'Signals'],
   ['zonegate', 'Zone gate'], ['journal', 'Journal'], ['config', 'Config'], ['rules', 'Rules']];
 export function tabsFor(ctx) {
   const r = (ctx && ctx.result) || {};
@@ -281,6 +281,60 @@ function daily(el, X) {
   el.querySelectorAll('tr.click[data-d]').forEach(tr => tr.onclick = () => open(tr.dataset.d));
 }
 
+// ================================================================ Summary: points or rupees for a chosen period, by year / month / week / day
+// pts = points per lot after the slippage on both sides; gross = rupees after slippage; chg = charges; net = gross - chg.
+// Before slippage = pts + 2 x slippage (per lot) and its rupees x lot size x lots. Grouped by exit day, as the Daily P&L.
+const SUM = { unit: 'pts', year: '', month: '', from: '', to: '', group: 'month' };
+function summary(el, X) {
+  const { T, P } = X;
+  if (!T.length) return empty(el);
+  const day = t => (t.xt || t.et || '').slice(0, 10), years = [...new Set(T.map(t => day(t).slice(0, 4)))].sort();
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const keep = t => { const d = day(t); return (!SUM.year || d.slice(0, 4) === SUM.year) && (!SUM.month || +d.slice(5, 7) === +SUM.month) && (!SUM.from || d >= SUM.from) && (!SUM.to || d <= SUM.to); };
+  const week = d => { const x = new Date(d + 'T00:00:00Z'), w = new Date(x); w.setUTCDate(x.getUTCDate() + 3 - ((x.getUTCDay() + 6) % 7));
+    const y0 = new Date(Date.UTC(w.getUTCFullYear(), 0, 4)); return `${w.getUTCFullYear()}-W${String(1 + Math.round(((w - y0) / 864e5 - 3 + ((y0.getUTCDay() + 6) % 7)) / 7)).padStart(2, '0')}`; };
+  const keyOf = t => { const d = day(t); return SUM.group === 'year' ? d.slice(0, 4) : SUM.group === 'month' ? d.slice(0, 7) : SUM.group === 'week' ? week(d) : SUM.group === 'day' ? d : 'all'; };
+  const M = a => {                                 // the numbers of one set of trades
+    const raw = t => t.pts + 2 * P.slip, rs = t => raw(t) * P.lot * (t.lots || 1), ss = t => 2 * P.slip * P.lot * (t.lots || 1);
+    const w = a.filter(t => t.pts > 0), lo = a.filter(t => t.pts <= 0), wr = a.filter(t => t.net > 0), lr = a.filter(t => t.net <= 0);
+    let e = 0, pk = 0, dd = 0; for (const t of a) { e += SUM.unit === 'pts' ? t.pts : t.net; pk = Math.max(pk, e); dd = Math.min(dd, e - pk); }
+    return SUM.unit === 'pts'
+      ? { n: a.length, win: a.length ? 100 * w.length / a.length : 0, raw: sum(a, raw), slip: -2 * P.slip * a.length, chg: null, net: sum(a, t => t.pts),
+          prof: sum(w, t => t.pts), loss: sum(lo, t => t.pts), dd }
+      : { n: a.length, win: a.length ? 100 * wr.length / a.length : 0, raw: sum(a, rs), slip: -sum(a, ss), chg: -sum(a, t => t.chg), net: sum(a, t => t.net),
+          prof: sum(wr, t => t.net), loss: sum(lr, t => t.net), dd };
+  };
+  const F = v => v == null ? '—' : SUM.unit === 'pts' ? num(v, 1) : inr(v), pf = m => m.loss < 0 ? (m.prof / -m.loss).toFixed(2) : '—';
+  const sel = T.filter(keep), all = M(sel);
+  const groups = {}; for (const t of sel) (groups[keyOf(t)] = groups[keyOf(t)] || []).push(t);
+  const unit = SUM.unit === 'pts' ? 'points per lot' : 'rupees';
+  const head = `<tr><th class="l">${SUM.group === 'none' ? 'Period' : SUM.group[0].toUpperCase() + SUM.group.slice(1)}</th><th>Trades</th><th>Win %</th><th>Before slippage</th><th>Slippage</th>${
+    SUM.unit === 'inr' ? '<th>Charges</th>' : ''}<th>Net</th><th>Total profit</th><th>Total loss</th><th>PF</th><th>Avg / trade</th><th>Max drawdown</th><th>Cumulative</th></tr>`;
+  let cum = 0;
+  const row = (k, m) => { cum += m.net; return `<tr><td class="l">${k}</td><td>${m.n}</td><td>${num(m.win, 1)}</td><td class="${cl(m.raw)}">${F(m.raw)}</td><td class="neg">${F(m.slip)}</td>${
+    SUM.unit === 'inr' ? `<td class="neg">${F(m.chg)}</td>` : ''}<td class="${cl(m.net)}"><b>${F(m.net)}</b></td><td class="pos">${F(m.prof)}</td><td class="neg">${F(m.loss)}</td><td>${pf(m)}</td><td class="${cl(m.net)}">${F(m.n ? m.net / m.n : 0)}</td><td class="neg">${F(m.dd)}</td><td class="${cl(cum)}">${F(cum)}</td></tr>`; };
+  const opt = (v, l, cur) => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>${l}</option>`;
+  el.innerHTML = `<div class="card tb-card"><div class="tb-sumctl">
+      <span class="seg"><button data-u="pts" class="${SUM.unit === 'pts' ? 'on' : ''}">Points</button><button data-u="inr" class="${SUM.unit === 'inr' ? 'on' : ''}">Rupees</button></span>
+      <label>Year <select data-k="year">${opt('', 'all', SUM.year)}${years.map(y => opt(y, y, SUM.year)).join('')}</select></label>
+      <label>Month <select data-k="month">${opt('', 'all', SUM.month)}${MON.map((m, i) => opt(i + 1, m, SUM.month)).join('')}</select></label>
+      <label>From <input type="date" data-k="from" value="${SUM.from}"></label><label>To <input type="date" data-k="to" value="${SUM.to}"></label>
+      <label>Group by <select data-k="group">${[['none', 'total only'], ['year', 'year'], ['month', 'month'], ['week', 'week'], ['day', 'day']].map(([v, l]) => opt(v, l, SUM.group)).join('')}</select></label>
+      <button data-reset>Clear period</button></div>
+    <div class="tb-hmstats">
+      <div>Trades<b>${all.n}</b><small>${num(all.win, 1)}% winners</small></div>
+      <div>Before slippage<b class="${cl(all.raw)}">${F(all.raw)}</b><small>${unit}</small></div>
+      <div>Slippage${SUM.unit === 'inr' ? ' + charges' : ''}<b class="neg">${F(all.slip + (all.chg || 0))}</b><small>${SUM.unit === 'inr' ? `${inr(all.slip)} slippage · ${inr(all.chg)} charges` : `${P.slip} a side × 2 × ${all.n} trades`}</small></div>
+      <div>Net<b class="${cl(all.net)}">${F(all.net)}</b><small>PF ${pf(all)} · avg ${F(all.n ? all.net / all.n : 0)}</small></div>
+      <div>Total profit / loss<b><span class="pos">${F(all.prof)}</span> · <span class="neg">${F(all.loss)}</span></b><small>winning / losing trades</small></div>
+      <div>Max drawdown<b class="neg">${F(all.dd)}</b><small>closed trades, in order</small></div></div></div>` +
+    hint(`By exit day, as the Daily P&L. ${SUM.unit === 'pts' ? `Points per lot: before slippage = after it + 2 × ${P.slip}.` : `Rupees: lot size ${P.lot}; charges per the broker schedule; net = after slippage and charges.`}`) +
+    `<div class="tablewrap tall"><table class="tbl"><thead>${head}</thead><tbody>${Object.keys(groups).sort().map(k => row(k, M(groups[k]))).join('')}</tbody></table></div>`;
+  el.querySelectorAll('.tb-sumctl .seg button').forEach(b => b.onclick = () => { SUM.unit = b.dataset.u; summary(el, X); });
+  el.querySelectorAll('.tb-sumctl [data-k]').forEach(i => i.onchange = () => { SUM[i.dataset.k] = i.value; summary(el, X); });
+  el.querySelector('[data-reset]').onclick = () => { Object.assign(SUM, { year: '', month: '', from: '', to: '' }); summary(el, X); };
+}
+
 // ================================================================ Signals (v1 renderSignals L720)
 function signals(el, X) {
   const { r } = X, sig = r.signals || [], F = r.fz, fr = new Map(), GP = { TAKE: 'long', REENTER: 'long', WATCH: 'grey', BLOCK: 'short' };
@@ -485,7 +539,7 @@ function journal(el, X) {
 }
 
 // ---------------------------------------------------------------- dispatch
-const RENDER = { performance, cumulative, drawdowns, distribution, montecarlo, robustness, breakdown, daily, signals, zonegate, journal, config, rules };
+const RENDER = { performance, cumulative, drawdowns, distribution, montecarlo, robustness, breakdown, daily, summary, signals, zonegate, journal, config, rules };
 export function renderTab(id, el, ctx) {
   dispose();
   el.innerHTML = '';
