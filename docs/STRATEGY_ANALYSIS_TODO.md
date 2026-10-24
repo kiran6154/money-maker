@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S106. Lab v2 Strategies 91 - 93 validated on the stretch the far-strike download has reached (expiries 2026-07-07 → 2026-10-19; entries 2026-06-29 → 2026-10-09, all call-side). With every strike present: 91 ₹-3,990 over 14 positions, 92 ₹-2,357 over 5 (no position cut by a missing strike), 93 ₹+43,206 over 5 (3 targets); the hedge still costs what the shorts earn in 91 and 92
+
+| | |
+|---|---|
+| Where | `results/ST91|ST92|ST93/wide-strikes_1m_idx/` (run label "Wide strikes", 2026-06-29 → 2026-10-09). 2026-10-25, the user: "validate for the available data". The far-strike download (S104's request to the download session: index ±1,500 over each contract's life, newest expiry first) had completed expiries 2026-07-07 → 2026-10-19 (16) with 2026-06-30 in progress; the earliest entry whose sold weekly is a completed expiry is 2026-06-29. |
+| Before (the narrow store, the same window, from the full runs) | 91: 11 positions ₹+3,595, 4 pre-expiry sessions skipped for a missing strike. 92: 8 positions ₹+14,601, 4 ended roll_unavailable, 2 sessions skipped. 93: 8 positions ₹+14,601, 7 ended roll_unavailable. |
+| After (every strike present) | **91: 14 positions (all 14 pre-expiry sessions traded; the 15th, 2026-10-05, has no monthly 18 days out in the store), 8 winners, ₹-3,990; 13 closed two sessions before the sold expiry, 1 on the monthly's 15 days; shorts ₹+120,632, longs ₹-124,624. 92: 5 positions, 10 short rolls, 3 winners, ₹-2,357; 4 ended on the monthly's 15 days, 1 target (₹+11,040); none cut by a missing strike; shorts ₹+128,117, longs ₹-130,474. 93: 5 positions, 10 short rolls, 2 long rolls, 5 winners, ₹+43,206, PF 1.17; 3 targets (₹+10,989, ₹+13,969, ₹+9,548), 2 ended roll_unavailable at the data's end (₹+2,736, ₹+5,964); shorts ₹+176,650, longs ₹-133,444.** |
+| Read | The data gap was real and is closed on this stretch: 92 loses no position to a missing strike and 91 trades every week. On the rule itself the picture does not change for 91 and 92 - the two shorts earn about what the three monthly longs lose, week after week - and 93 is the one that pays here, because rolling the long instead of re-buying it keeps one hedge against three months of weekly decay: all 5 positions won, 3 at the +3% target. Five positions over three months on one side of the line is far too few to call it; the two "roll_unavailable" ends are the data running out (the lab's index ends 2026-10-09; a next monthly 18 days out does not exist in the store), not a missing strike. |
+| Open (the user's call) | Rerun the three full windows when the download reaches September 2024 (S103 - S105 stay open until then); the long roll by the same strike against the 200-premium strike. |
+| Effort | **S** (the rerun). |
+| Priority | _Partial validation recorded; the full rerun waits for the download._ Related: S103, S104, S105. |
+
+---
+
 ### S105. Lab v2 Strategy 93: Strategy 92 with the monthly longs rolled to the next month at 15 days. Measured: ₹+6,960 over 41 positions (92: ₹+11,980 over 44); the long roll happened only 3 times because 28 of the 41 positions were ended first by a missing rolled strike in the store
 
 | | |
