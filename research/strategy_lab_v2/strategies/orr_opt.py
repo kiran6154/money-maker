@@ -14,6 +14,10 @@ side enter that as well and manage it; not more than one trade per side at a tim
             money. Nearest weekly expiry at least `expiry_min_days` out.
   exit      the index CLOSES beyond the strike (below the PE's, above the CE's): out at that minute's option close; else
             `target_pct` of the premium earned (when set); else flat at `cutoff` (that minute's option open).
+  breakout  SPEC["orr_opt"]["breakout"] (ST88 / ST89): {"closes": N} adds a continuation trigger - N consecutive 1-minute
+            closes ABOVE the opening high is a LONG signal (the PE sold at the day's low), N below the opening low a SHORT
+            one (the CE at the day's high); None (default) keeps only the sweep / reclaim. SPEC["orr_opt"]["reclaim"]:
+            false drops the sweep / reclaim trigger (ST89: continuation only).
   occupancy one position per side at a time (a PE and a CE can be open together); after an exit that side needs a fresh
             sweep and reclaim.
 Option prices: the download store's 1-minute option candles (store_reader.py, read-only; September 2024 on).
@@ -69,24 +73,30 @@ def run(ctx):
         if not exp: skipped.append(dict(signal="", position="", opt_type="", instrument="", entry_time=day, why="no option expiry in the store")); continue
         oh, ol = float(h[s0]), float(l[s0]); cut = t[s0] - t[s0] % core.DAY + core.hhmm_sec(X["cutoff"])
         sides = [1 if C_ > O_ else -1] if Y["align"] else [1, -1]
+        bo = Y.get("breakout"); n_bo = int(bo["closes"]) if bo else 0; use_rc = Y.get("reclaim", True)
         for side in sides:                                # each side is its own machine: one position at a time
-            i, swept = s0 + 1, False
+            i, swept, run_ = s0 + 1, False, 0
             while i < s1 and t[i] < cut:
                 if X.get("sweep") == "close": sweep = c[i] < ol if side > 0 else c[i] > oh     # a close beyond, not a wick
                 else: sweep = l[i] < ol if side > 0 else h[i] > oh
                 reclaim = c[i] > ol if side > 0 else c[i] < oh
                 if sweep: swept = True
-                if not (swept and reclaim): i += 1; continue
+                beyond = c[i] > oh if side > 0 else c[i] < ol                                  # a close past the FAR boundary
+                run_ = run_ + 1 if beyond else 0
+                trig = "reclaim" if (use_rc and swept and reclaim) else "breakout" if (n_bo and run_ >= n_bo) else None
+                if not trig: i += 1; continue
                 e_i = i + 1
                 if e_i >= s1 or t[e_i] != t[i] + 60 or t[e_i] >= cut: break
                 right = "PE" if side > 0 else "CE"
                 lo_, hi_ = float(l[s0:i + 1].min()), float(h[s0:i + 1].max())
                 k = int(np.floor(lo_ / step) * step) if side > 0 else int(np.ceil(hi_ / step) * step)
-                base = dict(dir="up" if side > 0 else "down", signal="BULLISH" if side > 0 else "BEARISH", strike=k, expiry=exp, choch_time=int(t[i]))
+                base = dict(dir="up" if side > 0 else "down", signal="BULLISH" if side > 0 else "BEARISH", strike=k, expiry=exp, choch_time=int(t[i]), trigger=trig)
                 ser = _series(exp, k, right, day); name = f"NIFTY {core.D.date.fromisoformat(exp):%d%b%y} {k} {right}".upper()
                 if int(t[e_i]) not in ser:
-                    skipped.append(dict(base, position="SHORT", opt_type=right, instrument=name, entry_time=int(t[e_i]), why="no option candle at the entry minute"))
-                    i = e_i; swept = False; continue
+                    why = "no candles for that contract on that day in the store" if not ser else "no option candle at the entry minute"
+                    skipped.append(dict(base, position="SHORT", opt_type=right, instrument=name, entry_time=int(t[e_i]), why=why))
+                    if not ser: break                                  # the store lacks the contract all day: the side is done
+                    i = e_i; swept = False; run_ = 0; continue
                 e_px = ser[int(t[e_i])][0]; tgt = e_px * (1 - Y["target_pct"] / 100) if Y.get("target_pct") else None
                 x_i, x_px, why = None, None, None
                 for m in range(e_i, s1):
@@ -102,10 +112,10 @@ def run(ctx):
                     x_i, x_px, why = last, ser.get(int(t[last]), (e_px,) * 4)[3], "eod"
                 rec = dict(base, position="SHORT", opt_type=right, kind="OPT", instrument=name, entry_time=int(t[e_i]), entry_px=float(e_px),
                            exit_time=int(t[x_i]), exit_px=float(x_px), exit_reason=why, open=False, sl=float(k), und_entry=float(o[e_i]),
-                           und_exit=float(c[x_i]), stale=False, lots=lots, tranche="", label=f"SHORT {right}",
+                           und_exit=float(c[x_i]), stale=False, lots=lots, tranche="", label=f"SHORT {right} · {trig}",
                            sweep_reclaim=core.tstr(t[i]), day_extreme=round(lo_ if side > 0 else hi_, 2))
                 trs.append(core.price_trade(ctx, rec))
-                i, swept = x_i + 1, False
+                i, swept, run_ = x_i + 1, False, 0                # a fresh trigger after an exit
     trs.sort(key=lambda r: r["entry_time"])
     return {ch: dict(trades=trs, skipped=skipped, signals=[]) for ch in core.choice_keys(spec, "OPT_FUT_SIGNAL")}
 

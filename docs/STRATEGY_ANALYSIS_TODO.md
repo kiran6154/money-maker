@@ -457,6 +457,21 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S100. Lab v2 Strategies 88 and 89: a continuation (breakout) entry for the one-way days Strategy 86 misses - three 1-minute closes beyond the opening range. Measured: the breakout trades lose (PF 0.86 inside 88; 89 alone PF 0.97, its second half PF 0.90); 88 as a whole falls from Strategy 86's ₹+98,310 to ₹+14,870
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/orr_opt.py` (`orr_opt.breakout` = {closes: N}, `orr_opt.reclaim`), `st88.py` (reclaim + breakout), `st89.py` (breakout only). 2026-10-24. The user: "Strategy 86 works on the reversal days but misses the one-directional days; how to bring in those trades" → the count of Strategy 86's missed days (below) → "do it with N = 3; one more strategy as well: by default don't wait for the reversal, check for continuation trades and enter". Strategy 86 is kept. |
+| The gap measured first | Of the 508 complete sessions in the window Strategy 86 traded 453. 52 of the 55 it missed are one-way days: the index closed outside the opening range on one side and never closed back inside before 15:15, so the reclaim entry never came. They are the big days: mean open → 15:15 move 193 points against 112 on the traded days (2026-10-08 -375, 09-28 -292, 07-17 +201). |
+| What was built | A second trigger per side: N = 3 consecutive 1-minute closes ABOVE the opening high is a long signal (the PE sold at the day's low, as a reclaim long would), three below the opening low a short one (the CE at the day's high). The count restarts on a close back inside and after an exit. Strategy 88 keeps the reclaim entries beside it; Strategy 89 drops them (`reclaim: false`). Same strike rule, exits (the index closes back through the strike, else 15:15), both sides, one position per side, every session. Also: a side whose contract has no candles at all in the store on that day is skipped once and left (it used to re-trigger every three closes and log ~100 skips a day on 2026-02-03, 04-07 and 04-13, where the store lacks the strike). |
+| Impact | **Measured, the store's options, 2024-09-20 → 2026-10-09, after costs. Strategy 88: 1,239 trades on 505 days, 46.3% winners, ₹+14,870, PF 1.01; halves ₹+13,712 (PF 1.02) / ₹+1,158 (PF 1.00); worst trade ₹-7,807. Split by trigger: the 816 reclaim trades ₹+92,518 (PF 1.12), the 423 breakout trades ₹-77,648 (PF 0.86, 50.1% winners, 229 CE / 194 PE; halves ₹-13,055 / ₹-64,593). Strategy 89 (breakout only): 824 trades on 499 days, 53.4% winners, ₹-24,861, PF 0.97; halves ₹+16,464 (PF 1.04) / ₹-41,326 (PF 0.90); exits 15:15 563, index through the strike 261.** Strategy 86 on the same window: 942 trades, ₹+98,310, PF 1.11. |
+| Read | The breakout trades fire on 499 days, not the 52 one-way days: three closes beyond the range happen on most sessions, including the ones that then reverse (and in 88 they occupy the side, costing 126 reclaim trades and ₹5,800). They win half the time but lose more when they lose: after a break the option at the far extreme is cheap, so a 15:15 win earns little decay while a stop (the index all the way back through the day's low / high) costs the same as a reclaim trade's. Strategy 89's second half, the year with the larger one-way moves, is its worst. The continuation idea as built does not pay; the one-way days are real but this trigger does not isolate them. |
+| Open (the user's call) | Unquantified, each a new strategy: (a) the breakout only when no reclaim came by a time gate (the one-way days proper); (b) the option sold at the broken boundary (the opening high rounded down for the PE), nearer the money, more premium; (c) a larger N or a minimum distance beyond the range. |
+| Effort | **S** each. |
+| Priority | _Open; first numbers recorded; Strategy 86 unchanged._ Related: S98, S99. |
+
+---
+
 ### S99. Lab v2 Strategy 87: Strategy 86 with the sweep by a wick, not only a close. Measured: 170 more trades, about half the profit, PF 1.05 against 1.11; positive in both halves but thinner
 
 | | |
