@@ -232,3 +232,8 @@ details.skipped { margin-top: 10px; } details.skipped summary { cursor: pointer;
 /* an empty result says why it is empty */
 .empty-why { margin-top: 10px; padding: 10px 12px; border-radius: 8px; border-left: 3px solid var(--warn); background: var(--chip); font-size: 13.5px; line-height: 1.5; }
 .empty-why button { margin-left: 6px; }
+
+.ch-free { margin-top: 10px; }
+.free-h { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.free-h select { font: inherit; }
+.free-c { height: 360px; }

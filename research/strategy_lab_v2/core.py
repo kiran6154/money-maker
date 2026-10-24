@@ -2018,6 +2018,19 @@ def explorer_straddle(code, frm, to, tf="minute"):
     return _jsonable(dict(code=code, tf=tf, rows=rows, legs=legs))
 
 
+def plain_candles(expiry, strike, right, frm, to, tf="minute"):
+    """One option contract's own candles from `frm` to `to` (dates), nothing computed on them: the strategy page's free
+    option chart, where the reader picks the expiry, the strike and CE / PE."""
+    if tf not in TF_MIN: raise ValueError(f"tf must be one of {tuple(TF_MIN)}")
+    if right not in ("CE", "PE"): raise ValueError("right is CE or PE")
+    s = OptionChain(tf).get(expiry, int(strike), right)
+    if s is None: raise ValueError(f"no candles for {expiry} {strike} {right}")
+    a, z = int(np.searchsorted(s.day, dnum(frm))), int(np.searchsorted(s.day, dnum(to), "right"))
+    if z <= a: raise ValueError(f"{OptionChain.name(expiry, int(strike), right)} has no candles from {frm}" + (f" to {to}" if to != frm else ""))
+    return dict(name=OptionChain.name(expiry, int(strike), right), expiry=expiry, strike=int(strike), right=right, tf=tf,
+                candles=_chart_bars(s, a, z - 1))
+
+
 def explorer_expiries(tf="minute"):
     """Every option expiry the data holds (newest first): its date, weekly / monthly, and whether it has full-chain data."""
     ch = OptionChain("minute" if tf in ("minute", "3minute") else "5minute")

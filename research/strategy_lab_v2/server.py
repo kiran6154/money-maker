@@ -11,6 +11,7 @@ API
     GET  /api/chart?code=&run=&type=&choice=&day=[&to=][&inst= | &atm=CE|PE]   sessions day..to of a run, computed on request
                                                                          (atm: that day's ATM option, traded or not)
     GET  /api/history?code=ST1                             the strategy's versions (definition, changes, results per run)
+    GET  /api/candles?expiry=&strike=&right=CE|PE&from=&to=&tf=      one option contract's plain candles (the strategy page's free chart)
     GET  /api/explorer/meta | instruments?date=&tf= | chart?date=&inst=FUT|INDEX|OPT&code=&tf=&expiry=&strike=&right=
          &days_before=&holding=own|none|HH:MM             any day, any instrument (explorer.html)
     GET  /api/status                                       {busy, jobs: last 20}
@@ -219,6 +220,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if u.path == "/api/explorer/straddle":
                 with run_lock:
                     return self.reply(200, core.explorer_straddle(q["code"], q["from"], q["to"], q.get("tf") or "minute"))
+            if u.path == "/api/candles":
+                with run_lock:
+                    return self.reply(200, core.plain_candles(q["expiry"], q["strike"], q["right"], q["from"], q.get("to") or q["from"],
+                                                              q.get("tf") or "minute"))
             if u.path == "/api/explorer/strikes":
                 with run_lock:
                     return self.reply(200, core.explorer_strikes(q["expiry"], q.get("tf") or "minute", q.get("date") or None))

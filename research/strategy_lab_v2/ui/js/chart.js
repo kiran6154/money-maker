@@ -35,7 +35,8 @@ export class ChartView {
       <div class="ch-box"><div class="ch-main"></div>
 </div>
       <div class="ch-views"></div>
-      <div class="ch-panes"></div>`;
+      <div class="ch-panes"></div>
+      <div class="ch-free"></div>`;
     $('[data-k="prev"]', root).onclick = () => this.step(-1);
     $('[data-k="next"]', root).onclick = () => this.step(1);
     $('[data-k="full"]', root).onclick = () => this.open(this.ctx.result.date_from || this.ctx.run.date_from, this.ctx.run.date_to);
@@ -244,6 +245,7 @@ export class ChartView {
       if (p?.data && !p.data.error) { this.draw($(".pane-c", el), p.data, { own: true }); this.drawViews($(".pane-views", el), p.data, "pane"); }
     }
     this.sync();
+    this.drawFree();
   }
 
   // the same instrument on the strategy's other timeframes (the 15- / 5-minute signal candles, the 1-minute candles), one
@@ -274,6 +276,64 @@ export class ChartView {
     }
     const z = ch.addLineSeries({ color: "#9e9e9e", lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
     z.setData(d.candles.map((c) => ({ time: c[0], value: 0 })));
+  }
+
+  // a plain option chart beside the strategy's: the reader picks the expiry, the strike and CE / PE; nothing is computed on it
+  async drawFree() {
+    const host = $(".ch-free", this.root); if (!host || !this.data) return;
+    const F = this.free || (this.free = { expiry: "", strike: "", right: "CE", exps: null, ks: null, kKey: "" });
+    const day = this.day, to = this.to || this.day, tf = this.ctx.run?.timeframe || this.ctx.spec?.timeframe || "minute";
+    const my = (this.freeReq = (this.freeReq || 0) + 1);
+    host.innerHTML = `<div class="view"><div class="view-h small free-h"><b>Option chart</b>
+      <label>Expiry <select class="f-exp"><option>loading…</option></select></label>
+      <label>Strike <select class="f-k"></select></label>
+      <span class="seg f-r">${["CE", "PE"].map((r) => `<button class="chip-t ${F.right === r ? "on" : ""}" data-r="${r}">${r}</button>`).join("")}</span>
+      <span class="muted f-note"></span></div><div class="view-c free-c"></div></div>`;
+    const note = (t) => { const e = $(".f-note", host); if (e) e.textContent = t; };
+    $(".f-exp", host).onchange = (e) => { F.expiry = e.target.value; F.userExp = true; F.kKey = ""; this.drawFree(); };
+    try {
+      if (!F.exps) F.exps = await api("/api/explorer/expiries?" + new URLSearchParams({ tf }));
+      if (my !== this.freeReq) return;
+      const live = F.exps.filter((e) => e.expiry >= day).sort((a, b) => (a.expiry < b.expiry ? -1 : 1));
+      if (F.day !== day && !F.userExp) F.expiry = "";                 // a new day: the nearest expiry again, unless one was picked
+      F.day = day;
+      if (!F.expiry || !F.exps.some((e) => e.expiry === F.expiry)) F.expiry = (live[0] || F.exps[0]).expiry;
+      $(".f-exp", host).innerHTML = F.exps.map((e) => `<option value="${e.expiry}" ${e.expiry === F.expiry ? "selected" : ""}>${e.expiry}${e.monthly ? " (monthly)" : ""}${e.expiry < day ? " · expired" : ""}</option>`).join("");
+      const key = `${F.expiry}|${day}`;
+      if (F.kKey !== key) {
+        let got = null;
+        for (const e of [F.expiry, ...live.map((x) => x.expiry).filter((x) => x > F.expiry)].slice(0, F.userExp ? 1 : 4)) {   // an expiry without data: the next one
+          try { got = await api("/api/explorer/strikes?" + new URLSearchParams({ expiry: e, tf, date: day })); F.expiry = e; break; } catch (err) { got = err; }
+        }
+        if (!got || got instanceof Error) throw new Error(F.userExp ? `no candles for the ${F.expiry} expiry on ${day}` : `no option data on ${day} for the nearest expiries (pick an expiry)`);
+        F.ks = got; F.kKey = `${F.expiry}|${day}`; if (!F.keep) F.strike = "";
+        $(".f-exp", host).value = F.expiry;
+      }
+      if (my !== this.freeReq) return;
+      const ks = F.ks.strikes[F.right] || [];
+      if (!F.strike || !ks.includes(+F.strike)) F.strike = String(F.ks.atm[F.right] ?? ks[0] ?? "");
+      F.keep = false;
+      $(".f-k", host).innerHTML = ks.map((k) => `<option value="${k}" ${String(k) === F.strike ? "selected" : ""}>${k}${k === F.ks.atm[F.right] ? " · ATM" : ""}</option>`).join("");
+      $(".f-exp", host).onchange = (e) => { F.expiry = e.target.value; F.userExp = true; F.kKey = ""; this.drawFree(); };
+      $(".f-k", host).onchange = (e) => { F.strike = e.target.value; F.keep = true; this.drawFree(); };
+      $$(".f-r button", host).forEach((b) => (b.onclick = () => { F.right = b.dataset.r; F.keep = true; this.drawFree(); }));
+      const d = await api("/api/candles?" + new URLSearchParams({ expiry: F.expiry, strike: F.strike, right: F.right, from: day, to, tf }));
+      if (my !== this.freeReq) return;
+      note(`· ${d.name} · ${d.candles.length} candles · index ${num(F.ks.index_close, 1)} on ${F.ks.date}`);
+      const el = $(".free-c", host), ch = LightweightCharts.createChart(el, this.opts(el));
+      if (this.freeChart) { try { this.freeChart.remove(); } catch (e) {} this.charts = this.charts.filter((c) => c !== this.freeChart); }
+      this.freeChart = ch; this.charts.push(ch);
+      const UP = "#089981", DN = "#f23645";
+      const cs = ch.addCandlestickSeries({ upColor: UP, downColor: DN, wickUpColor: UP, wickDownColor: DN, borderVisible: false });
+      cs.priceScale().applyOptions({ scaleMargins: { top: 0.06, bottom: 0.27 } });
+      cs.setData(d.candles.map((c) => ({ time: c[0], open: c[1], high: c[2], low: c[3], close: c[4] })));
+      const vs = ch.addHistogramSeries({ priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
+      ch.priceScale("vol").applyOptions({ scaleMargins: { top: 0.77, bottom: 0 } });
+      vs.setData(d.candles.map((c) => ({ time: c[0], value: c[5], color: c[4] >= c[1] ? "rgba(8,153,129,.6)" : "rgba(242,54,69,.6)" })));
+      ch.timeScale().fitContent();                                          // the whole range first, then follow the strategy chart
+      const m = this.charts[0];
+      if (m && m !== ch) m.timeScale().subscribeVisibleTimeRangeChange((rr) => { if (rr && this.freeChart === ch) { try { ch.timeScale().setVisibleRange(rr); } catch (e) {} } });
+    } catch (e) { if (my === this.freeReq) note("· " + e.message); }
   }
 
   sync() {
