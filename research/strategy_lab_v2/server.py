@@ -223,7 +223,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if u.path == "/api/candles":
                 with run_lock:
                     return self.reply(200, core.plain_candles(q.get("expiry"), q.get("strike"), q.get("right"), q["from"], q.get("to") or q["from"],
-                                                              q.get("tf") or "minute", q.get("inst") or "OPT"))
+                                                              q.get("tf") or "minute", q.get("inst") or "OPT", q.get("start") or "days",
+                                                              q.get("end") or "date", float(q.get("liq_pct") or 10)))
             if u.path == "/api/explorer/strikes":
                 with run_lock:
                     return self.reply(200, core.explorer_strikes(q["expiry"], q.get("tf") or "minute", q.get("date") or None))

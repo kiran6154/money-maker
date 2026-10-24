@@ -2018,7 +2018,7 @@ def explorer_straddle(code, frm, to, tf="minute"):
     return _jsonable(dict(code=code, tf=tf, rows=rows, legs=legs))
 
 
-def plain_candles(expiry, strike, right, frm, to, tf="minute", inst="OPT"):
+def plain_candles(expiry, strike, right, frm, to, tf="minute", inst="OPT", start="days", end="date", liq_pct=10):
     """One instrument's own candles from `frm` to `to` (dates), nothing computed on them: INDEX (NIFTY 50), FUT (the
     near-month futures) or OPT (one contract: expiry, strike, right). For the chart page and the strategy page's free
     option chart."""
@@ -2030,10 +2030,18 @@ def plain_candles(expiry, strike, right, frm, to, tf="minute", inst="OPT"):
         s = OptionChain(tf).get(expiry, int(strike), right)
         if s is None: raise ValueError(f"no candles for {expiry} {strike} {right}")
         name = OptionChain.name(expiry, int(strike), right)
+    M = None
+    if inst == "OPT" and (start != "days" or end == "expiry"):    # the explorer's choices: from a milestone of the contract, to its expiry
+        M = option_milestones(s, expiry, int(strike), right, tf, 50, float(liq_pct))
+        if start != "days":
+            if start not in M or start == "expiry": raise ValueError("start is days, listing, prev_expiry, atm, itm or liquid")
+            frm = dstr((M[start] or M["listing"]) // DAY)
+        if end == "expiry": to = dstr(int(s.day[-1]))
     a, z = int(np.searchsorted(s.day, dnum(frm))), int(np.searchsorted(s.day, dnum(to), "right"))
     if z <= a: raise ValueError(f"{name} has no candles from {frm}" + (f" to {to}" if to != frm else ""))
     return dict(name=name, inst=inst, expiry=expiry, strike=int(strike) if strike else None, right=right, tf=tf,
-                first=dstr(int(s.day[0])), last=dstr(int(s.day[-1])), candles=_chart_bars(s, a, z - 1))
+                first=dstr(int(s.day[0])), last=dstr(int(s.day[-1])), frm=frm, to=to, candles=_chart_bars(s, a, z - 1),
+                milestones=({k: (tstr(v) if v else None) for k, v in M.items()} if M else None))
 
 
 def explorer_expiries(tf="minute"):

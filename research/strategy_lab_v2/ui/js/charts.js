@@ -83,20 +83,45 @@ const tf = () => $("#c-tf").value;
 const TFM = { minute: 1, "3minute": 3, "5minute": 5, "15minute": 15, "30minute": 30, "60minute": 60 };
 
 function setSeg(id, attr, val) { $$(`#${id} button`).forEach((b) => b.classList.toggle("on", b.dataset[attr] === val)); }
-function showOpt() { $$(".c-opt").forEach((e) => (e.hidden = st.inst !== "OPT")); setSeg("c-inst", "i", st.inst); setSeg("c-right", "r", st.right); }
+function showOpt() {
+  const opt = st.inst === "OPT";
+  $$(".c-opt").forEach((e) => (e.hidden = !opt));
+  $$("#c-start .o-opt").forEach((o) => { o.hidden = !opt; o.disabled = !opt; });
+  if (!opt) { $("#c-start").value = "days"; $("#c-end").value = "date"; }
+  $("#c-days-l").hidden = $("#c-start").value !== "days";
+  setSeg("c-inst", "i", st.inst); setSeg("c-right", "r", st.right);
+}
 function shiftDay(d, k) { let x = new Date(d + "T00:00:00Z"); do { x = new Date(x.getTime() + k * 86400000); } while (x.getUTCDay() === 0 || x.getUTCDay() === 6); return x.toISOString().slice(0, 10); }
+const optTf = () => (TFM[tf()] < 5 ? "minute" : "5minute");
 
+// option pickers as in the explorer: year -> expiry (weekly / monthly, full chain or not) -> right -> strike (its own dates)
 async function loadExpiries() {
-  if (!st.exps) st.exps = await api("/api/explorer/expiries?" + new URLSearchParams({ tf: "minute" }));
-  const day = $("#c-date").value, live = st.exps.filter((e) => e.expiry >= day).sort((a, b) => (a.expiry < b.expiry ? -1 : 1));
-  if (!st.exp || !st.userExp) st.exp = (live[0] || st.exps[0]).expiry;
-  $("#c-exp").innerHTML = st.exps.map((e) => `<option value="${e.expiry}" ${e.expiry === st.exp ? "selected" : ""}>${e.expiry}${e.monthly ? " (monthly)" : ""}</option>`).join("");
+  if (!st.exps || st.expsTf !== optTf()) { st.exps = await api("/api/explorer/expiries?" + new URLSearchParams({ tf: optTf() })); st.expsTf = optTf(); }
+  const years = [...new Set(st.exps.map((e) => e.expiry.slice(0, 4)))].sort().reverse();
+  const day = $("#c-date").value;
+  if (!st.exp || !st.exps.some((e) => e.expiry === st.exp)) {
+    const next = [...st.exps].sort((a, b) => (a.expiry < b.expiry ? -1 : 1)).find((e) => e.expiry >= day);
+    st.exp = (next || st.exps[0]).expiry;
+  }
+  st.year = st.exp.slice(0, 4);
+  $("#c-year").innerHTML = years.map((y) => `<option ${y === st.year ? "selected" : ""}>${y}</option>`).join("");
+  $("#c-exp").innerHTML = st.exps.filter((e) => e.expiry.startsWith(st.year)).sort((a, b) => (a.expiry < b.expiry ? 1 : -1)).map((e) =>
+    `<option value="${e.expiry}" ${e.expiry === st.exp ? "selected" : ""}>${e.expiry} · ${e.monthly ? "monthly" : "weekly"}${e.full_chain ? "" : " · strikes near settlement only"}</option>`).join("");
 }
 async function loadStrikes() {
-  st.ks = await api("/api/explorer/strikes?" + new URLSearchParams({ expiry: st.exp, tf: "minute", date: $("#c-date").value }));
-  const ks = st.ks.strikes[st.right] || [];
-  if (!st.userK || !ks.includes(+st.strike)) st.strike = String(st.ks.atm[st.right] ?? ks[0] ?? "");
-  $("#c-strike").innerHTML = ks.map((k) => `<option value="${k}" ${String(k) === st.strike ? "selected" : ""}>${k}${k === st.ks.atm[st.right] ? " · ATM" : ""}</option>`).join("");
+  const s = await api("/api/explorer/strikes?" + new URLSearchParams({ expiry: st.exp, tf: optTf(), date: $("#c-date").value }));
+  st.ks = s;
+  const ks = s.strikes[st.right] || [], keep = st.userK && ks.map(String).includes(String(st.strike)) && st.kExp === s.expiry;
+  st.strike = String(keep ? st.strike : s.atm[st.right] ?? ks[0] ?? ""); st.kExp = s.expiry;
+  $("#c-strike").innerHTML = ks.map((k) => `<option value="${k}" ${String(k) === st.strike ? "selected" : ""}>${k}${k === s.atm[st.right] ? " · ATM on " + s.date.slice(5) : ""}</option>`).join("");
+  // each strike trades over its own dates: keep the day inside the chosen strike's life, and say when it moved
+  const life = s.lives?.[st.right]?.[st.strike]; let moved = "";
+  if (life) {
+    const d = $("#c-date").value;
+    if (d < life[0]) { $("#c-date").value = life[0]; moved = ` · day moved to ${life[0]}, its first day`; }
+    else if (d > life[1]) { $("#c-date").value = life[1]; moved = ` · day moved to ${life[1]}, its last day`; }
+  }
+  $("#c-life").textContent = `${st.right} ${st.strike} traded ${life ? life[0] + " → " + life[1] : "?"} · this expiry's contracts ${s.first} → ${s.last} · index close on ${s.date}: ${num(s.index_close, 1)}${moved}`;
 }
 
 // ---------------------------------------------------------------- the indicator list (add / edit / remove)
@@ -130,18 +155,33 @@ function warmBars() {
   return n + 5;
 }
 async function load() {
-  const my = ++req, day = $("#c-date").value, shown = +$("#c-days").value;
+  const my = ++req, shown = +$("#c-days").value;
+  if (st.inst === "OPT") {
+    try {
+      await loadExpiries();
+      try { await loadStrikes(); }
+      catch (e) {                                   // an expiry with no candles yet (or none on this day): the nearest one that has them
+        if (st.userExp) throw e;
+        const all = st.exps.map((x) => x.expiry).sort(), k = all.indexOf(st.exp), tries = [];
+        for (let n = 1; n <= 6; n++) { if (all[k - n]) tries.push(all[k - n]); if (all[k + n]) tries.push(all[k + n]); }
+        let ok = false;
+        for (const e2 of tries) { st.exp = e2; try { await loadExpiries(); await loadStrikes(); ok = true; break; } catch (err) { /* next */ } }
+        if (!ok) throw e;
+      }
+    } catch (e) { $("#c-legend").textContent = e.message; clear(); return; }
+    if (my !== req) return;
+  }
+  const day = $("#c-date").value;
   const perDay = Math.floor(375 / TFM[tf()]), warmDays = Math.ceil(warmBars() / Math.max(perDay, 1)) + 1;
   let frm = day; for (let k = 0; k < shown - 1 + warmDays + (st.inds.some((i) => i.type === "PDHL") ? 1 : 0); k++) frm = shiftDay(frm, -1);
   let showFrom = day; for (let k = 0; k < shown - 1; k++) showFrom = shiftDay(showFrom, -1);
   $("#c-legend").textContent = "loading…";
   try {
-    if (st.inst === "OPT") { await loadExpiries(); await loadStrikes(); }
-    const q = { inst: st.inst, from: frm, to: day, tf: tf() };
-    if (st.inst === "OPT") Object.assign(q, { expiry: st.exp, strike: st.strike, right: st.right });
+    const q = { inst: st.inst, from: frm, to: $("#c-date").value, tf: tf() };
+    if (st.inst === "OPT") Object.assign(q, { expiry: st.exp, strike: st.strike, right: st.right, start: $("#c-start").value, end: $("#c-end").value });
     const d = await api("/api/candles?" + new URLSearchParams(q));
     if (my !== req) return;
-    data = d; data.showFrom = showFrom; draw();
+    data = d; data.showFrom = st.inst === "OPT" && $("#c-start").value !== "days" ? d.frm : showFrom; draw();
   } catch (e) { if (my === req) { $("#c-legend").textContent = e.message; clear(); } }
 }
 function clear() { for (const c of charts) c.remove(); charts = []; $("#c-panes").innerHTML = ""; }
@@ -194,8 +234,16 @@ function draw() {
 // ---------------------------------------------------------------- controls
 $$("#c-inst button").forEach((b) => (b.onclick = () => { st.inst = b.dataset.i; save(); showOpt(); load(); }));
 $$("#c-right button").forEach((b) => (b.onclick = () => { st.right = b.dataset.r; showOpt(); load(); }));
-$("#c-exp").onchange = (e) => { st.exp = e.target.value; st.userExp = true; load(); };
+$("#c-year").onchange = (e) => {                        // a year: its expiry nearest the day, else its last one
+  const y = e.target.value, list = st.exps.filter((x) => x.expiry.startsWith(y)).map((x) => x.expiry).sort();
+  const d = $("#c-date").value; st.exp = list.find((x) => x >= d) || list[list.length - 1]; st.userK = false; st.userExp = false;
+  if (st.exp < d || !d.startsWith(y)) $("#c-date").value = st.exp;
+  load();
+};
+$("#c-exp").onchange = (e) => { st.exp = e.target.value; st.userExp = true; st.userK = false; if ($("#c-date").value > st.exp) $("#c-date").value = st.exp; load(); };
 $("#c-strike").onchange = (e) => { st.strike = e.target.value; st.userK = true; load(); };
+$("#c-start").onchange = () => { showOpt(); load(); };
+$("#c-end").onchange = () => load();
 $("#c-tf").onchange = () => { pref("charts.tf", tf()); load(); };
 $("#c-days").onchange = () => { pref("charts.days", $("#c-days").value); load(); };
 $("#c-date").onchange = () => load();
