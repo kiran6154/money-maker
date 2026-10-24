@@ -62,6 +62,24 @@ export function algorithm(spec) {
   const by = (m) => (m === "close" ? "a candle closing beyond it" : "a candle touching it (high / low)");
   const S = (t, sub) => ({ t, sub: sub || [] });
   const steps = [];
+  if (spec.rules?.entry_rule === "ob_retest_v1") {     // Strategy 82: CHoCH + Order Block retest + the option's previous-day range
+    const g = spec.ob, sell = g.short_as === "sell_pe";
+    return [
+      S("Candles: 5-minute candles of the NIFTY index (the signals); the trade is the ATM option of the nearest open weekly expiry, on its own 5-minute candles."),
+      S(`Structure: a swing high / low = higher / lower than ${g.pivot} bars on each side, confirmed ${g.pivot} bars later. A close beyond the latest unbroken swing is a BOS when the structure already points that way (or is neutral), a CHoCH when it pointed the other way; each swing level is broken once.`),
+      S("Order Block:", [
+        S(`A bar closes above the highest high (below the lowest low) of the ${g.lookback} bars before it.`),
+        S(`The impulse: the latest candle that way among those bars with a body of at least ${g.impulse_atr} × ATR(14).`),
+        S("The Order Block: the last opposite-colour candle before the impulse, its low to high. Created only if no bar after the impulse has traded back into it; used up by the first touch.")]),
+      S(`Entry (${g.start} – ${g.last_entry}), one position at a time, one entry per CHoCH:`, [
+        S("Long: the latest break is a bullish CHoCH, and a bar trades into a fresh bullish Order Block (low ≤ its high) and closes up and above its low → buy the ATM CE at that close."),
+        S(`Short: the mirror on a bearish CHoCH → ${sell ? "SELL" : "buy"} the ATM PE at that close.`),
+        ...(g.prev_day_filter ? [S("Filter, on the option itself: a long only if the CE's close is at or above that CE's previous-session low; a short only if the PE's close is below that PE's previous-session low.")] : [])]),
+      S("Exit, on the option's own candles — first of:", [
+        S(`Bought option: stop at entry × ${(1 - g.stop_pct).toFixed(2)}, target at entry × ${(1 + g.stop_pct * g.rr).toFixed(2)} (${g.rr}R).${sell ? ` Sold PE: stop at entry × ${(1 + g.stop_pct).toFixed(2)}, target at entry × ${g.sell_target}.` : ""}`),
+        S(`${g.time_exit_min} minutes after the entry → out at that candle's close; all positions flat by ${g.flatten}.`)]),
+      S(`Costs: ${spec.types?.OPT_FUT_SIGNAL?.slippage_pts ?? "–"} points slippage per side; charges per the broker schedule; lot size ${spec.lot_size}.`)];
+  }
   if (spec.rules?.entry_rule === "oi_regime_v1") {     // Strategy 81: regime from CE / PE open interest + structure
     const g = spec.oi_regime, P0 = spec.position || {};
     return [

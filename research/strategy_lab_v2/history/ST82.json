@@ -1,0 +1,136 @@
+{
+ "code": "ST82",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-24T15:41:04",
+   "key": "e08a4e57201a",
+   "code": "5cdb52c90a8f",
+   "definition": {
+    "code": "ST82",
+    "timeframe": "5minute",
+    "underlying": "FUT",
+    "warmup_days": 3,
+    "rules": {
+     "break_mode": "close",
+     "choch_mode": "close",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "ob_retest_v1",
+     "exit_rule": "next_choch"
+    },
+    "ob": {
+     "pivot": 5,
+     "lookback": 10,
+     "impulse_atr": 0.7,
+     "rr": 1.5,
+     "stop_pct": 0.4,
+     "sell_target": 0.5,
+     "start": "09:30",
+     "last_entry": "15:00",
+     "flatten": "15:00",
+     "time_exit_min": 30,
+     "short_as": "buy_pe",
+     "prev_day_filter": true,
+     "notes": "the document's parameters; short_as: buy_pe (its section 1: a short buys the PE, with the long exits) or sell_pe (its exit table: the PE is sold, stop x 1.4, target x 0.5)"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY"
+     ],
+     "expiry_min_days": 0,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATM"
+     ],
+     "strike_default": "ATM",
+     "atr_period": 14
+    }
+   },
+   "changes": [],
+   "results": {
+    "document-period_5m": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 21,
+       "wins": 11,
+       "pts": 68.05,
+       "net_inr": 3169.04,
+       "pf": 1.34,
+       "max_dd_inr": -3810.56,
+       "t_stat": 0.5
+      }
+     }
+    },
+    "first-half_5m": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 15,
+       "wins": 8,
+       "pts": 14.35,
+       "net_inr": 37.22,
+       "pf": 1.0,
+       "max_dd_inr": -3810.56,
+       "t_stat": 0.01
+      }
+     }
+    },
+    "second-half_5m": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 6,
+       "wins": 3,
+       "pts": 53.7,
+       "net_inr": 3131.82,
+       "pf": 3.65,
+       "max_dd_inr": -796.97,
+       "t_stat": 0.9
+      }
+     }
+    },
+    "all-option-data_5m": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 25,
+       "wins": 11,
+       "pts": 39.96,
+       "net_inr": 1130.62,
+       "pf": 1.1,
+       "max_dd_inr": -4650.64,
+       "t_stat": 0.17
+      }
+     }
+    }
+   }
+  }
+ ]
+}

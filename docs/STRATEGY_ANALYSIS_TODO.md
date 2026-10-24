@@ -457,6 +457,22 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S94. Lab v2 Strategy 82: the user's document "Structure + Order Block + Previous Day Range" (2026-10-24). Rebuilt on the lab's data: 21 trades in its period, +89 premium points, ₹+3,169 after costs; it rests on the short side, and on a reading of "short" the document contradicts itself on
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/ob_retest.py` (family module: `structure`, `order_blocks`, `signals_of`, `run`, `chart_main`), `st82.py` (`ob`: every number). The user pasted the document on 2026-10-24 without further words; it was built as a strategy as the earlier pasted specs were. |
+| The document's own result | Dec 2025 - Sep 2026, 5-minute, no costs, premium points: 55 signals, 32 after the previous-day filter, +58.6 points, PF 1.35 (long 17 trades +46.8, short 15 trades +11.8); 28 of 32 exits on the 30-minute time rule. Its own code (a "simplified" port of the Shaakuni indicator) and its data files (a Google Drive folder) were not supplied; the lab uses its own index and option files. |
+| The contradiction | Section 1 and 3: shorts BUY the PE. The exit table: a short's stop is entry x 1.4 and its target entry x 0.5 - those are the exits of a SOLD option. Both are built (`short_as`); the default follows section 1 (`buy_pe`, with the long exits). |
+| Build choices (not in the document; fixed before the run) | (1) "Has not already revisited": judged on the bars after the impulse candle (judged from the OB candle itself, the impulse candle's own overlap rejected all but 24 zones in ten months and no trade came). (2) The impulse: the latest candle that way, body at least 0.7 x ATR(14), among the breakout bar and the 10 before it; the OB: the last opposite candle before it (up to 30 bars back). (3) "A CHoCH has just occurred" = it is the latest structure break (a BOS after it ends it), one entry per CHoCH, and the OB was created after the CHoCH or within the 10 bars before it. (4) Expiry: the nearest weekly on or after the day; strike: the index close at the signal rounded to 50; the previous-day low: that contract's own previous session. (5) Fills at the option's 5-minute close; stop before target in a candle; the 30-minute exit at the close of the candle 30 minutes after the entry; flat at 15:00. |
+| Impact | **Measured on the lab's data, ATM options, 1 lot, 2025-12-01 → 2026-09-30.** Section 1 reading (PE bought), with the filter: **21 trades (20 refused by the filter), 52% winners, +89.0 premium points gross (PF 1.72), ₹+3,169 after costs (PF 1.34)**; long 8 trades -20.5 points, short 13 trades +109.6 points; exits: time 17, target 4. Halves: Dec - Apr 15 trades +29.3 points, ₹+37; May - Sep 6 trades +59.7 points, ₹+3,132. Without the filter: 41 trades, +195.3 points (PF 1.76), ₹+7,556; halves +187.1 / +8.2 points. Exit-table reading (PE sold), with the filter: 21 trades, -155.4 points (PF 0.40), ₹-12,717; without: 41 trades, -224.5 points, ₹-19,714. All option data (2025-08-01 → 2026-10-09), section 1 reading, with the filter: 25 trades, ₹+1,131. |
+| Read | The lab finds fewer signals than the document (44 before the filter against 55) and the same picture in its main lines: a small positive in premium points, nearly every exit on the 30-minute clock, the positive part from the bought PEs. Here the previous-day filter does not help: it halves the trades and the points (195 → 89), and in Dec - Apr it turns ₹+9,132 into ₹+37. 21 trades in ten months (t 0.5): not evidence either way. Selling the PE on a bearish signal loses, as it should (it is a bet the market goes up). |
+| Open (the user's call) | Which reading of "short" the document means; whether the filter stays; the document's code, to match its 55 signals. Unquantified: the document's own suggestions (longer holds, an opposite-CHoCH exit, a higher-timeframe bias). |
+| Effort | **S** each. |
+| Priority | _Open; first numbers recorded._ Related: S93, S69. |
+
+---
+
 ### S93. Lab v2 Strategy 81: the user's NIFTY regime spec (CE / PE open interest + structure). Measured, futures, August 2025 → October 2026: 1,648 trades, ₹-18,68,938, PF 0.23; both halves, every regime and both sides lose
 
 | | |
