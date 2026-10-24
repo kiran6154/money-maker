@@ -16,6 +16,10 @@ Built 2026-10-24 at the user's word. The rule as given:
                monthly longs stay; the position's P&L for the +3% / -6% is the realized P&L of the rolled legs plus the
                open legs' mark. The position ends at the target, the stop, the monthly's `long_exit_days`, or when the
                next weekly has no candle at a rolled strike ("roll_unavailable": everything closed).
+  roll_long    (`roll_long: true`, ST93, with `roll`) at the step where the monthly longs have under `long_exit_days` days
+               they are sold and `long_lots` lots of the next monthly at least `monthly_min_days` out are bought at the
+               strike whose premium then is nearest `long_premium` (rows "rolled"); the position goes on. It ends only at
+               the target, the stop, or a roll with no contract ("roll_unavailable").
 Build choices (not in the request):
   the P&L base is `short_option_margin` per short lot plus the long legs' premium paid (pnl.base "margin_plus_debit");
   prices are the candle at the step minute (its open; the last candle before it when that minute is missing); fills are
@@ -165,20 +169,33 @@ def run(ctx):
                 pnl = realized + sum(((p0 - p) if pos == "SHORT" else (p - p0)) * lot * n for (pos, e, k, p0, n, t_in), p in zip(openl, pxs))
                 pct = 100 * pnl / base_amt
                 why = "target" if pct >= S["target_pct"] else "stop_loss" if pct <= -S["stop_pct"] else None
-                if why is None and days_long < S["long_exit_days"]: why = "long_expiry_near"
+                if why is None and days_long < S["long_exit_days"]:
+                    if not S.get("roll_long"): why = "long_expiry_near"
+                    else:                                              # roll the longs: sell, buy the next monthly's `long_premium` strike
+                        mon2 = next((e for e in monthly if (D.date.fromisoformat(e) - D.date.fromisoformat(dday)).days >= S["monthly_min_days"]), None)
+                        got = _pick(mon2, right, dday, tt, S["long_premium"], S) if mon2 else None
+                        if got is None: why = "roll_unavailable"
+                        else:
+                            newl = []
+                            for (pos, e, k, p0, n, t_in), p in zip(openl, pxs):
+                                if pos != "LONG": newl.append((pos, e, k, p0, n, t_in)); continue
+                                realized += close((pos, e, k, p0, n, t_in), tt, p, "rolled"); newl.append((pos, mon2, got[0], got[1], n, int(tt)))
+                            openl = newl; mon = mon2
+                            days_long = (D.date.fromisoformat(mon) - D.date.fromisoformat(dday)).days
+                            continue
                 sold = min(e for pos, e, k, p0, n, t_in in openl if pos == "SHORT")
                 if why is None and (ahead2 == sold or sold <= dday):
                     if not S.get("roll"): why = "short_expiry_near"
                     else:                                              # roll the shorts: buy back, sell the same strikes on the next weekly
                         nx2 = next((e for e in exps if e > sold), None)
-                        newl, ok = [], nx2 is not None
+                        p2s = [(_px(ser_of(nx2, k), tt) if pos == "SHORT" else None) for pos, e, k, p0, n, t_in in openl] if nx2 else []
+                        ok = bool(nx2) and all(p2 is not None for (pos, *_), p2 in zip(openl, p2s) if pos == "SHORT")   # every new contract priced BEFORE any leg is closed
                         if ok:
-                            for (pos, e, k, p0, n, t_in), p in zip(openl, pxs):
+                            newl = []
+                            for (pos, e, k, p0, n, t_in), p, p2 in zip(openl, pxs, p2s):
                                 if pos != "SHORT": newl.append((pos, e, k, p0, n, t_in)); continue
-                                p2 = _px(ser_of(nx2, k), tt)
-                                if p2 is None: ok = False; break
                                 realized += close((pos, e, k, p0, n, t_in), tt, p, "rolled"); newl.append((pos, nx2, k, p2, n, int(tt)))
-                        if ok: openl = newl; continue
+                            openl = newl; continue
                         why = "roll_unavailable"                        # the next weekly has no candle at that strike: all out
                 if why is None: continue
                 for lg, p in zip(openl, pxs): realized += close(lg, tt, p, why)

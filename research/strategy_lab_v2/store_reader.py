@@ -47,7 +47,7 @@ def _span(paths, frm, to):
     """The files whose name (a month, an expiry, or a from__to range) can hold days frm..to."""
     out = []
     for p in paths:
-        n = os.path.basename(p).replace(".partial", "").replace(".parquet", "")
+        n = os.path.basename(p).replace(".partial", "").replace(".wide", "").replace(".parquet", "")   # .wide: the far-strike files beside the main ones
         if "__" in n: a, z = n.split("__")
         elif len(n) == 7: a, z = n + "-01", n + "-31"
         else: a, z = "0000", n

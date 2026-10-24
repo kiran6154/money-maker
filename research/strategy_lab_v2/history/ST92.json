@@ -108,39 +108,39 @@
     "store-options_1m_idx": {
      "OPT_FUT_SIGNAL": {
       "W-ATM": {
-       "trades": 205,
-       "wins": 122,
-       "pts": 5436.0,
-       "net_inr": 10183.4,
+       "trades": 194,
+       "wins": 116,
+       "pts": 5452.25,
+       "net_inr": 11980.04,
        "pf": 1.01,
-       "max_dd_inr": -129089.31,
-       "t_stat": 0.05
+       "max_dd_inr": -101561.65,
+       "t_stat": 0.06
       }
      }
     },
     "first-half_1m_idx": {
      "OPT_FUT_SIGNAL": {
       "W-ATM": {
-       "trades": 105,
-       "wins": 62,
-       "pts": 1419.1,
-       "net_inr": -29905.61,
-       "pf": 0.96,
-       "max_dd_inr": -113785.95,
-       "t_stat": -0.18
+       "trades": 99,
+       "wins": 59,
+       "pts": 1703.45,
+       "net_inr": -11007.34,
+       "pf": 0.98,
+       "max_dd_inr": -95433.67,
+       "t_stat": -0.07
       }
      }
     },
     "second-half_1m_idx": {
      "OPT_FUT_SIGNAL": {
       "W-ATM": {
-       "trades": 105,
-       "wins": 64,
-       "pts": 4371.15,
-       "net_inr": 45148.46,
-       "pf": 1.08,
-       "max_dd_inr": -84219.42,
-       "t_stat": 0.33
+       "trades": 100,
+       "wins": 61,
+       "pts": 4103.05,
+       "net_inr": 28046.83,
+       "pf": 1.05,
+       "max_dd_inr": -76701.34,
+       "t_stat": 0.21
       }
      }
     }
