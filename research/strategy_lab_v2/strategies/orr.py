@@ -135,7 +135,7 @@ def run(ctx):
                        opening_body_fraction=round(info["frac"], 4))
             core.excursion(b, rec, x["side"] > 0)
             trs.append(core.price_trade(ctx, rec))
-        sigs.append(dict(time=int(b.t[s0]), dir="up" if info["side"] > 0 else "down", flipped=False, lvl=float(b.c[s0]), av=float("nan"), hi=None, lo=None, setup=None))
+        sigs.append(dict(time=int(b.t[s0]), dir="up" if info["side"] > 0 else "down", flipped=False, lvl=float(b.c[s0]), av=None, hi=None, lo=None, setup=None))
     return {ch: dict(trades=trs, skipped=skipped, signals=sigs) for ch in core.choice_keys(spec, "FUT")}
 
 

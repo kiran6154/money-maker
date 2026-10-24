@@ -145,7 +145,7 @@ def run(ctx):
                    prev_low=round(plow, 2), ob=f"{z_[3]:.1f}-{z_[4]:.1f}")
         core.excursion(s, rec, not sell)
         trs.append(core.price_trade(ctx, rec))
-    sg = [dict(time=int(b.t[i]), dir="up" if evd[i] > 0 else "down", flipped=bool(ev[i] == 2), lvl=float(b.c[i]), av=float("nan"), hi=None, lo=None, setup=None)
+    sg = [dict(time=int(b.t[i]), dir="up" if evd[i] > 0 else "down", flipped=bool(ev[i] == 2), lvl=float(b.c[i]), av=None, hi=None, lo=None, setup=None)
           for i in range(len(b)) if ev[i] and core.dnum(core.dstr(int(b.day[i]))) >= d_from]
     return {ch: dict(trades=trs, skipped=skipped, signals=sg) for ch in core.choice_keys(spec, "OPT_FUT_SIGNAL")}
 

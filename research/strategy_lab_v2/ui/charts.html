@@ -18,7 +18,8 @@
     <div class="xhead">
       <div>
         <b>Plain charts with your own indicators</b>
-        <div class="muted small">The index, the near-month futures or any option contract — no strategy. Add indicators below; they are computed on the candles shown (plus a warm-up before them) and remembered in this browser.</div>
+        <div class="muted small">Straight from the download store (<span id="c-src">D:/nifty_data</span>), with open interest: the index, the near-month futures or any option contract — no strategy. New downloads show up on the next load. Add indicators below; they are computed on the candles shown (plus a warm-up before them) and remembered in this browser.</div>
+        <div class="muted small" id="c-cov"></div>
       </div>
       <button id="c-go" class="primary">Refresh</button>
     </div>
@@ -44,10 +45,7 @@
         <label>Show from <select id="c-start">
           <option value="days">sessions up to the day</option>
           <option value="listing" class="o-opt">the contract's first candle</option>
-          <option value="prev_expiry" class="o-opt">the previous expiry</option>
-          <option value="atm" class="o-opt">when it first became ATM</option>
-          <option value="itm" class="o-opt">when it first became ITM</option>
-          <option value="liquid" class="o-opt">its first liquid session</option></select></label>
+          <option value="prev_expiry" class="o-opt">the previous expiry</option></select></label>
         <label id="c-days-l">Sessions shown <select id="c-days"><option>1</option><option>2</option><option>3</option><option>5</option><option>10</option><option>20</option><option>40</option></select></label>
         <label class="c-opt">Show to <select id="c-end"><option value="date">the day</option><option value="expiry">expiry (its last candle)</option></select></label>
       </fieldset>
@@ -56,6 +54,7 @@
         <div class="xfield"><span class="xl">Add</span>
           <span style="display:flex;gap:6px"><select id="c-add"></select><button id="c-add-go">+ Add</button></span></div>
         <div id="c-inds" class="c-inds"></div>
+        <label class="small"><input type="checkbox" id="c-oi" checked> open interest pane (futures and options)</label>
       </fieldset>
     </div>
   </div>

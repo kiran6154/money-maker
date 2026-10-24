@@ -11,6 +11,8 @@ API
     GET  /api/chart?code=&run=&type=&choice=&day=[&to=][&inst= | &atm=CE|PE]   sessions day..to of a run, computed on request
                                                                          (atm: that day's ATM option, traded or not)
     GET  /api/history?code=ST1                             the strategy's versions (definition, changes, results per run)
+    GET  /api/store/coverage | expiries | strikes?expiry=&date= | candles?inst=&from=&to=&tf=&expiry=&strike=&right=
+         the Breeze store (D:/nifty_data) read directly, with open interest (charts.html; store_reader.py)
     GET  /api/candles?inst=INDEX|FUT|OPT&expiry=&strike=&right=CE|PE&from=&to=&tf=   plain candles (charts.html, the free option chart)
     GET  /api/explorer/meta | instruments?date=&tf= | chart?date=&inst=FUT|INDEX|OPT&code=&tf=&expiry=&strike=&right=
          &days_before=&holding=own|none|HH:MM             any day, any instrument (explorer.html)
@@ -21,6 +23,7 @@ Nothing here places orders or touches a broker.
 """
 import http.server, json, os, sys, threading, time, traceback, urllib.parse, datetime as D, mimetypes
 import core
+import store_reader
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UI = os.path.join(HERE, "ui")
@@ -220,6 +223,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if u.path == "/api/explorer/straddle":
                 with run_lock:
                     return self.reply(200, core.explorer_straddle(q["code"], q["from"], q["to"], q.get("tf") or "minute"))
+            if u.path == "/api/store/coverage":
+                return self.reply(200, store_reader.coverage())
+            if u.path == "/api/store/expiries":
+                return self.reply(200, store_reader.expiries())
+            if u.path == "/api/store/strikes":
+                return self.reply(200, store_reader.strikes(q["expiry"], q.get("date") or None))
+            if u.path == "/api/store/candles":
+                return self.reply(200, store_reader.candles(q["inst"], q["from"], q.get("to") or q["from"], q.get("tf") or "minute",
+                                                            q.get("expiry"), q.get("strike"), q.get("right")))
             if u.path == "/api/candles":
                 with run_lock:
                     return self.reply(200, core.plain_candles(q.get("expiry"), q.get("strike"), q.get("right"), q["from"], q.get("to") or q["from"],

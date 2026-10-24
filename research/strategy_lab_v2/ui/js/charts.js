@@ -96,7 +96,7 @@ const optTf = () => (TFM[tf()] < 5 ? "minute" : "5minute");
 
 // option pickers as in the explorer: year -> expiry (weekly / monthly, full chain or not) -> right -> strike (its own dates)
 async function loadExpiries() {
-  if (!st.exps || st.expsTf !== optTf()) { st.exps = await api("/api/explorer/expiries?" + new URLSearchParams({ tf: optTf() })); st.expsTf = optTf(); }
+  if (!st.exps) st.exps = (await api("/api/store/expiries")).map((e) => ({ ...e, full_chain: true }));
   const years = [...new Set(st.exps.map((e) => e.expiry.slice(0, 4)))].sort().reverse();
   const day = $("#c-date").value;
   if (!st.exp || !st.exps.some((e) => e.expiry === st.exp)) {
@@ -109,7 +109,7 @@ async function loadExpiries() {
     `<option value="${e.expiry}" ${e.expiry === st.exp ? "selected" : ""}>${e.expiry} · ${e.monthly ? "monthly" : "weekly"}${e.full_chain ? "" : " · strikes near settlement only"}</option>`).join("");
 }
 async function loadStrikes() {
-  const s = await api("/api/explorer/strikes?" + new URLSearchParams({ expiry: st.exp, tf: optTf(), date: $("#c-date").value }));
+  const s = await api("/api/store/strikes?" + new URLSearchParams({ expiry: st.exp, date: $("#c-date").value }));
   st.ks = s;
   const ks = s.strikes[st.right] || [], keep = st.userK && ks.map(String).includes(String(st.strike)) && st.kExp === s.expiry;
   st.strike = String(keep ? st.strike : s.atm[st.right] ?? ks[0] ?? ""); st.kExp = s.expiry;
@@ -177,11 +177,18 @@ async function load() {
   let showFrom = day; for (let k = 0; k < shown - 1; k++) showFrom = shiftDay(showFrom, -1);
   $("#c-legend").textContent = "loading…";
   try {
-    const q = { inst: st.inst, from: frm, to: $("#c-date").value, tf: tf() };
-    if (st.inst === "OPT") Object.assign(q, { expiry: st.exp, strike: st.strike, right: st.right, start: $("#c-start").value, end: $("#c-end").value });
-    const d = await api("/api/candles?" + new URLSearchParams(q));
+    let to = $("#c-date").value, start = $("#c-start").value;
+    if (st.inst === "OPT") {                               // the contract's own range: its first day / the previous expiry, to its last day
+      const life = st.ks?.lives?.[st.right]?.[st.strike];
+      if (start === "listing" && life) frm = life[0];
+      if (start === "prev_expiry") { const all = st.exps.map((x) => x.expiry).sort(), k = all.indexOf(st.exp); frm = k > 0 ? all[k - 1] : (life ? life[0] : frm); }
+      if ($("#c-end").value === "expiry" && life) to = life[1];
+    }
+    const q = { inst: st.inst, from: frm, to, tf: tf() };
+    if (st.inst === "OPT") Object.assign(q, { expiry: st.exp, strike: st.strike, right: st.right });
+    const d = await api("/api/store/candles?" + new URLSearchParams(q));
     if (my !== req) return;
-    data = d; data.showFrom = st.inst === "OPT" && $("#c-start").value !== "days" ? d.frm : showFrom; draw();
+    data = d; data.showFrom = st.inst === "OPT" && start !== "days" ? d.frm : showFrom; draw();
   } catch (e) { if (my === req) { $("#c-legend").textContent = e.message; clear(); } }
 }
 function clear() { for (const c of charts) c.remove(); charts = []; $("#c-panes").innerHTML = ""; }
@@ -194,7 +201,7 @@ function opts() {
 function draw() {
   clear(); if (!data) return;
   const C = data.candles, UP = "#089981", DN = "#f23645";
-  $("#c-title").innerHTML = `<b>${esc(data.name)}</b> <span class="muted">· ${$("#c-tf").selectedOptions[0].text} candles · data ${data.first} → ${data.last}</span>`;
+  $("#c-title").innerHTML = `<b>${esc(data.name)}</b> <span class="muted">· ${$("#c-tf").selectedOptions[0].text} candles · ${data.frm} → ${data.to}${data.contracts ? " · contract expiry " + data.contracts.join(", ") : ""}</span>`;
   const main = LightweightCharts.createChart($("#c-main"), opts()); charts.push(main);
   const cs = main.addCandlestickSeries({ upColor: UP, downColor: DN, wickUpColor: UP, wickDownColor: DN, borderVisible: false });
   cs.priceScale().applyOptions({ scaleMargins: { top: 0.05, bottom: 0.25 } });
@@ -217,6 +224,14 @@ function draw() {
     const ch = LightweightCharts.createChart($(".c-pane-c", box), opts()); charts.push(ch);
     for (const ln of compute(ind, C)) add(ch, ln);
   }
+  if (data.oi && $("#c-oi").checked) {                    // open interest of the instrument itself, in lakh
+    const box = document.createElement("div"); box.className = "c-pane";
+    box.innerHTML = `<div class="small muted" style="padding:4px 8px"><b style="color:#7b1fa2">Open interest</b> of ${esc(data.name)} (last value in each candle)</div><div class="c-pane-c"></div>`;
+    $("#c-panes").prepend(box);
+    const ch = LightweightCharts.createChart($(".c-pane-c", box), opts()); charts.push(ch);
+    const s = ch.addLineSeries({ color: "#7b1fa2", lineWidth: 2, title: "OI", priceLineVisible: false, priceFormat: { type: "custom", formatter: (v) => (v / 1e5).toFixed(2) + " L" } });
+    s.setData(C.filter((c) => c[6] > 0).map((c) => ({ time: c[0], value: c[6] })));
+  }
   // the sessions asked for; the warm-up before them stays reachable by scrolling left
   const t0 = C.find((c) => new Date(c[0] * 1000).toISOString().slice(0, 10) >= data.showFrom)?.[0] ?? C[0][0], tN = C[C.length - 1][0];
   for (const ch of charts) { try { ch.timeScale().setVisibleRange({ from: t0, to: tN }); } catch (e) {} }
@@ -225,7 +240,7 @@ function draw() {
   m.subscribeCrosshairMove((p) => {
     const c = p?.time != null ? C.find((x) => x[0] === p.time) : C[C.length - 1];
     if (!c) return;
-    $("#c-legend").textContent = `${new Date(c[0] * 1000).toISOString().slice(0, 16).replace("T", " ")}  O ${num(c[1], 2)}  H ${num(c[2], 2)}  L ${num(c[3], 2)}  C ${num(c[4], 2)}  V ${num(c[5], 0)}`;
+    $("#c-legend").textContent = `${new Date(c[0] * 1000).toISOString().slice(0, 16).replace("T", " ")}  O ${num(c[1], 2)}  H ${num(c[2], 2)}  L ${num(c[3], 2)}  C ${num(c[4], 2)}  V ${num(c[5], 0)}${c.length > 6 ? `  OI ${num(c[6], 0)}` : ""}`;
   });
   const c = C[C.length - 1];
   $("#c-legend").textContent = `${C.length} candles · last ${new Date(c[0] * 1000).toISOString().slice(0, 16).replace("T", " ")}  C ${num(c[4], 2)}` + (notes.length ? " · " + notes.join(" · ") : "");
@@ -246,15 +261,21 @@ $("#c-start").onchange = () => { showOpt(); load(); };
 $("#c-end").onchange = () => load();
 $("#c-tf").onchange = () => { pref("charts.tf", tf()); load(); };
 $("#c-days").onchange = () => { pref("charts.days", $("#c-days").value); load(); };
-$("#c-date").onchange = () => load();
-$("#c-prev").onclick = () => { $("#c-date").value = shiftDay($("#c-date").value, -1); load(); };
-$("#c-next").onclick = () => { $("#c-date").value = shiftDay($("#c-date").value, 1); load(); };
+const newDay = () => { if (!st.userExp) st.exp = ""; st.userK = false; load(); };   // a new day: its nearest expiry and ATM, unless picked
+$("#c-date").onchange = newDay;
+$("#c-prev").onclick = () => { $("#c-date").value = shiftDay($("#c-date").value, -1); newDay(); };
+$("#c-next").onclick = () => { $("#c-date").value = shiftDay($("#c-date").value, 1); newDay(); };
 $("#c-go").onclick = () => load();
+$("#c-oi").onchange = () => draw();
 
 (async () => {
   $("#c-tf").value = pref("charts.tf") || "5minute";
   $("#c-days").value = pref("charts.days") || "2";
-  try { const m = await api("/api/explorer/meta"); $("#c-date").value = m.last || m.date || new Date().toISOString().slice(0, 10); }
-  catch (e) { $("#c-date").value = new Date().toISOString().slice(0, 10); }
+  try {
+    const cv = await api("/api/store/coverage");
+    $("#c-src").textContent = cv.root;
+    $("#c-cov").textContent = `In the store now: index ${cv.index[0]} → ${cv.index[1]} · futures ${cv.futures[0]} → ${cv.futures[1]} · options ${cv.expiries} expiries, ${cv.options[0]} → ${cv.options[1]}`;
+    $("#c-date").value = cv.index[1] || new Date().toISOString().slice(0, 10);
+  } catch (e) { $("#c-cov").textContent = e.message; $("#c-date").value = new Date().toISOString().slice(0, 10); }
   showOpt(); renderInds(); load();
 })();
