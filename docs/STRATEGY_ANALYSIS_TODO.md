@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S104. Lab v2 Strategy 92: Strategy 91 with the weekly shorts rolled to the next week at the same strikes. Measured: ₹+10,183 over 44 positions (91: ₹-34,577 over 67); the shorts ₹+503,121, the monthly longs ₹-492,937; 23 of the 44 positions were cut short because the store has no candle at a rolled strike on the next weekly
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/cagr_hedge.py` (`cagr.roll`), `st92.py` (`roll: true`). 2026-10-24, the user: "roll to next week with the same strike for the sells". Strategy 91 is kept; its default run reproduces ₹-34,577 after the change. |
+| What changed | At the "next next day" step (two sessions before the sold weekly's expiry) the two shorts are bought back and the SAME strikes are sold again on the next weekly expiry at that step's price (rows "rolled"); the three monthly longs stay. The position's P&L for the +3% / -6% is the realized P&L of the rolled legs plus the open legs' mark. The position ends at the target, the stop, the monthly's 15 days, or when the next weekly has no candle at a rolled strike in the store ("roll_unavailable": everything closed at that step). A new position starts at the next pre-expiry session after the end. |
+| Impact | **Measured, the store's options, 2024-09-20 → 2026-10-09, after costs: 44 positions (205 legs; 31 rolls), 29 winners, ₹+10,183, PF 1.01; halves ₹-29,906 (25 positions, all put-side) / ₹+45,148 (20; put-side ₹+13,524, call-side ₹+31,624); worst position ₹-39,910, best ₹+16,402.** Ends: 11 targets ₹+122,202, 2 stops ₹-43,669, 8 on the monthly's 15 days ₹+9,064, **23 roll_unavailable ₹-77,414**. By leg: the short weeklies ₹+503,121, the monthly longs ₹-492,937. Strategy 91 on the same window: 67 positions, ₹-34,577 (shorts ₹+409,987, longs ₹-444,565). |
+| Read | Rolling does what the request meant: the monthly is bought once per position instead of once a week, so the shorts' decay accumulates against one hedge - the position reaches the +3% target 11 times against 4 - and the strategy turns from ₹-35k to ₹+10k, positive in the second half. But the hedge still costs about what the shorts earn (₹-493k against ₹+503k), and more than half the positions (23 of 44) were ended early, not by the rule, because the store lacks the rolled strike on the next weekly (the strike range it holds moves with the index week to week); those 23 ends cost ₹-77k between them, so the rule as the user stated it is not fully measured on this data. The ₹-39,910 worst position is a roll_unavailable end, not a stop. |
+| Open (the user's call) | The strike download (the store's near-ATM range is the limit on both 91 and 92); otherwise, as S103: the hedge at one lot or a lower premium; the base of the ±%. Unquantified: rolling to the NEAREST available strike when the same one is missing (a different rule). |
+| Effort | **S** each; the download is the user's. |
+| Priority | _Open; first numbers recorded._ Related: S103. |
+
+---
+
 ### S103. Lab v2 Strategy 91: weekly 150 / 450-premium options sold on the side of a 10% CAGR fair-value line, three monthly 200-premium longs as the hedge, marked hourly. Measured: ₹-34,577 over 67 positions; the shorts earn ₹+409,987 and the monthly longs lose ₹-444,565; 38 of 105 pre-expiry sessions could not be entered because the store lacks the 450-premium strike
 
 | | |

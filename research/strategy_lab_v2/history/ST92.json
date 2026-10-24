@@ -1,0 +1,150 @@
+{
+ "code": "ST92",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-24T20:18:55",
+   "key": "987dbc30141c",
+   "code": "b3e6b9c45758",
+   "definition": {
+    "code": "ST92",
+    "timeframe": "minute",
+    "underlying": "INDEX",
+    "warmup_days": 1,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "cagr_hedge_v1",
+     "exit_rule": "next_choch"
+    },
+    "cagr": {
+     "base_price": 2000,
+     "cagr": 0.1,
+     "entry_time": "09:30",
+     "steps": [
+      "09:30",
+      "10:30",
+      "11:30",
+      "12:30",
+      "13:30",
+      "14:30",
+      "15:25"
+     ],
+     "short_premiums": [
+      150,
+      450
+     ],
+     "long_premium": 200,
+     "long_lots": 3,
+     "strike_round": 100,
+     "premium_tolerance": 75,
+     "monthly_min_days": 18,
+     "long_exit_days": 15,
+     "target_pct": 3.0,
+     "stop_pct": 6.0,
+     "margin_per_short_lot": 150000,
+     "roll": true,
+     "notes": "the P&L base is margin_per_short_lot per short lot plus the long legs premium paid; premium_tolerance: a target premium with no strike within it is a skipped entry"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": null,
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATM"
+     ],
+     "strike_default": "ATM",
+     "atr_period": 14
+    }
+   },
+   "changes": [],
+   "results": {
+    "2024-11-01-to-2024-12-31_1m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 20,
+       "wins": 12,
+       "pts": 138.9,
+       "net_inr": -929.36,
+       "pf": 0.99,
+       "max_dd_inr": -84399.25,
+       "t_stat": -0.01
+      }
+     }
+    },
+    "store-options_1m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 205,
+       "wins": 122,
+       "pts": 5436.0,
+       "net_inr": 10183.4,
+       "pf": 1.01,
+       "max_dd_inr": -129089.31,
+       "t_stat": 0.05
+      }
+     }
+    },
+    "first-half_1m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 105,
+       "wins": 62,
+       "pts": 1419.1,
+       "net_inr": -29905.61,
+       "pf": 0.96,
+       "max_dd_inr": -113785.95,
+       "t_stat": -0.18
+      }
+     }
+    },
+    "second-half_1m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 105,
+       "wins": 64,
+       "pts": 4371.15,
+       "net_inr": 45148.46,
+       "pf": 1.08,
+       "max_dd_inr": -84219.42,
+       "t_stat": 0.33
+      }
+     }
+    }
+   }
+  }
+ ]
+}

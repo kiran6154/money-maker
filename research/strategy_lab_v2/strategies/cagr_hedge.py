@@ -11,6 +11,11 @@ Built 2026-10-24 at the user's word. The rule as given:
                first step where: the P&L is up `target_pct` (3%) or down `stop_pct` (6%) of the position's base; or the
                session two sessions ahead is the sold options' expiry ("the next next day"); or the bought options have
                under `long_exit_days` (15) days to expiry. One position at a time.
+  roll         (`roll: true`, ST92) at the "next next day" step the shorts are not closed for good: they are bought back
+               and the SAME strikes are sold again on the next weekly expiry at that step's price (rows "rolled"); the
+               monthly longs stay; the position's P&L for the +3% / -6% is the realized P&L of the rolled legs plus the
+               open legs' mark. The position ends at the target, the stop, the monthly's `long_exit_days`, or when the
+               next weekly has no candle at a rolled strike ("roll_unavailable": everything closed).
 Build choices (not in the request):
   the P&L base is `short_option_margin` per short lot plus the long legs' premium paid (pnl.base "margin_plus_debit");
   prices are the candle at the step minute (its open; the last candle before it when that minute is missing); fills are
@@ -130,10 +135,22 @@ def run(ctx):
         if len(legs) != len(S["short_premiums"]) + 1: continue
         debit = sum(p * lot * n for pos, e, k, p, n in legs if pos == "LONG")
         base_amt = S["margin_per_short_lot"] * sum(n for pos, e, k, p, n in legs if pos == "SHORT") + debit
-        # ---- walk the steps
-        far = core.dstr(min(core.dnum(nxt), core.dnum(mon)))
-        sers = [_series(e, k, right, day, far) for pos, e, k, p, n in legs]
-        x_t, x_why, x_px = None, None, None
+        # ---- walk the steps: the position is a list of open legs [pos, expiry, strike, entry px, lots, entry t]
+        n_pos += 1; pid = f"P{n_pos}"
+        openl = [(pos, e, k, p, n, t) for pos, e, k, p, n in legs]
+        realized = 0.0; rows = []
+        far = lambda e: core.dstr(min(core.dnum(e), core.dnum(mon)))
+        ser_of = lambda e, k: _series(e, k, right, day, far(e))
+        xi_of = lambda tt: max(int(np.searchsorted(sp.t, tt, "right")) - 1, 0)
+        def close(lg, tt, p1, why):
+            pos, e, k, p0, n, t_in = lg
+            name = f"NIFTY {D.date.fromisoformat(e):%d%b%y} {k} {right}".upper()
+            rec = dict(base, position=pos, opt_type=right, kind="OPT", instrument=name, strike=k, expiry=e, entry_time=t_in, entry_px=p0,
+                       exit_time=int(tt), exit_px=p1, exit_reason=why, open=False, sl=None, choch_time=t_in, und_entry=idx,
+                       und_exit=float(sp.c[xi_of(tt)]), stale=False, lots=lots * n, tranche=pid, label=f"{pos} {right} {e[5:]} {k}")
+            rows.append(core.price_trade(ctx, rec))
+            return ((p0 - p1) if pos == "SHORT" else (p1 - p0)) * lot * n
+        done = False; last_seen = None
         for dd in ss[ss >= d]:
             dd = int(dd); dday = core.dstr(dd)
             j = int(np.searchsorted(ss, dd))
@@ -142,34 +159,37 @@ def run(ctx):
             for st in steps:
                 tt = dd * DAY + st
                 if dd == d and st <= entry_t: continue
-                pxs = [_px(s_, tt) for s_ in sers]
+                pxs = [_px(ser_of(e, k), tt) for pos, e, k, p0, n, t_in in openl]
                 if any(p is None for p in pxs): continue
-                pnl = sum(((p0 - p) if pos == "SHORT" else (p - p0)) * lot * n for (pos, e, k, p0, n), p in zip(legs, pxs))
+                last_seen = (tt, pxs)
+                pnl = realized + sum(((p0 - p) if pos == "SHORT" else (p - p0)) * lot * n for (pos, e, k, p0, n, t_in), p in zip(openl, pxs))
                 pct = 100 * pnl / base_amt
-                if pct >= S["target_pct"]: x_t, x_why, x_px = tt, "target", pxs; break
-                if pct <= -S["stop_pct"]: x_t, x_why, x_px = tt, "stop_loss", pxs; break
-                if ahead2 == nxt or nxt <= dday: x_t, x_why, x_px = tt, "short_expiry_near", pxs; break
-                if days_long < S["long_exit_days"]: x_t, x_why, x_px = tt, "long_expiry_near", pxs; break
-                if dd > d1 and dd == int(ss[ss >= d][-1]): pass
-            if x_t is not None: break
-        if x_t is None:
-            # no step closed it (the data ends): close at the last step with prices
-            last = None
-            for dd in ss[ss >= d]:
-                for st in steps:
-                    tt = int(dd) * DAY + st; pxs = [_px(s_, tt) for s_ in sers]
-                    if all(p is not None for p in pxs): last = (tt, pxs)
-            if last is None: skip("no option prices after the entry"); continue
-            x_t, x_why, x_px = last[0], "data_end", last[1]
-        n_pos += 1
-        xi = max(int(np.searchsorted(sp.t, x_t, "right")) - 1, 0)
-        for (pos, e, k, p0, n), p1 in zip(legs, x_px):
-            name = f"NIFTY {D.date.fromisoformat(e):%d%b%y} {k} {right}".upper()
-            rec = dict(base, position=pos, opt_type=right, kind="OPT", instrument=name, strike=k, expiry=e, entry_time=t, entry_px=p0,
-                       exit_time=int(x_t), exit_px=p1, exit_reason=x_why, open=False, sl=None, choch_time=t, und_entry=idx, und_exit=float(sp.c[xi]),
-                       stale=False, lots=lots * n, tranche=f"P{n_pos}", label=f"{pos} {right} {e[5:]} {k}")
-            trs.append(core.price_trade(ctx, rec))
-        busy_until = int(x_t // DAY)
+                why = "target" if pct >= S["target_pct"] else "stop_loss" if pct <= -S["stop_pct"] else None
+                if why is None and days_long < S["long_exit_days"]: why = "long_expiry_near"
+                sold = min(e for pos, e, k, p0, n, t_in in openl if pos == "SHORT")
+                if why is None and (ahead2 == sold or sold <= dday):
+                    if not S.get("roll"): why = "short_expiry_near"
+                    else:                                              # roll the shorts: buy back, sell the same strikes on the next weekly
+                        nx2 = next((e for e in exps if e > sold), None)
+                        newl, ok = [], nx2 is not None
+                        if ok:
+                            for (pos, e, k, p0, n, t_in), p in zip(openl, pxs):
+                                if pos != "SHORT": newl.append((pos, e, k, p0, n, t_in)); continue
+                                p2 = _px(ser_of(nx2, k), tt)
+                                if p2 is None: ok = False; break
+                                realized += close((pos, e, k, p0, n, t_in), tt, p, "rolled"); newl.append((pos, nx2, k, p2, n, int(tt)))
+                        if ok: openl = newl; continue
+                        why = "roll_unavailable"                        # the next weekly has no candle at that strike: all out
+                if why is None: continue
+                for lg, p in zip(openl, pxs): realized += close(lg, tt, p, why)
+                done = True; break
+            if done: break
+        if not done:
+            if last_seen is None: skipped.append(dict(base, position="", opt_type=right, instrument="", strike=0, expiry=nxt, entry_time=t, why="no option prices after the entry")); n_pos -= 1; continue
+            tt, pxs = last_seen
+            for lg, p in zip(openl, pxs): realized += close(lg, tt, p, "data_end")
+        trs += rows
+        busy_until = int(rows[-1]["exit_time"] // DAY) if rows else d
     trs.sort(key=lambda r: (r["entry_time"], r["position"]))
     return {ch: dict(trades=trs, skipped=skipped, signals=[]) for ch in core.choice_keys(spec, "OPT_FUT_SIGNAL")}
 
