@@ -65,7 +65,7 @@ export function algorithm(spec) {
   if (spec.rules?.entry_rule === "orr_opt_v1") {       // Strategy 85: ORR_V1's signals, options sold at the day's extreme
     const g = spec.orr, y = spec.orr_opt;
     return [
-      S(`Signals: Strategy 83's (ORR_V1) on the NIFTY index 1-minute candles — ${y.body_rule === false ? "every session (the 09:15 candle only sets the opening high and low; no body rule)" : "sessions whose 09:15 body is 60 – 90% of its range"}; a sweep beyond the opening low (high)${g.sweep === "close" ? " by a candle CLOSE (not a wick)" : ""} and a 1-minute close back inside it.`),
+      S(`Signals: Strategy 83's (ORR_V1) on the NIFTY index 1-minute candles — ${y.body_rule === false ? "every session (the 09:15 candle only sets the opening high and low; no body rule)" : "sessions whose 09:15 body is 60 – 90% of its range"}; a sweep beyond the opening low (high)${g.sweep === "close" ? " by a candle CLOSE (not a wick)" : " by a wick or a close (the candle's low / high beyond is enough; the same candle may sweep and reclaim)"} and a 1-minute close back inside it.`),
       S(y.align ? "Only the 09:15 body's side signals (ORR_V1's rule)." : "Both sides can signal on the same day: a LONG signal (opening low swept and reclaimed) and a SHORT signal (opening high swept and reclaimed)."),
       S("Trade, at the open of the minute after the reclaim:", [
         S("LONG signal → SELL a PE at the day's LOW so far, rounded down to the strike."),

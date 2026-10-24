@@ -91,6 +91,7 @@ LINEAGE = {
     "ST83": (None, "The user's IMPLEMENTATION_RULESET.md (ORR_V1): the 09:15 candle's body sets the side; a sweep and reclaim of the opposite opening boundary enters at the next minute's open; 50 / 50 points, 0.5 slippage, unlimited re-entry, flat at 15:15."),
     "ST84": ("ST83", "The reclaim only arms the setup; the entry waits for the first BOS / CHoCH that way on the 1-minute structure (instead of the blind entry)."),
     "ST85": ("ST83", "The same signals traded on options: a long signal sells the PE at the day's low, a short signal sells the CE at the day's high; out when the index closes back through the strike, else 15:15; both sides, one position per side."),
+    "ST87": ("ST86", "The sweep by a wick: a low below the opening low (high above the opening high) is enough, the close need not be beyond."),
     "ST86": ("ST85", "No body rule: every session trades; the 09:15 candle only sets the opening high and low."),
     "ST56": (None, "A separate idea: the TradingFinder SMLS indicator's own Long / Short signals; stop at the order block's far edge; flat by the square-off."),
 }

@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S99. Lab v2 Strategy 87: Strategy 86 with the sweep by a wick, not only a close. Measured: 170 more trades, about half the profit, PF 1.05 against 1.11; positive in both halves but thinner
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/st87.py` (`orr.sweep: "wick"`; the engine is `orr_opt.py`, unchanged). 2026-10-24, the user: "extend the latest one, consider wicks not just body". Strategy 86 is kept. |
+| What changed | A candle whose low goes below the opening low (high above the opening high) is a sweep, as ORR_V1 wrote it; the close need not be beyond, and the same candle may sweep and reclaim. Everything else is Strategy 86's: every session (no body rule), both sides, the PE sold at the day's low on a long signal, the CE at the day's high on a short one, out when the index closes back through the strike or at 15:15, one position per side. |
+| Impact | **Measured, the store's options, 2024-09-20 → 2026-10-09, after costs. Strategy 87: 1,112 trades (557 PE, 555 CE), 40.9% winners, +1,783.7 premium points, ₹+47,903, PF 1.05; halves ₹+17,539 (PF 1.03) / ₹+30,364 (PF 1.06); exits 15:15 532, index through the strike 580; worst trade ₹-7,652.** Strategy 86 (close sweep) on the same window: 942 trades, ₹+98,310, PF 1.11; halves ₹+35,514 / ₹+62,796. |
+| Read | Letting a wick count adds 170 trades and takes about ₹50,000 away: the wick-only sweeps reclaim sooner, the strike (the day's extreme) sits closer to the index, and more of them are stopped (580 stops against 448). The close rule (S97) is better here, as it was for Strategies 83 - 85. Two years of one weekly-option regime. |
+| Open (the user's call) | Unquantified: a minimum wick depth beyond the boundary; the margin for two short options at once. |
+| Effort | **S**. |
+| Priority | _Open; first numbers recorded._ Related: S97, S98. |
+
+---
+
 ### S98. Lab v2 Strategy 86: Strategy 85 without the opening-candle body rule. Measured: three times the trades and trading days, about twice the profit, a lower profit factor (1.11 against 1.20); positive in both halves
 
 | | |
