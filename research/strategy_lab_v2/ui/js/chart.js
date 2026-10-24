@@ -302,10 +302,11 @@ export class ChartView {
       const key = `${F.expiry}|${day}`;
       if (F.kKey !== key) {
         let got = null;
-        for (const e of [F.expiry, ...live.map((x) => x.expiry).filter((x) => x > F.expiry)].slice(0, F.userExp ? 1 : 4)) {   // an expiry without data: the next one
-          try { got = await api("/api/explorer/strikes?" + new URLSearchParams({ expiry: e, tf, date: day })); F.expiry = e; break; } catch (err) { got = err; }
+        for (const e of [F.expiry, ...live.map((x) => x.expiry).filter((x) => x > F.expiry)].slice(0, F.userExp ? 1 : 4)) {   // an expiry without data on the day: the next one
+          try { const r = await api("/api/explorer/strikes?" + new URLSearchParams({ expiry: e, tf, date: day })); if (r.date !== day && !F.userExp) continue; got = r; F.expiry = e; break; } catch (err) { got = err; }
         }
         if (!got || got instanceof Error) throw new Error(F.userExp ? `no candles for the ${F.expiry} expiry on ${day}` : `no option data on ${day} for the nearest expiries (pick an expiry)`);
+        if (got.date !== day) throw new Error(`the ${F.expiry} expiry has no candles on ${day} (it trades ${got.first} → ${got.last})`);
         F.ks = got; F.kKey = `${F.expiry}|${day}`; if (!F.keep) F.strike = "";
         $(".f-exp", host).value = F.expiry;
       }

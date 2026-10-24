@@ -114,13 +114,11 @@ async function loadStrikes() {
   const ks = s.strikes[st.right] || [], keep = st.userK && ks.map(String).includes(String(st.strike)) && st.kExp === s.expiry;
   st.strike = String(keep ? st.strike : s.atm[st.right] ?? ks[0] ?? ""); st.kExp = s.expiry;
   $("#c-strike").innerHTML = ks.map((k) => `<option value="${k}" ${String(k) === st.strike ? "selected" : ""}>${k}${k === s.atm[st.right] ? " · ATM on " + s.date.slice(5) : ""}</option>`).join("");
-  // each strike trades over its own dates: keep the day inside the chosen strike's life, and say when it moved
-  const life = s.lives?.[st.right]?.[st.strike]; let moved = "";
-  if (life) {
-    const d = $("#c-date").value;
-    if (d < life[0]) { $("#c-date").value = life[0]; moved = ` · day moved to ${life[0]}, its first day`; }
-    else if (d > life[1]) { $("#c-date").value = life[1]; moved = ` · day moved to ${life[1]}, its last day`; }
-  }
+  // the chart is the selected day's: an expiry or a strike that does not trade on it is said so, never moved to another day
+  const day = $("#c-date").value, life = s.lives?.[st.right]?.[st.strike];
+  if (s.date !== day) throw new Error(`the ${st.exp} expiry has no candles on ${day} in the store (it trades ${s.first} → ${s.last})`);
+  if (life && (day < life[0] || day > life[1])) throw new Error(`${st.right} ${st.strike} of ${st.exp} does not trade on ${day} (it trades ${life[0]} → ${life[1]}): pick another strike`);
+  const moved = "";
   $("#c-life").textContent = `${st.right} ${st.strike} traded ${life ? life[0] + " → " + life[1] : "?"} · this expiry's contracts ${s.first} → ${s.last} · index close on ${s.date}: ${num(s.index_close, 1)}${moved}`;
 }
 
@@ -162,11 +160,12 @@ async function load() {
       try { await loadStrikes(); }
       catch (e) {                                   // an expiry with no candles yet (or none on this day): the nearest one that has them
         if (st.userExp) throw e;
-        const all = st.exps.map((x) => x.expiry).sort(), k = all.indexOf(st.exp), tries = [];
+        const all = st.exps.map((x) => x.expiry).sort(), k = all.indexOf(st.exp), tries = [], orig = st.exp;
         for (let n = 1; n <= 6; n++) { if (all[k - n]) tries.push(all[k - n]); if (all[k + n]) tries.push(all[k + n]); }
         let ok = false;
         for (const e2 of tries) { st.exp = e2; try { await loadExpiries(); await loadStrikes(); ok = true; break; } catch (err) { /* next */ } }
-        if (!ok) throw e;
+        if (!ok) { st.exp = orig; await loadExpiries(); }               // show the expiry that was asked for, not the last one tried
+        if (!ok) throw new Error(`no option candles on ${$("#c-date").value} in the store (options there run to ${st.exps[0]?.expiry || "?"}): pick an earlier day`);
       }
     } catch (e) { $("#c-legend").textContent = e.message; clear(); return; }
     if (my !== req) return;
