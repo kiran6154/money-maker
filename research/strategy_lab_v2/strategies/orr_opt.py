@@ -5,7 +5,8 @@ shorted, so that if price goes back to that place we are at a minimal loss; ente
 side enter that as well and manage it; not more than one trade per side at a time".
 
   signals   ORR_V1's sweep / reclaim of the 09:15 candle's low (a LONG signal) or high (a SHORT signal), on the NIFTY index
-            1-minute candles, on sessions whose 09:15 body is 60 - 90% of its range. SPEC["orr_opt"]["align"]: true keeps
+            1-minute candles, on sessions whose 09:15 body is 60 - 90% of its range (SPEC["orr_opt"]["body_rule"]; false:
+            every session, the 09:15 candle only sets the range). SPEC["orr_opt"]["align"]: true keeps
             ORR_V1's rule (only the 09:15 body's side); false lets both sides signal.
   trade     a LONG signal SELLS a PE, a SHORT signal SELLS a CE, at the open of the entry minute (the minute after the
             reclaim, as ORR_V1). The strike is the day's extreme so far: the PE at the day's low rounded DOWN to the strike
@@ -61,7 +62,9 @@ def run(ctx):
         day = core.dstr(day_n)
         if not _O.complete(b, s0, s1): continue
         O_, H_, L_, C_ = (_O.paise(v[s0]) for v in (o, h, l, c)); rng, body = H_ - L_, abs(C_ - O_)
-        if rng <= 0 or C_ == O_ or not (body * 100 >= rng * round(X["body_min"] * 100) and body * 100 < rng * round(X["body_max"] * 100)): continue
+        if rng <= 0: continue
+        if Y.get("body_rule", True) and (C_ == O_ or not (body * 100 >= rng * round(X["body_min"] * 100) and body * 100 < rng * round(X["body_max"] * 100))): continue
+        if Y["align"] and C_ == O_: continue                 # a doji has no side to align to
         exp = _expiry(exps, day, Y["expiry_min_days"])
         if not exp: skipped.append(dict(signal="", position="", opt_type="", instrument="", entry_time=day, why="no option expiry in the store")); continue
         oh, ol = float(h[s0]), float(l[s0]); cut = t[s0] - t[s0] % core.DAY + core.hhmm_sec(X["cutoff"])

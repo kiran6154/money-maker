@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S98. Lab v2 Strategy 86: Strategy 85 without the opening-candle body rule. Measured: three times the trades and trading days, about twice the profit, a lower profit factor (1.11 against 1.20); positive in both halves
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/orr_opt.py` (`orr_opt.body_rule`), `st86.py` (`body_rule: false`). 2026-10-24, the user: "extend Strategy 85 and create a new strategy; consider only the first candle, without the body rule". Strategy 85 is kept. |
+| What changed | Every complete session trades: the 09:15 candle only sets the opening high and low; its body no longer has to be 60 - 90% of its range (a zero-range 09:15 candle still has no range and no trade). Everything else is Strategy 85's: both sides, the sweep a candle close beyond the boundary, a later close back inside, the PE sold at the day's low (rounded down) on a long signal, the CE at the day's high (rounded up) on a short one, out when the index closes back through the strike or at 15:15, one position per side. |
+| Impact | **Measured, the store's options, 2024-09-20 → 2026-10-09, after costs. Strategy 86: 942 trades on 453 days (461 PE, 481 CE), 43.8% winners, +2,392.5 premium points, ₹+98,310, PF 1.11; halves ₹+35,514 (PF 1.08) / ₹+62,796 (PF 1.15); exits 15:15 494, index through the strike 448; worst trade ₹-7,652.** Strategy 85 on the same window: 298 trades on 148 days, ₹+51,119, PF 1.20; halves ₹-3,281 / ₹+54,400. The 644 trades the body rule used to exclude add ₹+47,191 between them (about ₹73 a trade). |
+| Read | The body rule selects the better days (PF 1.20 against about 1.07 on the days it excluded), but the other days are not losing, so dropping the rule doubles the profit with three times the trades and a thinner edge; the first half is positive here, where Strategy 85's was not. Two years of one weekly-option regime. |
+| Open (the user's call) | Unquantified: margin and capital for up to two short options at once on most days; a premium stop. |
+| Effort | **S**. |
+| Priority | _Open; first numbers recorded._ Related: S96, S97. |
+
+---
+
 ### S97. Lab v2 Strategies 83, 84, 85: the sweep must be a candle CLOSE beyond the opening high / low, not a wick (the user's rule). Before / after recorded; Strategy 83 no longer reproduces the ORR_V1 ruleset's figures
 
 | | |
