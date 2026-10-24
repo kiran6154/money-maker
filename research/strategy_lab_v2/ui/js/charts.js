@@ -118,7 +118,7 @@ async function loadStrikes() {
   const day = $("#c-date").value, life = s.lives?.[st.right]?.[st.strike];
   if (s.date !== day) throw new Error(`the ${st.exp} expiry has no candles on ${day} in the store (it trades ${s.first} → ${s.last})`);
   if (life && (day < life[0] || day > life[1])) throw new Error(`${st.right} ${st.strike} of ${st.exp} does not trade on ${day} (it trades ${life[0]} → ${life[1]}): pick another strike`);
-  const moved = "";
+  const moved = st.movedFrom ? ` · the ${st.movedFrom} expiry picked earlier does not trade on ${day}: moved to ${st.exp}` : "";
   $("#c-life").textContent = `${st.right} ${st.strike} traded ${life ? life[0] + " → " + life[1] : "?"} · this expiry's contracts ${s.first} → ${s.last} · index close on ${s.date}: ${num(s.index_close, 1)}${moved}`;
 }
 
@@ -159,15 +159,19 @@ async function load() {
       await loadExpiries();
       try { await loadStrikes(); }
       catch (e) {                                   // an expiry with no candles yet (or none on this day): the nearest one that has them
-        if (st.userExp) throw e;
-        const all = st.exps.map((x) => x.expiry).sort(), k = all.indexOf(st.exp), tries = [], orig = st.exp;
+        if (st.userExp && !st.dayChanged) throw e;  // the user picked this expiry for this day: say so, do not move
+        const orig = st.exp;
+        if (st.userExp) { st.exp = ""; st.userExp = false; await loadExpiries(); }   // a new day outside the picked expiry's life: the day's nearest expiry
+        const all = st.exps.map((x) => x.expiry).sort(), k = all.indexOf(st.exp), tries = [st.exp];
         for (let n = 1; n <= 6; n++) { if (all[k - n]) tries.push(all[k - n]); if (all[k + n]) tries.push(all[k + n]); }
         let ok = false;
-        for (const e2 of tries) { st.exp = e2; try { await loadExpiries(); await loadStrikes(); ok = true; break; } catch (err) { /* next */ } }
+        for (const e2 of tries) { if (my !== req) return; st.exp = e2; try { await loadExpiries(); await loadStrikes(); ok = true; break; } catch (err) { /* next */ } }   // a newer load owns the state: stop
+        if (ok && st.exp !== orig) { st.movedFrom = orig; await loadStrikes(); }   // the note on the life line
         if (!ok) { st.exp = orig; await loadExpiries(); }               // show the expiry that was asked for, not the last one tried
         if (!ok) throw new Error(`no option candles on ${$("#c-date").value} in the store (options there run to ${st.exps[0]?.expiry || "?"}): pick an earlier day`);
       }
-    } catch (e) { $("#c-legend").textContent = e.message; clear(); return; }
+      st.dayChanged = false;
+    } catch (e) { if (my === req) { $("#c-legend").textContent = e.message; clear(); } return; }   // a stale load never overwrites a newer one's legend
     if (my !== req) return;
   }
   const day = $("#c-date").value;
@@ -254,13 +258,13 @@ $("#c-year").onchange = (e) => {                        // a year: its expiry ne
   if (st.exp < d || !d.startsWith(y)) $("#c-date").value = st.exp;
   load();
 };
-$("#c-exp").onchange = (e) => { st.exp = e.target.value; st.userExp = true; st.userK = false; if ($("#c-date").value > st.exp) $("#c-date").value = st.exp; load(); };
+$("#c-exp").onchange = (e) => { st.exp = e.target.value; st.userExp = true; st.userK = false; st.movedFrom = ""; if ($("#c-date").value > st.exp) $("#c-date").value = st.exp; load(); };
 $("#c-strike").onchange = (e) => { st.strike = e.target.value; st.userK = true; load(); };
 $("#c-start").onchange = () => { showOpt(); load(); };
 $("#c-end").onchange = () => load();
 $("#c-tf").onchange = () => { pref("charts.tf", tf()); load(); };
 $("#c-days").onchange = () => { pref("charts.days", $("#c-days").value); load(); };
-const newDay = () => { if (!st.userExp) st.exp = ""; st.userK = false; load(); };   // a new day: its nearest expiry and ATM, unless picked
+const newDay = () => { if (!st.userExp) st.exp = ""; st.userK = false; st.dayChanged = true; st.movedFrom = ""; load(); };   // a new day: its nearest expiry and ATM; a picked expiry is kept while it trades on the day
 $("#c-date").onchange = newDay;
 $("#c-prev").onclick = () => { $("#c-date").value = shiftDay($("#c-date").value, -1); newDay(); };
 $("#c-next").onclick = () => { $("#c-date").value = shiftDay($("#c-date").value, 1); newDay(); };
