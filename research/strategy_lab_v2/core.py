@@ -2018,17 +2018,22 @@ def explorer_straddle(code, frm, to, tf="minute"):
     return _jsonable(dict(code=code, tf=tf, rows=rows, legs=legs))
 
 
-def plain_candles(expiry, strike, right, frm, to, tf="minute"):
-    """One option contract's own candles from `frm` to `to` (dates), nothing computed on them: the strategy page's free
-    option chart, where the reader picks the expiry, the strike and CE / PE."""
+def plain_candles(expiry, strike, right, frm, to, tf="minute", inst="OPT"):
+    """One instrument's own candles from `frm` to `to` (dates), nothing computed on them: INDEX (NIFTY 50), FUT (the
+    near-month futures) or OPT (one contract: expiry, strike, right). For the chart page and the strategy page's free
+    option chart."""
     if tf not in TF_MIN: raise ValueError(f"tf must be one of {tuple(TF_MIN)}")
-    if right not in ("CE", "PE"): raise ValueError("right is CE or PE")
-    s = OptionChain(tf).get(expiry, int(strike), right)
-    if s is None: raise ValueError(f"no candles for {expiry} {strike} {right}")
+    if inst in ("INDEX", "FUT"):
+        s = series("spot" if inst == "INDEX" else "fut", tf); name = "NIFTY 50 index" if inst == "INDEX" else "NIFTY near-month futures"
+    else:
+        if right not in ("CE", "PE"): raise ValueError("right is CE or PE")
+        s = OptionChain(tf).get(expiry, int(strike), right)
+        if s is None: raise ValueError(f"no candles for {expiry} {strike} {right}")
+        name = OptionChain.name(expiry, int(strike), right)
     a, z = int(np.searchsorted(s.day, dnum(frm))), int(np.searchsorted(s.day, dnum(to), "right"))
-    if z <= a: raise ValueError(f"{OptionChain.name(expiry, int(strike), right)} has no candles from {frm}" + (f" to {to}" if to != frm else ""))
-    return dict(name=OptionChain.name(expiry, int(strike), right), expiry=expiry, strike=int(strike), right=right, tf=tf,
-                candles=_chart_bars(s, a, z - 1))
+    if z <= a: raise ValueError(f"{name} has no candles from {frm}" + (f" to {to}" if to != frm else ""))
+    return dict(name=name, inst=inst, expiry=expiry, strike=int(strike) if strike else None, right=right, tf=tf,
+                first=dstr(int(s.day[0])), last=dstr(int(s.day[-1])), candles=_chart_bars(s, a, z - 1))
 
 
 def explorer_expiries(tf="minute"):

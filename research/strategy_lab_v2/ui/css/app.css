@@ -237,3 +237,10 @@ details.skipped { margin-top: 10px; } details.skipped summary { cursor: pointer;
 .free-h { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .free-h select { font: inherit; }
 .free-c { height: 360px; }
+.c-main { height: 480px; position: relative; }
+.c-pane { border-top: 1px solid var(--line); margin-top: 6px; }
+.c-pane-c { height: 170px; position: relative; }
+.c-inds { display: flex; flex-direction: column; gap: 6px; }
+.c-ind { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.c-ind input[type="color"] { width: 26px; height: 22px; padding: 0; border: none; background: none; }
+.c-ind .c-del { padding: 0 6px; }
