@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S96. Lab v2 Strategy 85: Strategy 83's ORR_V1 signals traded by selling the option at the day's high / low. Measured on the store's options (October 2024 → October 2026): positive after costs in both halves; keeping ORR_V1's body-side rule is better than letting both sides trade
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/orr_opt.py` (family module, own runner; option prices from the download store through `store_reader.py`), `st85.py` (`orr_opt`: align, expiry_min_days, target_pct). 2026-10-24, the user: "derive a new strategy from this, do it directly on options: the day's high or low will be shorted, so that if price goes back to that place we will be at a minimal loss; enter one, and if we get a signal on the other side enter that as well and manage it; not more than one trade per side at a time". |
+| Build choices (not in the request; fixed before the run) | (1) Signals: ORR_V1's (Strategy 83) eligibility and sweep / reclaim, on the index; "the other side" read as dropping ORR_V1's body-side rule so both sides can signal (`align: false`); the rule kept is measured too. (2) A LONG signal sells the PE, a SHORT signal sells the CE, at the entry minute's option open. (3) "The day's high / low": the day's extreme up to the reclaim candle, the PE strike rounded down, the CE strike rounded up. (4) "Manage it": out when the index closes back through the strike (the option is at the money there), at that minute's option close; else at 15:15. No fixed target by default; a 50% premium target measured too. (5) One position per side; a side needs a fresh sweep and reclaim after its exit. (6) Nearest weekly expiry at least 1 day out; 0.5 point slippage per side, option charges, 1 lot (65). |
+| Impact | **Measured, 2024-10-04 → 2026-10-09 (the store's 1-minute options start 2024-09-19; the lab's index ends 2026-10-09), after costs. As built (both sides): 346 trades (179 PE, 167 CE), 45.4% winners, +1,222.6 premium points, ₹+58,177, PF 1.20; first half (to 2025-09-30) ₹+8,434 (PF 1.05), second half ₹+49,743 (PF 1.39); exits: index through the strike 166, 15:15 180; worst trade ₹-5,831.** 104 of the 153 trading days had both sides; a PE and a CE were open together 151 times. With ORR_V1's body-side rule (`align: true`): 149 trades, 51.7% winners, ₹+68,610, PF 1.63; halves ₹+35,028 / ₹+33,582. With a 50% premium target: both sides ₹+55,365 (PF 1.19); body side ₹+62,941 (PF 1.57). For comparison, Strategy 83 (the index points as a futures lot, futures charges) on the same window: 191 trades, +2,394 points, ₹+67,009. |
+| Read | Selling the option at the day's extreme turns ORR_V1's signal into a premium-decay trade: more than half of the exits are at 15:15 and the stop is a level the index has already been at today. The body-side rule matters: the extra trades on the other side add 197 trades and lose about ₹10,000 between them, and the first half is nearly flat without the rule. Two years of options, one regime of weekly expiries. |
+| Open (the user's call) | Whether to keep the other side (the request) or ORR_V1's rule (the better number); the stop (the index through the strike) against a premium stop; the expiry (the nearest, including expiry day) - all unquantified. |
+| Effort | **S** each. |
+| Priority | _Open; first numbers recorded._ Related: S95. |
+
+---
+
 ### S95. Lab v2 Strategies 83 and 84: the user's ORR_V1 ruleset (opening-range sweep / reclaim) reproduced exactly on its own samples, and measured on 2018 - 2024, which it never saw: positive in points over the whole span, loses money after futures charges, and the confirmation version is not better
 
 | | |

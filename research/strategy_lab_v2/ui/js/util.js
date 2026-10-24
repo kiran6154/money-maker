@@ -62,6 +62,23 @@ export function algorithm(spec) {
   const by = (m) => (m === "close" ? "a candle closing beyond it" : "a candle touching it (high / low)");
   const S = (t, sub) => ({ t, sub: sub || [] });
   const steps = [];
+  if (spec.rules?.entry_rule === "orr_opt_v1") {       // Strategy 85: ORR_V1's signals, options sold at the day's extreme
+    const g = spec.orr, y = spec.orr_opt;
+    return [
+      S("Signals: Strategy 83's (ORR_V1) on the NIFTY index 1-minute candles — sessions whose 09:15 body is 60 – 90% of its range; a sweep beyond the opening low (high) and a 1-minute close back inside it."),
+      S(y.align ? "Only the 09:15 body's side signals (ORR_V1's rule)." : "Both sides can signal on the same day: a LONG signal (opening low swept and reclaimed) and a SHORT signal (opening high swept and reclaimed)."),
+      S("Trade, at the open of the minute after the reclaim:", [
+        S("LONG signal → SELL a PE at the day's LOW so far, rounded down to the strike."),
+        S("SHORT signal → SELL a CE at the day's HIGH so far, rounded up to the strike."),
+        S("If the index comes back to that level the option is only at the money: the loss stays small."),
+        S(`Nearest weekly expiry at least ${y.expiry_min_days} day out. Option prices from the download store's 1-minute candles.`)]),
+      S("Exit, first of:", [
+        S("The index CLOSES back through the strike (below the PE's, above the CE's) → buy back at that minute's option close."),
+        ...(y.target_pct ? [S(`The premium falls to ${100 - y.target_pct}% of the sale price → buy back there.`)] : []),
+        S(`${g.cutoff}: buy back at that minute's option open.`)]),
+      S("One position per side at a time: a PE and a CE can be open together (a strangle); after a side exits it needs a fresh sweep and reclaim."),
+      S(`Costs: ${spec.types?.OPT_FUT_SIGNAL?.slippage_pts ?? "–"} points slippage per side; option charges per the broker schedule; lot size ${spec.lot_size}.`)];
+  }
   if (spec.rules?.entry_rule === "orr_v1") {           // Strategies 83 / 84: opening-range sweep / reclaim (ORR_V1)
     const g = spec.orr, conf = g.confirm === "structure";
     return [
