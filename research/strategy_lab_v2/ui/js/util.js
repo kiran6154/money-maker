@@ -62,6 +62,22 @@ export function algorithm(spec) {
   const by = (m) => (m === "close" ? "a candle closing beyond it" : "a candle touching it (high / low)");
   const S = (t, sub) => ({ t, sub: sub || [] });
   const steps = [];
+  if (spec.rules?.entry_rule === "cagr_hedge_v1") {     // Strategy 91: weekly shorts against the fair-value line, monthly longs
+    const y = spec.cagr;
+    return [
+      S(`Fair value: NIFTY = ${y.base_price} on 2000-01-01 growing ${100 * y.cagr}% a year (compounded daily: ${y.base_price} × ${1 + y.cagr}^years).`),
+      S(`When: the session before each weekly expiry, at ${y.entry_time} — the index (that candle's open) against the fair value.`),
+      S("Above the line:", [
+        S(`SELL 1 lot each of two PUTs of the NEXT weekly expiry: the strikes (multiples of ${y.strike_round}) whose premium then is nearest ${y.short_premiums.join(" and ")}.`),
+        S(`BUY ${y.long_lots} lots of a monthly PUT whose premium is nearest ${y.long_premium}, on the first monthly expiry at least ${y.monthly_min_days} days out.`)]),
+      S("Below the line: the mirror with CALLs."),
+      S(`Then, at each step (${y.steps.join(", ")}) the position is marked at its legs' prices and closed at the first step where:`, [
+        S(`the P&L is up ${y.target_pct}% or down ${y.stop_pct}% of the base (₹${y.margin_per_short_lot.toLocaleString("en-IN")} margin per short lot plus the long legs' premium paid);`),
+        S("the session two sessions ahead is the sold options' expiry (\"the next next day\");"),
+        S(`the bought options have under ${y.long_exit_days} days to expiry.`)]),
+      S("One position at a time; the next entry at the next pre-expiry session. Each leg is one trade row (tranche = the position's number)."),
+      S(`Prices: the download store's 1-minute option candles at the step minute. A target premium with no strike within ${y.premium_tolerance} of it skips the entry (listed with the reason). Costs: ${spec.types?.OPT_FUT_SIGNAL?.slippage_pts ?? "–"} points slippage per side per leg; option charges per the broker schedule; lot size ${spec.lot_size}.`)];
+  }
   if (spec.rules?.entry_rule === "pdl_short_v1") {      // Strategy 90: the option sold below its previous-session low, managed by its own structure
     const y = spec.pdl;
     return [

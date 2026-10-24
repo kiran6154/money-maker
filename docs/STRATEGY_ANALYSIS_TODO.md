@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S103. Lab v2 Strategy 91: weekly 150 / 450-premium options sold on the side of a 10% CAGR fair-value line, three monthly 200-premium longs as the hedge, marked hourly. Measured: ₹-34,577 over 67 positions; the shorts earn ₹+409,987 and the monthly longs lose ₹-444,565; 38 of 105 pre-expiry sessions could not be entered because the store lacks the 450-premium strike
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/cagr_hedge.py` (family module, own runner and chart; option prices from the download store), `st91.py` (`cagr`: base_price, cagr, entry_time, steps, short_premiums, long_premium, long_lots, strike_round, premium_tolerance, monthly_min_days, long_exit_days, target_pct, stop_pct, margin_per_short_lot). 2026-10-24, the user's rule verbatim in the strategy file. |
+| Build choices (not in the request) | (1) The P&L base for the +3% / -6%: ₹150,000 margin per short lot (two) plus the long legs' premium paid (about ₹39,000): ±3% ≈ ₹10,000, -6% ≈ ₹-20,000. (2) The fair value compounds daily: 2000 × 1.10^(days / 365.25). (3) "Nearest strike rounded to 100": among the multiples of 100 alive that day, the one whose premium at 09:30 (the candle's open) is nearest the target; none within 75 points of the target: the entry is skipped and listed. (4) Steps at 09:30, 10:30 … 14:30 and 15:25; entry fills at the 09:30 open, exits at the step price. (5) "The next next day is the expiry": the session two sessions ahead is the sold expiry (for a Tuesday expiry: out on the Friday 09:30 step). (6) One position at a time; 0.5 slippage a side per leg, option charges, lot 65. |
+| Impact | **Measured, the store's options, 2024-09-20 → 2026-10-09, after costs: 67 positions (201 legs; 45 put-side, 22 call-side), 36 winners, ₹-34,577, PF 0.97; halves ₹-26,887 (32 positions, all put-side) / ₹-7,690 (35; put-side ₹+6,351, call-side ₹-14,041); worst position ₹-21,257 (the one -6% stop), best ₹+10,727.** Exits: 61 on the calendar rule (two sessions before the sold expiry) ₹-53,045 between them, 4 targets ₹+40,374, 1 stop ₹-21,257, 1 on the monthly's 15 days ₹-649. **By leg: the short weeklies ₹+409,987, the three long monthlies ₹-444,565.** 38 pre-expiry sessions skipped: 27 for no strike with a premium within 75 of 450 (the store holds strikes within about ±800 points of the index in many weeks; a 450-premium weekly option is around 400 points in the money), 7 for the 200-premium monthly, 4 for the 150-premium weekly, 1 for no monthly 18 days out at the end of the data. |
+| Read | The two shorts do what they are meant to - decay for four sessions - and would have made about ₹4 lakh on their own; the hedge is three lots of a monthly option bought every week and sold four sessions later, and its decay (three lots at about 200 points, 25 - 40 days out) costs more than the two shorts earn. Only 5 positions reached the ±% levels: at this size the P&L rarely moves 3% of the margin inside four sessions, so the calendar rule closes nearly everything, and the line's side was "above" (puts) for the first year and "below" (calls) for most of the second - the fair value (about 21,100 in September 2024, 25,900 in October 2026) crossed the index in late 2025. The missing 450 strikes mean a third of the weeks are not measured. |
+| Open (the user's call) | Unquantified: the hedge at one lot, or at a 100-premium strike, or held to the monthly's 15 days instead of re-bought weekly; the base of the ±%; the store's strike range (more strikes to download before this rule can be measured on every week). |
+| Effort | **S** each; the strike download is the user's. |
+| Priority | _Open; first numbers recorded._ |
+
+---
+
 ### S102. Lab v2 Strategy 90: the day-open ATM option sold when it closes below its own previous-session low; a bullish CHoCH of the option exits a losing trade, a profitable one trails the stop at the bounce's top. Measured: ₹+74,643, PF 1.10, positive in both halves; the CE side carries it, the PE side loses
 
 | | |
