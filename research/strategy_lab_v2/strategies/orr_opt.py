@@ -18,6 +18,10 @@ side enter that as well and manage it; not more than one trade per side at a tim
             closes ABOVE the opening high is a LONG signal (the PE sold at the day's low), N below the opening low a SHORT
             one (the CE at the day's high); None (default) keeps only the sweep / reclaim. SPEC["orr_opt"]["reclaim"]:
             false drops the sweep / reclaim trigger (ST89: continuation only).
+  range     SPEC["orr_opt"]["range"] = {"kind": "rolling", "minutes": W, "only_beyond": bool}: the reference low / high is the
+            previous W completed candles' instead of the 09:15 candle's (the first sweep's level is latched for the reclaim);
+            only_beyond keeps the 09:15 range until the index has closed past it on that side. Measured in S101 - it loses at
+            every W; no strategy uses it. Absent (default): the 09:15 candle.
   occupancy one position per side at a time (a PE and a CE can be open together); after an exit that side needs a fresh
             sweep and reclaim.
 Option prices: the download store's 1-minute option candles (store_reader.py, read-only; September 2024 on).
@@ -74,14 +78,18 @@ def run(ctx):
         oh, ol = float(h[s0]), float(l[s0]); cut = t[s0] - t[s0] % core.DAY + core.hhmm_sec(X["cutoff"])
         sides = [1 if C_ > O_ else -1] if Y["align"] else [1, -1]
         bo = Y.get("breakout"); n_bo = int(bo["closes"]) if bo else 0; use_rc = Y.get("reclaim", True)
+        W = int((Y.get("range") or {}).get("minutes") or 0)   # rolling range: the previous W completed candles; 0 = the 09:15 candle
         for side in sides:                                # each side is its own machine: one position at a time
-            i, swept, run_ = s0 + 1, False, 0
+            i, swept, run_, lvl = s0 + 1, False, 0, None
             while i < s1 and t[i] < cut:
-                if X.get("sweep") == "close": sweep = c[i] < ol if side > 0 else c[i] > oh     # a close beyond, not a wick
-                else: sweep = l[i] < ol if side > 0 else h[i] > oh
-                reclaim = c[i] > ol if side > 0 else c[i] < oh
-                if sweep: swept = True
-                beyond = c[i] > oh if side > 0 else c[i] < ol                                  # a close past the FAR boundary
+                if W and (not Y["range"].get("only_beyond") or (c[i - 1] > oh if side > 0 else c[i - 1] < ol)):
+                    j0 = max(s0, i - W); ol_i, oh_i = float(l[j0:i].min()), float(h[j0:i].max())   # only_beyond: the rolling range only while the index is past the opening range on this side
+                else: ol_i, oh_i = ol, oh
+                if X.get("sweep") == "close": sweep = c[i] < ol_i if side > 0 else c[i] > oh_i     # a close beyond, not a wick
+                else: sweep = l[i] < ol_i if side > 0 else h[i] > oh_i
+                if sweep and not swept: swept, lvl = True, (ol_i if side > 0 else oh_i)        # the first sweep's level is latched
+                reclaim = swept and (c[i] > lvl if side > 0 else c[i] < lvl)
+                beyond = c[i] > oh_i if side > 0 else c[i] < ol_i                              # a close past the FAR boundary
                 run_ = run_ + 1 if beyond else 0
                 trig = "reclaim" if (use_rc and swept and reclaim) else "breakout" if (n_bo and run_ >= n_bo) else None
                 if not trig: i += 1; continue
@@ -96,7 +104,7 @@ def run(ctx):
                     why = "no candles for that contract on that day in the store" if not ser else "no option candle at the entry minute"
                     skipped.append(dict(base, position="SHORT", opt_type=right, instrument=name, entry_time=int(t[e_i]), why=why))
                     if not ser: break                                  # the store lacks the contract all day: the side is done
-                    i = e_i; swept = False; run_ = 0; continue
+                    i = e_i; swept, lvl = False, None; run_ = 0; continue
                 e_px = ser[int(t[e_i])][0]; tgt = e_px * (1 - Y["target_pct"] / 100) if Y.get("target_pct") else None
                 x_i, x_px, why = None, None, None
                 for m in range(e_i, s1):
@@ -115,7 +123,7 @@ def run(ctx):
                            und_exit=float(c[x_i]), stale=False, lots=lots, tranche="", label=f"SHORT {right} · {trig}",
                            sweep_reclaim=core.tstr(t[i]), day_extreme=round(lo_ if side > 0 else hi_, 2))
                 trs.append(core.price_trade(ctx, rec))
-                i, swept, run_ = x_i + 1, False, 0                # a fresh trigger after an exit
+                i, swept, run_, lvl = x_i + 1, False, 0, None      # a fresh trigger after an exit
     trs.sort(key=lambda r: r["entry_time"])
     return {ch: dict(trades=trs, skipped=skipped, signals=[]) for ch in core.choice_keys(spec, "OPT_FUT_SIGNAL")}
 

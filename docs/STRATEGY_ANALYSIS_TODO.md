@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S101. Lab v2 Strategy 86 with a ROLLING range (the previous W minutes' high / low in place of the 09:15 candle's), measured to bring in the one-way days. It loses at every window; the loss shrinks as W grows, back towards Strategy 86. No strategy created
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/orr_opt.py` (`orr_opt.range` = {kind: rolling, minutes: W, only_beyond}; absent in every strategy). 2026-10-24, the user, after S100: "check how we can introduce a rolling window to achieve profits here". Read as: the sweep / reclaim measured against a rolling range so that on a one-way day the pullbacks against the trend give the entries the fixed opening range cannot. Numbers only; Strategies 86, 88 and 89 are unchanged (the base run reproduces 86's 942 trades / ₹+98,310 exactly). |
+| What was measured | At each minute the reference low / high is the min / max of the previous W completed candles (the 09:15 candle included at the start); a close below the rolling low is the sweep and its level is latched; a later close above that level is the reclaim; the PE is sold at the day's low (the CE at the day's high on the mirror), the same strike rule, exits and occupancy as Strategy 86. A second form, `only_beyond`: the 09:15 range stays the reference until the index has closed past it on that side, and only then does the rolling range take over (the pullback entries on a day that has already broken out). |
+| Impact | **Measured, the store's options, 2024-09-20 → 2026-10-09, after costs; Strategy 86 as is: 942 trades, ₹+98,310, PF 1.11.** Rolling range, reclaim entries: W = 15 min 1,510 trades ₹-112,036 (PF 0.93); 30 min 1,489 ₹-40,810 (0.97); 60 min 1,433 ₹-6,936 (0.99); 120 min 1,367 ₹+15,151 (1.01; halves ₹+3,896 / ₹+11,255). With the three-close breakout as well: 30 min ₹-14,448, 60 min ₹+7,745; the breakout alone on the rolling range 30 min ₹-32,228, 60 min ₹-35,838. `only_beyond`: 15 min 1,154 trades ₹-17,569 (0.98); 30 min 1,145 ₹+23,191 (1.02); 60 min 1,102 ₹+37,811 (1.04; halves ₹-441 / ₹+38,252). |
+| Read | A rolling range fires on every session (505 of 508 days) and on most of them it is noise: the shorter the window the more sweeps and the worse the result, and as W grows the rolling range turns back into the day's range and the numbers walk back towards Strategy 86's without reaching them. Confining it to the days that have already broken out (`only_beyond`) halves the damage but still loses to Strategy 86 at every W: the pullback entries on a breakout day sell the option at a day extreme the trend has left far behind (little premium to decay) with the same stop as a reclaim trade's - S100's asymmetry again. The edge in Strategy 86 is the failed break of the first candle's range specifically; a moving reference removes it. |
+| Open (the user's call) | The other reading of "rolling" - ROLLING THE STRIKE: on a one-way day, after a Strategy 86 entry, moving the sold option up (down) to the newest swing low (high) to keep collecting premium - is not measured; it changes the exit side, not the entry, and would not add the missed days' entries. S100's (a), (b), (c) remain the untested ways in. |
+| Effort | **S** (measured). |
+| Priority | _Closed by measurement; nothing adopted._ Related: S98, S100. |
+
+---
+
 ### S100. Lab v2 Strategies 88 and 89: a continuation (breakout) entry for the one-way days Strategy 86 misses - three 1-minute closes beyond the opening range. Measured: the breakout trades lose (PF 0.86 inside 88; 89 alone PF 0.97, its second half PF 0.90); 88 as a whole falls from Strategy 86's ₹+98,310 to ₹+14,870
 
 | | |
