@@ -457,6 +457,19 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S125. Lab v2 fair-value weekly book and Strategies 91 - 93 rerun with every strike present (the far-strike download complete from the 2024-11-14 expiry): all four lose. The book with the user's current rules ₹-145,543 over 66 weeks; Strategies 91 / 92 / 93 ₹-109,786 / ₹-182,030 / ₹-122,254. The added Nov 2024 - Apr 2025 put-side months lose on the shorts while the put hedge pays; from May 2025 the shorts earn and the hedge costs more
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/tools/cagr_book.py` (the user's rules as of S111: monthly longs held across weeks and rolled at 15 days, +3% closes everything, -6% re-sells the same strikes on the next weekly, a losing week rolls its shorts, the expiry exit the session before), `results/cagr_book/` and its Excel file rebuilt for this window; Strategies 91 / 92 / 93 as run label "Full strikes". 2026-10-25: the download (S104's request) had completed every expiry from 2024-11-14 to 2026-10-19; only nine expiries of Sep - Oct 2024 remained, so the window is 2024-11-13 → 2026-10-09 (the lab's index end). |
+| Impact | **Measured, after costs (0.5 slippage a side, option charges by the lab's schedule, lot 65). The book: 66 weeks traded (2 at the end skipped - no monthly 18 days out), exits 27 targets / 21 stops / 18 expiry exits, 20 weeks rolled (36 rolls); the weekly shorts ₹-37,548 (204 legs, 43 winning weeks), the monthly longs ₹-107,994 (45 legs); total ₹-145,543.** By stretch (the week rows): Nov 2024 - Apr 2025, 21 weeks: shorts ₹-267,127, the longs' move in those weeks ₹+175,355; May 2025 - Oct 2026, 45 weeks: shorts ₹+229,580, longs ₹-274,491. **Strategy 91: 96 positions, PF 0.69, ₹-109,786 (shorts ₹-181,034, longs ₹+71,249); Strategy 92: 44 positions, PF 0.55, ₹-182,030 (15 stops; shorts ₹-296,884, longs ₹+114,854); Strategy 93: 36 positions, PF 0.65, ₹-122,254 (shorts ₹-67,581, longs ₹-54,672).** The earlier partial-data numbers (S103 - S111) are superseded for these windows. |
+| Read | With every strike present there is no version of the fair-value book that pays. The structure is a short-premium book with an expensive hedge: in the falling months (Nov 2024 - Mar 2025, the put side) the sold puts lose more than the 3-lot monthly put hedge earns, and in the calmer stretch after it the shorts earn but the hedge's decay costs more. The rolls and re-sells change when the losses are taken, not whether. |
+| Open (the user's call) | Sep - Oct 2024 (nine expiries) when the download finishes - it will not change the sign. Unquantified: a 1-lot or cheaper hedge (S103 - S111's open item) - the one change aimed at the cost side. |
+| Effort | **S** (measured). |
+| Priority | _Closed by measurement on full data; nothing adopted._ Related: S103 - S111. |
+
+---
+
 ### S124. Lab v2 Strategies 119 and 120: Jilly read on the ATM option's own chart, BOTH sides - each leg bought on its upside breakout and sold on its downside breakdown. Measured: still a loss (PF 0.970 / 0.955), a little better than buying only (0.929 / 0.938) because the sold legs are mildly positive; the bought PE is the loser in every version
 
 | | |
