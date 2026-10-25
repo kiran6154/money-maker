@@ -92,7 +92,7 @@ function showOpt() {
   $("#c-days-l").hidden = $("#c-start").value !== "days";
   setSeg("c-inst", "i", st.inst); setSeg("c-right", "r", st.right);
   $("#c-right-f").hidden = stack; $("#c-start-l").hidden = stack; $("#c-end-l").hidden = stack;   // Stack: the same strike's CE and PE, the shown sessions
-  $("#c-inds-g").hidden = stack; $("#c-main").hidden = stack;
+  $("#c-main").hidden = stack; $("#c-oi-l").hidden = stack;    // Stack: the indicators apply to every candle chart in it
   if (stack) { st.right = "CE"; $("#c-start").value = "days"; $("#c-days-l").hidden = false; }
 }
 function shiftDay(d, k) { let x = new Date(d + "T00:00:00Z"); do { x = new Date(x.getTime() + k * 86400000); } while (x.getUTCDay() === 0 || x.getUTCDay() === 6); return x.toISOString().slice(0, 10); }
@@ -206,23 +206,35 @@ async function load() {
 }
 function clear() { for (const c of charts) c.remove(); charts = []; $("#c-panes").innerHTML = ""; }
 // the Stack view: futures, CE | PE at 15 / 5 / 1 minutes, the OI built at each premium, the OI, CE + PE combined
+let stackData = null;
 async function loadStack(my, shown) {
   const day = $("#c-date").value, L = st.ks?.lives || {}, k = st.strike;
   let showFrom = day; for (let n = 0; n < shown - 1; n++) showFrom = shiftDay(showFrom, -1);
+  // the futures' warm-up for the indicators (the options are read from their first candle, so they have theirs)
+  const perDay = Math.floor(375 / TFM[tf()]), warmDays = Math.ceil(warmBars() / Math.max(perDay, 1)) + 1 + (st.inds.some((i) => i.type === "PDHL") ? 1 : 0);
+  let futFrom = showFrom; for (let n = 0; n < warmDays; n++) futFrom = shiftDay(futFrom, -1);
   $("#c-legend").textContent = "loading…";
   try {
     if (!L.PE?.[k]) throw new Error(`no PE ${k} for the ${st.exp} expiry in the store: pick another strike`);
     const lifeCE = L.CE?.[k], lifePE = L.PE[k];
     const opt = (r, life) => api("/api/store/candles?" + new URLSearchParams({ inst: "OPT", from: life[0], to: day, tf: "minute", expiry: st.exp, strike: k, right: r }));
-    const [fut, ce, pe] = await Promise.all([api("/api/store/candles?" + new URLSearchParams({ inst: "FUT", from: showFrom, to: day, tf: tf() })), opt("CE", lifeCE), opt("PE", lifePE)]);
+    const [fut, ce, pe] = await Promise.all([api("/api/store/candles?" + new URLSearchParams({ inst: "FUT", from: futFrom, to: day, tf: tf() })), opt("CE", lifeCE), opt("PE", lifePE)]);
     if (my !== req) return;
-    clear();
-    $("#c-title").innerHTML = `<b>Stack · ${esc(st.exp)} ${esc(k)}</b> <span class="muted">· ${showFrom} → ${day} · futures and CE + PE at the ${$("#c-tf").selectedOptions[0].text} candles chosen; CE / PE also at 15, 5 and 1 minutes</span>`;
-    const nm = (s) => s.replace(/ \(store\)$/i, ""); charts = drawStack($("#c-panes"), { fut: fut.candles, ce: ce.candles, pe: pe.candles, futName: nm(fut.name), ceName: nm(ce.name), peName: nm(pe.name),
-                                        showFrom, day, tfMin: TFM[tf()] });
+    stackData = { fut, ce, pe, showFrom, day, k };
+    drawStackNow();
     const c = ce.candles[ce.candles.length - 1], p = pe.candles[pe.candles.length - 1];
     $("#c-legend").textContent = `CE ${num(c?.[4], 2)} · PE ${num(p?.[4], 2)} · CE + PE ${num((c?.[4] ?? 0) + (p?.[4] ?? 0), 2)} at ${c ? new Date(c[0] * 1000).toISOString().slice(0, 16).replace("T", " ") : "?"}`;
   } catch (e) { if (my === req) { $("#c-legend").textContent = e.message; clear(); } }
+}
+function drawStackNow() {
+  if (!stackData) return;
+  const { fut, ce, pe, showFrom, day, k } = stackData;
+  clear();
+  $("#c-title").innerHTML = `<b>Stack · ${esc(st.exp)} ${esc(k)}</b> <span class="muted">· ${showFrom} → ${day} · futures and CE + PE at the ${$("#c-tf").selectedOptions[0].text} candles chosen; CE / PE also at 15, 5 and 1 minutes</span>`;
+  const nm = (s) => s.replace(/ \(store\)$/i, ""); charts = drawStack($("#c-panes"), { fut: fut.candles, ce: ce.candles, pe: pe.candles, futName: nm(fut.name), ceName: nm(ce.name), peName: nm(pe.name),
+                                        showFrom, day, tfMin: TFM[tf()],
+                                        overlay: (C) => st.inds.filter((i) => !DEFS[i.type].pane).flatMap((i) => compute(i, C)),
+                                        panes: st.inds.filter((i) => DEFS[i.type].pane).map((i) => ({ label: `${DEFS[i.type].label} ${Object.values(i.params).join(" / ")}`, color: i.color, lines: (C) => compute(i, C) })) });
 }
 function opts() {
   return { autoSize: true, layout: { background: { color: css("--card") }, textColor: css("--muted"), fontSize: 11 },
@@ -231,6 +243,7 @@ function opts() {
            crosshair: { mode: 0 } };
 }
 function draw() {
+  if (st.inst === "STACK") return drawStackNow();             // an indicator edit redraws the stack from the candles already loaded
   clear(); if (!data) return;
   const C = data.candles, UP = "#089981", DN = "#f23645";
   $("#c-title").innerHTML = `<b>${esc(data.name)}</b> <span class="muted">· ${$("#c-tf").selectedOptions[0].text} candles · ${data.frm} → ${data.to}${data.contracts ? " · contract expiry " + data.contracts.join(", ") : ""}</span>`;

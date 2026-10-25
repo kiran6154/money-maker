@@ -83,7 +83,18 @@ const candles = (ch, C) => {
   s.setData(C.map((c) => ({ time: c[0], open: c[1], high: c[2], low: c[3], close: c[4] }))); return s;
 };
 
-// box: the element to fill; D: { fut, ce, pe, futName, ceName, peName, showFrom, day, tfMin }. Returns the charts created.
+// an indicator's line (charts.js compute(): {color, title, data, dash, step, guide, hist}) on a chart
+function addLine(ch, ln) {
+  if (ln.hist) { const h = ch.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false });
+    h.setData(ln.data.map((p) => (p.value == null ? { time: p.time } : { ...p, color: p.value >= 0 ? "rgba(8,153,129,.6)" : "rgba(242,54,69,.6)" }))); return; }
+  const s = ch.addLineSeries({ color: ln.color, lineWidth: ln.guide ? 1 : 2, lineStyle: ln.dash ? 2 : 0, lineType: ln.step ? 1 : 0, title: ln.title,
+                               priceLineVisible: false, lastValueVisible: !!ln.title, crosshairMarkerVisible: !ln.guide });
+  s.setData(ln.data);
+}
+
+// box: the element to fill; D: { fut, ce, pe, futName, ceName, peName, showFrom, day, tfMin, overlay(C), panes: [{label, color, lines(C)}] }.
+// Indicators are computed on each chart's whole series (its warm-up included) and shown on its sessions only: the
+// overlays on every candle chart, each pane indicator in a small chart under every candle chart. Returns the charts created.
 export function drawStack(box, D) {
   const charts = [], timed = [];
   box.innerHTML = "";
@@ -93,9 +104,22 @@ export function drawStack(box, D) {
     box.appendChild(el); return el;
   };
   const chartIn = (el, timedChart = true) => { const ch = LightweightCharts.createChart(el.querySelector(".c-pane-c"), opts()); charts.push(ch); if (timedChart) timed.push(ch); return ch; };
-  const day = (C) => C.filter((c) => new Date(c[0] * 1000).toISOString().slice(0, 10) >= D.showFrom && new Date(c[0] * 1000).toISOString().slice(0, 10) <= D.day);
+  const dstr = (t) => new Date(t * 1000).toISOString().slice(0, 10);
+  const day = (C) => C.filter((c) => dstr(c[0]) >= D.showFrom && dstr(c[0]) <= D.day);
+  const inShown = (ln) => ({ ...ln, data: ln.data.filter((p) => dstr(p.time) >= D.showFrom && dstr(p.time) <= D.day) });
+  // a candle chart in `el` (its .c-pane-c), the overlays on it, and one small chart per pane indicator under it
+  const block = (el, full) => {
+    const ch = chartIn(el); candles(ch, day(full));
+    for (const ln of (D.overlay ? D.overlay(full) : [])) addLine(ch, inShown(ln));
+    for (const pi of D.panes || []) {
+      const sub = document.createElement("div");
+      sub.innerHTML = `<div class="small muted" style="padding:2px 8px"><b style="color:${pi.color}">${esc(pi.label)}</b></div><div class="c-pane-c" style="height:110px"></div>`;
+      el.appendChild(sub);
+      const sc = chartIn(sub); for (const ln of pi.lines(full)) addLine(sc, inShown(ln));
+    }
+  };
   // 1. futures
-  candles(chartIn(pane(`<b>${esc(D.futName)}</b> · ${D.tfMin} min`, 300)), D.fut);
+  block(pane(`<b>${esc(D.futName)}</b> · ${D.tfMin} min`, 300), D.fut);
   // 2 - 4. CE | PE at 15, 5 and 1 minutes
   for (const m of [15, 5, 1]) {
     const row = document.createElement("div"); row.className = "c-row"; box.appendChild(row);
@@ -103,7 +127,7 @@ export function drawStack(box, D) {
       const el = document.createElement("div"); el.className = "c-pane";
       el.innerHTML = `<div class="small muted" style="padding:4px 8px"><b style="color:${col}">${esc(nm)}</b> · ${m} min</div><div class="c-pane-c" style="height:220px"></div>`;
       row.appendChild(el);
-      candles(chartIn(el), day(bucket(C, m)));
+      block(el, bucket(C, m));
     }
   }
   // 5. OI built at each premium level, over the contract's life to the day
@@ -119,7 +143,7 @@ export function drawStack(box, D) {
     s.setData(day(C).filter((c) => c[6] > 0).map((c) => ({ time: c[0], value: c[6] })));
   }
   // 7. CE + PE combined
-  candles(chartIn(pane(`<b>CE + PE combined</b> (${esc(D.ceName.replace(/ CE$/, ""))} straddle premium) · ${D.tfMin} min`, 300)), day(combined(D.ce, D.pe, D.tfMin)));
+  block(pane(`<b>CE + PE combined</b> (${esc(D.ceName.replace(/ CE$/, ""))} straddle premium) · ${D.tfMin} min`, 300), combined(D.ce, D.pe, D.tfMin));
   // the shown sessions, all time-based panes kept on one time range
   const all = day(D.ce); const t0 = all[0]?.[0] ?? D.fut[0]?.[0], tN = Math.max(all[all.length - 1]?.[0] ?? 0, D.fut[D.fut.length - 1]?.[0] ?? 0);
   // the panes size themselves after they are laid out, and a resize narrows a chart's visible range: the range is applied
