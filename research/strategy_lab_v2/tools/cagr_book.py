@@ -7,9 +7,13 @@ at least 18 days out. Marked hourly (09:30, 10:30 ... 14:30, 15:25). The week's 
 open) plus the longs' move since the week's entry; its base is the margin per short lot x 2 plus the longs' value at the
 week's entry.
 
-  +3% / -6%     the whole book is closed, the shorts AND the longs (the user: "in the same strategy -6% or +3% is exit"); the
+  +3%           the whole book is closed, the shorts AND the longs (the user: "in the same strategy -6% or +3% is exit"); the
                 next week buys new longs. --keep-longs-on-pct keeps the longs instead (S109's first run).
-  next next day the session two sessions ahead is the sold expiry: in profit, the shorts are bought back and the longs kept;
+  -6%           the shorts are bought back and the SAME strikes sold at once on the next weekly, a new week with a fresh base;
+                the longs are kept (the user, S111: "after a 6% loss close the shorts and short again immediately next week's
+                same strikes"). --no-stop-resell: -6% closes the whole book as +3% does (S110).
+  expiry exit   the session BEFORE the sold expiry (the user, S111: "not two sessions, just the previous day of expiry"),
+                --two-sessions for S110's: in profit, the shorts are bought back and the longs kept;
                 IN LOSS, the shorts are rolled - bought back and the SAME strikes sold on the next available weekly at that
                 step's price - and the week goes on with its P&L carried (the user: "roll over to the same strikes in the next
                 available weekly expiry if there is a loss in a week"). No candle at a rolled strike: the shorts are bought
@@ -20,7 +24,7 @@ Order at each step: the week's exits, then the long roll, then a new week's entr
 a week's entry the old right's longs are sold and the new right's bought ("side_flip"); a week whose short strikes are missing
 is skipped (the longs stay); costs as the lab (0.5 point slippage a side, option charges, lot 65).
 
-  python tools/cagr_book.py [FROM] [TO] [--keep-longs-on-pct] [--no-loss-roll]
+  python tools/cagr_book.py [FROM] [TO] [--keep-longs-on-pct] [--no-loss-roll] [--no-stop-resell] [--two-sessions]
          default 2025-05-14 2026-10-09 (the far strikes complete from the 2025-05-15 expiry)
 """
 import os, sys, csv, datetime as D
@@ -35,6 +39,8 @@ FRM = args[0] if len(args) > 0 else "2025-05-14"
 TO = args[1] if len(args) > 1 else "2026-10-09"
 EXIT_ALL = "--keep-longs-on-pct" not in sys.argv     # +3% / -6% exits everything, longs included
 LOSS_ROLL = "--no-loss-roll" not in sys.argv         # a losing week's shorts roll to the same strikes on the next weekly
+STOP_RESELL = "--no-stop-resell" not in sys.argv     # -6%: the shorts closed and the same strikes sold at once on the next weekly (the longs kept)
+EXIT_SESSIONS = 2 if "--two-sessions" in sys.argv else 1   # the expiry exit: the session before the sold expiry (S110: two sessions)
 ctx = core.context(mod, "OPT_FUT_SIGNAL", "minute", "INDEX", None, FRM, TO)
 LOT, DAY = mod.SPEC["lot_size"], core.DAY
 sp = core.series("spot", "minute"); ss = core.sessions()
@@ -85,7 +91,7 @@ def end_week(tt, sx, why, lp):
 
 for d in ss[(ss >= core.dnum(FRM)) & (ss <= core.dnum(TO))]:
     d = int(d); day = core.dstr(d); j = int(np.searchsorted(ss, d))
-    ahead2 = core.dstr(int(ss[j + 2])) if j + 2 < len(ss) else None
+    ahead = core.dstr(int(ss[j + EXIT_SESSIONS])) if j + EXIT_SESSIONS < len(ss) else None
     cur = next((e for e in exps if e >= day), None)
     pre = cur and j + 1 < len(ss) and core.dstr(int(ss[j + 1])) == cur          # the session before the current weekly expiry
     for st in steps:
@@ -98,7 +104,7 @@ for d in ss[(ss >= core.dnum(FRM)) & (ss <= core.dnum(TO))]:
                 open_pnl = sum((px0 - p) * LOT for (k, px0, _), p in zip(shorts["legs"], sx))
                 pnl = shorts["realized"] + open_pnl + shorts["long_carry"] + (lp - shorts["long_px"]) * LOT * longs["n"]
                 pct = 100 * pnl / shorts["base"]; shorts["pct"] = pct
-                why = "target" if pct >= S["target_pct"] else "stop_loss" if pct <= -S["stop_pct"] else "short_expiry_near" if (ahead2 == shorts["exp"] or shorts["exp"] <= day) else None
+                why = "target" if pct >= S["target_pct"] else "stop_loss" if pct <= -S["stop_pct"] else "short_expiry_near" if (ahead == shorts["exp"] or shorts["exp"] <= day) else None
                 if why == "short_expiry_near" and LOSS_ROLL and pnl < 0:              # a losing week: the same strikes on the next weekly
                     nx2 = next((e for e in exps if e > shorts["exp"]), None)
                     p2s = [H._px(ser(nx2, k, shorts["right"], tt), tt) for k, _, _ in shorts["legs"]] if nx2 else [None]
@@ -110,6 +116,19 @@ for d in ss[(ss >= core.dnum(FRM)) & (ss <= core.dnum(TO))]:
                         shorts["legs"] = [(k, p2, tt) for (k, _, _), p2 in zip(shorts["legs"], p2s)]; shorts["exp"] = nx2; shorts["rolls"] += 1
                         why = None
                     else: why = "roll_unavailable"
+                if why == "stop_loss" and STOP_RESELL:                                   # -6%: out, and the same strikes sold again on the next weekly
+                    nx2 = next((e for e in exps if e > shorts["exp"]), None)
+                    p2s = [H._px(ser(nx2, k, shorts["right"], tt), tt) for k, _, _ in shorts["legs"]] if nx2 else [None]
+                    old = dict(shorts); end_week(tt, sx, why, lp)
+                    if nx2 and all(p is not None for p in p2s):
+                        i = max(int(np.searchsorted(sp.t, tt, "right")) - 1, 0); idx = float(sp.c[i]); F = H.fair(day, S)
+                        base = S["margin_per_short_lot"] * len(p2s) + lp * LOT * longs["n"]
+                        shorts = dict(right=old["right"], exp=nx2, legs=[(k, p2, tt) for (k, _, _), p2 in zip(old["legs"], p2s)], t=tt, base=base, long_px=lp,
+                                      long_carry=0.0, realized=0.0, realized_net=0.0, week=len(weeks) + 1, rolls=0)
+                        weeks.append(dict(week=len(weeks) + 1, entry=core.tstr(tt), side=old["right"], index=idx, fair=F, sold_exp=nx2, resold=True,
+                                          shorts=" / ".join(f"{k} @{p2:.2f}" for (k, _, _), p2 in zip(old["legs"], p2s)), long=f"{longs['exp']} {longs['k']} @{lp:.2f}", base=base))
+                        events.append((core.tstr(tt), "re-sold after stop", f"W{old['week']} → W{shorts['week']}: " + " / ".join(f"{k} {nx2[5:]} @{p2:.2f}" for (k, _, _), p2 in zip(old["legs"], p2s)), None))
+                    why = None
                 if why:
                     end_week(tt, sx, why, lp)
                     if why in ("target", "stop_loss") and EXIT_ALL:      # +3% / -6% closes the whole book: the longs too
@@ -156,14 +175,14 @@ if longs:
 
 # ---- print
 f = lambda v: "" if v is None else f"{v:+,.0f}"
-mode = ("longs closed at +3% / -6%" if EXIT_ALL else "longs kept at +3% / -6%") + (", a losing week's shorts rolled to the same strikes" if LOSS_ROLL else "")
+mode = ("longs closed at +3%" + ("" if STOP_RESELL else " / -6%") if EXIT_ALL else "longs kept at +3% / -6%") + (", -6%: the same strikes re-sold on the next weekly" if STOP_RESELL else "") +        (", a losing week's shorts rolled to the same strikes" if LOSS_ROLL else "") + f", expiry exit {EXIT_SESSIONS} session{'s' if EXIT_SESSIONS > 1 else ''} before the sold expiry"
 print(f"Fair-value weekly book, longs held across weeks ({mode}) · {FRM} → {TO} · after costs (0.5 slippage a side, option charges, lot {LOT})\n")
-print("| # | Entry (09:30) | Side | Index / fair | Sold weekly | Shorts sold (strike @ premium) | Long held | Rolls | Last weekly | Exit | Why | Bought back | Shorts net ₹ | Longs' move ₹ | Week % |")
+print("| # | Entry | Side | Index / fair | Sold weekly | Shorts sold (strike @ premium) | Long held | Rolls | Last weekly | Exit | Why | Bought back | Shorts net ₹ | Longs' move ₹ | Week % |")
 print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
 for w in weeks:
     if "skipped" in w:
         print(f"| {w['week']} | {w['entry'][:16]} | {w['side']} | {w['index']:,.0f} / {w['fair']:,.0f} | | skipped: {w['skipped']} | | | | | | | | | |"); continue
-    print(f"| {w['week']} | {w['entry'][:16]} | {w['side']} | {w['index']:,.0f} / {w['fair']:,.0f} | {w['sold_exp']} | {w['shorts']} | {w['long']} | {w.get('rolls', '') or ''} | {w.get('last_exp', '') if w.get('rolls') else ''} | {w.get('exit', '')[:16]} | {w.get('why', '')} | {w.get('exit_shorts', '')} | {f(w.get('short_net'))} | {f(w.get('long_mtm'))} | {'' if w.get('pct') is None else format(w['pct'], '+.1f')} |")
+    print(f"| {w['week']} | {w['entry'][:16]}{' (re-sold)' if w.get('resold') else ''} | {w['side']} | {w['index']:,.0f} / {w['fair']:,.0f} | {w['sold_exp']} | {w['shorts']} | {w['long']} | {w.get('rolls', '') or ''} | {w.get('last_exp', '') if w.get('rolls') else ''} | {w.get('exit', '')[:16]} | {w.get('why', '')} | {w.get('exit_shorts', '')} | {f(w.get('short_net'))} | {f(w.get('long_mtm'))} | {'' if w.get('pct') is None else format(w['pct'], '+.1f')} |")
 print("\nBuys, rolls and exits of the long legs, and the short rolls:\n")
 print("| When | Event | Detail | Realized ₹ (after costs) |"); print("|---|---|---|---|")
 for t, k, s, net in events: print(f"| {t[:16]} | {k} | {s} | {f(net)} |")

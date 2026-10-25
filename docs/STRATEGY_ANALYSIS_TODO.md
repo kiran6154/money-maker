@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S111. Lab v2 fair-value weekly book: at -6% the shorts are re-sold at once on the next weekly at the same strikes (the longs kept), and the expiry exit moves to the session before the sold expiry. Measured: ₹-51,491 (S110: ₹-82,821); the shorts ₹+204,497, the longs ₹-255,988
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/tools/cagr_book.py` (new flags `--no-stop-resell`, `--two-sessions` give S110; S110's ₹-82,821 reproduces with both), every leg in `results/cagr_book_trades.csv`. 2026-10-25, the user: "after a 6% loss, close the shorts and short again immediately next week's same strikes; and not two sessions, just the previous day of expiry". Same window (entries 2025-05-14 → 2026-10-09). |
+| What changed | (1) At -6% the week's shorts are bought back and the same strikes sold at that step on the weekly after the stopped one; that is a new week with a fresh base (margin x 2 plus the longs' value then); the longs are NOT closed (the request names the shorts only; +3% still closes everything). (2) The expiry exit, and the loss roll it carries (S110), now happen on the session before the sold expiry, at its first step (09:30) - the same minute the next week's entry is checked. |
+| Impact | **Measured, after costs (0.5 slippage a side, option charges, lot 65): 44 weeks (12 of them re-sold after a stop), 16 weeks with loss rolls (30 rolls); ends 20 targets, 13 stops, 11 expiry exits; the shorts ₹+204,497 (148 legs, 31 winning weeks), the longs ₹-255,988 (33 legs); total ₹-51,491.** Each change alone: re-sell after the stop only (expiry exit two sessions before) 51 weeks, ₹-72,107 (shorts +89,819, longs -161,926); day-before exit only (stop closes everything) 45 weeks, ₹-54,869 (shorts +64,605, longs -119,474). S110 (neither): ₹-82,821. |
+| Read | The shorts now earn: re-selling the same strikes after a stop sells a much richer premium (the strike is in the money by then) and half of the 12 re-sold weeks reach the +3% target (W5, W10, W12, W17, W27, W32; the other 6 stop again). But the hedge is held longer and costs ₹-256k, more than the shorts make. Two quirks of "the same strikes": after a rally the re-sold strikes are far out of the money (W15 - W17: the 24800 / 25200 puts sold at 31 / 63, then 7.80 / 15.10, then 4.70 / 6.70) - the week's P&L is then only the hedge's decay and the -6% stop is hit by the hedge alone, three weeks running; and a gap goes straight through the -6% (W25: -18.2% at the 2026-04-08 09:30 step). One 17-month regime. |
+| Open (the user's call) | Unquantified: re-sell at the same premium (a new strike) rather than the same strike; the -6% measured on the shorts only; the hedge size. |
+| Effort | **S**. |
+| Priority | _Open; numbers recorded._ Related: S109, S110. |
+
+---
+
 ### S110. Lab v2 fair-value weekly book, the user's two refinements: +3% / -6% closes the whole book (the longs too), and a week in loss at "the next next day" rolls its shorts to the same strikes on the next weekly. Measured: each refinement on its own and together lose; together ₹-82,821 against S109's ₹+42,706
 
 | | |
