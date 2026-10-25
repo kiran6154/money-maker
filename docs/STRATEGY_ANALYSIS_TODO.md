@@ -457,6 +457,19 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S126. Lab v2 fair-value weekly book and Strategies 91 - 93 on the complete window (the far-strike download finished: every expiry 2024-09-05 → 2026-10-19 holds index ±1,500 strikes). All four lose: the book with the user's current rules ₹-244,971 over 72 weeks; Strategies 91 / 92 / 93 ₹-256,836 / ₹-307,327 / ₹-252,182. Supersedes S125's window
+
+| | |
+|---|---|
+| Where | As S125, window 2024-09-04 → 2026-10-09 (the first pre-expiry session of the store's full-strike span to the lab's index end); Strategies 91 - 93 as run label "All strikes"; `results/cagr_book/` and its Excel file rebuilt. 2026-10-25, the download session: "every expiry from 2024-09-05 to 2026-10-19 now has index ±1,500 strikes in the store". |
+| Impact | **Measured, after costs. The book: 72 weeks traded (2 at the end skipped, no monthly 18 days out), exits 28 targets / 25 stops / 19 expiry exits, 23 weeks rolled (39 rolls); the weekly shorts ₹-253,246 (222 legs, 45 winning weeks), the monthly longs ₹+8,276 (49 legs); total ₹-244,971.** By stretch: Sep 2024 - Apr 2025, 27 weeks: shorts ₹-482,824, the longs' move ₹+248,363; May 2025 - Oct 2026, 45 weeks: shorts ₹+229,580, longs ₹-274,491. **Strategy 91: 106 positions, PF 0.51, ₹-256,836 (shorts ₹-411,600, longs ₹+154,764); Strategy 92: 51 positions, PF 0.44, ₹-307,327 (18 stops); Strategy 93: 42 positions, PF 0.49, ₹-252,182.** Still skipped: 1 - 2 entries in March 2025 for no 2025-04-30 monthly put near 200 premium (the monthly's far strikes start later than those entries). Data checks from the download session: the negative-volume candles (389, listed in D:/nifty_data/_missing/anomalies.csv) do not matter here (prices only); Jilly's VWAP has one such futures minute (2025-06-20) and zeroing it changes no trade of Strategy 111. |
+| Read | S125's reading, stronger: the falling months of late 2024 - early 2025 (the put side) cost the sold puts ₹-483k while the 3-lot put hedge earned ₹+248k; the calmer months after them do not make it back. No version of the fair-value book pays on complete data. |
+| Open (the user's call) | A cheaper hedge (1 lot or ~100 premium), the only change aimed at the cost side - unquantified. |
+| Effort | **S** (measured). |
+| Priority | _Closed by measurement on complete data; nothing adopted._ Related: S103 - S111, S125. |
+
+---
+
 ### S125. Lab v2 fair-value weekly book and Strategies 91 - 93 rerun with every strike present (the far-strike download complete from the 2024-11-14 expiry): all four lose. The book with the user's current rules ₹-145,543 over 66 weeks; Strategies 91 / 92 / 93 ₹-109,786 / ₹-182,030 / ₹-122,254. The added Nov 2024 - Apr 2025 put-side months lose on the shorts while the put hedge pays; from May 2025 the shorts earn and the hedge costs more
 
 | | |

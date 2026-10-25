@@ -279,6 +279,19 @@
        "t_stat": -0.34
       }
      }
+    },
+    "all-strikes_1m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 273,
+       "wins": 153,
+       "pts": -3534.0,
+       "net_inr": -252181.59,
+       "pf": 0.88,
+       "max_dd_inr": -395012.01,
+       "t_stat": -0.66
+      }
+     }
     }
    }
   }
