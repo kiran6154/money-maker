@@ -194,4 +194,38 @@ out = os.path.join(HERE, "results", "cagr_book_trades.csv")
 with open(out, "w", newline="", encoding="utf-8") as fh:
     wr = csv.writer(fh); wr.writerow(["position", "instrument", "lots", "entry_time", "entry_px", "exit_time", "exit_px", "exit_reason", "week", "pts", "gross", "charges", "net"])
     for l in legs: wr.writerow([l["position"], l["instrument"], l["lots"], core.tstr(l["entry_time"]), l["entry_px"], core.tstr(l["exit_time"]), l["exit_px"], l["exit_reason"], l["tranche"], round(l["pts"], 2), round(l["gross"], 2), round(l["chg"]["total"], 2), round(l["net"], 2)])
-print(f"\nEvery leg: {os.path.relpath(out, os.path.dirname(os.path.dirname(HERE)))}")
+# ---- the files to validate by hand: the weekly short legs, the monthly long legs, one row per week (Excel opens them)
+xdir = os.path.join(HERE, "results", "cagr_book"); os.makedirs(xdir, exist_ok=True)
+T = lambda t: core.tstr(t)[:16]
+wk = {f"W{w['week']}": w for w in weeks}
+with open(os.path.join(xdir, "weekly_short_trades.csv"), "w", newline="", encoding="utf-8-sig") as fh:
+    wr = csv.writer(fh)
+    wr.writerow(["week", "week_entry", "side", "index_at_week_entry", "fair_value", "re_sold_after_stop", "instrument", "expiry", "strike", "type", "lots", "qty",
+                 "sell_time", "sell_price", "buy_back_time", "buy_back_price", "exit_reason", "points_per_unit_after_slippage", "gross_rs", "charges_rs", "net_rs"])
+    for l in legs:
+        if l["position"] != "SHORT": continue
+        w = wk.get(l["tranche"], {})
+        wr.writerow([l["tranche"], w.get("entry", "")[:16], w.get("side", ""), round(w.get("index", 0), 2), round(w.get("fair", 0), 2), "yes" if w.get("resold") else "",
+                     l["instrument"], l["expiry"], l["strike"], l["opt_type"], l["lots"], l["lots"] * LOT, T(l["entry_time"]), l["entry_px"], T(l["exit_time"]), l["exit_px"],
+                     l["exit_reason"], round(l["pts"], 2), round(l["gross"], 2), round(l["chg"]["total"], 2), round(l["net"], 2)])
+with open(os.path.join(xdir, "monthly_long_trades.csv"), "w", newline="", encoding="utf-8-sig") as fh:
+    wr = csv.writer(fh)
+    wr.writerow(["instrument", "expiry", "strike", "type", "lots", "qty", "buy_time", "buy_price", "sell_time", "sell_price", "exit_reason",
+                 "points_per_unit_after_slippage", "gross_rs", "charges_rs", "net_rs"])
+    for l in sorted((l for l in legs if l["position"] == "LONG"), key=lambda l: l["entry_time"]):
+        wr.writerow([l["instrument"], l["expiry"], l["strike"], l["opt_type"], l["lots"], l["lots"] * LOT, T(l["entry_time"]), l["entry_px"], T(l["exit_time"]), l["exit_px"],
+                     l["exit_reason"], round(l["pts"], 2), round(l["gross"], 2), round(l["chg"]["total"], 2), round(l["net"], 2)])
+with open(os.path.join(xdir, "weeks_summary.csv"), "w", newline="", encoding="utf-8-sig") as fh:
+    wr = csv.writer(fh)
+    wr.writerow(["week", "entry", "side", "index", "fair_value", "re_sold_after_stop", "first_sold_expiry", "shorts_sold", "long_held_at_entry", "base_rs", "rolls",
+                 "last_sold_expiry", "exit", "exit_reason", "shorts_bought_back", "shorts_net_rs", "longs_move_in_week_rs", "week_pct", "skipped"])
+    for w in weeks:
+        wr.writerow([w["week"], w["entry"][:16], w["side"], round(w["index"], 2), round(w["fair"], 2), "yes" if w.get("resold") else "", w.get("sold_exp", ""), w.get("shorts", ""),
+                     w.get("long", ""), round(w["base"]) if w.get("base") else "", w.get("rolls", ""), w.get("last_exp", "") if w.get("rolls") else "", w.get("exit", "")[:16],
+                     w.get("why", ""), w.get("exit_shorts", ""), round(w["short_net"]) if "short_net" in w else "", round(w["long_mtm"]) if "long_mtm" in w else "",
+                     round(w["pct"], 2) if w.get("pct") is not None else "", w.get("skipped", "")])
+with open(os.path.join(xdir, "README.txt"), "w", encoding="utf-8") as fh:
+    fh.write(__doc__ + f"\nThis run: {mode} - {FRM} -> {TO}\nShorts Rs {SN:+,.0f} - longs Rs {LN:+,.0f} - total Rs {SN + LN:+,.0f}\n"
+             "\nPrices are the 1-minute candle's OPEN at the step minute (the last close before it when that minute has no candle). The 0.5 point slippage a side"
+             " is inside points_per_unit_after_slippage and gross_rs; charges per the Zerodha F&O option schedule; net_rs = gross_rs - charges_rs; qty = lots x 65.\n")
+print(f"\nEvery leg: {os.path.relpath(out, os.path.dirname(os.path.dirname(HERE)))} - files to validate: {os.path.relpath(xdir, os.path.dirname(os.path.dirname(HERE)))}")
