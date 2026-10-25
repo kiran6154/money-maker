@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S123. Lab v2 Strategy 111 (Jilly's ORB + Noise Band, the paper spec) with other stops and targets, and with a reset after a fixed stop. Measured: the edge holds across most stops (futures PF 1.22 - 1.31 for any stop of 3 x ATR or wider with a 2R or no target; the spec's 10 x ATR + 1R is 1.269); only a tight stop with a 1R target loses; the reset after a stop lowers the PF everywhere but at 150 points + 2R, where it is neutral. Nothing adopted
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/jilly.py` (`fut_stop` / `opt_stop`: "atr", "orm", "or_far", "fixed" with `stop_pts`; `target_r` None = no target; `reset`, `reset_max`, `reset_lookback`), numbers only (no new strategy). 2026-10-25, the user: "another can be done: change the SL of Jilly ORB and check" and "reset the day open after a fixed SL and consider using the Jilly ORB + noise band from the previous hour". Strategy 111's entries unchanged; futures 2018 → 2026-10-23, ATM options 2020-02 → (exits read on the future, as the spec). |
+| Stop sweep (futures PF / ATM PF, after costs) | 2 x ATR: 1R 0.975 / 0.943, 2R 1.162 / 1.137, none 1.275 / 1.237. 3 x ATR: 1R 1.133 / 1.070, 2R 1.287 / 1.268, none **1.311** / 1.259. 5 x ATR: 1.218 / 1.197, 1.250 / 1.205, 1.228 / 1.170. 7 x ATR: 1R 1.254 / 1.245, 2R and none 1.231 - 1.233 / 1.163. **10 x ATR (the spec's futures): 1R 1.269 / 1.195**, 2R and none 1.248 / 1.160. **OR midpoint (the spec's options): 1R 1.153 / 1.086, 2R 1.291 / 1.260**, none 1.290 / 1.230. OR far side: 1.154 / 1.138, 1.233 / 1.217, 1.221 / 1.185. Fixed 50 points: 1R 0.976 / 0.865, 2R 1.119 / 1.068, none 1.225 / 1.176. Fixed 100: 1.068 / 1.009, 1.223 / 1.211, 1.232 / 1.183. Fixed 150: 1.193 / 1.201, 1.248 / 1.251, 1.239 / 1.196. Every row 789 futures / 578 option trades; max drawdowns ₹-109k to ₹-182k (futures), ₹-58k to ₹-106k (ATM). |
+| Reset after a fixed stop (the rule as built) | After a trade out at its fixed stop the day starts again at the exit minute: O' = that minute's open, the opening range = the 60 minutes before it, the band from the reset (UB' = O' x (1 + 1.25 sigma(m - reset key))), the session VWAP and ATR unchanged; the next checkpoints can signal either way; at most 3 resets a day. Futures PF without / with the reset: 50 points 1R 0.976 / 0.938 (119 reset trades), 2R 1.119 / 1.084; 100 points 1R 1.068 / 1.013 (68), 2R 1.223 / 1.165; 150 points 1R 1.193 / 1.190 (26), **2R 1.248 / 1.249** (27; ₹+464,635 / ₹+484,449). ATM: 50 1R 0.865 / 0.838, 2R 1.068 / 1.030; 100 1R 1.009 / 0.942, 2R 1.211 / 1.142; 150 1R 1.201 / 1.189, 2R 1.251 / 1.239. |
+| Read | The stop does not make the edge: across 30 stop / target pairs the futures PF stays 1.12 - 1.31 except where a tight stop meets a 1R target (2 x ATR or 50 points with 1R lose) - the trade needs room and time, since most of the gain comes at the 15:20 close. The best cell (3 x ATR, no target, PF 1.311) is a neighbour of the spec's 10 x ATR + 1R (1.269) and is not adopted: picking the maximum of 30 cells on the same data is a fit. The reset adds trades that lose - a stop-out day is usually a choppy day and a second signal from the previous hour's range trades the chop. |
+| Open (the user's call) | Nothing pending here; Strategy 111 as specified stays the reference. |
+| Effort | **S** (measured). |
+| Priority | _Closed by measurement; nothing adopted._ Related: S120, S122. |
+
+---
+
 ### S122. Lab v2 Strategies 114 - 118: Jilly's ORB + Noise Band (Strategy 111) as the day's confirmation, then market structure for the trades - plain CHoCH / BOS (Jilly's direction, and both directions) and Strategy 1 / 2 / 3 SETUPs. Measured: all lose except Strategy 2's 5-minute SETUPs in Jilly's direction (futures PF 1.166 on 191 trades, PF 0.64 without its top 10); reversals make every variant worse; the base Strategy 111 stays the best
 
 | | |
