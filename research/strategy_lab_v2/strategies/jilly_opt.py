@@ -5,13 +5,22 @@ Strategies 110 / 111 read every rule on the near-month future and only bought th
 the option's candles; BUILD marks what the futures spec does not carry over and had to be chosen:
 
   the legs        BUILD: each session, the day-open ATM (the index's 09:15 open rounded to 50; `strike`: ATM, or ITM1 = 50
-                  points in the money) CE and PE of the nearest weekly expiry on or after today. Each leg is its own chart and
+                  points in the money; or PREM - ST121 / ST122, the user: "stick to an opening range of 100 - 250, not just
+                  ATM" - the strike nearest the money whose 09:15 open is between prem_lo and prem_hi, none in range: no trade
+                  on that side) CE and PE of the nearest weekly expiry on or after today. Each leg is its own chart and
                   can trade once a day; both may trade the same day.
   the side        (`sides`) "buy" (ST112 / ST113): a leg trades its UPSIDE breakout - the close above ORH + 0.3 ATR, above
                   UB(key) and above VWAP at a checkpoint - by buying it. "both" (ST119 / ST120, the user: "apply it directly on
                   ATM, both sides, and trade both sides"): the DOWNSIDE breakdown - the close below ORL - 0.3 ATR, below
                   LB(key) = min(O, PC) x (1 - band_k x sigma) and below VWAP - SELLS the leg; stop above (fill + stop_atr x ATR,
                   or the OR midpoint), target below (floored at 0.05). Either way the first signal per leg per day.
+  structure       (`struct`, ST121, the user: "take trades outside protected levels") the Foundation engine (`struct_rules`,
+                  Strategy 1's) on the leg's own candles: the leg's trend = the side of its last CHoCH; a BUY is taken only
+                  when the leg's structure is bullish (trading above its protected swing low), a SELL only when bearish.
+  trail           (`trail`: "prot", `trail_after`: 30, the user: "SL once profit reaches 30 points ... trail by protected
+                  level") once the trade is `trail_after` premium points in profit (on its best high / low), the stop moves
+                  to the leg's protected level whenever the structure is on the trade's side and that level is beyond the
+                  current stop; it never loosens. A stop hit after a move is "trail_stop".
   O, PC, UP       O = the leg's 09:15 open; PC = the same contract's last close of the previous session; UP = max(O, PC);
                   UP = O when the contract has no candles the previous session (the new-contract rule). A leg without a
                   09:15 candle does not trade that day.
@@ -59,7 +68,7 @@ _LEGS = {}
 
 def legs(J, d0, d1):
     """{(day, right): dict(...)} - each session's day-open ATM / ITM1 leg with its own candles, profile and signal."""
-    key = (tuple(sorted((k, str(v)) for k, v in J.items() if k != "notes")), d0, d1)
+    key = (tuple(sorted((k, str(v)) for k, v in J.items() if k not in ("notes", "stop", "stop_atr", "target_r", "trail", "trail_after"))), d0, d1)   # the exits do not change the legs
     if key in _LEGS: return _LEGS[key]
     sp = _J._store_bars("index"); f = _J._store_bars("fut")
     exps = sorted(e["expiry"] for e in store_reader.expiries())
@@ -75,8 +84,21 @@ def legs(J, d0, d1):
         ex = next((e for e in exps if e >= day), None)
         if not ex: continue
         for right in ("CE", "PE"):
-            k = atm if J["strike"] == "ATM" else (atm - 50 if right == "CE" else atm + 50)
-            a = _leg_candles(ex, k, right, day)
+            if J["strike"] == "PREM":                            # the strike nearest the money opening (09:15) at a premium in range
+                k, a = None, np.zeros((0, 6))
+                for n_ in range(0, J.get("prem_steps", 12) + 1):
+                    for k_ in ((atm,) if n_ == 0 else (atm + 50 * n_, atm - 50 * n_)):
+                        a_ = _leg_candles(ex, k_, right, day)
+                        if not len(a_): continue
+                        t_ = a_[:, 0].astype(np.int64); w_ = np.nonzero((t_ // DAY == core.dnum(day)) & (t_ % DAY == 555 * 60))[0]
+                        if len(w_) and J["prem_lo"] <= a_[w_[0], 1] <= J["prem_hi"]: k, a = k_, a_; break
+                    if k is not None: break
+                if k is None:
+                    rec = dict(day=day, right=right, k=atm, exp=ex, signal=None, why=f"no strike opening at {J['prem_lo']} - {J['prem_hi']}")
+                    R[right].append((day, None)); out[(day, right)] = rec; continue
+            else:
+                k = atm if J["strike"] == "ATM" else (atm - 50 if right == "CE" else atm + 50)
+                a = _leg_candles(ex, k, right, day)
             rec = dict(day=day, right=right, k=k, exp=ex, signal=None, why=None)
             if not len(a): rec["why"] = "no candles in the store"; R[right].append((day, None)); out[(day, right)] = rec; continue
             t = a[:, 0].astype(np.int64); dd = t // DAY; dn = core.dnum(day)
@@ -96,6 +118,12 @@ def legs(J, d0, d1):
             R[right].append((day, prof))
             out[(day, right)] = rec
             rec.update(t=t[ia:iz], o=o, h=h, l=l, c=c, v=v, kv=kv)
+            if J.get("struct") or J.get("trail"):                 # the leg's own structure: trend and protected level per minute
+                eng = core.foundation(core.Bars(t, a[:, 1], a[:, 2], a[:, 3], a[:, 4], a[:, 5]), J["struct_rules"])
+                tr = np.zeros(len(t), np.int8)
+                for j in range(len(eng.ei)):                       # the trend = the side of the last CHoCH (the last BOS before any)
+                    if eng.ek[j] == 1 or not tr[int(eng.ei[j]):].any(): tr[int(eng.ei[j]):] = eng.ed[j]
+                rec.update(trend=tr[ia:iz], prot=np.asarray(eng.prot)[ia:iz])
             if kv[0] != 1: rec["why"] = "no 09:15 candle"; continue
             if len(prev) < J["sigma_lb"]: rec["why"] = "fewer than 20 prior profiles"; continue
             sig = np.mean(prev, axis=0); rec["sigma30"] = float(sig[29])
@@ -127,6 +155,7 @@ def legs(J, d0, d1):
                 if C > ORH + J["atr_buf"] * atr and C > UB[ck - 1] and C > vw[q]: side = 1
                 elif J.get("sides") == "both" and C < ORL - J["atr_buf"] * atr and C < LB[ck - 1] and C < vw[q]: side = -1
                 else: continue
+                if J.get("struct") and rec["trend"][q] != side: continue     # outside the protected level of the leg's own structure only
                 if q + 1 >= len(c): break
                 rec.update(signal=side, q=q, key=ck, close=C, atr=atr, fill_q=q + 1, fill=float(o[q + 1])); break
             if rec["signal"] is None: rec["why"] = "no signal"
@@ -150,7 +179,7 @@ def run(ctx):
     flat_key = (core.hhmm_sec(J["flatten"]) - 555 * 60) // 60 + 1
     res = {}
     for ch in core.choice_keys(spec, "OPT_FUT_SIGNAL"):
-        Jc = dict(J, strike="ATM" if ch.endswith("ATM") else "ITM1")
+        Jc = dict(J, strike="ATM" if ch.endswith("ATM") else "PREM" if ch.endswith("PREM") else "ITM1")
         L = legs(Jc, d0, d1)
         trs, skipped = [], []
         for (day, right), r in sorted(L.items()):
@@ -164,12 +193,19 @@ def run(ctx):
                 target = max(0.05, fill - J["target_r"] * (stop - fill))
             o, h, l, c, kv, t = r["o"], r["h"], r["l"], r["c"], r["kv"], r["t"]
             xq, why, xp = len(c) - 1, "eod", float(c[-1])
+            best, moved = fill, 0
             for m in range(r["fill_q"], len(c)):
                 if kv[m] >= flat_key: xq, why, xp = m, "eod", float(o[m]); break
                 hs, ht = ((l[m] <= stop), (h[m] >= target)) if sd > 0 else ((h[m] >= stop), (l[m] <= target))
                 if hs or ht:
-                    why = "stop_loss" if hs else "target 1"
+                    why = ("trail_stop" if moved else "stop_loss") if hs else "target 1"
                     xq, xp = (m + 1, float(o[m + 1])) if m + 1 < len(c) else (m, float(c[m])); break
+                if J.get("trail") == "prot":                       # once `trail_after` points in profit, the stop follows the leg's
+                    best = max(best, float(h[m])) if sd > 0 else min(best, float(l[m]))       # protected level (never loosens)
+                    if (best - fill if sd > 0 else fill - best) >= J["trail_after"]:
+                        pv = float(r["prot"][m])
+                        if not np.isnan(pv) and r["trend"][m] == sd and ((sd > 0 and c[m] > pv > stop) or (sd < 0 and c[m] < pv < stop)):
+                            stop = pv; moved += 1
             name = f"NIFTY {Dt.date.fromisoformat(r['exp']):%d%b%y} {r['k']} {right}".upper()
             pos = "LONG" if sd > 0 else "SHORT"
             rec = dict(dir="up" if sd > 0 else "down", signal="BULLISH" if sd > 0 else "BEARISH", choch_time=int(t[r["q"]]), und_entry=fill, und_exit=xp, stale=False, lots=lots, tranche="",
@@ -186,12 +222,12 @@ def signals(bars, spec):
 
 
 def chart_main(ctx, body, day, to):
-    """The near-month future of day..to for reference only: the signals and the trades are on each leg's own chart (the CE and
-    PE panes, chart_leg)."""
-    f = _J._store_bars("fut"); a, z = int(np.searchsorted(f.day, core.dnum(day))), int(np.searchsorted(f.day, core.dnum(to), "right"))
-    if a >= z: raise ValueError(f"no futures candles from {day}")
-    return dict(day=day, to=to, inst=None, candles=core._chart_bars(f, a, z - 1), cols=body["cols"], trades=[], own=True, reference=True,
-                sessions=len(np.unique(f.day[a:z])))
+    """Standalone: the main chart is the option leg itself - the leg of the day's first trade (else the CE) - with its own band,
+    opening range and VWAP and its trades; the CE / PE panes show both legs (chart_leg). The future is not drawn: nothing in
+    these strategies reads it (the index's 09:15 open only picks the ATM strike)."""
+    C = {k: i for i, k in enumerate(body["cols"])}
+    mine = sorted((x for x in body["trades"] if day <= str(x[C["entry_time"]])[:10] <= to), key=lambda x: x[C["entry_time"]])
+    return chart_leg(ctx, body, day, to, atm=mine[0][C["opt_type"]] if mine else "CE")
 
 
 def chart_leg(ctx, body, day, to, atm=None, inst=None):
@@ -200,16 +236,22 @@ def chart_leg(ctx, body, day, to, atm=None, inst=None):
     every trade of that right - bought and sold."""
     J = ctx["spec"]["jilly"]; C = {k: i for i, k in enumerate(body["cols"])}
     right = atm or str(inst).split()[-1]
-    L = legs(dict(J, strike="ATM"), day, to)
+    sd_ = ctx["spec"]["options"].get("strike_default", "ATM")
+    L = legs(dict(J, strike="PREM" if sd_ == "PREM" else "ATM" if sd_ == "ATM" else "ITM1"), day, to)
     NM = [("UB", "#e5484d"), ("LB", "#30a46c"), ("ORH", "#8e4ec6"), ("ORL", "#8e4ec6"), ("ORM", "#f5a524"), ("VWAP", "#2962ff")]
     candles, lines, names, trades = [], [[] for _ in NM], [], []
     for d in sorted({k[0] for k in L if day <= k[0] <= to}):
         r = L.get((d, right))
         if not r or "t" not in r: continue
         t = r["t"]; names.append(f"{d[5:]}: {r['exp'][5:]} {r['k']} {right}")
+        brk = bool(candles)                           # a new session is usually another contract: every line breaks at its first minute
         candles += [[int(t[i]), float(r["o"][i]), float(r["h"][i]), float(r["l"][i]), float(r["c"][i]), float(r["v"][i])] for i in range(len(t))]
         for i in range(len(t)):
             kk, tt = int(r["kv"][i]), int(t[i])
+            if brk and i == 0:
+                for ln in lines:
+                    if ln: ln.append([tt, None])
+                continue
             if "UB" in r and 1 <= kk <= 375: lines[0].append([tt, round(float(r["UB"][kk - 1]), 2)]); lines[1].append([tt, round(float(r["LB"][kk - 1]), 2)])
             if "ORH" in r and kk > J["or_keys"]:
                 lines[2].append([tt, r["ORH"]]); lines[3].append([tt, r["ORL"]]); lines[4].append([tt, r["ORM"]])
@@ -219,4 +261,5 @@ def chart_leg(ctx, body, day, to, atm=None, inst=None):
     keep = [k for k in range(len(NM)) if lines[k]]
     return dict(day=day, to=to, inst=f"ATM {right} (" + "; ".join(names) + ")", candles=candles, cols=body["cols"], trades=trades, own=True,
                 lines=[lines[k] for k in keep], line_names=[NM[k][0] for k in keep], line_colors=[NM[k][1] for k in keep],
-                sessions=len({c[0] // DAY for c in candles}))
+                sessions=len({c[0] // DAY for c in candles}),
+                derived=dict(what=f"the day-open ATM {right}'s own 1-minute chart, standalone ({'; '.join(names)}): its noise band UB / LB, its opening range ORH / ORL / ORM, its VWAP - the signals, stops and exits are all read here, not on the future"))

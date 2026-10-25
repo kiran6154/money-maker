@@ -438,7 +438,7 @@ export class ChartView {
       const RB = ["#e5484d", "#f76b15", "#f5a524", "#e2c93a", "#7ac943", "#30a46c", "#12a594", "#0090ff", "#3e63dd", "#8e4ec6"];
       d.lines.forEach((ln, k, all) => { if (ln.length) line(d.line_names                    // a strategy's named lines (Strategy 67's SMAs): its own colours
         ? { color: d.line_colors[k], lineWidth: 2, title: d.line_names[k], lastValueVisible: true }
-        : { color: RB[all.length > 1 ? Math.round(9 * k / (all.length - 1)) : 0], lineWidth: 1 }, ln.map(([x, v]) => ({ time: x, value: v }))); });
+        : { color: RB[all.length > 1 ? Math.round(9 * k / (all.length - 1)) : 0], lineWidth: 1 }, ln.map(([x, v]) => (v == null ? { time: x } : { time: x, value: v })))); });   // a null value breaks the line
     }
     if (on.avwap && d.pair) for (const a of d.pair) {
       const col = a.side === "H" ? ORANGE : BLUE;
