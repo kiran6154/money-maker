@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S109. Lab v2 fair-value weekly book with the monthly longs HELD across weeks and rolled at 15 days (the user's restatement of Strategy 91 with "roll over buy on 15 day end"). Measured on the full-strike stretch: ₹+42,706 over 73 weeks - but one leg, the March 2026 side flip (the put hedge sold at 1,800 after a 1,600-point fall), makes ₹+311,244; without it the book loses about ₹-268,500
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/tools/cagr_book.py` (a script, no strategy page - the user: "this does not require a chart; give me a table of trades"), every leg in `results/cagr_book_trades.csv`. 2026-10-25. The user's answers: keep the longs across weeks; the period where every strike exists (weekly expiries from 2025-05-15; entries 2025-05-14 → 2026-10-09). |
+| The rule as run | Strategy 91's (fair value 2000 × 1.10^years; the session before each weekly expiry at 09:30; above the line sell the next weekly's puts nearest 150 and 450 premium, below the calls; strikes ×100; marked hourly). The week's shorts are bought back at +3% / -6% of the week's base (₹150,000 × 2 short lots plus the longs' value at the week's entry; the week's P&L = the shorts plus the longs' move since the week's entry) or two sessions before the sold expiry. The 3 monthly longs (nearest 200 premium, at least 18 days out) are NOT closed with the week: under 15 days they are sold and the next monthly bought. Build choices: when the line's side flips at a week's entry the old right's longs are sold and the new right's bought; 0.5 slippage a side, option charges, lot 65. |
+| Impact | **Measured, 2025-05-14 → 2026-10-09, after costs: 73 weeks traded, none skipped; exits 38 two sessions before expiry, 24 targets, 11 stops; the shorts ₹+159,480 (146 legs, 45 winning weeks); the longs ₹-116,774 (18 legs: 16 rolls, 1 side flip, 1 data end); total ₹+42,706.** The longs: 14 of the 16 rolls lose ₹-8,989 to ₹-37,257 each (the monthly bought near 200 decays to 3 - 80 by 15 days out), one roll +₹21,437 (August 2025) and one +₹670; **the side flip on 2026-03-09 sold the 2026-03-30 25600 put at 1,800.00 (bought at 200.00 on 2026-02-10; the index fell from 25,365 to 23,736) for ₹+311,244**. Without that one leg the book is about ₹-268,500. Weeks by line side: 42 put-side (2025-05 → 2026-03), 31 call-side. Worst week -14.9% (2026-02-02: the shorts +₹32,995, the long hedge -₹98,924 in a day). |
+| Read | The shorts earn about ₹2,200 a week; holding three 200-premium monthlies and rolling them every month costs about ₹30,000 a roll, more than the shorts earn - the S103 hedge cost again, now paid monthly instead of weekly. The one time the hedge paid (the index 6% lower in a week and a half, 2026-02-27 → 03-09) it paid for everything, which is what a hedge is for; but the result is that one event, not the rule. |
+| Open (the user's call) | Unquantified: the hedge at 1 lot; a cheaper long (100 premium); the weeks before 2025-05 when the download completes (the 2024 - early 2025 put-side year). |
+| Effort | **S**. |
+| Priority | _Open; first numbers recorded._ Related: S103 - S108. |
+
+---
+
 ### S108. Lab v2 Strategies 91 - 93 from 2025-01-01, split by data coverage (the far-strike download complete for expiries 2025-06-05 → 2026-10-19). On the full-data stretch all three lose: 91 ₹-75,242 (70 positions, PF 0.70), 92 ₹-109,367 (31, PF 0.60), 93 ₹-40,024 (24, PF 0.81); the January - May 2025 positions on narrow expiries are positive but are only the weeks the narrow store could enter
 
 | | |
