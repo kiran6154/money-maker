@@ -457,6 +457,30 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S136. Lab v2 Strategies 125 - 128: gap days (0.2% and more) classified by the day's first CHoCH / BOS on the NIFTY spot as "follow" (the break goes the gap's way) or "reverse", the 150-point ITM option bought that way. Measured 2018-02 - 2026-10: all four lose, before costs as well (gross PF 0.91 - 0.98), in both halves; neither follow nor reverse has an edge; Strategy 124's opening-range read stays the better gap-day entry
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no live strategy changed |
+| Code | `research/strategy_lab_v2/strategies/gapstruct.py`, `st125.py` - `st128.py` |
+
+**Build** (the user's request after S135: "identify if it's gap days and whether price follows or reverses using CHoCH or BOS and backtest"). Gap = the 09:15 open against the previous session's 15:15 close, a gap day at 0.2% or more (Strategy 124's small-gap boundary; BUILD). The Foundation engine (Strategy 1's rules, touch) on the index's 1- or 5-minute candles, warmed on 2 sessions; the day's FIRST CHoCH or BOS confirmed after the 09:15 candle and closing by 14:00 classifies the day and is traded (one a day): the 150-point ITM weekly (CE up / PE down) bought at the open of the minute after the break candle closes. Exits: "premium" = Strategy 124's (stop 70%, 80% trail of the highest close once above 105%, flat 15:15); "structure" = the next CHoCH against on the same candles, flat 15:15. 0.1% of premium a side + charges by date; 1 lot of 65. The first 1-minute break comes 14 minutes after the open (median; 55% by 09:30); the first 5-minute one 60 minutes after (19% by 09:45).
+
+| Strategy | Trades | Win % | Net PF | Gross PF | PF 2018-22 / 2023-26 | Net ₹ | Max DD ₹ | Follow: trades, PF, net ₹ | Reverse: trades, PF, net ₹ |
+|---|---|---|---|---|---|---|---|---|---|
+| ST125 1m, premium exits | 1,316 | 37.3 | 0.93 | 0.98 | 0.93 / 0.93 | -1,32,067 | -1,99,199 | 948, 0.93, -95,146 | 368, 0.93, -36,921 |
+| ST126 1m, next-CHoCH exit | 1,316 | 38.7 | 0.88 | 0.91 | 0.90 / 0.86 | -3,27,053 | -4,06,170 | 948, 0.93, -1,27,602 | 368, 0.76, -1,99,452 |
+| ST127 5m, premium exits | 1,300 | 36.6 | 0.89 | 0.94 | 0.86 / 0.93 | -1,95,095 | -2,35,103 | 899, 0.93, -87,276 | 401, 0.82, -1,07,818 |
+| ST128 5m, next-CHoCH exit | 1,300 | 42.8 | 0.90 | 0.93 | 0.91 / 0.89 | -2,57,041 | -3,23,138 | 899, 0.94, -92,130 | 401, 0.81, -1,64,911 |
+
+At +0.2% a side (Strategy 124's stress) PF 0.90 / 0.85 / 0.86 / 0.87. Skipped 18 (1-minute) / 26 (5-minute): no ITM candles or no candle at the entry minute. Lab pages (cache to 2026-10-09): ST125 PF 0.93 t -1.0; ST126 0.87 t -1.75; ST127 0.89 t -1.5; ST128 0.90 t -1.43.
+
+**Splits (none holds in both halves).** The first event is a BOS on about 90% of days (1-minute 1,204 of 1,316). A day opening with a CHoCH reads better (PF 0.96 - 1.07 on 112 - 158 trades) but only on 2018 - 22 (1.14 - 1.34) and loses on 2023 - 26 (0.42 - 0.92), and without its top 10 trades it is 0.16 - 0.51. "Reverse by BOS" is the worst cell everywhere (PF 0.71 - 0.88). By gap size, follow on gaps of 1% and more is 0.89 - 1.16 overall (2023 - 26 1.37 - 2.20, 2018 - 22 0.67 - 0.96; 125 - 126 trades in all); small gaps (0.2 - 0.5%) reversed lose in all four (0.65 - 0.86). By year no variant is positive in more than 3 of 9 years.
+
+**Reading.** The first structure break after a gap does not tell which way the day goes, well enough to pay a bought option: follow and reverse lose alike, before costs. Against Strategy 124 (gross PF 1.38): its entry waits for the 09:15 - 09:45 range and a 10% break beyond it, the gap's way only, and stands down once the gap has filled - the early 1-minute break used here comes before the range is set (87% by 09:45).
+
+**Open (not adopted).** The CHoCH-first and big-gap-follow cells are full-window observations on small counts; to test either, pre-register it on 2018 - 22 and read 2023 - 26. Using structure as a filter on Strategy 124's own entries (rather than as the entry) is untested.
+
 ### S135. Lab v2 Strategy 124: OptionsBuyer.in's NIFTY gap-and-go -> Williams chain built from the user's pasted spec and backtested 2018-02 - 2026-10. Measured: net PF 1.31 over 1,253 trades, but 1.58 on 2018 - 22 and 1.08 on 2023 - 26 (1.04 at the spec's +0.2% cost stress); the gap-and-go leg carries it, the Williams back-up is marginal (PF 0.95 without its top 10 trades); 2023 and 2025 lose
 
 | | |

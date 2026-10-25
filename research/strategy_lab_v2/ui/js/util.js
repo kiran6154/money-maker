@@ -62,6 +62,17 @@ export function algorithm(spec) {
   const by = (m) => (m === "close" ? "a candle closing beyond it" : "a candle touching it (high / low)");
   const S = (t, sub) => ({ t, sub: sub || [] });
   const steps = [];
+  if (spec.rules?.entry_rule === "gap_structure_v1") {   // Strategies 125 - 128: gap days, follow or reverse by CHoCH / BOS
+    const g = spec.gapstruct;
+    return [
+      S(`Gap day: the NIFTY spot's 09:15 open is ${g.gap_min}% or more away from the previous session's 15:15 close.`),
+      S(`Structure: the Foundation engine (Strategy 1's rules, touch) on the index's ${g.minutes}-minute candles, warmed up on ${g.warm} sessions. The day's FIRST CHoCH or BOS after the 09:15 candle (closing by ${g.last_entry}) decides: a break the gap's way = follow, against it = reverse.`),
+      S(`Trade ${g.take === "both" ? "either way" : `only ${g.take}`}: buy the ${g.itm}-point ITM weekly option in the break's direction (CE up, PE down; the nearest expiry on or after the day) at the open of the minute after the break candle closes. One trade a day.`),
+      S(g.exit === "structure"
+        ? "Exit: the next CHoCH against the trade on the same candles (sold at the minute after it closes); flat 15:15. No other stop."
+        : `Exit on the premium's 1-minute closes, filled at the next open: stop ${Math.round(g.stop * 100)}% of entry; once above ${Math.round(g.arm * 100)}%, a trail at ${Math.round(g.trail * 100)}% of the highest close; flat 15:15.`),
+      S(`Costs: ${g.slip_pct}% of the premium a side plus option charges by date.`)];
+  }
   if (spec.rules?.entry_rule === "gapgo_williams_v1") {   // Strategy 124: the gap-and-go -> Williams chain
     const g = spec.gapgo;
     return [
