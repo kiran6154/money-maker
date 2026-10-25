@@ -62,6 +62,20 @@ export function algorithm(spec) {
   const by = (m) => (m === "close" ? "a candle closing beyond it" : "a candle touching it (high / low)");
   const S = (t, sub) => ({ t, sub: sub || [] });
   const steps = [];
+  if (spec.rules?.entry_rule === "jilly_orb_noise_v1") {   // Strategies 110 / 111: Jilly's ORB + Noise Band (the user's paper spec)
+    const y = spec.jilly;
+    return [
+      S("Signals on the near-month FUTURES, 1-minute bars; key = minutes since 09:15 at a bar's close (the 09:15 bar is key 1). A session trades only if its first bar is 09:15."),
+      S("Before the open:", [
+        S("O = the 09:15 open; PC = the last close of the previous full session (not a stub ending before ~12:30). UP = max(O, PC), DN = min(O, PC); on the first session of a new contract UP = DN = O."),
+        S(`σ(m), m = 1…375: the mean over the prior ${y.sigma_lb} full sessions of |close(m) / open − 1|. Bands UB(m) = UP × (1 + ${y.band_k}·σ(m)), LB(m) = DN × (1 − ${y.band_k}·σ(m)).`),
+        ...(y.filter ? [S(`Vol filter: today's σ(30) ranked against the previous ${y.rank_lb} sessions' — skip the day if the rank is below ${y.rank_cut} (no filter with fewer than ${y.rank_min} values).`)] : [S("No volatility filter (the script defaults).")])]),
+      S(`Opening range: ORH / ORL of keys 1–${y.or_keys}; ORM = their midpoint. ATR(${y.atr_n}) Wilder on 5-minute bars, continuous; session VWAP of hlc3 with futures volume.`),
+      S(`At the closes of 09:45, 10:00 … 14:00: LONG if close > ORH + ${y.atr_buf}·ATR and > UB(key) and > VWAP; SHORT the mirror. The first signal of the day only; fill at the next 1-minute bar's open.`),
+      S(`Futures: stop = fill ∓ ${y.stop_atr} × ATR, target ${y.target_r}R. A touch exits at the next minute's open (both in one minute: the stop); flat at the ${y.flatten} open.`),
+      S(`Options (from ${y.opt_from}): ATM = round(spot at the signal / 50) × 50, or 1-ITM; CE for a long signal, PE for a short; the nearest weekly on or after today. Stop on the future: ${y.opt_stop === "orm" ? "the OR midpoint" : `${y.stop_atr} × ATR`}; target ${y.target_r_opt}R on the future; the option is sold at the open of the minute after the futures trigger.`),
+      S("Costs: 0.5 pt a side on futures, max(0.5, 0.5% of premium) on options; F&O charges by date (STT 0.05% futures / 0.15% options from April 2026); lot 65. Data: the download store to 2026-10-23.")];
+  }
   if (spec.rules?.entry_rule === "foundation_opt_v1") {   // Strategy 94: Strategy 1 on the option's own candles, previous-day range tagged
     const y = spec.fopt;
     return [
