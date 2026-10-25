@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S121. Lab v2 Strategies 112 and 113: Jilly's ORB + Noise Band read DIRECTLY on the option's own chart (day-open ATM / 1-ITM CE and PE, bought on the leg's upside breakout). Measured: it loses - ATM PF 0.929 (defaults) / 0.938 (spec settings), against PF 1.135 / 1.260 when the same rules are read on the future (S120)
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/jilly_opt.py` (family module), `st112.py` (no filter; stop 10 x the option's ATR, 1R), `st113.py` (the sigma filter; stop at the leg's OR midpoint, 2R). 2026-10-25, the user: "try applying this directly on options instead of the future". |
+| Build choices (the futures spec does not carry over; all in the module text) | Each session's day-open ATM (or 1-ITM) CE and PE of the nearest weekly, each its own chart, buy only (a leg's upside break: close above its ORH + 0.3 ATR, its UB(key) and its VWAP); PC = the same contract's previous-session close; sigma(m) from the prior 20 sessions' day-open ATM option of the same right (a weekly contract has no 20 sessions behind it); ATR(9) on the contract's own 5-minute bars; stop / target and the 15:20 flatten on the option. Options from 2020-02 to 2026-10-23, the store; the same costs as S120. |
+| Impact | **Measured, after costs. ST112 (defaults): ATM 562 trades (258 CE / 304 PE), PF 0.929, w/o top-10 0.820, 2020-22 / 2023-26 1.00 / 0.90, ₹-76,144, max DD ₹-143,425; 1-ITM 629 trades, PF 0.984, ₹-21,626. ST113 (spec settings): ATM 431 trades, PF 0.938, 1.03 / 0.89, ₹-45,727, DD ₹-109,798; 1-ITM 501 trades, PF 0.862, ₹-133,560, DD ₹-218,475.** By leg (ATM, ST112): CE PF 1.016 (₹+6,624), PE 0.877 (₹-82,768); ST113: CE 0.978, PE 0.913. Against the same rules read on the future and the option only bought (S120, same window): ST110 ATM 819 trades PF 1.135, ₹+162,343; ST111 ATM 578 trades PF 1.260, ₹+209,898. |
+| Read | Moving the reading from the future to the option's own chart removes the edge. Two mechanisms are visible in the numbers, not proven causes: (1) 10 x the option's ATR is usually larger than the premium, so ST112 has no working stop (14 stops in 562 trades) and the trade is the 15:20 close - an option bought at a breakout then decays to the close (483 of 562 end at 15:20); (2) the option's opening range and noise band are a premium's, which moves with time decay as well as with the index - a PE breaking out upward is often the index's dip, the side the futures version's band does not take (PE PF 0.877 / 0.913, the CE side about flat). The futures-read version stays the one worth paper trading. |
+| Open (the user's call) | Queued by the user: CHoCH / BOS entries after the Jilly confirmation (both directions), Strategies 1 / 2 / 3 after the confirmation, a stop sweep on the futures version, and a reset after a fixed stop with the previous hour's range. |
+| Effort | **S** (measured). |
+| Priority | _Closed by measurement; nothing adopted._ Related: S120. |
+
+---
+
 ### S120. Lab v2 Strategies 110 and 111: Jilly's ORB + Noise Band, built from the user's paper-trading spec and backtested on the download store. The spec's numbers reproduce: futures 1,066 trades PF 1.194 without the filter (the user's table 1,065 / 1.205) and 789 / PF 1.269 with it (spec 787 / 1.276); options with 10 x ATR + 1R 819 trades, ATM PF 1.135 / 1-ITM 1.153 (table 817 / 1.141 / 1.158); the spec's option config (filter, OR-midpoint stop, 2R) 578 trades, ATM PF 1.260 (spec 575 / 1.267)
 
 | | |

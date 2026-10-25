@@ -92,6 +92,8 @@ LINEAGE = {
     "ST84": ("ST83", "The reclaim only arms the setup; the entry waits for the first BOS / CHoCH that way on the 1-minute structure (instead of the blind entry)."),
     "ST85": ("ST83", "The same signals traded on options: a long signal sells the PE at the day's low, a short signal sells the CE at the day's high; out when the index closes back through the strike, else 15:15; both sides, one position per side."),
     "ST94": ("ST1", "Strategy 1's rules on the day-open ATM option's own candles: a bullish SETUP buys the option, out at the previous swing's stop or the next CHoCH; each trade tagged inside / above / below the option's previous-session range."),
+    "ST113": ("ST112", "On the option's own chart with the paper spec's settings: the sigma filter, the leg's OR-midpoint stop and a 2R target."),
+    "ST112": ("ST110", "The same rules read on the option's own chart (day-open ATM CE and PE, each its own chart, bought on its upside breakout) instead of the future; stop 10 x the option's ATR, 1R."),
     "ST111": ("ST110", "The paper-trading spec: the sigma(09:45) volatility filter; options with the stop at the OR midpoint on the future and a 2R target."),
     "ST110": (None, "Jilly's ORB + Noise Band (the user's paper spec, script defaults): near-month futures, 1-minute; first close beyond ORH + 0.3 ATR, the noise band and VWAP at the 09:45 - 14:00 checkpoints; futures 10 x ATR stop and 1R, flat 15:20; ATM / 1-ITM options bought on the same signal."),
     "ST93": ("ST92", "The monthly longs rolled too: under 15 days to expiry they are sold and the next monthly's 200-premium strike bought; the position ends only at +3% / -6%."),

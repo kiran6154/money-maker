@@ -62,6 +62,15 @@ export function algorithm(spec) {
   const by = (m) => (m === "close" ? "a candle closing beyond it" : "a candle touching it (high / low)");
   const S = (t, sub) => ({ t, sub: sub || [] });
   const steps = [];
+  if (spec.rules?.entry_rule === "jilly_orb_noise_opt_v1") {   // Strategies 112 / 113: Jilly read on the option's own chart
+    const y = spec.jilly;
+    return [
+      S("The legs: each session's day-open ATM (or 1-ITM) CE and PE of the nearest weekly, each read on its own 1-minute chart; BUY only — a leg trades its upside breakout."),
+      S(`On the leg: O = its 09:15 open, PC = the same contract's previous close, UP = max(O, PC); σ(m) = the mean over the prior ${y.sigma_lb} sessions of |close(m) / open − 1| of that day's ATM option of the same right; UB(m) = UP × (1 + ${y.band_k}·σ(m)).`),
+      ...(y.filter ? [S(`Vol filter: the leg's σ(30) ranked against the previous ${y.rank_lb} sessions' — skip below ${y.rank_cut}.`)] : []),
+      S(`Its own ORH / ORL (keys 1–${y.or_keys}), ATR(${y.atr_n}) on its 5-minute bars, VWAP with its volume. At 09:45 … 14:00: BUY if close > ORH + ${y.atr_buf}·ATR, > UB(key) and > VWAP; the first signal per leg; next-bar open.`),
+      S(`Exits on the option: ${y.stop === "orm" ? "stop at its OR midpoint" : `stop = fill − ${y.stop_atr} × its ATR (floored at 0.05)`}, target ${y.target_r}R; a touch exits at the next open; flat at ${y.flatten}. Options from ${y.opt_from}; costs as Strategies 110 / 111.`)];
+  }
   if (spec.rules?.entry_rule === "jilly_orb_noise_v1") {   // Strategies 110 / 111: Jilly's ORB + Noise Band (the user's paper spec)
     const y = spec.jilly;
     return [
