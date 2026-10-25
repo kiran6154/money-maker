@@ -62,6 +62,15 @@ export function algorithm(spec) {
   const by = (m) => (m === "close" ? "a candle closing beyond it" : "a candle touching it (high / low)");
   const S = (t, sub) => ({ t, sub: sub || [] });
   const steps = [];
+  if (spec.rules?.entry_rule === "gapgo_williams_v1") {   // Strategy 124: the gap-and-go -> Williams chain
+    const g = spec.gapgo;
+    return [
+      S("NIFTY spot, 1-minute candles. Opening range = the highest / lowest CLOSE from 09:15 to 09:45; W = its width. Gap = the 09:15 open against the previous session's 15:15 close."),
+      S(`Gap-and-go: from 09:46 to ${g.gng_end}, the first close above ORH + ${g.band}·W or below ORL − ${g.band}·W. It counts only in the gap's direction and only if the index has not yet touched the previous 15:15 close; else the day stands down (opposite_first / filled), or nothing breaks (no_break).`),
+      ...(g.williams ? [S(`Williams (back-up): only after opposite_first or filled, and only when the gap is under 0.2% or 0.5% and above. Levels = today's open ± ${g.wk} × the previous session's close range; the first close beyond either, from the stand-down minute to ${g.wk_end}.`)] : []),
+      S(`Entry at the next minute's open: the ${g.itm}-point in-the-money weekly option (the nearest expiry on or after the day) - CE on an upside signal, PE downside. One trade a day.`),
+      S(`Exits on the premium's 1-minute closes, filled at the next open: stop at ${Math.round(g.stop * 100)}% of entry; once a close is above ${Math.round(g.arm * 100)}% of entry, out at ${Math.round(g.trail * 100)}% of the highest close since entry; flat ${g.flatten}. Costs: ${g.slip_pct}% of the premium a side plus option charges by date.`)];
+  }
   if (spec.rules?.entry_rule === "jilly_ext_v1") {   // Strategies 114 - 118: Jilly as the confirmation, then structure
     const x = spec.jext;
     return [

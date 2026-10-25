@@ -457,6 +457,37 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S135. Lab v2 Strategy 124: OptionsBuyer.in's NIFTY gap-and-go -> Williams chain built from the user's pasted spec and backtested 2018-02 - 2026-10. Measured: net PF 1.31 over 1,253 trades, but 1.58 on 2018 - 22 and 1.08 on 2023 - 26 (1.04 at the spec's +0.2% cost stress); the gap-and-go leg carries it, the Williams back-up is marginal (PF 0.95 without its top 10 trades); 2023 and 2025 lose
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no live strategy changed |
+| Code | `research/strategy_lab_v2/strategies/gapgo.py`, `st124.py` |
+
+**Build.** Every number is the spec's: opening range = the highest / lowest 1-minute close 09:15 - 09:45, bands 10% of its width outside it, checks 09:46 - 12:00 in the gap's direction (gap = 09:15 open vs the previous 15:15 close); stands down on `opposite_first` (the other band breaks first) or `filled` (the index touched the previous 15:15 close before the break); the Williams back-up only after those two and only when |gap| < 0.2% or >= 0.5%: levels open +/- 0.5 x the previous day's highest-minus-lowest close, the first close beyond either from the stand-down minute to 14:29. Entry at the next minute's open of the 150-point ITM option (ATM = spot rounded to 50) of the nearest weekly on or after the day; exits on the premium's 1-minute closes, filled at the next open: stop 70% of entry, once a close is above 105% a trail at 80% of the highest close, flat 15:15; 0.1% of premium a side + option charges by date, lot 65. Choices the spec leaves open (marked BUILD in `gapgo.py`): the 09:15 price is the candle's open; "filled" = a 1-minute high / low through the previous close before the break; the trail's highest point is read on closes; on expiry day the same-day contract. 15 signals skipped (8: no candles for the ITM contract in the store; 7: no option candle at the entry minute). 1,281 signal days: 656 gap-and-go, 460 Williams after opposite_first, 165 after filled.
+
+**Results** (index + store options, 2018-02-01 - 2026-10-23, 1 lot):
+
+| Version | Trades | Win % | Net PF | Gross PF | w/o top-10 | 2018-22 / 2023-26 PF | Net ₹ | Max DD ₹ |
+|---|---|---|---|---|---|---|---|---|
+| chain as specified (0.1% a side) | 1,253 | 41.5 | 1.309 | 1.383 | 1.164 | 1.58 / 1.08 | +4,53,120 | -77,056 |
+| - gap-and-go trades | 639 | 43.7 | 1.420 | 1.501 | 1.179 | 1.80 / 1.09 | +3,03,687 | -33,972 |
+| - Williams trades | 614 | 39.3 | 1.200 | 1.268 | 0.953 | 1.36 / 1.07 | +1,49,433 | -81,568 |
+| - CE / PE | 658 / 595 | 43.5 / 39.3 | 1.290 / 1.328 | | 1.047 / 1.080 | 1.63 / 0.99 ; 1.51 / 1.17 | +2,18,832 / +2,34,288 | |
+| chain, costs +0.2% a side (the spec's stress) | 1,253 | 40.9 | 1.258 | 1.329 | 1.117 | 1.51 / 1.04 | +3,87,942 | -89,870 |
+
+Exits (as specified): 631 trail, 447 flat 15:15, 175 stop. Gap-and-go alone (no Williams) is exactly the gap-and-go row: the back-up never displaces a gap-and-go trade.
+
+By year (PF, net ₹): 2018 1.25 +22,730 · 2019 1.64 +60,147 · 2020 1.80 +1,25,605 · 2021 1.44 +80,168 · 2022 1.65 +1,03,678 · **2023 0.89 -20,308** · 2024 1.55 +94,292 · **2025 0.88 -30,862** · 2026 (to 10-23) 1.10 +17,668.
+
+By gap size: under 0.2% 555 trades PF 1.06; 0.2 - 0.5% 272 PF 1.12; 0.5 - 1% 303 PF 1.62; 1% and above 123 PF 2.10. By entry hour: 09 h 1.39, 10 h 1.40, 11 h 0.93, 12 h 1.26, 13 h 0.86, 14 h 1.93.
+
+Lab pages (the lab cache ends 2026-10-09): 2018-22 686 trades +₹3,92,329 PF 1.58 t 3.99; 2023-26 566 trades +₹52,337 PF 1.07 t 0.53.
+
+**Reading.** The edge is concentrated in the early years: from 2023 the chain is near break-even (t 0.53) and the spec's own cost stress leaves PF 1.04. The gap-and-go leg is the better half in both periods; the Williams back-up adds money only through its largest trades. Large gaps (>= 0.5%) carry most of the profit and small ones barely pay; late entries (11 h, 13 h) lose.
+
+**Open (not adopted - Rule 0 (c)).** "Gap-and-go only", "gaps >= 0.5% only" and "no entries after 11:00" all read better above, but they were seen on the full window, so they are candidates, not results; to test one honestly, pre-register it, choose on 2018 - 22 and read 2023 - 26 only.
+
 ### S131. The user's TradingView script "SG2 Options [Rules: Jilly ORB + Noise Band]" reviewed against Strategy 111: the same rules (its header's numbers are ours within rounding), plus two options - a CPR confirmation and skipping the expiry weekday. Measured: neither adds anything (the trades each removes are profitable); the script has a few build differences that can make it signal differently live
 
 | | |

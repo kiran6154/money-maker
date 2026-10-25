@@ -1,0 +1,122 @@
+{
+ "code": "ST124",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-26T02:09:37",
+   "key": "411065e05f2b",
+   "code": "d63a5ef74c76",
+   "definition": {
+    "code": "ST124",
+    "timeframe": "minute",
+    "underlying": "INDEX",
+    "warmup_days": 1,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "gapgo_williams_v1",
+     "exit_rule": "next_choch"
+    },
+    "gapgo": {
+     "band": 0.1,
+     "gng_end": "12:00",
+     "wk": 0.5,
+     "wk_end": "14:29",
+     "itm": 150,
+     "stop": 0.7,
+     "arm": 1.05,
+     "trail": 0.8,
+     "flatten": "15:15",
+     "slip_pct": 0.1,
+     "bots": "both",
+     "williams": true
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "15:15",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 0.5
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY"
+     ],
+     "expiry_min_days": 0,
+     "strike_step": 50,
+     "strike_choices": [
+      "ITM150"
+     ],
+     "strike_default": "ITM150",
+     "atr_period": 14
+    }
+   },
+   "changes": [],
+   "results": {
+    "all-data_1m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "W-ITM150": {
+       "trades": 1252,
+       "wins": 519,
+       "pts": 8223.35,
+       "net_inr": 444666.51,
+       "pf": 1.3,
+       "max_dd_inr": -77056.08,
+       "t_stat": 3.19
+      }
+     }
+    },
+    "2018-22_1m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "W-ITM150": {
+       "trades": 686,
+       "wins": 316,
+       "pts": 6779.83,
+       "net_inr": 392329.33,
+       "pf": 1.58,
+       "max_dd_inr": -26635.84,
+       "t_stat": 3.99
+      }
+     }
+    },
+    "2023-26_1m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "W-ITM150": {
+       "trades": 566,
+       "wins": 203,
+       "pts": 1443.52,
+       "net_inr": 52337.18,
+       "pf": 1.07,
+       "max_dd_inr": -77056.08,
+       "t_stat": 0.53
+      }
+     }
+    }
+   }
+  }
+ ]
+}

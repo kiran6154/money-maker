@@ -92,6 +92,7 @@ LINEAGE = {
     "ST84": ("ST83", "The reclaim only arms the setup; the entry waits for the first BOS / CHoCH that way on the 1-minute structure (instead of the blind entry)."),
     "ST85": ("ST83", "The same signals traded on options: a long signal sells the PE at the day's low, a short signal sells the CE at the day's high; out when the index closes back through the strike, else 15:15; both sides, one position per side."),
     "ST94": ("ST1", "Strategy 1's rules on the day-open ATM option's own candles: a bullish SETUP buys the option, out at the previous swing's stop or the next CHoCH; each trade tagged inside / above / below the option's previous-session range."),
+    "ST124": (None, "A separate idea, OptionsBuyer.in's NIFTY gap-and-go -> Williams chain: the 09:15 - 09:45 close range broken by 10% of its width in the gap's direction buys the 150-point ITM weekly; on opposite_first / filled the Williams levels (open +/- half of yesterday's close range) take over to 14:29; stop -30%, a 20% trail once +5%, flat 15:15."),
     "ST123": ("ST120", "The settings chosen on 2020 - 2023 only in a 240-cell sweep: band 1.5, buffer 0.5 ATR, a 30-minute opening range, stop 3 x the option's ATR, 2R."),
     "ST122": ("ST119", "On the leg opening (09:15) at 100 - 250 premium instead of the ATM strike."),
     "ST121": ("ST120", "On the leg opening (09:15) at 100 - 250 premium instead of the ATM strike."),
