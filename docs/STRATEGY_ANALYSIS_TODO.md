@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S131. The user's TradingView script "SG2 Options [Rules: Jilly ORB + Noise Band]" reviewed against Strategy 111: the same rules (its header's numbers are ours within rounding), plus two options - a CPR confirmation and skipping the expiry weekday. Measured: neither adds anything (the trades each removes are profitable); the script has a few build differences that can make it signal differently live
+
+| | |
+|---|---|
+| Where | The Pine v6 indicator pasted by the user 2026-10-26 ("check if this has any advantages"); measured on Strategy 111's stored trades (futures 2018 →, ATM / 1-ITM 2020-02 →, to 2026-10-09). |
+| Same as Strategy 111 | The noise band (k 1.25, N 20), the gap-adjusted reference, the sigma(09:45) rank filter (< 0.20 of the prior 250, none below 120 values), OR 09:15 - 09:29, the ORH / ORL + 0.3 ATR9 + band + VWAP checkpoint test at 09:45 ... 14:00, first signal only, ATM from spot at the signal bar (1-ITM alternative), the OR-midpoint stop (10 x ATR fallback) and 2R on the future, flat 15:20. Its header: IS 2020-22 PF 1.430, OOS 2023-26 1.159 (ours 1.42 / 1.13 - 1.15). |
+| Its two options, measured | **CPR confirmation** (a long only when the day opens above the prior day's CPR, a short only below it): futures 782 → 431 trades, PF 1.257 → 1.211, ₹+484,165 → ₹+216,104 (the 351 trades it removes: PF 1.314, ₹+268,060); ATM 573 → 316 trades, PF 1.246 → 1.284, ₹+197,876 → ₹+118,149 (the removed 257: PF 1.206, ₹+79,727); 1-ITM PF 1.245 → 1.286, ₹+226,989 → ₹+139,041. **Skip expiry day**: ATM 573 → 456 trades, PF 1.246 → 1.260, ₹+197,876 → ₹+165,672; 1-ITM PF 1.245 → 1.241. Both drop profitable trades: the PF barely moves, the profit falls 15 - 55%. |
+| Build differences that matter live | (1) It runs on 5-minute bars and computes `key = minutes + 5`: correct only on a 5-minute chart; on any other timeframe the keys, the band and the checkpoints are wrong. (2) VWAP and ATR are the chart symbol's: on the NIFTY index chart (no volume) VWAP is not usable - it must run on the futures chart. (3) The roll day (UP = DN = O) is approximated as the day after the last chosen weekday of the month - one input (Tuesday or Thursday), while monthly expiry moved from Thursday to Tuesday in 2025 and holidays shift expiries; Strategy 111 compares the contract expiries. (4) The stop and target on its label are measured from the signal bar's close, not the next bar's open fill (a small offset). (5) It draws signals and levels only; exits (stop / target / 15:20) are not tracked, so a live position has to be managed by hand against the label. The 5-minute band and checkpoint test themselves agree with the 1-minute version at the checkpoint times. |
+| Read | No advantage in the rules; the script's value is the live alerting. Keep CPR and the expiry skip off. Fix (1) - (3) before relying on it: lock it to a 5-minute futures chart, and take the roll from the contract rather than the weekday. |
+| Effort | **S** (measured). |
+| Priority | _Closed by measurement; nothing adopted._ Related: S120, S129. |
+
+---
+
 ### S130. Trailing exits for Jilly - 19 trailing rules (ATR chandelier 2 - 6 ATR with and without an arming profit, a profit lock of 50 / 70% after 3 / 5 ATR, break-even after 2 / 4 ATR, a swing / protected-level trail, a VWAP-close exit, no target) against the spec's own exits, on four books, chosen on the early years and tested on the later ones. Measured: no trail beats the spec's exits out of sample on any of the four; tight trails lose; removing the target loses everywhere. Nothing adopted
 
 | | |
