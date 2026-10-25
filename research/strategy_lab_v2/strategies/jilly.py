@@ -175,7 +175,7 @@ def engine(J):
         if sig[s] is None or pc is None: rec["why"] = "fewer than 20 prior full sessions"; continue
         O = float(o[a]); UP, DN = (O, O) if new_con else (max(O, pc), min(O, pc))
         UB = UP * (1 + J["band_k"] * sig[s]); LB = DN * (1 - J["band_k"] * sig[s])
-        rec.update(O=O, PC=pc, UP=UP, DN=DN, UB=UB, LB=LB, new_contract=bool(new_con), sigma30=float(s30[s]))
+        rec.update(O=O, PC=pc, UP=UP, DN=DN, UB=UB, LB=LB, new_contract=bool(new_con), sigma30=float(s30[s]), sigma=sig[s])
         # the vol filter
         past = s30[max(0, s - J["rank_lb"]):s]; past = past[~np.isnan(past)]
         rank = float((past < s30[s]).mean()) if len(past) >= J["rank_min"] else None
@@ -199,8 +199,50 @@ def engine(J):
             rec.update(signal=side, i=i, key=ck, close=C, atr=atr, fill_i=i + 1, fill=float(o[i + 1]))
             break
         if rec["signal"] is None: rec["why"] = "no signal"
-    _ENG.clear(); _ENG[key] = (f, keyv, out)
+    _ENG.clear(); _ENG[key] = (f, keyv, out); _AUX["atr"] = (A, bar5)
     return _ENG[key]
+
+
+_AUX = {}
+
+
+def _resignal(J, f, keyv, r, k):
+    """After a fixed stop at 1-minute bar k (the exit bar): the day starts again there (the user, S123). O' = the open of bar k,
+    the opening range = the high / low of the `reset_lookback` minutes before it (the previous hour), the band
+    UB'(m) = O' x (1 + band_k x sigma(m - k0 + 1)) and LB' the mirror, measured from the reset minute (k0 = its key); the session
+    VWAP and the ATR as before. The next checkpoints (keys ck_step apart, after the reset, up to ck_last) can signal either way.
+    Returns a signal record like the engine's, or None."""
+    A, bar5 = _AUX["atr"]; o, h, l, c = f.o, f.h, f.l, f.c
+    a, z = r["a"], r["z"]; k0 = int(keyv[k])
+    lb = max(a, k - J["reset_lookback"])
+    if k - lb < 5: return None
+    ORH, ORL, O = float(h[lb:k].max()), float(l[lb:k].min()), float(o[k])
+    sig = r["sigma"]; vw = r["vwap"]
+    for ck in range(J["ck_first"], J["ck_last"] + 1, J["ck_step"]):
+        if ck <= k0: continue
+        w = np.nonzero(keyv[a:z] == ck)[0]
+        if not len(w): continue
+        i = a + int(w[0]); C = float(c[i]); atr = float(A[bar5[i]]); mm = min(374, ck - k0)
+        UB, LB = O * (1 + J["band_k"] * sig[mm]), O * (1 - J["band_k"] * sig[mm])
+        if np.isnan(atr) or np.isnan(vw[i - a]): continue
+        if C > ORH + J["atr_buf"] * atr and C > UB and C > vw[i - a]: side = 1
+        elif C < ORL - J["atr_buf"] * atr and C < LB and C < vw[i - a]: side = -1
+        else: continue
+        if i + 1 >= z: return None
+        return dict(r, signal=side, i=i, key=ck, close=C, atr=atr, fill_i=i + 1, fill=float(o[i + 1]), ORH=ORH, ORL=ORL, ORM=_r05((ORH + ORL) / 2), reset_at=int(f.t[k]))
+    return None
+
+
+def _stop_target(J, r, side, fill, dist, rule, tr):
+    """The futures stop and target. rule: "atr" (fill -/+ dist), "orm" (the OR midpoint when it is beyond the signal close,
+    else the atr distance), "or_far" (the far side of the opening range: ORL for a long, ORH for a short), "fixed" (fill -/+
+    J["stop_pts"]). tr: the target in R of |fill - stop|; None = no target (out at the stop or the flatten)."""
+    if rule == "orm" and ((side > 0 and r["ORM"] < r["close"]) or (side < 0 and r["ORM"] > r["close"])): stop = r["ORM"]
+    elif rule == "or_far": stop = r["ORL"] if side > 0 else r["ORH"]
+    elif rule == "fixed": stop = fill - side * J["stop_pts"]
+    else: stop = fill - side * dist
+    target = fill + side * (tr * abs(fill - stop) if tr is not None else 1e9)
+    return stop, target
 
 
 def _walk(f, keyv, r, stop, target, side, flat_key):
@@ -228,25 +270,28 @@ def run(ctx):
     res = {}
     for ch in core.choice_keys(spec, typ):
         trs, skipped = [], []
-        for r in E:
-            if not (d0 <= r["day"] <= d1) or r["signal"] is None: continue
+        chain = []                                    # (signal record, reset number) in order; resets are found as the trades close
+        for r0 in E:
+            if not (d0 <= r0["day"] <= d1) or r0["signal"] is None: continue
+            chain.append((r0, 0))
+        while chain:
+            r, nreset = chain.pop(0)
             side = r["signal"]; fill = r["fill"]; dist = _r05(J["stop_atr"] * r["atr"])
             pos = "LONG" if side > 0 else "SHORT"
             base = dict(dir="up" if side > 0 else "down", signal="BULLISH" if side > 0 else "BEARISH", choch_time=int(f.t[r["i"]]),
                         und_entry=fill, stale=False, lots=lots, tranche="", sl=None)
             if typ == "FUT":
-                stop, target = fill - side * dist, fill + side * J["target_r"] * dist
+                stop, target = _stop_target(J, r, side, fill, dist, J.get("fut_stop", "atr"), J["target_r"])
                 m, why, xp = _walk(f, keyv, r, stop, target, side, flat_key)
+                _reset(J, f, keyv, r, m, why, nreset, chain)
                 rec = dict(base, position=pos, opt_type="FUT", kind="FUT", instrument=f"NIFTY FUT {f.extra['expiry'][r['a']]}", strike=0, expiry=str(f.extra["expiry"][r["a"]]),
                            entry_time=int(f.t[r["fill_i"]]), entry_px=fill, exit_time=int(f.t[m]), exit_px=xp,
-                           exit_reason=why, open=False, sl=stop, und_exit=xp, label=f"{pos} FUT", signal_key=r["key"])
+                           exit_reason=why, open=False, sl=stop, und_exit=xp, label=f"{pos} FUT" + (f" · reset {nreset}" if nreset else ""), signal_key=r["key"])
                 trs.append(_price(ctx, rec, "FUT")); continue
             # ---- options: the stop / target read on the future, the option bought and sold
-            if J["opt_stop"] == "orm" and ((side > 0 and r["ORM"] < r["close"]) or (side < 0 and r["ORM"] > r["close"])):
-                stop = r["ORM"]
-            else: stop = fill - side * dist
-            target = fill + side * J["target_r_opt"] * abs(fill - stop)
+            stop, target = _stop_target(J, r, side, fill, dist, J["opt_stop"], J["target_r_opt"])
             m, why, xp = _walk(f, keyv, r, stop, target, side, flat_key)
+            _reset(J, f, keyv, r, m, why, nreset, chain)
             si = int(np.searchsorted(sp.t, f.t[r["i"]]))
             if si >= len(sp) or sp.t[si] != f.t[r["i"]]: skipped.append(dict(base, position="LONG", opt_type="", instrument="", entry_time=int(f.t[r["fill_i"]]), why="no spot candle at the signal minute")); continue
             atm = int(round(float(sp.c[si]) / 50) * 50); right = "CE" if side > 0 else "PE"
@@ -264,11 +309,18 @@ def run(ctx):
             xpx = float(oc[ix][1]) if ix < len(ot) else float(oc[-1][4])
             rec = dict(base, position="LONG", opt_type=right, kind="OPT", instrument=name, strike=k, expiry=ex, entry_time=int(ot[ie]), entry_px=float(oc[ie][1]),
                        exit_time=int(ot[ix]) if ix < len(ot) else int(ot[-1]), exit_px=xpx, exit_reason=why, open=False, sl=stop, und_exit=xp,
-                       label=f"LONG {right} ({'long' if side > 0 else 'short'} signal)", signal_key=r["key"])
+                       label=f"LONG {right} ({'long' if side > 0 else 'short'} signal)" + (f" · reset {nreset}" if nreset else ""), signal_key=r["key"])
             trs.append(_price(ctx, rec, "OPT"))
         trs.sort(key=lambda x: x["entry_time"])
         res[ch] = dict(trades=trs, skipped=skipped, signals=[])
     return res
+
+
+def _reset(J, f, keyv, r, m, why, nreset, chain):
+    """`reset`: a trade out at its (fixed) stop starts the day again at the exit bar - the next signal joins the chain."""
+    if not J.get("reset") or why != "stop_loss" or nreset >= J["reset_max"]: return
+    nxt = _resignal(J, f, keyv, r, m)
+    if nxt is not None: chain.insert(0, (nxt, nreset + 1))
 
 
 def signals(bars, spec):

@@ -62,6 +62,17 @@ export function algorithm(spec) {
   const by = (m) => (m === "close" ? "a candle closing beyond it" : "a candle touching it (high / low)");
   const S = (t, sub) => ({ t, sub: sub || [] });
   const steps = [];
+  if (spec.rules?.entry_rule === "jilly_ext_v1") {   // Strategies 114 - 118: Jilly as the confirmation, then structure
+    const x = spec.jext;
+    return [
+      S("Confirmation: Strategy 111's signal (Jilly's ORB + noise band, the paper spec with the σ filter) on the near-month future arms the day in its direction. Its own trade is not taken; no signal: no trades."),
+      S(`Structure: the Foundation engine on the future's ${x.minutes === 1 ? "1-minute" : `${x.minutes}-minute`} candles (${x.rules.choch_mode === "close" ? "a CHoCH needs a close" : "CHoCH by touch"}), warmed up on ${x.warm} sessions.`),
+      S(x.mode === "plain"
+        ? "Plain: every CHoCH or BOS after the signal minute is an entry at the next candle's open; out at the next CHoCH against it (next open), at the last confirmed swing beyond the entry, or at 15:20. One position at a time."
+        : `SETUPs: the engine's SETUP trades (Strategy ${x.minutes === 5 ? 2 : x.rules.choch_mode === "close" ? 3 : 1}) entering after the signal minute, with their stop (${x.rules.sl_rule === "choch_candle" ? "the CHoCH candle" : "the previous swing"}) and next-CHoCH exit; flat 15:20; one at a time.`),
+      S(x.sides === "both" ? "Both directions: reversals against the confirmation are taken too." : "Only trades in the confirmation's direction."),
+      S("Options: an ATM weekly bought on the same entries and exits, at the open of the first minute after each futures decision. Costs as Strategies 110 / 111.")];
+  }
   if (spec.rules?.entry_rule === "jilly_orb_noise_opt_v1") {   // Strategies 112 / 113: Jilly read on the option's own chart
     const y = spec.jilly;
     return [
