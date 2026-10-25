@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S124. Lab v2 Strategies 119 and 120: Jilly read on the ATM option's own chart, BOTH sides - each leg bought on its upside breakout and sold on its downside breakdown. Measured: still a loss (PF 0.970 / 0.955), a little better than buying only (0.929 / 0.938) because the sold legs are mildly positive; the bought PE is the loser in every version
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/jilly_opt.py` (`sides`: "buy" / "both"), `st119.py` (Strategy 112 both sides: 10 x the option's ATR, 1R), `st120.py` (Strategy 113 both sides: the sigma filter, the leg's OR-midpoint stop, 2R). 2026-10-25, the user: "apply it directly on ATM, both sides, and trade both sides, and check". |
+| Rules added | On each day-open ATM leg's own 1-minute chart, the downside breakdown - the close below ORL - 0.3 ATR, below LB(key) = min(O, PC) x (1 - 1.25 sigma(key)) and below VWAP at a checkpoint - SELLS the leg; stop above (fill + 10 x ATR, or the leg's OR midpoint), target below (floored at 0.05), flat 15:20; the first signal per leg per day, either side. Options 2020-02 → 2026-10-23, after costs (max(0.5, 0.5%) slippage a side, option charges by date). |
+| Impact | **Measured, ATM. ST112 buy only: 562 trades, PF 0.929 (gross 0.964), ₹-76,144, DD ₹-143,425. ST119 both: 1,234 trades (550 bought / 684 sold), PF 0.970 (gross 1.014), w/o top-10 0.901, 2020-22 / 2023-26 1.12 / 0.90, ₹-49,400, DD ₹-190,196. ST113 buy only: 431 trades, PF 0.938, ₹-45,727. ST120 both: 929 trades (423 / 506), PF 0.955 (gross 1.004), 1.11 / 0.88, ₹-50,630, DD ₹-152,816.** By leg (ST119): bought CE PF 1.013 (₹+5,262), bought PE 0.845 (₹-104,556), sold CE 1.124 (₹+37,743), sold PE 1.040 (₹+12,151); ST120: bought CE 1.015, bought PE 0.875 (₹-56,547), sold CE 1.085 (₹+17,040), sold PE 0.927 (₹-15,220). By year (ST119) the 2023 - 2024 losses (₹-71k, ₹-59k) outweigh 2021 - 2022's gains. |
+| Read | Selling the leg on its own breakdown earns a little (the premium's decay works for the seller over the rest of the day) and buying the CE on its breakout is flat, but buying the PE on its breakout loses in every version - a PE breaking up is the index dipping, and in these years the dips mostly came back. Gross PF near 1.0 in both two-sided versions: there is no edge on the option's own chart for the costs to eat into. Reading the rules on the future (Strategy 111) stays the version with an edge. |
+| Open (the user's call) | Unquantified: the sold side alone, or the sold CE alone (the best sub-book here, PF 1.12 on 366 trades) - a choice made after seeing the split, so it would need fresh data to confirm. |
+| Effort | **S** (measured). |
+| Priority | _Closed by measurement; nothing adopted._ Related: S121, S120. |
+
+---
+
 ### S123. Lab v2 Strategy 111 (Jilly's ORB + Noise Band, the paper spec) with other stops and targets, and with a reset after a fixed stop. Measured: the edge holds across most stops (futures PF 1.22 - 1.31 for any stop of 3 x ATR or wider with a 2R or no target; the spec's 10 x ATR + 1R is 1.269); only a tight stop with a 1R target loses; the reset after a stop lowers the PF everywhere but at 150 points + 2R, where it is neutral. Nothing adopted
 
 | | |

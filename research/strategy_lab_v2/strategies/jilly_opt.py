@@ -7,9 +7,11 @@ the option's candles; BUILD marks what the futures spec does not carry over and 
   the legs        BUILD: each session, the day-open ATM (the index's 09:15 open rounded to 50; `strike`: ATM, or ITM1 = 50
                   points in the money) CE and PE of the nearest weekly expiry on or after today. Each leg is its own chart and
                   can trade once a day; both may trade the same day.
-  the side        BUY only (a bought option, as the spec's option configs): a leg trades its UPSIDE breakout - the close
-                  above ORH + 0.3 ATR, above UB(key) and above VWAP at a checkpoint. Its downside break is not traded
-                  (selling options is a different book).
+  the side        (`sides`) "buy" (ST112 / ST113): a leg trades its UPSIDE breakout - the close above ORH + 0.3 ATR, above
+                  UB(key) and above VWAP at a checkpoint - by buying it. "both" (ST119 / ST120, the user: "apply it directly on
+                  ATM, both sides, and trade both sides"): the DOWNSIDE breakdown - the close below ORL - 0.3 ATR, below
+                  LB(key) = min(O, PC) x (1 - band_k x sigma) and below VWAP - SELLS the leg; stop above (fill + stop_atr x ATR,
+                  or the OR midpoint), target below (floored at 0.05). Either way the first signal per leg per day.
   O, PC, UP       O = the leg's 09:15 open; PC = the same contract's last close of the previous session; UP = max(O, PC);
                   UP = O when the contract has no candles the previous session (the new-contract rule). A leg without a
                   09:15 candle does not trade that day.
@@ -99,8 +101,8 @@ def legs(J, d0, d1):
             sig = np.mean(prev, axis=0); rec["sigma30"] = float(sig[29])
             O = float(o[0]); pcm = dd[:ia] < dn
             PC = float(a[:ia][pcm][-1, 4]) if pcm.any() else None
-            UP = O if PC is None else max(O, PC)
-            UB = UP * (1 + J["band_k"] * sig); rec.update(O=O, PC=PC, UP=UP, UB=UB)
+            UP = O if PC is None else max(O, PC); DN = O if PC is None else min(O, PC)
+            UB = UP * (1 + J["band_k"] * sig); LB = DN * (1 - J["band_k"] * sig); rec.update(O=O, PC=PC, UP=UP, DN=DN, UB=UB, LB=LB)
             # ATR(9) Wilder on the contract's 5-minute bars, continuous over the window read
             kv_all = ((t % DAY) - 555 * 60) // 60
             b5 = dd * 1000 + kv_all // 5
@@ -122,9 +124,11 @@ def legs(J, d0, d1):
                 if not len(w): continue
                 q = int(w[0]); C = float(c[q]); atr = float(A[bar5[q]])
                 if np.isnan(atr) or np.isnan(vw[q]): continue
-                if C > ORH + J["atr_buf"] * atr and C > UB[ck - 1] and C > vw[q]:
-                    if q + 1 >= len(c): break
-                    rec.update(signal=1, q=q, key=ck, close=C, atr=atr, fill_q=q + 1, fill=float(o[q + 1])); break
+                if C > ORH + J["atr_buf"] * atr and C > UB[ck - 1] and C > vw[q]: side = 1
+                elif J.get("sides") == "both" and C < ORL - J["atr_buf"] * atr and C < LB[ck - 1] and C < vw[q]: side = -1
+                else: continue
+                if q + 1 >= len(c): break
+                rec.update(signal=side, q=q, key=ck, close=C, atr=atr, fill_q=q + 1, fill=float(o[q + 1])); break
             if rec["signal"] is None: rec["why"] = "no signal"
     # the vol filter: today's sigma(30) against the previous 250 sessions' of the same right
     for right in ("CE", "PE"):
@@ -151,22 +155,26 @@ def run(ctx):
         trs, skipped = [], []
         for (day, right), r in sorted(L.items()):
             if not (d0 <= day <= d1) or r["signal"] is None: continue
-            fill = r["fill"]
-            if J["stop"] == "orm": stop = r["ORM"] if r["ORM"] < r["close"] else max(0.05, fill - _J._r05(J["stop_atr"] * r["atr"]))
-            else: stop = max(0.05, fill - _J._r05(J["stop_atr"] * r["atr"]))
-            target = fill + J["target_r"] * (fill - stop)
+            fill = r["fill"]; sd = r["signal"]; dist = _J._r05(J["stop_atr"] * r["atr"])
+            if sd > 0:                                   # bought on the leg's upside break
+                stop = r["ORM"] if J["stop"] == "orm" and r["ORM"] < r["close"] else max(0.05, fill - dist)
+                target = fill + J["target_r"] * (fill - stop)
+            else:                                        # sold on the leg's downside break (sides "both")
+                stop = r["ORM"] if J["stop"] == "orm" and r["ORM"] > r["close"] else fill + dist
+                target = max(0.05, fill - J["target_r"] * (stop - fill))
             o, h, l, c, kv, t = r["o"], r["h"], r["l"], r["c"], r["kv"], r["t"]
             xq, why, xp = len(c) - 1, "eod", float(c[-1])
             for m in range(r["fill_q"], len(c)):
                 if kv[m] >= flat_key: xq, why, xp = m, "eod", float(o[m]); break
-                hs, ht = l[m] <= stop, h[m] >= target
+                hs, ht = ((l[m] <= stop), (h[m] >= target)) if sd > 0 else ((h[m] >= stop), (l[m] <= target))
                 if hs or ht:
                     why = "stop_loss" if hs else "target 1"
                     xq, xp = (m + 1, float(o[m + 1])) if m + 1 < len(c) else (m, float(c[m])); break
             name = f"NIFTY {Dt.date.fromisoformat(r['exp']):%d%b%y} {r['k']} {right}".upper()
-            rec = dict(dir="up", signal="BULLISH", choch_time=int(t[r["q"]]), und_entry=fill, und_exit=xp, stale=False, lots=lots, tranche="",
-                       position="LONG", opt_type=right, kind="OPT", instrument=name, strike=r["k"], expiry=r["exp"], entry_time=int(t[r["fill_q"]]),
-                       entry_px=fill, exit_time=int(t[xq]), exit_px=xp, exit_reason=why, open=False, sl=stop, label=f"LONG {right}", signal_key=r["key"])
+            pos = "LONG" if sd > 0 else "SHORT"
+            rec = dict(dir="up" if sd > 0 else "down", signal="BULLISH" if sd > 0 else "BEARISH", choch_time=int(t[r["q"]]), und_entry=fill, und_exit=xp, stale=False, lots=lots, tranche="",
+                       position=pos, opt_type=right, kind="OPT", instrument=name, strike=r["k"], expiry=r["exp"], entry_time=int(t[r["fill_q"]]),
+                       entry_px=fill, exit_time=int(t[xq]), exit_px=xp, exit_reason=why, open=False, sl=stop, label=f"{pos} {right}", signal_key=r["key"])
             trs.append(_J._price(ctx, rec, "OPT"))
         trs.sort(key=lambda x: x["entry_time"])
         res[ch] = dict(trades=trs, skipped=skipped, signals=[])
