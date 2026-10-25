@@ -1719,6 +1719,10 @@ def chart(code, run, typ, choice, day, inst=None, to=None, atm=None):
     cols = {k: i for i, k in enumerate(body["cols"])}
     d0, d1 = dnum(day), dnum(to or day)
     trades = body["trades"]
+    if (inst or atm) and hasattr(mod, "chart_leg"):              # a strategy that reads each option on its own chart draws its legs
+        out = mod.chart_leg(ctx, body, day, to or day, atm=atm, inst=inst)
+        if "sessions" not in out: out["sessions"] = int(len({int(c[0]) // DAY for c in out.get("candles") or []})) or 1
+        return _jsonable(out)
     if not inst and not atm and hasattr(mod, "chart_main"):       # a strategy whose signals are read on candles of its own
         out = mod.chart_main(ctx, body, day, to or day)            # (the derived straddle candles): that chart, not the futures
         if "sessions" not in out:                                    # the page loads more sessions at the chart's edges by this count

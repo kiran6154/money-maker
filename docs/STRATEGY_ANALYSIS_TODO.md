@@ -457,6 +457,19 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S127. Correction to S121 and S124 (Jilly read on the ATM option's own chart): the noise band used the prior 20 SESSIONS and dropped the ones without a leg profile, so one missing day blocked the next 20 sessions (40 - 200 leg-days a year untraded). Fixed to the last 20 sessions WITH a profile, as the futures version does. Re-measured: buy-only defaults PF 0.994, spec settings 1.093; both sides 1.031 / 1.081 - near break-even to slightly positive, not losing; still below the futures-read Strategy 111 and below 1 without their top 10 trades
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/strategies/jilly_opt.py` (`legs`: sigma from the last `sigma_lb` sessions that have a profile). Found 2026-10-25 when the user asked why the option-chart strategies' charts did not show all their lines: on many days (e.g. 2023-03-08) the leg had no band because the profile window held a missing day. Also fixed the same day: the strategy chart of 112 / 113 / 119 / 120 is the future for reference, and the CE / PE panes draw each leg's own chart from the store with all six lines (UB, LB, ORH, ORL, ORM, VWAP) and every trade of that right, bought and sold (`chart_leg`, a new hook in core.chart); before, the panes came from the lab's older option cache (none before 2025 or after 2026-10-06) and the main chart showed one leg without LB. |
+| Impact | **Measured, ATM, 2020-02 → 2026-10-23, after costs; before → after the fix. ST112 (buy only, defaults): 562 trades PF 0.929 ₹-76,144 → 686 trades PF 0.994 (gross 1.030), w/o top-10 0.887, 2020-22 / 2023-26 1.06 / 0.96, ₹-7,441, DD ₹-100,804. ST113 (buy only, spec settings): 431 PF 0.938 ₹-45,727 → 523 trades PF 1.093 (gross 1.135), w/o top-10 0.893, 1.09 / 1.09, ₹+83,626, DD ₹-91,269. ST119 (both sides, defaults): 1,234 PF 0.970 ₹-49,400 → 1,516 trades (672 bought / 844 sold) PF 1.031, w/o top-10 0.963, 1.17 / 0.95, ₹+64,584, DD ₹-140,055. ST120 (both sides, spec settings): 929 PF 0.955 ₹-50,630 → 1,125 trades (515 / 610) PF 1.081, w/o top-10 0.952, 1.19 / 1.02, ₹+111,935, DD ₹-115,940.** By leg after the fix (ST120): bought CE PF 0.964, bought PE 1.167 (₹+83,832), sold CE 1.185 (₹+44,795), sold PE 0.989; (ST119): bought CE 0.908, bought PE 1.022, sold CE 1.163, sold PE 1.106. By year (ST120): 2021 1.52, 2024 1.44, 2023 0.78, 2025 0.76. |
+| Read | S121 / S124's conclusion ("the option's own chart removes the edge; the bought PE is the loser") was the bug's: with the band computed every day the option-chart versions are flat to mildly positive, the spec settings (filter, OR-midpoint stop, 2R) better than the defaults, the both-sides book a little better than buying only, and the PE breakout no longer the loser. But all four fall below PF 1 without their top 10 trades (0.89 - 0.96) and two of the last four years lose (2023, 2025): a thin result. Strategy 111 (read on the future) stays the stronger one: PF 1.26 on ATM options, 1.06 without its top 10. |
+| Open (the user's call) | Unquantified: the sold CE alone (PF 1.16 - 1.19 in both versions) - chosen after seeing the split, so it would need fresh data. |
+| Effort | **S** (measured). |
+| Priority | _Corrected; numbers recorded._ Supersedes S121's and S124's numbers and reads. |
+
+---
+
 ### S126. Lab v2 fair-value weekly book and Strategies 91 - 93 on the complete window (the far-strike download finished: every expiry 2024-09-05 → 2026-10-19 holds index ±1,500 strikes). All four lose: the book with the user's current rules ₹-244,971 over 72 weeks; Strategies 91 / 92 / 93 ₹-256,836 / ₹-307,327 / ₹-252,182. Supersedes S125's window
 
 | | |
@@ -483,7 +496,7 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 
 ---
 
-### S124. Lab v2 Strategies 119 and 120: Jilly read on the ATM option's own chart, BOTH sides - each leg bought on its upside breakout and sold on its downside breakdown. Measured: still a loss (PF 0.970 / 0.955), a little better than buying only (0.929 / 0.938) because the sold legs are mildly positive; the bought PE is the loser in every version
+### S124. (SUPERSEDED by S127: a bug in the noise band's window) Lab v2 Strategies 119 and 120: Jilly read on the ATM option's own chart, BOTH sides - each leg bought on its upside breakout and sold on its downside breakdown. Measured: still a loss (PF 0.970 / 0.955), a little better than buying only (0.929 / 0.938) because the sold legs are mildly positive; the bought PE is the loser in every version
 
 | | |
 |---|---|
@@ -526,7 +539,7 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 
 ---
 
-### S121. Lab v2 Strategies 112 and 113: Jilly's ORB + Noise Band read DIRECTLY on the option's own chart (day-open ATM / 1-ITM CE and PE, bought on the leg's upside breakout). Measured: it loses - ATM PF 0.929 (defaults) / 0.938 (spec settings), against PF 1.135 / 1.260 when the same rules are read on the future (S120)
+### S121. (SUPERSEDED by S127: a bug in the noise band's window) Lab v2 Strategies 112 and 113: Jilly's ORB + Noise Band read DIRECTLY on the option's own chart (day-open ATM / 1-ITM CE and PE, bought on the leg's upside breakout). Measured: it loses - ATM PF 0.929 (defaults) / 0.938 (spec settings), against PF 1.135 / 1.260 when the same rules are read on the future (S120)
 
 | | |
 |---|---|

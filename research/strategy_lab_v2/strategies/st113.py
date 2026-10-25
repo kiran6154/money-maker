@@ -29,7 +29,7 @@ SPEC = {'code': 'ST113',
 
 _F = core.family("jilly_opt")
 ENTRY_RULES, TYPES, UNDERLYINGS, OWN_COVERAGE, REFUSED_WHY = _F.ENTRY_RULES, _F.TYPES, _F.UNDERLYINGS, _F.OWN_COVERAGE, _F.REFUSED_WHY
-run, chart_main = _F.run, _F.chart_main
+run, chart_main, chart_leg = _F.run, _F.chart_main, _F.chart_leg
 
 
 def signals(bars, spec):

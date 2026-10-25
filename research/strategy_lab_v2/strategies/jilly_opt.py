@@ -92,7 +92,7 @@ def legs(J, d0, d1):
                 for q in range(1, 375):
                     if np.isnan(row[q]): row[q] = row[q - 1]
                 prof = np.abs(row / o[0] - 1)
-            prev = [p for _, p in R[right][-J["sigma_lb"]:] if p is not None]
+            prev = [p for _, p in R[right] if p is not None][-J["sigma_lb"]:]   # the last 20 sessions WITH a profile (as the futures version)
             R[right].append((day, prof))
             out[(day, right)] = rec
             rec.update(t=t[ia:iz], o=o, h=h, l=l, c=c, v=v, kv=kv)
@@ -186,27 +186,37 @@ def signals(bars, spec):
 
 
 def chart_main(ctx, body, day, to):
-    """The traded leg's own 1-minute candles (else the CE) with UB, ORH / ORL / ORM after 09:30 and VWAP, and its trades."""
-    J = ctx["spec"]["jilly"]; Jc = dict(J, strike="ATM")
-    C = {k: i for i, k in enumerate(body["cols"])}
-    L = legs(Jc, day, to)
-    candles, lines, trades = [], [[], [], [], [], []], []
+    """The near-month future of day..to for reference only: the signals and the trades are on each leg's own chart (the CE and
+    PE panes, chart_leg)."""
+    f = _J._store_bars("fut"); a, z = int(np.searchsorted(f.day, core.dnum(day))), int(np.searchsorted(f.day, core.dnum(to), "right"))
+    if a >= z: raise ValueError(f"no futures candles from {day}")
+    return dict(day=day, to=to, inst=None, candles=core._chart_bars(f, a, z - 1), cols=body["cols"], trades=[], own=True, reference=True,
+                sessions=len(np.unique(f.day[a:z])))
+
+
+def chart_leg(ctx, body, day, to, atm=None, inst=None):
+    """One leg's own 1-minute chart over day..to, from the store: the day-open ATM CE or PE of each session (or the contract of a
+    trade picked from the table), with its noise band UB / LB, its opening range ORH / ORL / ORM after 09:30 and its VWAP, and
+    every trade of that right - bought and sold."""
+    J = ctx["spec"]["jilly"]; C = {k: i for i, k in enumerate(body["cols"])}
+    right = atm or str(inst).split()[-1]
+    L = legs(dict(J, strike="ATM"), day, to)
+    NM = [("UB", "#e5484d"), ("LB", "#30a46c"), ("ORH", "#8e4ec6"), ("ORL", "#8e4ec6"), ("ORM", "#f5a524"), ("VWAP", "#2962ff")]
+    candles, lines, names, trades = [], [[] for _ in NM], [], []
     for d in sorted({k[0] for k in L if day <= k[0] <= to}):
-        mine = [x for x in body["trades"] if str(x[C["entry_time"]])[:10] == d]
-        right = mine[0][C["opt_type"]] if mine else "CE"
         r = L.get((d, right))
         if not r or "t" not in r: continue
-        t = r["t"]
+        t = r["t"]; names.append(f"{d[5:]}: {r['exp'][5:]} {r['k']} {right}")
         candles += [[int(t[i]), float(r["o"][i]), float(r["h"][i]), float(r["l"][i]), float(r["c"][i]), float(r["v"][i])] for i in range(len(t))]
         for i in range(len(t)):
-            kk = int(r["kv"][i])
-            if "UB" in r and 1 <= kk <= 375: lines[0].append([int(t[i]), round(float(r["UB"][kk - 1]), 2)])
-            if "ORH" in r and kk > J["or_keys"]: lines[1].append([int(t[i]), r["ORH"]]); lines[2].append([int(t[i]), r["ORL"]]); lines[3].append([int(t[i]), r["ORM"]])
-            if "vwap" in r and not np.isnan(r["vwap"][i]): lines[4].append([int(t[i]), round(float(r["vwap"][i]), 2)])
-        trades += [list(x) for x in mine if x[C["opt_type"]] == right]
-    if not candles: raise ValueError(f"no option candles from {day} (the day-open ATM legs)")
-    NM = [("UB", "#e5484d"), ("ORH", "#8e4ec6"), ("ORL", "#8e4ec6"), ("ORM", "#f5a524"), ("VWAP", "#2962ff")]
-    keep = [k for k in range(5) if lines[k]]
-    return dict(day=day, to=to, inst=None, candles=candles, cols=body["cols"], trades=trades, own=True, lines=[lines[k] for k in keep],
-                line_names=[NM[k][0] for k in keep], line_colors=[NM[k][1] for k in keep], sessions=len({c[0] // DAY for c in candles}),
-                derived=dict(what="the day-open ATM option's own candles: UB (its noise band), ORH / ORL / ORM after 09:30, VWAP"))
+            kk, tt = int(r["kv"][i]), int(t[i])
+            if "UB" in r and 1 <= kk <= 375: lines[0].append([tt, round(float(r["UB"][kk - 1]), 2)]); lines[1].append([tt, round(float(r["LB"][kk - 1]), 2)])
+            if "ORH" in r and kk > J["or_keys"]:
+                lines[2].append([tt, r["ORH"]]); lines[3].append([tt, r["ORL"]]); lines[4].append([tt, r["ORM"]])
+            if "vwap" in r and not np.isnan(r["vwap"][i]): lines[5].append([tt, round(float(r["vwap"][i]), 2)])
+        trades += [list(x) for x in body["trades"] if str(x[C["entry_time"]])[:10] == d and x[C["opt_type"]] == right]
+    if not candles: raise ValueError(f"no {right} candles for the day-open ATM legs from {day} in the store")
+    keep = [k for k in range(len(NM)) if lines[k]]
+    return dict(day=day, to=to, inst=f"ATM {right} (" + "; ".join(names) + ")", candles=candles, cols=body["cols"], trades=trades, own=True,
+                lines=[lines[k] for k in keep], line_names=[NM[k][0] for k in keep], line_colors=[NM[k][1] for k in keep],
+                sessions=len({c[0] // DAY for c in candles}))
