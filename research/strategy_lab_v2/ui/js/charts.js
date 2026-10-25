@@ -159,6 +159,11 @@ function warmBars() {
 async function load() {
   const my = ++req, shown = +$("#c-days").value;
   if (st.inst === "OPT" || st.inst === "STACK") {
+    const dayNow = $("#c-date").value;
+    if (st.optLast && dayNow > st.optLast) {             // past the options in the store: say so at once, no expiry search
+      $("#c-legend").textContent = `no option candles on ${dayNow}: the store's options run to ${st.optLast} — pick ${st.optLast} or earlier`; clear(); return;
+    }
+    $("#c-legend").textContent = "finding the day's expiry and strike…";
     try {
       await loadExpiries();
       try { await loadStrikes(); }
@@ -302,7 +307,9 @@ $("#c-oi").onchange = () => draw();
     const cv = await api("/api/store/coverage");
     $("#c-src").textContent = cv.root;
     $("#c-cov").textContent = `In the store now: index ${cv.index[0]} → ${cv.index[1]} · futures ${cv.futures[0]} → ${cv.futures[1]} · options ${cv.expiries} expiries, ${cv.options[0]} → ${cv.options[1]}`;
-    $("#c-date").value = cv.index[1] || new Date().toISOString().slice(0, 10);
+    st.optLast = cv.options[1];
+    // the latest day with data for the chart remembered: option views stop where the options do
+    $("#c-date").value = ((st.inst === "OPT" || st.inst === "STACK") && cv.options[1] < cv.index[1] ? cv.options[1] : cv.index[1]) || new Date().toISOString().slice(0, 10);
   } catch (e) { $("#c-cov").textContent = e.message; $("#c-date").value = new Date().toISOString().slice(0, 10); }
   showOpt(); renderInds(); load();
 })();

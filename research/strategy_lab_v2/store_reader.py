@@ -106,13 +106,30 @@ def _exp_files(expiry):
     return _files("options", "1minute", expiry[:4], expiry, "*.parquet")
 
 
+_LIVES = {}                                  # file path -> ((mtime, size), its (right, strike, first day, last day) rows)
+
+
+def _file_lives(p):
+    """One parquet file's strikes per right with their first / last day there, cached until the file changes."""
+    st = os.stat(p); sig = (st.st_mtime_ns, st.st_size)
+    hit = _LIVES.get(p)
+    if hit and hit[0] == sig: return hit[1]
+    df = _read([p], columns=["datetime", "strike", "right"])
+    if df.empty: rows = pd.DataFrame(columns=["right", "strike", "min", "max"])
+    else:
+        df = df.assign(day=df["datetime"].dt.strftime("%Y-%m-%d"), right=df["right"].astype(str))
+        rows = df.groupby(["right", "strike"], observed=True)["day"].agg(["min", "max"]).reset_index()
+    _LIVES[p] = (sig, rows)
+    return rows
+
+
 def strikes(expiry, date=None):
-    """One expiry's strikes per right with each one's first / last day, and the strike nearest the index on `date`."""
-    df = _read(_exp_files(expiry), columns=["datetime", "strike", "right"])
-    if df.empty: raise ValueError(f"no option candles for {expiry} in the store")
-    df = df.assign(day=df["datetime"].dt.strftime("%Y-%m-%d"))
-    g = df.assign(right=df["right"].astype(str)).groupby(["right", "strike"], observed=True)["day"].agg(["min", "max"]).reset_index()
-    first, last = df["day"].min(), df["day"].max()
+    """One expiry's strikes per right with each one's first / last day, and the strike nearest the index on `date`.
+    Read file by file and cached per file (the far-strike download adds files beside the existing ones)."""
+    parts = [r for r in (_file_lives(p) for p in _exp_files(expiry)) if len(r)]
+    if not parts: raise ValueError(f"no option candles for {expiry} in the store")
+    g = pd.concat(parts).groupby(["right", "strike"], observed=True).agg({"min": "min", "max": "max"}).reset_index()
+    first, last = g["min"].min(), g["max"].max()
     d = min(max(date or last, first), last)
     spot = None
     ix = index_candles(d, d, "minute")
