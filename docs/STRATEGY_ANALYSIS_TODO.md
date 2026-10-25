@@ -457,6 +457,19 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S130. Trailing exits for Jilly - 19 trailing rules (ATR chandelier 2 - 6 ATR with and without an arming profit, a profit lock of 50 / 70% after 3 / 5 ATR, break-even after 2 / 4 ATR, a swing / protected-level trail, a VWAP-close exit, no target) against the spec's own exits, on four books, chosen on the early years and tested on the later ones. Measured: no trail beats the spec's exits out of sample on any of the four; tight trails lose; removing the target loses everywhere. Nothing adopted
+
+| | |
+|---|---|
+| Where | A sweep script on the stored signals (no strategy change): Strategy 111 on the future (choice on 2018 - 2022, test 2023 - 2026-10-23), its ATM option with exits read on the future (choice 2020-02 - 2023, test 2024 →), Strategy 122 and 123 on the option's own chart (choice 2020-02 - 2023, test 2024 →). Each trail starts from the book's initial stop (10 x ATR on the future; the OR midpoint for the future-read option; the strategies' own stops on the option chart), replaces the target, moves only after a bar closes, never loosens; a touch exits at the next minute's open; flat 15:20 (a session ending earlier: its last close). The harness reproduces Strategy 111 exactly (789 trades, PF 1.269, ₹+508,259) - a first version carried five short-session trades to the next morning, found by that check and fixed before any number was read. 2026-10-26, the user: "find the optimal way to trail in Jilly and exit at higher profits". |
+| Impact | **Out-of-sample PF, the spec's exits → the rule chosen on the early years: futures 1.106 → 1.063 (VWAP close after 2 ATR; in-sample 1.446 → 1.546); future-read ATM 1.200 → 1.051 (VWAP close after 2 ATR); Strategy 122 1.045 → 1.048 (chandelier 3 ATR; the same); Strategy 123 1.214 → 1.115 (break-even after 2 ATR).** No target (stop or 15:20): out of sample 1.078 / 1.075 / 1.005 / 1.053 - worse than the target in every book. Tight trails lose: futures chandelier 2 ATR 0.89 - 0.97, swing trail after 2 ATR 0.81, lock 70% after 3 ATR 0.92 out of sample. The nearest to the spec: a 50 - 70% lock after 5 ATR (futures OOS 1.080 - 1.082, ATM 1.122 - 1.147, ST123 1.192 - 1.194) and a 4 - 6 ATR chandelier (futures 1.069 - 1.074, ST123 1.133 - 1.160) - close, not better. |
+| Read | The strategy earns on trend days by holding to the close or to a far target; any trail tight enough to protect an open profit on a normal day also exits the trend days early, and the trend days pay for everything (S129). The spec's targets already are the "exit at a higher profit": 1R at 10 x ATR on the future (a target about 2 - 3% away) and 2R from the OR midpoint on the option; removing them costs in every book, so the profit-taking is part of the edge. The in-sample winners (VWAP, break-even) won on the early years' smooth trends and did not repeat. |
+| Open (the user's call) | None from this sweep. Unquantified: a partial exit (half at the target, half to 15:20). |
+| Effort | **S** (measured). |
+| Priority | _Closed by measurement; nothing adopted._ Related: S120, S123, S128, S129. |
+
+---
+
 ### S129. Where the Jilly variants fail - a cross-variant analysis of all 13 (Strategies 110 - 123). Every variant is a trend-day strategy: the whole profit comes from the days the index moves more than 150 points open-to-close, and every other kind of day loses; 2023 and 2025 (quiet years) are the universal failures; the gains are concentrated (without their 10 best trades most option-chart versions lose). Two patterns hold in both halves with a reason behind them: no entry the day before expiry, and not buying the CE on its own breakout. Nothing adopted
 
 | | |
