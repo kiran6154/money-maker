@@ -1,0 +1,105 @@
+{
+ "code": "ST117",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-25T21:03:02",
+   "key": "4d1c5bccc41a",
+   "code": "67bcf0170c2d",
+   "definition": {
+    "code": "ST117",
+    "timeframe": "5minute",
+    "underlying": "FUT",
+    "warmup_days": 1,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "choch_candle",
+     "entry_rule": "jilly_ext_v1",
+     "exit_rule": "next_choch"
+    },
+    "jext": {
+     "mode": "setup",
+     "sides": "jilly",
+     "minutes": 5,
+     "warm": 4,
+     "rules": {
+      "break_mode": "touch",
+      "choch_mode": "touch",
+      "avwap_weight": "volume",
+      "sl_rule": "choch_candle"
+     }
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "15:20",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 0.5
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY"
+     ],
+     "expiry_min_days": 0,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATM"
+     ],
+     "strike_default": "ATM",
+     "atr_period": 14
+    }
+   },
+   "changes": [],
+   "results": {
+    "all-data_5m": {
+     "FUT": {
+      "-": {
+       "trades": 187,
+       "wins": 65,
+       "pts": 1491.05,
+       "net_inr": 37959.04,
+       "pf": 1.15,
+       "max_dd_inr": -37218.91,
+       "t_stat": 0.65
+      }
+     },
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 138,
+       "wins": 43,
+       "pts": 332.47,
+       "net_inr": 13118.0,
+       "pf": 1.11,
+       "max_dd_inr": -29868.43,
+       "t_stat": 0.4
+      }
+     }
+    }
+   }
+  }
+ ]
+}
