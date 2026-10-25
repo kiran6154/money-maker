@@ -296,5 +296,8 @@ def chart_main(ctx, body, day, to):
             if str(x[C["entry_time"]])[:10] != d: continue
             x = list(x); x[C["entry_px"]], x[C["exit_px"]] = x[C["und_entry"]], x[C["und_exit"]]; trades.append(x)
     if not candles: raise ValueError(f"no futures candles from {day}")
-    return dict(day=day, to=to, inst=None, candles=candles, cols=body["cols"], trades=trades, own=True, lines=[x for x in lines if x],
+    NM = [("UB", "#e5484d"), ("LB", "#30a46c"), ("ORH", "#8e4ec6"), ("ORL", "#8e4ec6"), ("ORM", "#f5a524"), ("VWAP", "#2962ff")]
+    keep = [k for k in range(6) if lines[k]]
+    return dict(day=day, to=to, inst=None, candles=candles, cols=body["cols"], trades=trades, own=True, lines=[lines[k] for k in keep],
+                line_names=[NM[k][0] for k in keep], line_colors=[NM[k][1] for k in keep], sessions=len({c[0] // DAY for c in candles}),
                 derived=dict(what="the near-month future: UB / LB (noise band), ORH / ORL / ORM after 09:30, session VWAP"))

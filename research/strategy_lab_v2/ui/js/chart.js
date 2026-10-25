@@ -92,7 +92,11 @@ export class ChartView {
     this.panes = {};
     if (!this.hooks.static) await this.loadPanes(my);
     if (my !== this.req) return;
+    const ft = this.focusTime;                       // the first draw consumes it; the draw with the previous session needs it again
     this.redraw();
+    // a single day opens with the session before it too, so the previous day's levels and moves are on screen: the whole
+    // two-session range is shown, or the focused trade when one was picked
+    if (!to && !this.hooks.static) { this.fitAll = true; this.refocus = ft; await this.extend(-1); this.fitAll = false; this.refocus = null; }
   }
 
   // the reader reached the first (dir -1) or last (dir +1) candle: load the next sessions on that side
@@ -131,7 +135,8 @@ export class ChartView {
         try { data = await api("/api/chart?" + new URLSearchParams({ code, run: run.run, type, choice, day, to })); } catch (e) { continue; }
         if ((data.sessions || 1) <= span) continue;
         const my = ++this.req;
-        this.day = day; this.to = to; this.data = data; this.keepRange = keep;
+        this.day = day; this.to = to; this.data = data; this.keepRange = this.fitAll ? null : keep;
+        if (this.fitAll && this.refocus) this.focusTime = this.refocus;
         $(".ch-day", this.root).value = day;
         this.panes = {};
         if (!this.hooks.static) await this.loadPanes(my);
@@ -537,7 +542,7 @@ export class ChartView {
     const n = d.trades.length, net = d.trades.reduce((a, r) => a + r[d.cols.indexOf("net")], 0);
     $(".ch-legend", this.root).innerHTML =
       (d.reference ? `<b>Futures for reference only: the signals are read on each option's own chart (CE / PE below).</b> ` : "") +
-      (d.derived ? `<b>Derived candles: ${esc(d.derived.what)} (${esc(d.derived.legs.filter((g) => g.strike).map((g) => `${g.day.slice(5)}: ${g.strike}${g.gap_restart ? " (gap: restarted)" : ""}`).join(", "))}). ` +
+      (d.derived ? `<b>Derived candles: ${esc(d.derived.what)}${d.derived.legs ? ` (${esc(d.derived.legs.filter((g) => g.strike).map((g) => `${g.day.slice(5)}: ${g.strike}${g.gap_restart ? " (gap: restarted)" : ""}`).join(", "))})` : ""}. ` +
                    `The market structure and the signals are read on these candles; the legs are below.</b> ` : "") +
       `${esc(this.day)}${this.to && this.to !== this.day ? " → " + esc(this.to) : ""} · ${d.sessions} session${d.sessions > 1 ? "s" : ""} · ` +
       `${d.candles.length} candles · ${n} trade${n === 1 ? "" : "s"} <span class="${net > 0 ? "pos" : net < 0 ? "neg" : ""}">${inr(net)}</span>` +
