@@ -1,0 +1,105 @@
+{
+ "code": "ST122",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-26T00:38:23",
+   "key": "ede726fe0e83",
+   "code": "a928689594f4",
+   "definition": {
+    "code": "ST122",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 1,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "jilly_orb_noise_opt_v1",
+     "exit_rule": "next_choch"
+    },
+    "jilly": {
+     "filter": false,
+     "band_k": 1.25,
+     "sigma_lb": 20,
+     "rank_lb": 250,
+     "rank_min": 120,
+     "rank_cut": 0.2,
+     "or_keys": 15,
+     "atr_n": 9,
+     "atr_buf": 0.3,
+     "ck_first": 30,
+     "ck_last": 285,
+     "ck_step": 15,
+     "flatten": "15:20",
+     "opt_from": "2020-02-01",
+     "sides": "both",
+     "prem_lo": 100,
+     "prem_hi": 250,
+     "prem_steps": 12,
+     "stop": "atr",
+     "stop_atr": 10,
+     "target_r": 1
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "15:20",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 0.5
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY"
+     ],
+     "expiry_min_days": 0,
+     "strike_step": 50,
+     "strike_choices": [
+      "PREM"
+     ],
+     "strike_default": "PREM",
+     "atr_period": 14
+    }
+   },
+   "changes": [],
+   "results": {
+    "all-data_1m": {
+     "OPT_FUT_SIGNAL": {
+      "W-PREM": {
+       "trades": 1649,
+       "wins": 940,
+       "pts": 6057.93,
+       "net_inr": 289313.65,
+       "pf": 1.11,
+       "max_dd_inr": -147009.45,
+       "t_stat": 1.51
+      }
+     }
+    }
+   }
+  }
+ ]
+}
