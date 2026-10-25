@@ -457,6 +457,20 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S110. Lab v2 fair-value weekly book, the user's two refinements: +3% / -6% closes the whole book (the longs too), and a week in loss at "the next next day" rolls its shorts to the same strikes on the next weekly. Measured: each refinement on its own and together lose; together ₹-82,821 against S109's ₹+42,706
+
+| | |
+|---|---|
+| Where | `research/strategy_lab_v2/tools/cagr_book.py` (flags `--keep-longs-on-pct`, `--no-loss-roll`; the default is both refinements on), every leg in `results/cagr_book_trades.csv`. 2026-10-25, the user: "in the same strategy -6% or +3% is exit"; then "do roll over to the same strikes in the next available weekly expiry if there is a loss in a week". Same window as S109 (entries 2025-05-14 → 2026-10-09, every strike in the store). |
+| What changed | (1) At +3% / -6% the week's shorts AND the 3 monthly longs are closed; the next week buys new longs. (2) Two sessions before the sold expiry, a week with a negative P&L (shorts realized + open, plus the longs' move since the week's entry) buys its shorts back and sells the same strikes on the next weekly at that step's price; the week continues with its P&L carried until +3% / -6%, a profitable "next next day", or a strike with no contract. (3) Also fixed: the steps now run the week's exits, then the long roll, then a new week's entry (the first version of (1) rolled the long before the exit check, so a week could buy a monthly and sell it in the same minute). S109's run reproduces (₹+42,706) with both flags off. |
+| Impact | **Measured, after costs (0.5 slippage a side, option charges, lot 65).** S109 (longs kept at ±%, no loss roll): 73 weeks, shorts ₹+159,480, longs ₹-116,774, **₹+42,706**. (1) only: 72 weeks (1 skipped: no monthly 18 days out at the data's end), exits 49 / 17 targets / 6 stops, shorts ₹+86,827, longs ₹-130,881, **₹-44,054**. (2) only: 54 weeks, 14 rolled (24 rolls), exits 13 / 25 targets / 16 stops, shorts ₹+11,372, longs ₹-116,774, **₹-105,401**. **Both (the default now): 42 weeks, 16 rolled (33 rolls), exits 17 two sessions before expiry / 14 targets / 11 stops; shorts ₹-24,783 (150 legs), longs ₹-58,038 (36 legs); total ₹-82,821.** The largest week: W21 (2026-02-09, three rolls) shorts ₹-178,165, longs ₹+196,804, ended at +6.5% on the March fall. |
+| Read | Closing the longs at +3% / -6% removes the one event that paid in S109 (the March put sold at 1,800 is now sold at the week's target, 1,219.10, and the following weeks buy new 200-premium hedges), and re-buying a monthly after every ± exit pays the hedge's decay more often. Rolling a losing week turns small weekly losses into longer positions that meet the -6% stop (16 stops with the roll alone, against 11 in S109) - the roll defers the loss, it does not remove it. With both on, the short book itself goes negative (₹-24,783). One 17-month regime, about 50 weeks. |
+| Open (the user's call) | Unquantified: a roll only when the loss is small (a cap); the hedge at 1 lot or a cheaper premium; the 2024 - early 2025 weeks when the download completes. |
+| Effort | **S**. |
+| Priority | _Open; numbers recorded._ Related: S109. |
+
+---
+
 ### S109. Lab v2 fair-value weekly book with the monthly longs HELD across weeks and rolled at 15 days (the user's restatement of Strategy 91 with "roll over buy on 15 day end"). Measured on the full-strike stretch: ₹+42,706 over 73 weeks - but one leg, the March 2026 side flip (the put hedge sold at 1,800 after a 1,600-point fall), makes ₹+311,244; without it the book loses about ₹-268,500
 
 | | |
