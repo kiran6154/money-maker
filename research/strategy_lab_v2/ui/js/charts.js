@@ -1,6 +1,7 @@
 // Charts: plain candles of the index, the futures or any option contract, with indicators the reader adds (/api/candles).
 // Every indicator is computed here, on the candles loaded (the shown sessions plus a warm-up before them).
 import { $, $$, api, esc, num, css, pref } from "./util.js";
+import { drawStack } from "./stack.js";
 
 // ---------------------------------------------------------------- indicators: what can be added, their settings and their maths
 const COLORS = ["#2962ff", "#ff6d00", "#e5484d", "#30a46c", "#8e4ec6", "#f5a524", "#12a594", "#6b7280"];
@@ -84,12 +85,15 @@ const TFM = { minute: 1, "3minute": 3, "5minute": 5, "15minute": 15, "30minute":
 
 function setSeg(id, attr, val) { $$(`#${id} button`).forEach((b) => b.classList.toggle("on", b.dataset[attr] === val)); }
 function showOpt() {
-  const opt = st.inst === "OPT";
+  const opt = st.inst === "OPT" || st.inst === "STACK", stack = st.inst === "STACK";
   $$(".c-opt").forEach((e) => (e.hidden = !opt));
   $$("#c-start .o-opt").forEach((o) => { o.hidden = !opt; o.disabled = !opt; });
   if (!opt) { $("#c-start").value = "days"; $("#c-end").value = "date"; }
   $("#c-days-l").hidden = $("#c-start").value !== "days";
   setSeg("c-inst", "i", st.inst); setSeg("c-right", "r", st.right);
+  $("#c-right-f").hidden = stack; $("#c-start-l").hidden = stack; $("#c-end-l").hidden = stack;   // Stack: the same strike's CE and PE, the shown sessions
+  $("#c-inds-g").hidden = stack; $("#c-main").hidden = stack;
+  if (stack) { st.right = "CE"; $("#c-start").value = "days"; $("#c-days-l").hidden = false; }
 }
 function shiftDay(d, k) { let x = new Date(d + "T00:00:00Z"); do { x = new Date(x.getTime() + k * 86400000); } while (x.getUTCDay() === 0 || x.getUTCDay() === 6); return x.toISOString().slice(0, 10); }
 const optTf = () => (TFM[tf()] < 5 ? "minute" : "5minute");
@@ -154,7 +158,7 @@ function warmBars() {
 }
 async function load() {
   const my = ++req, shown = +$("#c-days").value;
-  if (st.inst === "OPT") {
+  if (st.inst === "OPT" || st.inst === "STACK") {
     try {
       await loadExpiries();
       try { await loadStrikes(); }
@@ -174,6 +178,7 @@ async function load() {
     } catch (e) { if (my === req) { $("#c-legend").textContent = e.message; clear(); } return; }   // a stale load never overwrites a newer one's legend
     if (my !== req) return;
   }
+  if (st.inst === "STACK") return loadStack(my, shown);
   const day = $("#c-date").value;
   const perDay = Math.floor(375 / TFM[tf()]), warmDays = Math.ceil(warmBars() / Math.max(perDay, 1)) + 1;
   let frm = day; for (let k = 0; k < shown - 1 + warmDays + (st.inds.some((i) => i.type === "PDHL") ? 1 : 0); k++) frm = shiftDay(frm, -1);
@@ -195,6 +200,25 @@ async function load() {
   } catch (e) { if (my === req) { $("#c-legend").textContent = e.message; clear(); } }
 }
 function clear() { for (const c of charts) c.remove(); charts = []; $("#c-panes").innerHTML = ""; }
+// the Stack view: futures, CE | PE at 15 / 5 / 1 minutes, the OI built at each premium, the OI, CE + PE combined
+async function loadStack(my, shown) {
+  const day = $("#c-date").value, L = st.ks?.lives || {}, k = st.strike;
+  let showFrom = day; for (let n = 0; n < shown - 1; n++) showFrom = shiftDay(showFrom, -1);
+  $("#c-legend").textContent = "loading…";
+  try {
+    if (!L.PE?.[k]) throw new Error(`no PE ${k} for the ${st.exp} expiry in the store: pick another strike`);
+    const lifeCE = L.CE?.[k], lifePE = L.PE[k];
+    const opt = (r, life) => api("/api/store/candles?" + new URLSearchParams({ inst: "OPT", from: life[0], to: day, tf: "minute", expiry: st.exp, strike: k, right: r }));
+    const [fut, ce, pe] = await Promise.all([api("/api/store/candles?" + new URLSearchParams({ inst: "FUT", from: showFrom, to: day, tf: tf() })), opt("CE", lifeCE), opt("PE", lifePE)]);
+    if (my !== req) return;
+    clear();
+    $("#c-title").innerHTML = `<b>Stack · ${esc(st.exp)} ${esc(k)}</b> <span class="muted">· ${showFrom} → ${day} · futures and CE + PE at the ${$("#c-tf").selectedOptions[0].text} candles chosen; CE / PE also at 15, 5 and 1 minutes</span>`;
+    const nm = (s) => s.replace(/ \(store\)$/i, ""); charts = drawStack($("#c-panes"), { fut: fut.candles, ce: ce.candles, pe: pe.candles, futName: nm(fut.name), ceName: nm(ce.name), peName: nm(pe.name),
+                                        showFrom, day, tfMin: TFM[tf()] });
+    const c = ce.candles[ce.candles.length - 1], p = pe.candles[pe.candles.length - 1];
+    $("#c-legend").textContent = `CE ${num(c?.[4], 2)} · PE ${num(p?.[4], 2)} · CE + PE ${num((c?.[4] ?? 0) + (p?.[4] ?? 0), 2)} at ${c ? new Date(c[0] * 1000).toISOString().slice(0, 16).replace("T", " ") : "?"}`;
+  } catch (e) { if (my === req) { $("#c-legend").textContent = e.message; clear(); } }
+}
 function opts() {
   return { autoSize: true, layout: { background: { color: css("--card") }, textColor: css("--muted"), fontSize: 11 },
            grid: { vertLines: { color: css("--line") }, horzLines: { color: css("--line") } },

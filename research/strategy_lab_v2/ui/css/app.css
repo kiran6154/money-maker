@@ -240,6 +240,8 @@ details.skipped { margin-top: 10px; } details.skipped summary { cursor: pointer;
 .c-main { height: 480px; position: relative; }
 .c-pane { border-top: 1px solid var(--line); margin-top: 6px; }
 .c-pane-c { height: 170px; position: relative; }
+.c-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 760px) { .c-row { grid-template-columns: 1fr; } }
 .c-inds { display: flex; flex-direction: column; gap: 6px; }
 .c-ind { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .c-ind input[type="color"] { width: 26px; height: 22px; padding: 0; border: none; background: none; }
