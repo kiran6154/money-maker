@@ -457,6 +457,21 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S108. Lab v2 Strategies 91 - 93 from 2025-01-01, split by data coverage (the far-strike download complete for expiries 2025-06-05 → 2026-10-19). On the full-data stretch all three lose: 91 ₹-75,242 (70 positions, PF 0.70), 92 ₹-109,367 (31, PF 0.60), 93 ₹-40,024 (24, PF 0.81); the January - May 2025 positions on narrow expiries are positive but are only the weeks the narrow store could enter
+
+| | |
+|---|---|
+| Where | `results/ST91|ST92|ST93/from-2025_1m_idx/` (run label "From 2025", 2025-01-01 → 2026-10-09). 2026-10-25, the user: "run the strategy from the available data, start from 2025, identify where you don't have data". The download had completed every expiry from 2025-06-05 on (72 expiries); 2025-01-09 → 2025-05-29 still hold only the near-ATM range. |
+| Full data (every expiry of the position has the far strikes) | **91: 70 positions, 31 winners, ₹-75,242, PF 0.70 (shorts ₹+6,884, longs ₹-82,131; 58 closed two sessions before the sold expiry, 8 targets, 2 stops, 2 on the monthly's 15 days; 40 put-side, 30 call-side). 92: 31 positions, 16 winners, ₹-109,367, PF 0.60 (12 targets, 10 stops, 9 on the monthly's 15 days; no roll_unavailable; shorts ₹-226,254, longs ₹+116,887). 93: 24 positions, 15 winners, ₹-40,024, PF 0.81 (13 targets, 9 stops, 2 roll_unavailable at the data's end; shorts ₹+28,829, longs ₹-68,855).** |
+| Narrow expiries (2025-01 → 2025-05, put-side only) | 91: 11 positions ₹+19,737 and 10 pre-expiry sessions skipped for a missing strike (5 for the 450 premium, 2 for the 150, 3 for the monthly 200). 92: 8 positions ₹+22,359 (3 ended roll_unavailable), 9 sessions skipped. 93: 7 positions ₹+22,923 (4 roll_unavailable), 9 skipped. These are not comparable: the narrow store admits only the weeks whose strikes happened to be near the money, and a third of the weeks are missing. |
+| Read | With every strike present the picture is worse than the narrow-store runs suggested (S103 - S106). Strategy 92's rolling now lives long enough to meet the stops: 10 of its 31 positions stop out at -6%, and the shorts lose ₹-226k - a likely reading, not measured: the same-strike roll keeps selling a strike the index has already run through, so the loss carries into the next week instead of being closed; the longs pay ₹+117k against it. Measuring it: the shorts' moneyness at each roll, split by the position's outcome. Strategy 93 is the least bad (PF 0.81) and Strategy 91's hedge cost (longs ₹-82k against shorts ₹+7k) is the S103 pattern again. Strategy 93's 3-month positive stretch in S106 does not hold over 16 months. |
+| Not yet measured | Positions and entries on the expiries 2025-01-09 → 2025-05-29 (listed above) and all of September - December 2024: the download is working back through them; S103 - S105's full-window rerun waits for it. |
+| Open (the user's call) | The roll rule: rolling the shorts to the same strike after the index has gone through it is where Strategy 92 loses; rolling to the same premium (a new strike) or not rolling an in-the-money short are unquantified. |
+| Effort | **S** each. |
+| Priority | _Open; partial (16 months of full data) recorded._ Related: S103 - S106. |
+
+---
+
 ### S107. Lab v2 Strategy 94: Strategy 1's Foundation rules on the day-open ATM option's own 1-minute candles, buys only, each buy tagged by where its entry sits against the same option's previous-session range. Measured: 75% of the buys lose whichever side of the range they start on (inside 1,431 of 1,899; above 414 of 551; below 495 of 663); the whole thing ₹-288,781, PF 0.82
 
 | | |
