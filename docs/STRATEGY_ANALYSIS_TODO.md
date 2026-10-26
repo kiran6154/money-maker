@@ -457,6 +457,36 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S140. Jilly on the option's own chart (Strategies 120 - 123): why it enters late, and checking every 1 / 5 minutes instead of every 15. Measured: the noise band, not the 15-minute grid, makes the entries late - at the checkpoints before a signal the band is still failing 87% of the time (ST120), and the median entry is at a premium already ~50 - 70% away from its 09:15 open; checking every minute moves the median entry only ~10 minutes earlier (10:15 → 10:05); results are mixed (ST122 out-of-sample PF 1.045 → 1.135, ST123 1.214 → 1.153). Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed (`ck_step` is an existing setting) |
+| Code | none (`jilly.ck_step` in `strategies/jilly_opt.py`) |
+
+**The entry rule** (the user asked what it is): at checkpoints `ck_first` ... 14:00 every `ck_step` minutes (09:45 every 15 for ST120 - 122, 10:00 for ST123), a leg is bought when its close is above its OR high + `atr_buf` x ATR(9, its 5-minute bars), above UB(key) = max(09:15 open, previous close) x (1 + `band_k` x sigma(key)) and above its VWAP (the sell: the mirror); fill at the next minute's open; the first signal per leg per day.
+
+**Why late** (signal days, the checkpoints before the one that fired; same direction): ST120 - band failing 37%, OR + band 29%, OR + band + VWAP 21%, OR only 11%; ST122 - 37 / 29 / 23 / 9%; ST123 - OR + band 35%, band 31%, all three 18%, OR only 15%. Median premium move from the leg's 09:15 open at the entry: ST120 58%, ST122 48%, ST123 70%. On the future sigma is a fraction of a percent; on an at-the-money premium (20 - 40% intraday moves) band_k x sigma puts the band tens of percent from the open, and max(open, previous close) lifts it further (options often open below yesterday's close).
+
+| Book | Check every | Trades | Win % | IS PF (2020-02 - 23) | OOS PF (2024 - 26) | OOS net ₹ | All PF | All net ₹ | Max DD ₹ | w/o top-10 | Median entry |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| ST120 ATM, spec | 15 min (as built) | 1,125 | 53.4 | 1.088 | 1.073 | +50,381 | 1.081 | +1,11,935 | -1,15,940 | 0.952 | 10:15 |
+| | 5 min | 1,210 | 51.8 | 1.062 | 1.097 | +70,020 | 1.079 | +1,17,610 | -1,05,276 | 0.965 | 10:10 |
+| | 1 min | 1,283 | 51.1 | 1.105 | 1.070 | +54,174 | 1.087 | +1,36,367 | -1,34,268 | 0.981 | 10:06 |
+| ST121 PREM, spec | 15 min (as built) | 1,326 | 52.1 | 1.152 | 1.062 | +55,682 | 1.109 | +2,05,398 | -1,18,245 | 1.009 | 10:15 |
+| | 5 min | 1,427 | 50.2 | 1.106 | 1.060 | +57,861 | 1.084 | +1,72,781 | -1,00,990 | 0.996 | 10:10 |
+| | 1 min | 1,513 | 49.1 | 1.120 | 1.065 | +65,188 | 1.094 | +1,99,901 | -1,06,562 | 1.010 | 10:05 |
+| ST122 PREM, defaults | 15 min (as built) | 1,659 | 57.1 | 1.196 | 1.045 | +56,810 | 1.122 | +3,11,962 | -1,47,009 | 1.042 | 10:15 |
+| | 5 min | 1,783 | 56.9 | 1.170 | 1.056 | +75,354 | 1.115 | +3,21,539 | -1,58,982 | 1.046 | 10:10 |
+| | 1 min | 1,890 | 56.8 | 1.194 | 1.135 | +1,88,377 | 1.166 | +4,84,727 | -1,47,972 | 1.093 | 10:04 |
+| ST123 ATM, chosen settings | 15 min (as built) | 800 | 55.8 | 1.207 | 1.214 | +95,494 | 1.210 | +1,89,949 | -66,291 | 1.045 | 10:45 |
+| | 5 min | 878 | 53.1 | 1.171 | 1.174 | +86,161 | 1.173 | +1,71,341 | -84,312 | 1.017 | 10:40 |
+| | 1 min | 928 | 52.6 | 1.159 | 1.153 | +80,952 | 1.156 | +1,64,985 | -80,902 | 1.009 | 10:33 |
+
+**Reading.** Choosing by in-sample PF keeps 15 minutes on ST121 / ST122 / ST123 and picks 1 minute on ST120 (OOS 1.070 against 1.073 - the same). ST122 at 1 minute is the one large out-of-sample gain (+₹1,31,567), but its in-sample PF is the same as 15 minutes (1.194 vs 1.196), so the rule would not have picked it; ST123 (whose settings were chosen at 15 minutes) loses on both halves at 1 minute.
+
+**Open.** The band is the cause of the late entries; candidates (untested): a lower `band_k` or none on the option chart, the band from the 09:15 open only (not max(open, previous close)). Each to be chosen on 2020 - 23 and read on 2024 - 26.
+
 ### S139. Jilly on the option's own chart, both sides (Strategies 120 - 123): what a later opposite signal does to a trade - close it, reverse it, close on the other leg's opposite signal, or (after a stop) take the opposite signal. Measured 2020-02 - 2026-10: the situations are rare (0 - 37 trades of 800 - 1,672 over 6.7 years) and every logic moves PF by 0.02 or less; the in-sample pick beats the as-built book out of sample on one of four books (ST122, +₹11,766). Nothing adopted
 
 | | |
