@@ -457,6 +457,39 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S142. Jilly + the user's four Pine rules (IBS overnight, basis z-score overnight, narrow CPR + ORB, EMA distance bands 5m) run as one futures book - one position at a time, the first signal takes it, the rest ignored while it is open. Measured 2018-01 - 2026-10, 1 lot: the combined book makes ₹+14.6 lakh at PF 1.26 (1.34 / 1.18 by half), against ₹+25.8 lakh if all five could hold their own lot; the EMA bands (positional) hold the position most of the time and block 1,062 of the other books' signals. Research only
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; nothing live and no lab strategy changed |
+| Code | `research/strategy_lab_v2/tools/combo_book.py` |
+
+**Build** (the user's request after the four Pine scripts: "along with Jilly and these 4, validate what will happen if all are run together - whichever gets the first signal takes the trade, no trade if a trade from another exists"). NIFTY near-month futures, 1-minute, the download store (to 2026-10-23), 1 lot of 65, 0.5 pt slippage a side + futures charges by date (jilly.py). A decision at a bar's close fills at the next bar's open. Jilly = Strategy 111's futures trades (10 x ATR stop, 1R, 15:20). IBS = the Pine rules at the 15:19 bar, in at 15:20, out next session 09:16 open; skipped on the contract's expiry day (it does not exist overnight) and before a weekday holiday (the "tomorrow is holiday" box). Basis z = futures vs the index close at 15:19, minus 6.5% x days-to-expiry / 365 (the contract's own expiry), z against the previous 60 sessions, |z| > 2; in at 15:20, out next session 15:20; not on expiry day. CPR + ORB = the Pine rules on the previous two sessions' high / low / last close, the previous 20 CPR widths, the 09:15 open beyond today's CPR, a close beyond the 15-minute range; BUILD (the Pine rule gives no exit): stop at the far side of the opening range (a touch exits at the next open), else out at 15:20. EMA bands = 5-minute bars, EMA 50, 20-bar mean |close - EMA|, x 3; in at the next 5-minute bar's open, out at the next bar's open after a close back through the EMA; positional (held overnight); out at the last close of a contract before the roll (33 times). Ties on the same entry minute: Jilly, IBS, Basis z, CPR + ORB, EMA bands (no tie occurred to matter).
+
+| Standalone (1 lot each) | Trades | Win % | Avg net ₹ | PF | PF 2018-22 / 2023-26 | Net ₹ | Max DD ₹ |
+|---|---|---|---|---|---|---|---|
+| Jilly (ST111 futures) | 789 | 54.5 | +644 | 1.269 | 1.45 / 1.11 | +5,08,259 | -1,60,451 |
+| IBS overnight | 1,312 | 51.4 | +481 | 1.268 | 1.27 / 1.26 | +6,30,510 | -1,23,291 |
+| Basis z overnight | 146 | 60.3 | +2,603 | 1.718 | 1.25 / 2.56 | +3,80,027 | -1,15,668 |
+| Narrow CPR + ORB | 414 | 44.2 | +119 | 1.060 | 1.22 / 0.92 | +49,195 | -91,088 |
+| EMA bands 5m | 1,556 | 37.1 | +652 | 1.303 | 1.47 / 1.16 | +10,14,882 | -1,97,778 |
+| all five, each with its own lot | 4,217 | 46.3 | +612 | 1.289 | 1.37 / 1.21 | +25,82,873 | -3,86,879 |
+
+| Combined (one position) | Trades | PF | PF 2018-22 / 2023-26 | Net ₹ | Max DD ₹ | Skipped while busy |
+|---|---|---|---|---|---|---|
+| the book | 2,747 | 1.257 | 1.34 / 1.18 | +14,61,010 | -2,54,803 | 1,470 |
+| - Jilly | 359 | 1.151 | 1.21 / 1.09 | +1,37,014 | | 430 of 789 |
+| - IBS | 827 | 1.210 | 1.25 / 1.17 | +3,07,093 | | 485 of 1,312 |
+| - Basis z | 33 | 1.762 | 1.58 / 2.10 | +94,537 | | 113 of 146 |
+| - CPR + ORB | 195 | 0.929 | 1.15 / 0.72 | -27,044 | | 219 of 414 |
+| - EMA bands | 1,333 | 1.339 | 1.45 / 1.24 | +9,49,410 | | 223 of 1,556 |
+
+Who blocked whom (skipped <- holding): IBS <- EMA bands 485, Jilly <- EMA bands 369, CPR + ORB <- EMA bands 208, EMA bands <- Jilly 125, Basis z <- IBS 72, EMA bands <- CPR + ORB 49, Jilly <- CPR + ORB 47, Basis z <- EMA bands 41, others under 32. Combined by year (₹): 2018 +83,213 · 2019 +93,600 · 2020 +2,05,228 · 2021 +3,39,660 · 2022 +2,27,625 · 2023 +78,589 · 2024 +1,86,801 · 2025 +2,00,041 · 2026 (to 10-23) +46,252 - no losing year.
+
+**Reading.** Every book but CPR + ORB is positive in both halves on its own; CPR + ORB loses from 2023 (PF 0.92) and loses inside the book too. "First signal wins" costs about ₹11 lakh against running each book with its own lot: the EMA bands hold positions for days and take most of the slot (the Jilly trades left after blocking earn PF 1.15 instead of 1.27). The four Pine rules came with their numbers already set (the user's / their sources'); no parameter was chosen here, but how they were first found is not known, so the 2018 - 22 / 2023 - 26 split is a check, not an out-of-sample test. Basis z rests on 146 trades (33 inside the book).
+
+**Open (not adopted).** (a) Dropping CPR + ORB from the book; (b) a priority rule instead of first-come (for example intraday books before the positional EMA bands), or one lot per book; (c) the EMA bands and IBS rules as lab strategies with charts. Each is a change to what trades get taken - to be agreed before it is run.
+
 ### S141. Strategy 1 filtered by Jilly's noise band / the opening range (the user: "if we don't trade within the Jilly band or the day range it will likely save false trades"). Measured on Strategy 1's saved futures trades 2018-01 - 2026-10: trades inside the band are worse, and keeping only trades beyond the band the trade's way lifts PF 0.30 → 0.49 in both halves - but it does that by dropping 91% of the trades, and what is left still loses before costs (gross PF 0.65). The opening range does not separate them. Strategy 1 stays a loser either way; nothing adopted
 
 | | |
