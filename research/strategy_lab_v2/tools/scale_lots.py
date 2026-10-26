@@ -24,15 +24,20 @@ def load(code, run, choice):
     return [dict(t=r[C["entry_time"]], x=r[C["exit_time"]], px=float(r[C["entry_px"]]), net=float(r[C["net"]])) for r in T], 65
 
 
-def scale(T, lot, rule):
+def scale(T, lot, rule, topup=False):
+    """topup: when equity cannot pay one lot of the next put, money is added to bring it back to 2 lots' worth at that
+    premium (the starting rule); lots then count whole multiples of ALL the money put in (step rule)."""
     C0 = 2 * T[0]["px"] * lot
-    eq, out, peak, dd, ruin = C0, [], C0, 0.0, None
+    eq, out, peak, dd, ruin, inv = C0, [], C0, 0.0, None, C0
     for tr in T:
-        if eq < tr["px"] * lot: ruin = tr["t"]; break
-        n = max(1, int(eq // C0)) if rule == "step" else max(1, int(eq // (2 * tr["px"] * lot)))
+        if eq < tr["px"] * lot:
+            if not topup: ruin = tr["t"]; break
+            add = 2 * tr["px"] * lot - eq; inv += add; eq += add; peak = max(peak, eq)
+            out.append(dict(tr, lots=0, eq=eq, added=add, inv=inv))
+        n = max(1, int(eq // inv)) if rule == "step" else max(1, int(eq // (2 * tr["px"] * lot)))
         eq += tr["net"] * n; peak = max(peak, eq); dd = min(dd, eq - peak)
-        out.append(dict(tr, lots=n, eq=eq))
-    return C0, eq, dd, ruin, out
+        out.append(dict(tr, lots=n, eq=eq, added=0.0, inv=inv))
+    return (C0, eq, dd, ruin, out) if not topup else (C0, eq, dd, inv, out)
 
 
 if __name__ == "__main__":
