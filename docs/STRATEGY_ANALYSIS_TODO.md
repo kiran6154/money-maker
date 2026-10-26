@@ -457,6 +457,44 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S139. Jilly on the option's own chart, both sides (Strategies 120 - 123): what a later opposite signal does to a trade - close it, reverse it, close on the other leg's opposite signal, or (after a stop) take the opposite signal. Measured 2020-02 - 2026-10: the situations are rare (0 - 37 trades of 800 - 1,672 over 6.7 years) and every logic moves PF by 0.02 or less; the in-sample pick beats the as-built book out of sample on one of four books (ST122, +₹11,766). Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; Strategies 112 / 119 - 123 re-run identical after the code change (same trades; nets within ₹1 rounding of the saved results) |
+| Code | `research/strategy_lab_v2/strategies/jilly_opt.py` (opt-in `opp`, `_run_opp`, `_stops`; `legs()` now keeps every checkpoint signal of the day in `cands`) |
+
+**Build** (the user's request: "in options standalone, if there is a sell in CE and a buy comes in, or close CE - add these kinds of logics and check"). Each leg (CE, PE) still trades its day's first signal; every later checkpoint signal (09:45 ... 14:00, same rules) is now kept. `opp`: "close" - an opposite signal on the same leg (a buy while the leg is sold, a sell while it is bought) closes it at the next open; "reverse" - closes it and trades the leg the other way from there (same stop / target rules), once a day; "xclose" - a signal on the other leg pointing the other market way (CE buy / PE sell = up, CE sell / PE buy = down) closes it; "both" = reverse + xclose; "flip" - after the trade is stopped out, the first later opposite signal on the same leg is traded (once a day); "flip_x" = flip + xclose. The stop / target is checked before the signal on the same minute. Selection rule set before reading: the highest in-sample PF (2020-02 - 2023), read on 2024 - 2026-10.
+
+| Book | opp | Trades | IS PF | OOS PF | All PF | All net ₹ | Max DD ₹ | Times it acted |
+|---|---|---|---|---|---|---|---|---|
+| ST120 ATM, spec | as built | 1,125 | 1.088 | 1.073 | 1.081 | +1,11,935 | -1,15,940 | |
+| | close / reverse | 1,125 | 1.088 | 1.073 | 1.081 | +1,11,935 | -1,15,940 | 0 |
+| | xclose / both | 1,125 | 1.076 | 1.091 | 1.083 | +1,13,969 | -1,10,478 | 27 |
+| | flip (pick) | 1,147 | 1.101 | 1.073 | 1.087 | +1,22,860 | -1,19,010 | 22 |
+| | flip_x | 1,146 | 1.086 | 1.091 | 1.089 | +1,23,440 | -1,13,547 | |
+| ST121 PREM, spec | as built | 1,326 | 1.152 | 1.062 | 1.109 | +2,05,398 | -1,18,245 | |
+| | close / reverse | 1,326 | 1.152 | 1.062 | 1.109 | +2,05,398 | -1,18,245 | 0 |
+| | xclose / both | 1,326 | 1.157 | 1.046 | 1.104 | +1,95,482 | -1,16,496 | 6 |
+| | flip | 1,340 | 1.162 | 1.063 | 1.114 | +2,19,296 | -1,27,510 | 14 |
+| | flip_x (pick) | 1,340 | 1.166 | 1.048 | 1.109 | +2,09,380 | -1,25,762 | |
+| ST122 PREM, defaults | as built | 1,659 | 1.196 | 1.045 | 1.122 | +3,11,962 | -1,47,009 | |
+| | close | 1,659 | 1.191 | 1.052 | 1.123 | +3,14,422 | -1,44,361 | 13 |
+| | reverse | 1,672 | 1.190 | 1.058 | 1.126 | +3,24,637 | -1,42,306 | 14 |
+| | xclose | 1,659 | 1.184 | 1.039 | 1.113 | +2,89,371 | -1,47,140 | 37 |
+| | both | 1,670 | 1.176 | 1.043 | 1.112 | +2,88,282 | -1,46,933 | |
+| | flip (pick) | 1,667 | 1.210 | 1.054 | 1.133 | +3,43,398 | -1,40,833 | 8 |
+| | flip_x | 1,666 | 1.198 | 1.054 | 1.128 | +3,27,130 | -1,37,413 | |
+| ST123 ATM, chosen settings | as built | 800 | 1.207 | 1.214 | 1.210 | +1,89,949 | -66,291 | |
+| | close / reverse (pick = as built) | 800 | 1.207 | 1.214 | 1.210 | +1,89,949 | -66,291 | 0 |
+| | xclose / both | 800 | 1.202 | 1.216 | 1.209 | +1,87,982 | -68,044 | 10 |
+| | flip | 804 | 1.196 | 1.208 | 1.202 | +1,83,766 | -66,189 | 4 |
+| | flip_x | 804 | 1.192 | 1.210 | 1.201 | +1,81,799 | -67,942 | |
+
+**Reading.** An opposite signal on the same leg almost never meets an open trade: a buy needs a close above ORH + buffer, a sell below ORL - buffer, and the trade's stop (the OR midpoint, or a multiple of the leg's ATR) sits between the two, so it is hit first - 0 times on ST120 / ST121 / ST123, 13 on ST122 (10 x ATR stop). The case the user describes happens after the stop: "flip" takes it, 4 - 22 times. The other leg's opposite signal closes 6 - 37 trades. With so few events every change is within 0.02 PF and a few thousand rupees a year; out of sample the pre-set pick is better than as built on ST122 only (1.045 → 1.054), equal on ST120 / ST123 and worse on ST121.
+
+**Open (not adopted).** Nothing to take forward on this evidence; the events are too rare to judge. A looser trigger (an opposite close beyond the OR midpoint rather than the full breakout) would act more often - untested.
+
 ### S138. Jilly (Strategy 111) with an extra entry filter - RSI 14, SMA 20 direction, VWAP +/- 1 / 2 sigma - on top of its own conditions, chosen on the early years and read on 2023 - 26. Measured: nothing clearly helps. RSI > 50 and SMA 20 direction change almost nothing (the breakout already implies them); "beyond VWAP + 2 sigma" has the best early PF on futures (1.98) and loses out of sample (0.91); the only filter better in both halves of both books, "not RSI(1m) 70 / 30, wait for the next check", adds about 0.03 - 0.05 PF - within noise, and found after seeing both halves. Nothing adopted
 
 | | |

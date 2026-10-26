@@ -68,7 +68,7 @@ _LEGS = {}
 
 def legs(J, d0, d1):
     """{(day, right): dict(...)} - each session's day-open ATM / ITM1 leg with its own candles, profile and signal."""
-    key = (tuple(sorted((k, str(v)) for k, v in J.items() if k not in ("notes", "stop", "stop_atr", "target_r", "trail", "trail_after"))), d0, d1)   # the exits do not change the legs
+    key = (tuple(sorted((k, str(v)) for k, v in J.items() if k not in ("notes", "stop", "stop_atr", "target_r", "trail", "trail_after", "opp"))), d0, d1)   # the exits do not change the legs
     if key in _LEGS: return _LEGS[key]
     sp = _J._store_bars("index"); f = _J._store_bars("fut")
     exps = sorted(e["expiry"] for e in store_reader.expiries())
@@ -146,7 +146,7 @@ def legs(J, d0, d1):
             orm = (kv >= 1) & (kv <= J["or_keys"])
             ORH, ORL = float(h[orm].max()), float(l[orm].min()); rec.update(ORH=ORH, ORL=ORL, ORM=_J._r05((ORH + ORL) / 2))
             hlc3 = (h + l + c) / 3; cv = np.cumsum(v); vw = np.where(cv > 0, np.cumsum(hlc3 * v) / np.where(cv > 0, cv, 1), np.nan); rec["vwap"] = vw
-            rec["rank"] = None
+            rec["rank"] = None; rec["cands"] = cands = []          # every checkpoint signal of the day (the `opp` exits read them)
             for ck in range(J["ck_first"], J["ck_last"] + 1, J["ck_step"]):
                 w = np.nonzero(kv == ck)[0]
                 if not len(w): continue
@@ -157,7 +157,8 @@ def legs(J, d0, d1):
                 else: continue
                 if J.get("struct") and rec["trend"][q] != side: continue     # outside the protected level of the leg's own structure only
                 if q + 1 >= len(c): break
-                rec.update(signal=side, q=q, key=ck, close=C, atr=atr, fill_q=q + 1, fill=float(o[q + 1])); break
+                cands.append((q, side, ck, C, atr))
+                if rec["signal"] is None: rec.update(signal=side, q=q, key=ck, close=C, atr=atr, fill_q=q + 1, fill=float(o[q + 1]))
             if rec["signal"] is None: rec["why"] = "no signal"
     # the vol filter: today's sigma(30) against the previous 250 sessions' of the same right
     for right in ("CE", "PE"):
@@ -173,6 +174,77 @@ def legs(J, d0, d1):
     return out
 
 
+def _stops(J, sd, fill, close, atr, ORM):
+    dist = _J._r05(J["stop_atr"] * atr)
+    if sd > 0:
+        stop = ORM if J["stop"] == "orm" and ORM < close else max(0.05, fill - dist); target = fill + J["target_r"] * (fill - stop)
+    else:
+        stop = ORM if J["stop"] == "orm" and ORM > close else fill + dist; target = max(0.05, fill - J["target_r"] * (stop - fill))
+    return stop, target
+
+
+def _run_opp(ctx, J, L, d0, d1, flat_key, lots):
+    """`opp`: what a later opposite signal does to an open trade (the user: "if there is a sell in CE and a buy comes in, or
+    close CE"). A leg's market direction: CE buy / PE sell = up, CE sell / PE buy = down.
+      "close"   an opposite signal on the SAME leg (a buy while it is sold, a sell while it is bought) closes it;
+      "reverse" the same, and the leg is traded the other way from there (its stop / target by the same rules), once a day;
+      "xclose"  a signal on the OTHER leg pointing the other market way closes it;
+      "both"    "reverse" plus "xclose";
+      "flip"    after the trade is stopped out, the first later opposite signal on the same leg (a buy after a stopped sell,
+                a sell after a stopped buy) is traded, once a day - an open trade is rarely met by an opposite signal, since
+                its stop sits between the two breakouts; "flip_x" = "flip" plus "xclose".
+    A signal is known at its checkpoint candle's close: out (and in) at the next minute's open. Stops / targets first."""
+    mode = J["opp"]; same = mode in ("close", "reverse", "both"); cross = mode in ("xclose", "both", "flip_x"); rev = mode in ("reverse", "both")
+    flip = mode in ("flip", "flip_x")                 # "flip": after a stop, the leg's next opposite signal is taken (once a day)
+    mkt = lambda right, sd: sd if right == "CE" else -sd
+    trs = []
+    for day in sorted({d for d, _ in L}):
+        if not (d0 <= day <= d1): continue
+        for right in ("CE", "PE"):
+            r = L.get((day, right))
+            if not r or r.get("signal") is None: continue
+            o_ = L.get((day, "PE" if right == "CE" else "CE"))
+            o, h, l, c, kv, t = r["o"], r["h"], r["l"], r["c"], r["kv"], r["t"]
+            # the other leg's signals mapped onto this leg's minutes (its checkpoint close time)
+            xs = [(int(np.searchsorted(t, int(o_["t"][q]))), s2) for q, s2, *_ in (o_.get("cands") or [])] if (cross and o_ and o_.get("signal") is not None) else []
+            sd, fq, fill, q0, close, atr = r["signal"], r["fill_q"], r["fill"], r["q"], r["close"], r["atr"]
+            label, reversed_ = f"{'LONG' if sd > 0 else 'SHORT'} {right}", False
+            while True:
+                stop, target = _stops(J, sd, fill, close, atr, r["ORM"])
+                opp_q = sorted([q for q, s2, *_ in r["cands"] if same and q > q0 and s2 == -sd] +
+                               [q for q, s2 in xs if q > q0 and q < len(c) and mkt("PE" if right == "CE" else "CE", s2) == -mkt(right, sd)])
+                xq, why, xp, nxt = len(c) - 1, "eod", float(c[-1]), None
+                for m in range(fq, len(c)):
+                    if kv[m] >= flat_key: xq, why, xp = m, "eod", float(o[m]); break
+                    hs, ht = ((l[m] <= stop), (h[m] >= target)) if sd > 0 else ((h[m] >= stop), (l[m] <= target))
+                    if hs or ht:
+                        why = "stop_loss" if hs else "target 1"
+                        xq, xp = (m + 1, float(o[m + 1])) if m + 1 < len(c) else (m, float(c[m])); break
+                    if opp_q and m == opp_q[0] and m + 1 < len(c) and kv[m + 1] < flat_key:
+                        same_hit = any(q == m and s2 == -sd for q, s2, *_ in r["cands"]) and same
+                        xq, xp = m + 1, float(o[m + 1])
+                        why = "opposite_signal" if same_hit else "other_leg_signal"
+                        if same_hit and rev and not reversed_:
+                            cq = next(x for x in r["cands"] if x[0] == m and x[1] == -sd)
+                            nxt = (-sd, m + 1, float(o[m + 1]), m, cq[3], cq[4])
+                        break
+                    if opp_q and m >= opp_q[0]: opp_q.pop(0)
+                name = f"NIFTY {Dt.date.fromisoformat(r['exp']):%d%b%y} {r['k']} {right}".upper()
+                pos = "LONG" if sd > 0 else "SHORT"
+                rec = dict(dir="up" if sd > 0 else "down", signal="BULLISH" if sd > 0 else "BEARISH", choch_time=int(t[q0]), und_entry=fill, und_exit=xp, stale=False, lots=lots, tranche="",
+                           position=pos, opt_type=right, kind="OPT", instrument=name, strike=r["k"], expiry=r["exp"], entry_time=int(t[fq]),
+                           entry_px=fill, exit_time=int(t[xq]), exit_px=xp, exit_reason=why, open=False, sl=stop, label=label, signal_key=r["key"])
+                trs.append(_J._price(ctx, rec, "OPT"))
+                if flip and nxt is None and why == "stop_loss" and not reversed_:
+                    cq = next((x for x in r["cands"] if x[0] >= xq and x[1] == -sd and x[0] + 1 < len(c) and kv[x[0] + 1] < flat_key), None)
+                    if cq is not None: nxt = (-sd, cq[0] + 1, float(o[cq[0] + 1]), cq[0], cq[3], cq[4])
+                if nxt is None: break
+                sd, fq, fill, q0, close, atr = nxt; reversed_ = True
+                label = f"{'LONG' if sd > 0 else 'SHORT'} {right} · {'after the stop' if flip else 'reverse'}"
+    trs.sort(key=lambda x: x["entry_time"])
+    return trs
+
+
 def run(ctx):
     spec = ctx["spec"]; J = spec["jilly"]; lots = ctx["position"]["lots"]
     d0, d1 = max(ctx["date_from"], J["opt_from"]), ctx["date_to"]
@@ -181,6 +253,8 @@ def run(ctx):
     for ch in core.choice_keys(spec, "OPT_FUT_SIGNAL"):
         Jc = dict(J, strike="ATM" if ch.endswith("ATM") else "PREM" if ch.endswith("PREM") else "ITM1")
         L = legs(Jc, d0, d1)
+        if J.get("opp"):
+            res[ch] = dict(trades=_run_opp(ctx, J, L, d0, d1, flat_key, lots), skipped=[], signals=[]); continue
         trs, skipped = [], []
         for (day, right), r in sorted(L.items()):
             if not (d0 <= day <= d1) or r["signal"] is None: continue
