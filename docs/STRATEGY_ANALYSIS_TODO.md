@@ -457,6 +457,26 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S151. CHoCH to CHoCH (Strategies 25 - 28 / 147 - 150) with compounding lots - "capital for 2 lots, trade 1; at 2x the capital trade 2 lots, and so on" (the user). Measured: the books never reach 2x the starting capital in any start year, so the rule never adds a lot; from 2018 every book runs out of the money for one lot within the first year; ST147 from 2025 ends +13% (1 lot throughout)
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only |
+| Code | `research/strategy_lab_v2/tools/scale_lots.py` |
+
+**Build.** On the saved trades (1 lot each, its net after costs): starting capital = 2 x the first trade's premium x 65; lots = max(1, floor(equity / starting capital)); trading stops when equity cannot pay one lot of the next put (a long put is paid in full). A second reading sizes each trade off its own premium (equity / (2 x premium x 65)) - identical here.
+
+| Book | Start 2018 | Start 2023 | Start 2025 |
+|---|---|---|---|
+| ST147 (PCR on, close stops) | ₹21,352 → ₹11,417 (-47%), out of money 2018-11 | ₹24,992 → ₹20,198 (-19%), stopped 2025-05 (premiums rose past the equity) | ₹41,782 → ₹47,162 (+13%), 163 trades |
+| ST148 (PCR off, close) | ₹18,193 → ₹12,797 (-30%), stopped 2018-03 | ₹32,838 → ₹17,365 (-47%), stopped 2023-01 | ₹55,250 → ₹20,162 (-64%), stopped 2025-08 |
+| ST149 (PCR on, touch) | ₹21,352 → ₹12,238 (-43%), stopped 2018-11 | ₹24,992 → ₹22,979 (-8%), stopped 2025-05 | ₹41,782 → ₹39,029 (-7%) |
+| ST150 (PCR off, touch) | ₹18,193 → ₹14,509 (-20%), stopped 2018-02 | ₹32,838 → ₹17,115 (-48%), stopped 2025-01 | ₹55,250 → ₹43,385 (-21%) |
+
+ST25 on its own data window (2026-06-24 - 09-04, 31 trades): ₹46,670 → ₹56,679 (+21%), still 1 lot. Max lots is 1 in every run.
+
+**Reading.** Compounding multiplies an edge; these books have none over the long run (S147: PF 0.72 - 0.84), so the step rule only ever trades 1 lot and the capital shrinks. Premiums also roughly doubled from 2018 to 2026 with the index, so capital sized for 2 lots at the start cannot pay for 1 lot later even at break-even. A sizing rule is worth fitting only on a book with a positive expectancy (e.g. the S150 candidate through the option).
+
 ### S150. Why 1-minute CHoCH / BOS loses after a Jilly noise-band break, the fixes that follow from it, and the S149 candidate traded through an ITM option. Measured: the band break is a weak trend-day signal (only 32% of break days trend; 1-minute structure nets +76 points a day on those and -48 / -102 on the flat / failed ones); first-trade-only with a 5-minute-swing stop lifts the 1-minute trades from PF 0.82 / 0.65 to 1.15 / 0.93; the frozen S149 candidate through a weekly option 100 points in the money: PF 1.84 / 1.11 / 1.74 (2026) against 1.82 / 1.03 / 1.36 on futures - the option cuts the cost to about 1 point a trade
 
 | | |
