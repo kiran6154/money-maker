@@ -457,6 +457,39 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S145. The combined book with the best 15-minute option-selling book added (Strategy 142), one position per side (bullish / bearish), first entry wins; and a confluence score - how many other books hold a position the same way minus the other way at a trade's entry. Measured 2018-01 - 2026-10, 1 lot: the book makes ₹+15.7 lakh at PF 1.28 (1.32 / 1.23). Trades with 2+ more books agreeing than opposing are clearly stronger in both halves (PF 1.83 / 2.01, avg ₹+2,068 against about ₹+580); score +1, 0 and -1 are about the same. The rule chosen on 2018-22 ("only with agreement") fails on 2023-26. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only |
+| Code | `research/strategy_lab_v2/tools/combo_score.py` (the futures books from `tools/combo_book.py`, the option book from `strategies/optsell15.py`) |
+
+**Build** (the user's request: "pick the best of these and run it along with the others; one trade per side at a time, first entry wins; then a variant scoring the trade by multiple strategies' signals - more similar signals, strong or weak - figure out how"). The best of Strategies 139 - 145 by its weaker half with 100+ trades in each: Strategy 142 (G_hardstop K5; PF 1.64 / 1.52; the others 0.79 - 1.44 in their weaker half, ST141 on 48 trades a half). "Side" read as the market direction: bullish = long futures or a sold PE, bearish = short futures or a sold CE; at most one open per side, so a bullish and a bearish trade can be open together (196 times). Ties on the same minute: Jilly, IBS, Basis z, CPR + ORB, EMA bands, the option book. Score of a trade = for each OTHER book, +1 if its standalone book holds a position the same way at the trade's entry minute (opened before it, not yet closed - known at that minute), -1 if the other way; 6 books, so -5 ... +5. The option book's ₹ are per lot of 65 with its own costs (S144).
+
+| Every standalone trade, by score | Trades | Win % | Avg net ₹ | PF | PF 2018-22 / 2023-26 | Net ₹ |
+|---|---|---|---|---|---|---|
+| <= -2 | 31 | 51.6 | +1,306 | 1.33 | 2.64 / 0.67 | +40,478 |
+| -1 | 318 | 39.3 | +536 | 1.22 | 1.55 / 0.98 | +1,70,372 |
+| 0 | 2,380 | 45.3 | +582 | 1.28 | 1.29 / 1.27 | +13,84,312 |
+| +1 | 1,574 | 49.4 | +596 | 1.27 | 1.41 / 1.15 | +9,38,650 |
+| >= +2 | 296 | 57.8 | +2,068 | 1.94 | 1.83 / 2.01 | +6,12,186 |
+
+Per book (PF, score < 0 / = 0 / > 0, 2018-22 then 2023-26): Jilly 2.54 / 0.23 · 1.27 / 0.92 · 1.49 / 1.35 (agreement helps it in both halves); IBS 2.72 / 2.90 (29 trades) · 1.10 / 1.17 · 1.39 / 1.29; Basis z 1.95 / 0.84 · 0.78 / 6.19 · 2.95 / 2.39; CPR + ORB 0.11 / 0.44 · 1.43 / 0.67 · 1.18 / 1.21; EMA bands 1.40 / 0.99 · 1.47 / 1.15 · 1.53 / 1.29; option book 2.16 / 1.73 · 1.47 / 2.47 · 1.77 / 1.11.
+
+| Combined book, one position per side, first entry wins | Trades | PF | PF 2018-22 / 2023-26 | Net 2018-22 / 2023-26 ₹ | Net ₹ | Max DD ₹ | Skipped |
+|---|---|---|---|---|---|---|---|
+| every signal, 1 lot | 2,742 | 1.277 | 1.32 / 1.23 | +9,26,988 / +6,47,683 | +15,74,671 | -2,22,168 | 1,857 |
+| skip when score < 0 | 2,574 | 1.280 | 1.31 / 1.25 | +8,40,902 / +6,34,102 | +14,75,004 | -2,10,818 | 1,676 |
+| only score > 0 | 1,351 | 1.279 | 1.45 / 1.13 | +6,05,096 / +1,89,900 | +7,94,996 | -1,15,117 | 519 |
+| 2 lots when score > 0, else 1 | 2,742 | 1.304 | 1.33 / 1.28 | +10,30,514 / +8,49,500 | +18,80,014 | -2,20,594 | 1,857 |
+| 2 lots when > 0, 1 at 0, skip < 0 | 2,574 | 1.312 | 1.33 / 1.29 | +10,06,610 / +8,59,738 | +18,66,349 | -2,20,042 | 1,676 |
+
+Every-signal book by book: Jilly 308 trades PF 1.13 (2023-26 0.92), IBS 738 1.19, Basis z 78 1.36, CPR + ORB 183 0.86 (loses), EMA bands 1,311 1.34, the option book 124 2.00 (+₹2,47,298). By year (₹): 2018 +73,787 · 2019 +1,04,723 · 2020 +1,36,504 · 2021 +3,59,991 · 2022 +2,51,983 · 2023 +1,01,775 · 2024 +2,42,117 · 2025 +2,26,664 · 2026 +77,128.
+
+**Reading.** One position per side instead of one in all adds ₹1.1 lakh (₹15.7 lakh against S142's ₹14.6 lakh) at a lower drawdown (₹2.22 lakh against ₹2.55 lakh). The selection rule set before reading (the best 2018-22 return / drawdown) picks "only with agreement" (13.2 against 9.2 for every signal), which falls to 1.65 on 2023-26 against 2.92 - agreement as a filter does not hold. The score's one consistent finding is the strong end: trades with two or more books more agreeing than opposing (296, 6% of trades) earn PF 1.83 and 2.01 in the two halves and three times the average trade; it was found with both halves on the table. The score is driven by the long-holding books (EMA bands and IBS are in a position most of the time), so "agreement" mostly means agreeing with them.
+
+**Open (not adopted).** Pre-register "score >= +2 -> 2 lots" (or a separate high-confluence book) and judge it on data after 2026-10-23 only. CPR + ORB loses inside the book again (S142 / S143).
+
 ### S144. Lab v2 Strategies 139 - 145: two hand-off option-selling specs (15-minute bars of each option contract). The "Strategy 11 family" port reproduces its reference code's section-6 table and both golden trades exactly; the "Rainbow Book", built from its text (its reference code and golden CSVs are not on this machine), comes close but not exact (2018 - 23: 32 trades ₹-45,597 against the spec's 33 / ₹-6,257; the worst trade identical). Both are short-option books fitted on 2024 - 25: most of their money is from 2024 on, and single unstopped trades lose ₹1.25 - 1.30 lakh
 
 | | |
