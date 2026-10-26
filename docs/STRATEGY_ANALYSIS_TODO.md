@@ -457,6 +457,39 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S150. Why 1-minute CHoCH / BOS loses after a Jilly noise-band break, the fixes that follow from it, and the S149 candidate traded through an ITM option. Measured: the band break is a weak trend-day signal (only 32% of break days trend; 1-minute structure nets +76 points a day on those and -48 / -102 on the flat / failed ones); first-trade-only with a 5-minute-swing stop lifts the 1-minute trades from PF 0.82 / 0.65 to 1.15 / 0.93; the frozen S149 candidate through a weekly option 100 points in the money: PF 1.84 / 1.11 / 1.74 (2026) against 1.82 / 1.03 / 1.36 on futures - the option cuts the cost to about 1 point a trade
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/why_1m_fails.py`, `tools/next_tests.py` |
+
+**Why it fails** (the user: "why do 1-minute CHoCH / BOS not work if the market is not sideways - the noise-band cross says it is not sideways - where does it fail on those days"; tools/why_1m_fails.py, 6,853 trades on 1,349 break days, 2018-01 - 2026-10): holding the break to 15:20 splits the days into trend held (> +50 points; 435 days, 32%; holding +131 a day), flat (577, 43%; +2) and failed (337, 25%; -131). 1-minute structure on those: 3.5 / 5.6 / 6.1 trades a day, net +75.7 / -47.7 / -101.7 points a day - it keeps 63% of a real trend day's move but churns on the other two thirds. Exits: 51% at the stop (the last 1-minute swing, a median 14.4 points away - about two 1-minute bars' range of 6.8), averaging -14.5; 36% at the next opposite CHoCH, +1.9; 13% at 15:20, +66.5. 54% of the losers were ahead by more than their round-trip cost first (median best 6.7 points). Re-entries the same day pay a median 5.9 points worse than the previous exit; the first trade of a day averages +5.2 gross points, the later ones +1.1. Costs average 30.9 points a day against +9.6 gross.
+
+**Fixes, pre-registered** (tools/next_tests.py; this bench's structure engine runs on the whole series, so T0 differs a little from the jilly_ext numbers above; pick = the best 2018-22 PF, >= 200 trades):
+
+| Version | Trades | Gross pts / trade | Win % | PF 2018-22 | PF 2023-26 | PF 2026 | Net 2018-22 ₹ | Net 2023-26 ₹ | Net 2026 ₹ |
+|---|---|---|---|---|---|---|---|---|---|
+| T0 every 1-minute CHoCH / BOS the break's way | 4,487 | +1.56 | 21 | 0.82 | 0.65 | 0.56 | -3,41,903 | -10,38,524 | -3,77,100 |
+| T1 first trade of the day only | 1,122 | +3.94 | 20 | 0.92 | 0.87 | 0.65 | -47,026 | -1,15,581 | -79,947 |
+| T2 no new trade after a stop | 1,663 | +2.29 | 20 | 0.82 | 0.75 | 0.52 | -1,33,767 | -3,03,350 | -1,63,286 |
+| T3 the stop on the 5-minute swing | 3,332 | +2.57 | 26 | 0.94 | 0.71 | 0.61 | -96,119 | -7,30,219 | -2,75,347 |
+| **T4 first trade only + 5-minute swing stop (the pick)** | 1,122 | +6.86 | 36 | 1.15 | 0.93 | 0.89 | +1,28,367 | -78,211 | -31,171 |
+| H hold the break to 15:20 (reference) | 1,383 | +8.22 | 51 | 1.13 | 0.98 | 1.10 | +2,33,935 | -36,941 | +42,654 |
+| C the S149 frozen candidate (reference) | 644 | +15.07 | 48 | 1.82 | 1.03 | 1.36 | +3,47,237 | +23,053 | +59,007 |
+
+**Through a weekly option 100 points in the money** (the same entry / exit minutes; CE for a long, PE for a short, strike from the index at the signal minute, the nearest weekly on or after the day; the lab's option costs - charges about 1 option point a trade):
+
+| Signals | Trades (no option candle) | PF 2018-22 | PF 2023-26 | PF 2026 | Net 2018-22 ₹ | Net 2023-26 ₹ | Net 2026 ₹ |
+|---|---|---|---|---|---|---|---|
+| H hold the break to 15:20 | 1,362 (21) | 1.11 | 0.99 | 1.28 | +1,33,659 | -10,204 | +75,950 |
+| C the S149 frozen candidate | 632 (12) | 1.84 | 1.11 | 1.74 | +2,52,594 | +56,377 | +72,833 |
+| T4 | 1,105 (17) | 1.20 | 1.00 | 1.09 | +1,13,525 | +387 | +14,979 |
+
+**Reading.** 1-minute structure does work on real trend days; the noise-band break just does not tell those apart (two thirds of break days are flat or fail), and a 1-minute-swing stop inside normal noise plus chasing re-entries turn those days into many small paid losses. One trade a day with a 5-minute-swing stop removes most of that (PF 0.65 → 0.93 after 2022) but still does not clear the futures cost. Trading the signals through an ITM option keeps less of the move (delta below 1) but costs about a fifth as much; it helps most in 2026 (the futures STT): the candidate goes 1.36 → 1.74. Caveat: the candidate C was put together after four bots had looked at 2023-26 (S149), so its 2023-26 / 2026 numbers are a check, not a clean test.
+
+**Open (not adopted).** C through the ITM option as a lab strategy for forward paper tracking from 2026-10-27; a better trend-day detector at the break (the band says "not sideways" on 2.3x more days than trend) is where the remaining edge is.
+
 ### S149. The band -> structure intraday research programme (six research bots on one bench, plus "trade structure after the noise-band break"): a sideways band, a break, CHoCH / BOS entries and exits, continuation indicators, a higher-timeframe exit, moving windows and open interest - about 3,500 versions on NIFTY near-month futures, 1-minute, 2018 - 2026-10. Measured: nothing chosen on 2018-22 stays profitable on 2023-26; the edge is in the band break itself on a trend day, held, and it has shrunk (gross 5 - 7 points a trade in 2018-22, 2 - 4 since) while the cost rose (4 -> 8 -> 15 points); the one family that recurs in every bot is Jilly's noise band broken and confirmed by a BOS, near break-even after 2022. Nothing adopted
 
 | | |
