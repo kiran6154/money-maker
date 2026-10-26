@@ -457,6 +457,24 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S143. Lab v2 Strategies 135 - 138: the user's four Pine rules (IBS overnight, basis z-score overnight, narrow CPR + ORB, EMA distance bands) as lab strategies. Measured: they reproduce S142's standalone numbers exactly over 2018-01-01 - 2026-10-23 (IBS 1,312 trades ₹+6,30,510; basis 146 ₹+3,80,027; CPR 414 ₹+49,195; EMA bands 1,556 ₹+10,14,882); on the lab pages (2018-01-02 - 2026-10-09, the lab's window) IBS PF 1.27, basis 1.72, CPR 1.06 (2023-26: 0.92), EMA bands 1.32
+
+| | |
+|---|---|
+| Impact | Measured (S142 and the lab pages). Research only |
+| Code | `research/strategy_lab_v2/strategies/pinerules.py`, `st135.py` - `st138.py` |
+
+**Build.** The rules and build choices are S142's (one module now serves both: `tools/combo_book.py` keeps its own copy of the same code). Each strategy's chart draws its rule's lines on the near-month future: ST135 the session high / low and the IBS 0.7 / 0.3 levels; ST136 the fair futures price (index x (1 + 6.5% x days to expiry / 365)); ST137 today's CPR and the opening range; ST138 5-minute candles with the EMA and both bands. Max profit / max loss come from the futures candles (core.own_excursions).
+
+| Lab page | All data (2018-01-02 - 2026-10-09) | 2018 - 22 | 2023 - 26 |
+|---|---|---|---|
+| ST135 IBS | 1,305 trades, ₹+6,34,108, PF 1.27, t 2.69 | 744, ₹+3,28,139, PF 1.27 | 561, ₹+3,05,969, PF 1.27 |
+| ST136 basis z | 146, ₹+3,80,027, PF 1.72, t 2.24 | 83, ₹+83,731, PF 1.25 | 63, ₹+2,96,295, PF 2.56 |
+| ST137 CPR + ORB | 414, ₹+49,195, PF 1.06, t 0.46 | 234, ₹+84,835, PF 1.22 | 180, ₹-35,640, PF 0.92 |
+| ST138 EMA bands | 1,546, ₹+10,48,643, PF 1.32, t 3.34 | 875, ₹+7,30,145, PF 1.47 | 671, ₹+3,18,498, PF 1.18 |
+
+**Open.** As S142: none of the four was tuned here, but their origin is not known, so the halves are a consistency check; ST137's exit is a lab choice and it loses from 2023.
+
 ### S142. Jilly + the user's four Pine rules (IBS overnight, basis z-score overnight, narrow CPR + ORB, EMA distance bands 5m) run as one futures book - one position at a time, the first signal takes it, the rest ignored while it is open. Measured 2018-01 - 2026-10, 1 lot: the combined book makes ₹+14.6 lakh at PF 1.26 (1.34 / 1.18 by half), against ₹+25.8 lakh if all five could hold their own lot; the EMA bands (positional) hold the position most of the time and block 1,062 of the other books' signals. Research only
 
 | | |

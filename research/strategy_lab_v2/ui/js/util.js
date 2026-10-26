@@ -62,6 +62,26 @@ export function algorithm(spec) {
   const by = (m) => (m === "close" ? "a candle closing beyond it" : "a candle touching it (high / low)");
   const S = (t, sub) => ({ t, sub: sub || [] });
   const steps = [];
+  if (spec.rules?.entry_rule === "pine_rules_v1") {   // Strategies 135 - 138: the user's four Pine rules on near-month futures
+    const p = spec.pine, end = "NIFTY near-month futures, 1-minute (the download store); a decision at a bar's close fills at the next bar's open; 1 lot; 0.5 pt slippage a side plus futures charges by date.";
+    if (p.rule === "ibs") return [
+      S("Session high / low from the day's first bar. At the 15:19 bar's close: IBS = (close − session low) / (session high − session low)."),
+      S(`IBS above ${p.long_above}: long; below ${p.short_below}: short. In at the 15:20 open, out at the next session's 09:16 open.`),
+      S("Skipped on the contract's expiry day (it does not exist overnight) and when a weekday holiday follows (the script's \"tomorrow is holiday\" box)."), S(end)];
+    if (p.rule === "basis") return [
+      S(`At the 15:19 bar's close: premium = (futures close − index close) / index close; deviation = premium − ${p.carry}% × days to the contract's expiry / 365.`),
+      S(`z = the deviation against the previous ${p.lookback} sessions' (mean, standard deviation). z above +${p.z}: short; below −${p.z}: long.`),
+      S("In at the 15:20 open, out at the next session's 15:20 open. Not on the expiry day."), S(end)];
+    if (p.rule === "cpr") return [
+      S("Today's CPR from the previous session's high, low and last close: pivot P = (H + L + C) / 3, BC = (H + L) / 2, TC = 2P − BC; yesterday's from the session before."),
+      S(`A narrow day: width below the mean of the previous ${p.wlen} CPR widths and today's CPR entirely above (long side) or below (short side) yesterday's; the 09:15 open beyond today's CPR the same way.`),
+      S(`Then the first close beyond the ${p.orb}-minute opening range that way (before 15:20): in at the next open.`),
+      S("Exit (a lab choice - the Pine rule gives none): stop at the far side of the opening range, a touch exits at the next open; else out at 15:20."), S(end)];
+    return [
+      S(`5-minute bars from 09:15. EMA ${p.ema} of the closes; band = EMA ± ${p.mult} × the mean |close − EMA| of the last ${p.dlen} bars.`),
+      S("When flat: a close crossing above the upper band goes long, below the lower band short; in at the next bar's open."),
+      S("Out at the next bar's open after a close back through the EMA. Held overnight; out at the contract's last close before a roll."), S(end)];
+  }
   if (spec.rules?.entry_rule === "gap_structure_v1") {   // Strategies 125 - 128: gap days, follow or reverse by CHoCH / BOS
     const g = spec.gapstruct;
     return [

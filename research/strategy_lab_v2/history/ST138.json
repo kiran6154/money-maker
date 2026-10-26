@@ -1,0 +1,201 @@
+{
+ "code": "ST138",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-26T14:49:29",
+   "key": "e5eb7d3a61d0",
+   "code": "15e02e6ac25e",
+   "definition": {
+    "code": "ST138",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 1,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "pine_rules_v1",
+     "exit_rule": "next_choch"
+    },
+    "pine": {
+     "rule": "emab",
+     "ema": 50,
+     "mult": 3.0,
+     "dlen": 20
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "none",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 0.5
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY"
+     ],
+     "expiry_min_days": 0,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATM"
+     ],
+     "strike_default": "ATM",
+     "atr_period": 14
+    }
+   },
+   "changes": [],
+   "results": {
+    "all-data_1m": {},
+    "2018-22_1m": {},
+    "2023-26_1m": {
+     "FUT": {
+      "-": {
+       "trades": 671,
+       "wins": 238,
+       "pts": 9721.15,
+       "net_inr": 318497.72,
+       "pf": 1.18,
+       "max_dd_inr": -161995.17,
+       "t_stat": 1.37
+      }
+     }
+    }
+   }
+  },
+  {
+   "version": 2,
+   "at": "2026-10-26T14:49:53",
+   "key": "aac354e0071b",
+   "code": "77a1b1278e5f",
+   "definition": {
+    "code": "ST138",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 1,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "pine_rules_v1",
+     "exit_rule": "next_choch"
+    },
+    "pine": {
+     "rule": "emab",
+     "ema": 50,
+     "mult": 3.0,
+     "dlen": 20
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "none",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 0.5
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY"
+     ],
+     "expiry_min_days": 0,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATM"
+     ],
+     "strike_default": "ATM",
+     "atr_period": 14
+    }
+   },
+   "changes": [
+    "code changed (core.py, the strategy file or its family module)"
+   ],
+   "results": {
+    "all-data_1m": {
+     "FUT": {
+      "-": {
+       "trades": 1546,
+       "wins": 575,
+       "pts": 23840.8,
+       "net_inr": 1048643.09,
+       "pf": 1.32,
+       "max_dd_inr": -161995.17,
+       "t_stat": 3.34
+      }
+     }
+    },
+    "2018-22_1m": {
+     "FUT": {
+      "-": {
+       "trades": 875,
+       "wins": 337,
+       "pts": 14119.65,
+       "net_inr": 730145.36,
+       "pf": 1.47,
+       "max_dd_inr": -54047.84,
+       "t_stat": 3.46
+      }
+     }
+    },
+    "2023-26_1m": {
+     "FUT": {
+      "-": {
+       "trades": 671,
+       "wins": 238,
+       "pts": 9721.15,
+       "net_inr": 318497.72,
+       "pf": 1.18,
+       "max_dd_inr": -161995.17,
+       "t_stat": 1.37
+      }
+     }
+    }
+   }
+  }
+ ]
+}
