@@ -487,8 +487,8 @@ def run(ctx):
             name = f"NIFTY {Dt.date.fromisoformat(t.exp):%d%b%y} {t.strike} {t.side}".upper()
             trs.append(dict(dir="down", signal="BEARISH", choch_time=_ts(t.entry_t), und_entry=t.spot, und_exit=None, stale=False, lots=1, tranche="",
                             position="SHORT", opt_type=t.side, kind="OPT", instrument=name, strike=t.strike, expiry=t.exp, entry_time=et, entry_px=t.fill,
-                            exit_time=xt, exit_px=t.exit_px, exit_reason=t.reason, open=False, sl=t.stop0, pts=t.gross / LOT, gross=t.gross, chg=t.chg,
-                            net=t.net, label=f"SELL {t.side} · {t.var}{' K' + str(t.K) if t.K else ''} · {t.src}", worst_mtm=t.worst_mtm))
+                            exit_time=xt, exit_px=t.exit_px, exit_reason=t.reason, open=False, sl=None if t.stop0 is None or t.stop0 != t.stop0 else float(t.stop0), pts=t.gross / LOT, gross=t.gross, chg=t.chg,
+                            net=t.net, label=f"SELL {t.side} · {t.var}{' K' + str(t.K) if t.K else ''} · {t.src}", worst_mtm=float(t.worst_mtm)))
     else:
         P = spec["rb"]; B = rb_book(P.get("scaled", False), P.get("wide", False))
         for t in B.itertuples(index=False):
