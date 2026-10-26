@@ -1,0 +1,112 @@
+{
+ "code": "ST144",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-26T15:55:07",
+   "key": "dd22b6924eb0",
+   "code": "f52c03229aaa",
+   "definition": {
+    "code": "ST144",
+    "timeframe": "minute",
+    "underlying": "INDEX",
+    "warmup_days": 1,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "optsell15_v1",
+     "exit_rule": "next_choch"
+    },
+    "rb": {
+     "scaled": false,
+     "wide": false
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "none",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 0.5
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 1.0
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 1.0
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY"
+     ],
+     "expiry_min_days": 0,
+     "strike_step": 50,
+     "strike_choices": [
+      "OTM"
+     ],
+     "strike_default": "OTM",
+     "atr_period": 14
+    }
+   },
+   "changes": [],
+   "results": {
+    "all-data_1m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "W-OTM": {
+       "trades": 106,
+       "wins": 94,
+       "pts": 4885.0,
+       "net_inr": 299661.78,
+       "pf": 1.74,
+       "max_dd_inr": -132483.46,
+       "t_stat": 1.46
+      }
+     }
+    },
+    "2018-23_1m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "W-OTM": {
+       "trades": 32,
+       "wins": 26,
+       "pts": -618.15,
+       "net_inr": -45597.26,
+       "pf": 0.79,
+       "max_dd_inr": -129902.66,
+       "t_stat": -0.32
+      }
+     }
+    },
+    "2024-26_1m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "W-OTM": {
+       "trades": 74,
+       "wins": 68,
+       "pts": 5503.15,
+       "net_inr": 345259.04,
+       "pf": 2.82,
+       "max_dd_inr": -132483.46,
+       "t_stat": 2.35
+      }
+     }
+    }
+   }
+  }
+ ]
+}

@@ -457,6 +457,50 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S144. Lab v2 Strategies 139 - 145: two hand-off option-selling specs (15-minute bars of each option contract). The "Strategy 11 family" port reproduces its reference code's section-6 table and both golden trades exactly; the "Rainbow Book", built from its text (its reference code and golden CSVs are not on this machine), comes close but not exact (2018 - 23: 32 trades ₹-45,597 against the spec's 33 / ₹-6,257; the worst trade identical). Both are short-option books fitted on 2024 - 25: most of their money is from 2024 on, and single unstopped trades lose ₹1.25 - 1.30 lakh
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; nothing live |
+| Code | `research/strategy_lab_v2/strategies/optsell15.py`, `st139.py` - `st145.py`, `tools/optsell_report.py` |
+
+**Build** (the user's request: "build these and backtest", two pasted specs; the lab names differ from the specs' - "Strategy 11" there is not this lab's Strategy 11). Strategy 11 family: `engine.py` / `structure.py` / `build_store.py` / `books.py` in D:/nifty_data/Claude outputs/strategy11_handoff (read only) ported line by line - monthly expiries, regular strike files plus the .wide files from the 2024-06-27 expiry, volume-0 minutes and the 09:15 minute dropped, 15-minute bars labelled by start; RSI-14 Wilder, the 10-band SMA-2 rainbow, K-bar fractal structure; DTE 22 - 35, OTM 0.5 - 4%, premium 246.675 - 700 on the signal close and the fill, OTM <= 250 points, 2 per side, lowest strike first; 1 pt slippage and the reference charges. One difference from the spec text, following the code: the spec's "clean universe" also asks for a front-month signal, books.py does not (golden trade 1, signal 2024-06-26 before the June expiry, needs the code's version). Rainbow Book: built from section 2 - 7 of its spec (regular strike files; `wide` adds the .wide files).
+
+**Strategy 11 family - reproduced** (2 slots, fixed gate, OTM <= 250; per lot of 65; by exit year as the spec):
+
+| Variant (lab) | Trades | Net ₹ | Win % | Closed DD ₹ | Worst open MTM ₹ | t | 2018-23 ₹ | 2024-26 ₹ |
+|---|---|---|---|---|---|---|---|---|
+| A_s11 (ST139) | 241 | +6,25,741 | 90 | 2,48,031 | -1,30,598 | 2.24 | +65,284 | +5,60,457 |
+| A_nextopen | 239 | +6,27,001 | 90 | 2,48,063 | -1,30,598 | 2.24 | +40,517 | +5,86,485 |
+| A_hardstop K3 / K5 | 537 / 566 | +1,20,221 / +37,534 | 22 / 15 | | | 1.29 / 0.51 | -62,099 / -78,321 | +1,82,319 / +1,15,855 |
+| B_choch_bos K3 / K5 (ST143 = K5) | 496 / 338 | +2,59,605 / +3,57,960 | 41 / 43 | 1,20,974 / 1,67,625 | -33,296 | 1.37 / 1.87 | +60,480 / +3,58,016 | +1,99,126 / -57 |
+| C_s11_bostrail K3 / K5 | 523 / 549 | -4,695 / -1,52,957 | 28 / 31 | | | | -1,22,245 / -1,09,920 | +1,17,551 / -43,038 |
+| D_chochgate K3 / K5 | 16 / 20 | +1,19,121 / +1,27,785 | 100 / 95 | | | | +70,361 / +36,871 | +48,760 / +90,914 |
+| E_s11_armedbos K3 (ST140) / K5 | 238 / 227 | +7,91,176 / +7,33,726 | 76 / 66 | 2,48,457 / 2,49,528 | -1,30,598 | 2.70 / 2.46 | +1,21,653 / +1,39,320 | +6,69,523 / +5,94,406 |
+| F_choch_rsi K3 (ST141) / K5 | 96 / 45 | +4,73,092 / +2,31,756 | 90 / 87 | 1,34,090 / 77,232 | -63,469 | 4.47 / 3.28 | +88,282 / +21,096 | +3,84,809 / +2,10,661 |
+| G_choch_s11 K3 / K5 | 309 / 256 | +7,20,185 / +6,33,075 | 89 / 89 | 4,89,962 / 3,42,073 | -1,04,936 / -1,99,791 | 2.33 / 2.00 | -3,59,949 / -9,928 | +10,80,134 / +6,43,004 |
+| G_hardstop K3 / K5 (ST142 = K5) | 559 / 382 | +3,75,545 / +5,63,125 | 44 / 55 | 84,666 / 86,197 | -27,150 / -31,818 | 2.33 / 3.76 | -11,458 / +2,62,435 | +3,87,004 / +3,00,691 |
+
+Golden trades: 2024-07-25 23850 CE, signal 2024-06-26 09:15, entry 342.80, settled 565.00 → ₹-14,670.11; 2026-03-30 24600 PE, signal 2026-03-02 14:00, entry 300.80, settled 2,220.80 → ₹-1,25,097.98 - both exact. A_s11 with 1 slot: 126 trades ₹+2,12,256; without the 250-point limit 246 / ₹+5,04,136; with the scaled gate 357 / ₹-3,05,058 (the spec: lost ₹3.1 lakh). Not ported: the cross-leg buys (X) and fixed-R sizing (the spec reports both as losing or flat).
+
+**Rainbow Book** (lot 65; by entry year):
+
+| Version | Trades | 2018-23 | 2024-25 | 2026 (to Oct) | Net ₹ |
+|---|---|---|---|---|---|
+| spec's own numbers | 85 | 33 / ₹-6,257 | 52 / ₹+3,18,188 | - | - |
+| as specified (ST144), regular strikes | 106 | 32 / ₹-45,597 | 48 / ₹+3,37,923 | 26 / ₹+7,336 | +2,99,662 |
+| as specified, regular + wide strikes | 135 | 37 / ₹-85,929 | 64 / ₹+3,39,807 | 34 / ₹+51,450 | +3,05,328 |
+| spot-scaled (ST145), regular strikes | 158 | 86 / ₹+1,18,962 (spec: 85 / ₹+1,36,231) | 48 / ₹+3,42,828 | 24 / ₹-5,074 | +4,56,716 |
+| spot-scaled, regular + wide | 190 | 96 / ₹+60,533 | 62 / ₹+3,76,833 | 32 / ₹+39,040 | +4,76,406 |
+
+By year as specified (regular): 2020 9 trades ₹-77,342 (spec 8 / ₹-90,530; the worst trade, the Mar-2020 10900 PE, ₹-1,29,903 in both), 2021 9 / ₹+21,891 (10 / ₹+35,080), 2022 10 / ₹+8,947 (12 / ₹+30,852), 2023 4 / ₹+906 (3 / ₹+18,341), 2024 21 / ₹+1,42,901 (24 / ₹+1,50,278), 2025 27 / ₹+1,95,022 (28 / ₹+1,67,911). The 1 - 3 trade gaps per year are not pinned down without the spec's golden CSVs; likely sources: the strike files the reference read, the EWM RSI start, the spot forward-fill. 2026 (after the spec's window): 26 trades, ₹+7,336, one trade ₹-1,27,399.
+
+Lab pages (to 2026-10-09; split by entry date): ST139 241 trades ₹+6,25,741 PF 1.69 (2018-23 PF 1.12, 2024-26 2.68); ST140 238 ₹+7,91,176 PF 1.87 (1.22 / 2.99); ST141 96 ₹+4,73,092 PF 3.24 (1.44 / 32.15); ST142 382 ₹+5,63,125 PF 1.57 (1.64 / 1.52); ST143 338 ₹+3,57,960 PF 1.30 (1.86 / 0.99); ST144 106 ₹+2,99,662 PF 1.74 (0.79 / 2.82); ST145 158 ₹+4,56,716 PF 1.95 (1.41 / 2.76).
+
+**Reading.** Both specs' own warnings stand: the parameters were fitted on 2024 - 25, and 2018 - 23 is thin for the rainbow-exit books (ST139 PF 1.12, ST144 0.79). The books with a stop from the start (ST142 G_hardstop K5, ST143 B_choch_bos K5) are the ones whose early years hold up (PF 1.64 / 1.86 for 2018 - 23), at a lower win rate; ST143 is flat from 2024. Unstopped books carry single-trade losses of ₹1.25 - 1.30 lakh per lot.
+
+**Open (not adopted).** The Rainbow Book's exact reproduction needs its golden CSVs (or rainbow_reference.py). The spec's proposed time stop is untested. The cross-leg buys (X) and fixed-R sizing are not ported.
+
 ### S143. Lab v2 Strategies 135 - 138: the user's four Pine rules (IBS overnight, basis z-score overnight, narrow CPR + ORB, EMA distance bands) as lab strategies. Measured: they reproduce S142's standalone numbers exactly over 2018-01-01 - 2026-10-23 (IBS 1,312 trades ₹+6,30,510; basis 146 ₹+3,80,027; CPR 414 ₹+49,195; EMA bands 1,556 ₹+10,14,882); on the lab pages (2018-01-02 - 2026-10-09, the lab's window) IBS PF 1.27, basis 1.72, CPR 1.06 (2023-26: 0.92), EMA bands 1.32
 
 | | |

@@ -62,6 +62,36 @@ export function algorithm(spec) {
   const by = (m) => (m === "close" ? "a candle closing beyond it" : "a candle touching it (high / low)");
   const S = (t, sub) => ({ t, sub: sub || [] });
   const steps = [];
+  if (spec.rules?.entry_rule === "optsell15_v1") {   // Strategies 139 - 145: the 15-minute option-selling hand-off specs
+    if (spec.s11) {
+      const v = spec.s11, K = v.K ? ` with ${v.K}-bar pivots` : "";
+      const ENTRY = {
+        A_s11: "RSI-14 (Wilder) reached 70 within the last 5 bars and this bar is the first close below the rainbow mid (the mean of 10 recursive SMA-2 bands of the close): SELL at this bar's close.",
+        E_s11_armedbos: "RSI-14 reached 70 within the last 5 bars and this bar is the first close below the rainbow mid: SELL at this bar's close.",
+        F_choch_rsi: `A bearish CHoCH of the option's own structure${K} with RSI-14 at 70+ within the last 10 bars: SELL at this bar's close.`,
+        G_hardstop: `A bearish CHoCH of the option's own structure${K} (close below the last confirmed swing low in an up trend): SELL at this bar's close.`,
+        B_choch_bos: `A bearish CHoCH of the option's own structure${K}: SELL at this bar's close.` }[v.var];
+      const EXIT = {
+        A_s11: "No stop until a bar's low is 30% below the entry; after that, out at the entry on a touch (breakeven) or at the close above the rainbow top; never armed: intrinsic at the expiry day's 15:15 spot.",
+        E_s11_armedbos: `No stop until the 30% decay; a swing-high stop${K} ratchets down on each bearish BOS (and to the current swing high at arming); after arming out on a touch of the entry or a close above that stop; else intrinsic at expiry.`,
+        F_choch_rsi: "No stop until a bar's low is 30% below the entry; then out on a touch of the entry or a close above the rainbow top; else intrinsic at expiry.",
+        G_hardstop: "Hard stop at the swing high at entry (triggered on the high, filled at the worse of open and stop), checked first; otherwise no stop until the 30% decay, then a touch of the entry or a close above the rainbow top; else intrinsic at expiry.",
+        B_choch_bos: "Stop = the swing high at entry, ratcheted down to the latest swing high on each bearish BOS (never up); out on a close above it; else intrinsic at expiry." }[v.var];
+      return [
+        S("Monthly NIFTY options (the last expiry of each month), each contract on its own 15-minute bars: 1-minute rows with volume 0 and the 09:15 minute dropped, bars labelled 09:15 ... 15:15; indicators from the contract's first bar."),
+        S(ENTRY),
+        S(`Gates at the signal: 22 - 35 calendar days to expiry; 0.5 - 4% out of the money against the same bar's index close and at most 250 points; premium ${v.gate === "fixed" ? "246.675 - 700" : "246.675 - 700 scaled to spot / 24,000"}. At most ${v.slots} open per side (CE / PE); a signal while full is dropped; same bar: the lowest strike first.`),
+        S(EXIT),
+        S("1 lot of 65; 1 point slippage a side; brokerage, exchange, SEBI, stamp, GST and STT on the sell leg (0.0625%, 0.1% from 2024-10-01). The reference code's numbers are reproduced exactly (the spec's golden trades included).")];
+    }
+    const r = spec.rb, sc = r.scaled ? " × spot / 23,700" : "";
+    return [
+      S("Weekly and monthly NIFTY options, each contract on its own 15-minute bars (09:15 - 15:30, the 15:30 minute in the 15:15 bar); a contract needs 80 one-minute rows and 40 bars."),
+      S("Raw signal: RSI-14 (EWM) reached 70 within the last 5 bars, RSI is falling, and the close is below the previous bar's low. SELL at the next bar's open."),
+      S(`Filters at the signal bar: 8 - 35 days to expiry, fill 200 - 800${sc}, 0.5 - 4% out of the money, close 30 - 700${sc}. The contract's FIRST passing signal decides: traded only if fill > 246.675${sc}, RSI < 64.799 and rainbow width (top − bottom) / close ≤ 0.0918; otherwise the contract is abandoned.`),
+      S("One CE and one PE at a time (by fill time, ties: the higher premium first)."),
+      S("Exit from the fill bar on: once the trade has been 30% in profit (on a low), out at the fill on a touch (breakeven) or at a close above the rainbow top; never armed: intrinsic at the expiry day's last index close. 1 lot of 65; the spec's cost formula.")];
+  }
   if (spec.rules?.entry_rule === "pine_rules_v1") {   // Strategies 135 - 138: the user's four Pine rules on near-month futures
     const p = spec.pine, end = "NIFTY near-month futures, 1-minute (the download store); a decision at a bar's close fills at the next bar's open; 1 lot; 0.5 pt slippage a side plus futures charges by date.";
     if (p.rule === "ibs") return [
