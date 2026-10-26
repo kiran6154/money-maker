@@ -457,6 +457,30 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S147. "Nifty CHoCH to CHoCH in Plain English" (the user sent it again - "build this, check if this exists"): it exists as Strategies 25 - 28, tested on 2026-06-23 - 09-14 only; run on the download store's option data from 2018 (Strategies 147 - 150), all four lose (PF 0.72 - 0.84); the 5-point premium trail takes the winners out at ~3 points while the 5% stop costs ~19 points
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; Strategies 25 - 28 unchanged (c2c.run gains an optional data provider, unused by them) |
+| Code | `research/strategy_lab_v2/strategies/c2c.py` (`run(ctx, data=None)`), `c2c_store.py`, `st147.py` - `st150.py` |
+
+**Exists.** Strategies 25 - 28 (c2c.py, the "CHoCH to CHoCH" family on the lab page) are this document rule for rule: the 5-minute structure bearish, a fresh swing high within +/- 50 points of the VWAP anchored at the pre-break peak, not the flip candle, the day not down 0.6%, window PCR < 1.3 (ST25 / ST27), the ITM1 put of the nearest monthly at least 15 days out at the next candle's open, one at a time, carried overnight; exits on a bullish flip, the 5% premium stop and the 5-point trail, the 15:15 ladder (profit > 40%, loss > 2%, PCR > 0.95). Not modelled: the leg's delta / gamma / vega / bid-ask guard rails (no Greeks or quotes in the data). Their option prices and OI come from the lab's full-chain files, 2026-06-23 - 09-14 only: 31 - 47 trades there; the "All data" runs skip 500 - 660 signals.
+
+**Build.** Strategies 147 - 150 = ST25 - ST28's settings with the option side from D:/nifty_data (c2c_store.py): expiries from the store's folders (monthly = the last of each month), the put's 5-minute candles from its 1-minute rows, OI = the last 1-minute print at or before the candle the same session; regular strike files only (strikes within 250 points of the index day range - the 300-point PCR window is usually a little short; the .wide files left out for memory). Signals unchanged (the index 5-minute candles, the lab's cache to 2026-10-09).
+
+| Strategy | Rules | All data 2018-01-08 - 2026-10-09 | 2018 - 22 | 2023 - 26 | ST25 - 28's window (2026-06-23 - 09-14) |
+|---|---|---|---|---|---|
+| ST147 (= ST25) | PCR on, stops on the close | 389 trades, ₹-28,455, PF 0.84 | 219, ₹-30,495, 0.71 | 170, ₹+2,040, 1.03 | 35, ₹+8,731 (ST25: 31, ₹+10,009) |
+| ST148 (= ST26) | PCR off, close | 1,014, ₹-1,34,669, 0.73 | 535, ₹-54,585, 0.78 | 477, ₹-79,702, 0.68 | 55, ₹+2,330 (ST26: 44, ₹-447) |
+| ST149 (= ST27) | PCR on, touch | 415, ₹-34,484, 0.72 | 238, ₹-27,722, 0.64 | 177, ₹-6,762, 0.86 | 37, ₹-2,447 (ST27: 33, ₹-2,178) |
+| ST150 (= ST28) | PCR off, touch | 1,106, ₹-70,558, 0.79 | 591, ₹-42,970, 0.76 | 513, ₹-26,496, 0.82 | 59, ₹-5,573 (ST28: 47, ₹-6,894) |
+
+Skipped in ST147: 279 signals with the PCR not computable (fewer than 9 strikes with OI in the window - 2018 - 19 mostly), 61 while a put was open. Exits, ST147: 277 trail stops averaging ₹+222, 75 stop losses averaging ₹-1,198, 21 bullish flips ₹-703 each; gross PF 1.01, charges ₹79 a trade. ST148: 763 trail stops ₹+172 each, 193 stop losses ₹-1,236 each; gross PF 0.88. Average holding 72 / 112 minutes.
+
+**Reading.** The retest entry is not the problem so much as the exits: a 5-point trail on an ITM put's premium closes a winner at about 3 points of profit (₹170 - 220 a lot), while the 5% stop on a ₹250 - 400 premium costs 12 - 20 points; the ladder and the bullish flip rarely act. The window ST25 was judged on (35 trades) is the one stretch where it shows a profit; over eight years it does not.
+
+**Open (not adopted).** The exits are where to look (a wider trail, or the structure exit alone), each choice made on 2018 - 22 and read on 2023 - 26.
+
 ### S146. Why the EMA distance bands (Strategy 138) fail - and a correction chosen on 2018 - 23 (Strategy 146); plus the combined book with the RSI option book (Strategy 141) instead of / beside Strategy 142. Measured: the band breakouts fail when the EMA has not turned their way, and 2026's bear market with sharp rallies turns that into losing longs with the widest bands on record; taking only breakouts with the EMA's own slope (plus a breakeven stop) was the 2018 - 23 pick and holds on 2024 - 26 (PF 1.14 → 1.19, drawdown ₹1.98 → ₹1.35 lakh, 2026 ₹-10,717 → ₹+83,925), at ₹1 lakh less over the whole span. In the combined book, ST141 instead of ST142 makes less (₹14.0 lakh against ₹15.7 lakh)
 
 | | |

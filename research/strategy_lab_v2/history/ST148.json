@@ -1,0 +1,136 @@
+{
+ "code": "ST148",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-26T18:10:54",
+   "key": "cfe92ab3c233",
+   "code": "b15c66dc81b0",
+   "definition": {
+    "code": "ST148",
+    "timeframe": "5minute",
+    "underlying": "INDEX",
+    "warmup_days": 5,
+    "rules": {
+     "break_mode": "close",
+     "choch_mode": "close",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "c2c_v1",
+     "exit_rule": "next_choch"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": null,
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "MONTHLY"
+     ],
+     "expiry_min_days": 15,
+     "strike_step": 50,
+     "strike_choices": [
+      "ITM1"
+     ],
+     "strike_default": "ITM1",
+     "atr_period": 14
+    },
+    "c2c": {
+     "notes": "every number is from the user's 'Nifty CHoCH to CHoCH in Plain English' spec (2026-09-29), except pcr.window_pts / pcr.min_strikes (the local option files hold a strike window, not the full chain: STRATEGY_ANALYSIS_TODO S52)",
+     "band_pts": 50,
+     "day_drop_pct": 0.6,
+     "pcr": null,
+     "stop_pct": 5,
+     "trail_pts": 5,
+     "stop_fill": "close",
+     "ladder": {
+      "time": "15:15",
+      "profit_pct": 40,
+      "loss_pct": 2
+     },
+     "max_open": 1
+    }
+   },
+   "changes": [],
+   "results": {
+    "all-data_5m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "M-ITM1": {
+       "trades": 1014,
+       "wins": 345,
+       "pts": -834.55,
+       "net_inr": -134669.33,
+       "pf": 0.73,
+       "max_dd_inr": -141260.65,
+       "t_stat": -3.27
+      }
+     }
+    },
+    "2018-22_5m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "M-ITM1": {
+       "trades": 535,
+       "wins": 167,
+       "pts": -219.1,
+       "net_inr": -54585.18,
+       "pf": 0.78,
+       "max_dd_inr": -69885.15,
+       "t_stat": -1.85
+      }
+     }
+    },
+    "2023-26_5m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "M-ITM1": {
+       "trades": 477,
+       "wins": 178,
+       "pts": -611.95,
+       "net_inr": -79702.06,
+       "pf": 0.68,
+       "max_dd_inr": -85280.64,
+       "t_stat": -2.77
+      }
+     }
+    },
+    "option-data-window_5m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "M-ITM1": {
+       "trades": 55,
+       "wins": 18,
+       "pts": 107.2,
+       "net_inr": 2330.14,
+       "pf": 1.08,
+       "max_dd_inr": -13145.35,
+       "t_stat": 0.14
+      }
+     }
+    }
+   }
+  }
+ ]
+}

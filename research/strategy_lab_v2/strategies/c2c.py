@@ -154,8 +154,9 @@ def signals(bars, spec):
     return core.foundation(bars, dict(spec["rules"], sl_rule="none"))
 
 
-def run(ctx):
-    """{choice: dict(trades, skipped, signals)} for one c2c window (v1 c2c.run_variant)."""
+def run(ctx, data=None):
+    """{choice: dict(trades, skipped, signals)} for one c2c window (v1 c2c.run_variant). `data` = (chain, oi, full_chain)
+    replaces the lab's option files (c2c_store.py: the download store); None = the lab's own, as before."""
     spec = ctx["spec"]; cfg = spec["c2c"]; P = cfg["pcr"]; opt = spec["options"]
     if ctx["tf"] not in TIMEFRAMES: raise ValueError(TF_WHY)
     fut, s0 = core.signal_bars(ctx)
@@ -164,6 +165,8 @@ def run(ctx):
     n = len(t)
     spot = core.series("spot", ctx["tf"]); atr = core.atr(spot, opt["atr_period"])
     chain, oi, step = core.OptionChain(ctx["tf"]), OI(), opt["strike_step"]
+    has_full = full_chain
+    if data is not None: chain, oi, has_full = data
     # regime per bar from the engine's trend flips: (-1 / 0 / 1, flip bar, anchor bar)
     reg_v = np.zeros(n, np.int8); reg_f = np.full(n, -1, np.int64); reg_a = np.full(n, -1, np.int64)
     flips = {int(r.qi[j]): j for j in range(len(r.qi)) if r.qflip[j]}
@@ -210,7 +213,7 @@ def run(ctx):
             exp = chain.expiry_for(ti // DAY, opt["expiry_min_days"], ekind)
             nm = chain.name(exp, k, "PE") if exp else f"{int(k)} PE"
             base.update(instrument=nm, strike=k, expiry=exp)
-            if not full_chain(exp):
+            if not has_full(exp):
                 skipped.append(dict(base, entry_time=ti, why=f"no full-chain data for {nm}")); continue
             if P is not None:
                 x, used = pcr_of(exp, int(t[i]))
