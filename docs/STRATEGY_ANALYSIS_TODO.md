@@ -457,6 +457,37 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S146. Why the EMA distance bands (Strategy 138) fail - and a correction chosen on 2018 - 23 (Strategy 146); plus the combined book with the RSI option book (Strategy 141) instead of / beside Strategy 142. Measured: the band breakouts fail when the EMA has not turned their way, and 2026's bear market with sharp rallies turns that into losing longs with the widest bands on record; taking only breakouts with the EMA's own slope (plus a breakeven stop) was the 2018 - 23 pick and holds on 2024 - 26 (PF 1.14 → 1.19, drawdown ₹1.98 → ₹1.35 lakh, 2026 ₹-10,717 → ₹+83,925), at ₹1 lakh less over the whole span. In the combined book, ST141 instead of ST142 makes less (₹14.0 lakh against ₹15.7 lakh)
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; Strategy 138 unchanged (re-run identical: 1,554 trades ₹+10,12,860) |
+| Code | `research/strategy_lab_v2/strategies/pinerules.py` (opt-in `slope` / `be`, `_trades_emab_x`), `st146.py` |
+
+**Combined book with the RSI option book** (the user: "don't we have RSI in the combined strategy - do it"; one position per side, first entry wins, as S145): with ST142 2,742 trades, PF 1.277, ₹+15,74,671, max DD ₹-2,22,168 (the option book 124 trades ₹+2,47,298); with ST141 (CHoCH + RSI 70) instead 2,682 trades, PF 1.250 (1.29 / 1.21), ₹+14,02,994, DD ₹-2,09,360 (46 trades ₹+2,19,868 - it fires 96 times in 8 years); with both (ST142 first on a tie) 2,670 trades, PF 1.269, ₹+14,88,629, DD ₹-1,87,247 (134 option trades ₹+3,58,283).
+
+**The failure pattern** (1,556 trades with their entry context, points less 1 pt, before charges). (1) The edge is the multi-day trend: trades still open overnight earn PF 4.8, those closed the same day PF 0.24 - an outcome, not an entry filter, but it says the losses are breakouts that reverse within the day. (2) The EMA's own direction at the break separates them: the EMA moving the trade's way by 0.05 - 0.15% over the last hour PF 2.12 (2018-22 2.32, 2023-25 1.56, 2026 3.65); flat 1.32; against the break 1.40 overall but 0.31 in 2026; more than 0.15% (already extended) 0.56 on 53 trades. (3) 2026: NIFTY futures 26,300 (Dec-2025) → 22,330 (Mar) → 24,438 (Jul) → 22,582 (Oct) - a falling market with sharp rallies: longs PF 0.79, shorts 1.73; the bands are wide (the entry is on average 122 points from the EMA exit, against 40 - 110 in earlier years) so each failed break costs more (average loss ₹4,827, the largest). (4) Volatility rank, RSI, the hour, how far beyond the band the close is: no consistent split. Note the diagnosis read all years including 2026; the candidates below came from it, so 2024 - 26 is a check on a choice made on 2018 - 23, not a clean out-of-sample test.
+
+**Correction test** (nine candidates fixed before the run; the pick = the best 2018 - 23 return / max drawdown; costs as Strategy 138):
+
+| Version | Trades | PF 2018-23 | Ret/DD 2018-23 | PF 2024-26 | Net 2024-26 ₹ | DD 2024-26 ₹ | 2026 ₹ (long / short) | Net all ₹ |
+|---|---|---|---|---|---|---|---|---|
+| base (ST138) | 1,555 | 1.43 | 12.40 | 1.14 | +2,07,952 | -1,97,778 | -10,717 (-1,11,318 / +1,00,601) | +10,15,771 |
+| slope with (EMA moved the trade's way over 1 hour) | 1,373 | 1.42 | 13.76 | 1.19 | +2,39,585 | -1,44,100 | +87,137 | +9,47,530 |
+| slope with, at most 0.15% | 1,312 | 1.51 | 14.23 | 1.22 | +2,65,009 | -1,30,462 | +1,19,189 | +10,28,281 |
+| regime: long only above the 100-day SMA, short below | 748 | 1.46 | 7.23 | 1.03 | +25,088 | -1,49,180 | -13,063 | +4,08,637 |
+| stop 1.5 x mean distance | 1,692 | 1.37 | 10.05 | 1.13 | +1,45,383 | -1,50,846 | -67,534 | +7,01,354 |
+| breakeven after 3 x | 1,562 | 1.44 | 14.12 | 1.13 | +1,93,503 | -1,89,406 | -13,480 | +9,67,646 |
+| slope with + stop 1.5 x | 1,491 | 1.38 | 10.69 | 1.15 | +1,38,576 | -1,31,124 | -20,956 | +6,52,513 |
+| **slope with + breakeven after 3 x (the pick, ST146)** | 1,379 | 1.43 | **15.97** | **1.19** | +2,24,687 | **-1,34,877** | **+83,925** (-42,355 / +1,26,280) | +9,09,556 |
+| slope 0.15% band + stop 1.5 x | 1,418 | 1.44 | 9.65 | 1.19 | +1,70,513 | -1,12,849 | +4,163 | +6,89,393 |
+
+By year, base → pick (₹): 2018 +45,127 → +44,861 · 2019 +1,00,630 → +77,266 · 2020 +2,14,722 → +1,51,847 · 2021 +2,94,901 → +2,35,448 · 2022 +77,676 → +88,130 · 2023 +74,763 → +87,316 · 2024 +95,731 → -2,036 · 2025 +1,22,938 → +1,42,798 · 2026 -10,717 → +83,925. As a lab strategy (Strategy 146, the bar-by-bar engine): 1,382 trades, ₹+9,12,746, 2026 ₹+84,196; lab pages PF 1.34 all, 1.46 (2018-22), 1.23 (2023-26; ST138 1.18).
+
+**Reading.** The theory holds up: a band break against or without the EMA's own turn is mostly noise, and in a falling, high-volatility market the long breaks are rallies that fade. Requiring the slope removes 12% of trades, keeps the shorts and cuts the 2026 long losses from ₹1.11 lakh to ₹42k; the breakeven stop trims drawdown. The cost is the strong trend years 2020 - 21 (₹1.2 lakh less) and 2024 (flat). Fixed stops and a daily-regime filter both make it worse. "Slope with, at most 0.15%" did a little better on 2024 - 26 but was not the pre-set pick.
+
+**Open (not adopted).** Judge Strategy 146 forward from 2026-10-26; the long side in a falling market is still its weak spot (2026 longs ₹-42k).
+
 ### S145. The combined book with the best 15-minute option-selling book added (Strategy 142), one position per side (bullish / bearish), first entry wins; and a confluence score - how many other books hold a position the same way minus the other way at a trade's entry. Measured 2018-01 - 2026-10, 1 lot: the book makes ₹+15.7 lakh at PF 1.28 (1.32 / 1.23). Trades with 2+ more books agreeing than opposing are clearly stronger in both halves (PF 1.83 / 2.01, avg ₹+2,068 against about ₹+580); score +1, 0 and -1 are about the same. The rule chosen on 2018-22 ("only with agreement") fails on 2023-26. Nothing adopted
 
 | | |

@@ -190,6 +190,7 @@ def ema_bars(P):
 def trades_emab(P):
     f, sp, MIN, SES, DSTR = _data(); E = f.extra["expiry"]
     q0, q1, c5, ema, up, lo = ema_bars(P); N = len(c5)
+    if P.get("slope") or P.get("be"): return _trades_emab_x(P)
     out, pos, e, econ = [], 0, None, None
     lab = lambda s: f"EMA band break · {'LONG' if s > 0 else 'SHORT'}"
     for x in range(max(P["ema"], P["dlen"]) + 1, N - 1):
@@ -201,6 +202,38 @@ def trades_emab(P):
         if not pos and np.isfinite(up[x - 1]):
             if c5[x - 1] <= up[x - 1] and c5[x] > up[x]: pos, e, econ = 1, nxt, E[nxt]
             elif c5[x - 1] >= lo[x - 1] and c5[x] < lo[x]: pos, e, econ = -1, nxt, E[nxt]
+    return out
+
+
+def _trades_emab_x(P):
+    """The EMA bands with the S146 corrections (opt-in; Strategy 146): `slope` "with" = enter only when the EMA moved the
+    trade's way over the last 12 bars (1 hour), "band" = and by at most 0.15% of price; `be` = once a 5-minute close is
+    be x the mean distance beyond the entry, the stop moves to the entry (touched on a later bar's high / low, filled at the
+    entry, or the open when it opens through it). Exits as Strategy 138 otherwise."""
+    f, sp, MIN, SES, DSTR = _data(); E = f.extra["expiry"]
+    q0, q1, c5, ema, up, lo = ema_bars(P); N = len(c5); ad = (up - ema) / P["mult"]
+    h5 = np.maximum.reduceat(f.h, q0); l5 = np.minimum.reduceat(f.l, q0); o5 = f.o[q0]
+    out, pos = [], 0
+    lab = lambda s, x="": f"EMA band break · {'LONG' if s > 0 else 'SHORT'}{x}"
+    for x in range(max(P["ema"], P["dlen"]) + 13, N - 1):
+        nxt = q0[x + 1]
+        if pos:
+            if x >= e and st is not None and ((l5[x] <= st) if pos > 0 else (h5[x] >= st)):
+                px = min(o5[x], st) if pos > 0 else max(o5[x], st)
+                out.append(_t(f, "EMA bands", pos, q0[e], q0[x], px, "breakeven", lab(pos, " · slope ok"), sl=st)); pos = 0
+            if pos and P.get("be") and not moved and pos * (c5[x] - entry) >= P["be"] * ad[e - 1]:
+                st, moved = entry, True
+            if pos and E[nxt] != econ: out.append(_t(f, "EMA bands", pos, q0[e], q1[x], f.c[q1[x]], "roll", lab(pos, " · slope ok"), sl=st)); pos = 0
+            if pos == 1 and c5[x - 1] >= ema[x - 1] and c5[x] < ema[x]: out.append(_t(f, "EMA bands", 1, q0[e], nxt, f.o[nxt], "ema_cross", lab(1, " · slope ok"), sl=st)); pos = 0
+            elif pos == -1 and c5[x - 1] <= ema[x - 1] and c5[x] > ema[x]: out.append(_t(f, "EMA bands", -1, q0[e], nxt, f.o[nxt], "ema_cross", lab(-1, " · slope ok"), sl=st)); pos = 0
+            if pos: continue
+        if not np.isfinite(up[x - 1]): continue
+        s = 1 if (c5[x - 1] <= up[x - 1] and c5[x] > up[x]) else -1 if (c5[x - 1] >= lo[x - 1] and c5[x] < lo[x]) else 0
+        if not s: continue
+        if P.get("slope"):
+            sl = s * (ema[x] - ema[x - 12]) / ema[x] * 100
+            if sl <= 0 or (P["slope"] == "band" and sl > 0.15): continue
+        pos, e, econ, entry, moved, st = s, x + 1, E[nxt], float(o5[x + 1]), False, None
     return out
 
 

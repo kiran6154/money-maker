@@ -1,0 +1,116 @@
+{
+ "code": "ST146",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-26T18:00:01",
+   "key": "f78cb70295a7",
+   "code": "df6746933cf4",
+   "definition": {
+    "code": "ST146",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 1,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "pine_rules_v1",
+     "exit_rule": "next_choch"
+    },
+    "pine": {
+     "rule": "emab",
+     "ema": 50,
+     "mult": 3.0,
+     "dlen": 20,
+     "slope": "with",
+     "be": 3.0
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "none",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 0.5
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY"
+     ],
+     "expiry_min_days": 0,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATM"
+     ],
+     "strike_default": "ATM",
+     "atr_period": 14
+    }
+   },
+   "changes": [],
+   "results": {
+    "all-data_1m": {
+     "FUT": {
+      "-": {
+       "trades": 1378,
+       "wins": 470,
+       "pts": 21049.3,
+       "net_inr": 925828.45,
+       "pf": 1.34,
+       "max_dd_inr": -114792.68,
+       "t_stat": 3.25
+      }
+     }
+    },
+    "2018-22_1m": {
+     "FUT": {
+      "-": {
+       "trades": 789,
+       "wins": 279,
+       "pts": 11920.25,
+       "net_inr": 605494.03,
+       "pf": 1.46,
+       "max_dd_inr": -41295.37,
+       "t_stat": 3.16
+      }
+     }
+    },
+    "2023-26_1m": {
+     "FUT": {
+      "-": {
+       "trades": 589,
+       "wins": 191,
+       "pts": 9129.05,
+       "net_inr": 320334.42,
+       "pf": 1.23,
+       "max_dd_inr": -114792.68,
+       "t_stat": 1.52
+      }
+     }
+    }
+   }
+  }
+ ]
+}

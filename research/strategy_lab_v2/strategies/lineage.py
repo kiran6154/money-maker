@@ -92,6 +92,7 @@ LINEAGE = {
     "ST84": ("ST83", "The reclaim only arms the setup; the entry waits for the first BOS / CHoCH that way on the 1-minute structure (instead of the blind entry)."),
     "ST85": ("ST83", "The same signals traded on options: a long signal sells the PE at the day's low, a short signal sells the CE at the day's high; out when the index closes back through the strike, else 15:15; both sides, one position per side."),
     "ST94": ("ST1", "Strategy 1's rules on the day-open ATM option's own candles: a bullish SETUP buys the option, out at the previous swing's stop or the next CHoCH; each trade tagged inside / above / below the option's previous-session range."),
+    "ST146": ("ST138", "Entered only when the EMA itself moved the trade's way over the last hour; breakeven stop once 3 x the mean distance in profit (the S146 correction, chosen on 2018-23)."),
     "ST145": ("ST144", "Every rupee threshold scaled by spot / 23,700 at the signal bar (the spec's proposed change, not validated)."),
     "ST144": (None, "A separate idea, the hand-off spec \"Rainbow Book\": weekly and monthly options on 15-minute bars, RSI 70 roll-over and a close below the previous low sells at the next open (first eligible signal per contract, compression filter); after +30% a breakeven / rainbow-top exit; one CE and one PE."),
     "ST143": ("ST141", "Exit: stop at the swing high, ratcheted on each bearish BOS, out on a close above it (5-bar pivots; no RSI condition)."),
