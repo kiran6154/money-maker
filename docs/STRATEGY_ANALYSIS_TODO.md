@@ -457,6 +457,21 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S148. How to arrive at a 1-minute intraday strategy like the EMA bands - measured in three steps: NIFTY futures mean-revert at 1 - 5 minutes and trend only weakly at 15 - 60 minutes (and less since 2023); a futures round trip costs 4 - 5 points to 2024, 8 in 2025 and 15 from April 2026; the EMA-band family on 1-minute bars, intraday, earns at most +5 - 6.5 gross points a trade, so nothing clears the cost after 2022 except one marginal version. The EMA bands work positionally, not intraday
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only |
+| Code | `research/strategy_lab_v2/tools/intraday_search.py` (the grid: results/intraday_search_grid.csv) |
+
+**Step 1 - is there anything to follow?** NIFTY near-month futures, 1-minute, same-session returns: corr(last h minutes, next h minutes) 1 min -0.017 / -0.036 (2018-22 / 2023-26), 5 min -0.018 / -0.019, 15 min +0.040 / -0.000, 30 min +0.033 / +0.005, 60 min +0.049 / +0.018; variance ratio 0.94 / 0.92 (5 min) ... 0.88 / 0.86 (60 min) - below 1 at every horizon (intraday NIFTY reverts more than it trends in variance terms). The 30-minute persistence was strongest 09:45 - 10:30 and 12:00 - 13:30 in 2018-22 (+0.06) and is gone there in 2023-26 (-0.01 / -0.02).
+
+**Step 2 - the hurdle** (one lot, 0.5 pt slippage a side + the futures charges by date, jilly.py): 2019 4.0 points, 2022 5.1, 2025 8.0, 2026 15.2 (STT 0.05% of the sell leg from 2026-04-01 alone is about 12 points at 24,000).
+
+**Step 3 - the family.** EMA 20 / 50 / 100 / 200 x band 2 / 3 / 4 mean distances x distance window 20 / 60, read as a breakout (a close through a band enters that way) or a fade (a close back inside enters against it), with or without the S146 slope filter (60 minutes); entries 09:30 - 14:30, out on a close back through the EMA or at the 15:20 open: 96 versions. Breakout readings have a positive gross edge (median +1.8 points a trade), fades a negative one (-1.9). The best gross is +5 - 6.5 points a trade, held 50 - 90 minutes - about the hurdle before 2025, under it after. Chosen on 2018-22 (net PF, >= 300 trades): EMA 100, x4, window 20, breakout, slope filter - PF 1.21 (305 trades, ₹+57,663) → 2023-26 PF 0.74 (177, ₹-68,651). The only version positive in both halves: EMA 200, x4, window 60, breakout with the slope filter - 489 trades, +6.6 gross points, PF 1.02 / 1.07, ₹+6,980 / ₹+22,400.
+
+**Reading - how to arrive at one.** (1) Measure the edge at the holding horizon before writing rules (here: weak trend at 15 - 60 min, reversal at 1 - 5 min). (2) Price the hurdle in points for the instrument and the date. (3) Only rules whose average gross move per trade is a multiple of the hurdle survive: slow EMAs, wide bands, long holds, few trades - which is why Strategy 138 works positionally (its multi-day trends pay; same-day exits lose, S146) and its 1-minute intraday cousins do not. (4) Choose on the early years, read the late ones (the in-sample pick fails here). Untested routes: the same 1-minute signals traded through an ITM option (STT on the premium, not the notional), or holding the futures signal overnight.
+
 ### S147. "Nifty CHoCH to CHoCH in Plain English" (the user sent it again - "build this, check if this exists"): it exists as Strategies 25 - 28, tested on 2026-06-23 - 09-14 only; run on the download store's option data from 2018 (Strategies 147 - 150), all four lose (PF 0.72 - 0.84); the 5-point premium trail takes the winners out at ~3 points while the 5% stop costs ~19 points
 
 | | |
