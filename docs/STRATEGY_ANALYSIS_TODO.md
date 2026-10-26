@@ -457,6 +457,34 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S141. Strategy 1 filtered by Jilly's noise band / the opening range (the user: "if we don't trade within the Jilly band or the day range it will likely save false trades"). Measured on Strategy 1's saved futures trades 2018-01 - 2026-10: trades inside the band are worse, and keeping only trades beyond the band the trade's way lifts PF 0.30 → 0.49 in both halves - but it does that by dropping 91% of the trades, and what is left still loses before costs (gross PF 0.65). The opening range does not separate them. Strategy 1 stays a loser either way; nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; Strategy 1 unchanged |
+| Code | none (an analysis of `results/ST1/all-data_1m`; the band from `strategies/jilly.py` engine, Strategy 111's settings without the vol filter) |
+
+**Build.** For each saved Strategy 1 trade, the near-month future's close at the entry minute (the download store) against that day's Jilly band UB(key) / LB(key) (Strategy 111's settings, no vol filter, so every day with 20 prior sessions has a band) and the 09:15 - 09:29 opening range (known from 09:30). Direction = the trade's signal (BULLISH / BEARISH). 8,266 of 8,326 futures trades fall on days with a band.
+
+| Strategy 1, futures | Trades | Win % | Avg net ₹ | Net PF | Gross PF | PF 2018-22 / 2023-26 | Net ₹ |
+|---|---|---|---|---|---|---|---|
+| all | 8,266 | 14.9 | -984 | 0.301 | 0.436 | 0.279 / 0.315 | -81,36,894 |
+| A: outside the band (kept) | 1,026 | 17.3 | -911 | 0.424 | 0.577 | 0.366 / 0.454 | -9,34,618 |
+| A: inside the band (dropped) | 7,240 | 14.6 | -995 | 0.281 | 0.412 | 0.267 / 0.291 | -72,02,276 |
+| B: beyond the band the trade's way (long above UB, short below LB) | 726 | 18.6 | -809 | 0.485 | 0.653 | 0.425 / 0.517 | -5,86,973 |
+| beyond the band the other way | 300 | 14.0 | -1,159 | 0.281 | 0.394 | 0.221 / 0.311 | -3,47,645 |
+| C: outside the opening range, after 09:30 (kept) | 4,570 | 13.9 | -1,035 | 0.265 | 0.388 | 0.258 / 0.270 | -47,31,201 |
+| C: inside the opening range (dropped) | 3,264 | 15.3 | -940 | 0.296 | 0.439 | 0.266 / 0.318 | -30,69,192 |
+| before 09:30 (range still forming) | 432 | 22.9 | -779 | 0.601 | 0.755 | 0.572 / 0.615 | -3,36,502 |
+| D: beyond the opening range the trade's way | 2,772 | 14.6 | -995 | 0.286 | 0.417 | 0.309 / 0.272 | -27,59,086 |
+| A + D | 539 | 15.0 | -991 | 0.321 | 0.456 | 0.386 / 0.284 | -5,34,217 |
+
+The saved weekly ATM option run covers only 2026-06-30 - 2026-10-09 (566 trades, the options cache): B kept 70 trades at PF 0.80 against 0.78 for all; too few to read.
+
+**Reading.** The user's idea holds in direction: a Strategy 1 trade taken while the future is inside the noise band loses more per rupee (PF 0.28) than one taken outside it (0.42), and the gap is the same in both halves; taking only the trade's own side of the band is better still (0.49). But the average trade still loses about ₹800 - 900, before costs too (gross PF 0.58 - 0.65): the filter saves money by trading a tenth as often, not by finding winners. Inside / outside the opening range makes no useful difference.
+
+**Open (not adopted).** The band as a filter on a different, profitable entry is the useful part (as in Strategy 111 itself); on Strategy 1 it cannot turn the result positive.
+
 ### S140. Jilly on the option's own chart (Strategies 120 - 123): why it enters late, and checking every 1 / 5 minutes instead of every 15. Measured: the noise band, not the 15-minute grid, makes the entries late - at the checkpoints before a signal the band is still failing 87% of the time (ST120), and the median entry is at a premium already ~50 - 70% away from its 09:15 open; checking every minute moves the median entry only ~10 minutes earlier (10:15 → 10:05); results are mixed (ST122 out-of-sample PF 1.045 → 1.135, ST123 1.214 → 1.153). Nothing adopted
 
 | | |
