@@ -457,6 +457,47 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S138. Jilly (Strategy 111) with an extra entry filter - RSI 14, SMA 20 direction, VWAP +/- 1 / 2 sigma - on top of its own conditions, chosen on the early years and read on 2023 - 26. Measured: nothing clearly helps. RSI > 50 and SMA 20 direction change almost nothing (the breakout already implies them); "beyond VWAP + 2 sigma" has the best early PF on futures (1.98) and loses out of sample (0.91); the only filter better in both halves of both books, "not RSI(1m) 70 / 30, wait for the next check", adds about 0.03 - 0.05 PF - within noise, and found after seeing both halves. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; Strategy 111 unchanged (ST110 / ST111 / ST112 / ST119 re-run identical after the code change) |
+| Code | `research/strategy_lab_v2/strategies/jilly.py` (opt-in `xfilter` / `xmode`, `_xfilters`, `_xok`) |
+
+**Build** (the user's request: "check if RSI helps or SMA 20 direction helps alongside the existing ones, even check 1 sigma or 2 sigma VWAP"). At each of Strategy 111's checks (09:45, 10:00 ... 14:00) a signal that passes the existing rules must also pass the filter; "veto" = a failing first signal ends the day, "wait" = the next check that passes both is taken. Long rules (a short is the mirror): `rsi1_50` / `rsi5_50` RSI 14 > 50 on the future's 1- / 5-minute closes; `rsi1_70` / `rsi5_70` RSI < 70; `sma1` / `sma5` SMA 20 rising (now vs one candle back - the user's "slope"); `vw1_beyond` / `vw2_beyond` close above VWAP + 1 / 2 sigma; `vw1_inside` / `vw2_inside` close below VWAP + 1 / 2 sigma (sigma = the session VWAP's volume-weighted standard deviation of hlc3). BUILD: RSI / SMA continuous across sessions and contract rolls; the 5-minute bar is the one completing at the check (the checks fall on 5-minute boundaries). Strategy 111's exits unchanged. Selection rule set before reading: the highest in-sample PF (futures 2018 - 22; ATM option 2020 - 22).
+
+| Futures (Strategy 111's exits) | IS trades | IS PF | OOS trades | OOS PF | All PF | All net ₹ |
+|---|---|---|---|---|---|---|
+| as built | 467 | 1.446 | 322 | 1.106 | 1.269 | +5,08,259 |
+| rsi1_50 veto / wait | 465 / 466 | 1.451 / 1.453 | 322 / 322 | 1.106 / 1.106 | 1.272 / 1.273 | +5,11,252 / +5,12,934 |
+| rsi5_50 veto / wait | 465 / 467 | 1.429 / 1.441 | 320 / 321 | 1.101 / 1.104 | 1.260 / 1.267 | +4,87,989 / +5,02,568 |
+| rsi1_70 veto / wait | 297 / 443 | 1.549 / 1.477 | 186 / 299 | 1.123 / 1.152 | 1.332 / 1.315 | +3,60,069 / +5,35,461 |
+| rsi5_70 veto / wait | 178 / 397 | 1.338 / 1.351 | 117 / 278 | 1.117 / 1.060 | 1.233 / 1.204 | +1,70,082 / +3,20,698 |
+| sma1 veto / wait | 456 / 463 | 1.433 / 1.443 | 319 / 322 | 1.098 / 1.103 | 1.258 / 1.266 | +4,82,801 / +5,01,365 |
+| sma5 veto / wait | 461 / 466 | 1.417 / 1.428 | 313 / 319 | 1.071 / 1.098 | 1.239 / 1.259 | +4,47,167 / +4,85,604 |
+| vw1_beyond veto / wait | 443 / 463 | 1.427 / 1.464 | 310 / 320 | 1.115 / 1.096 | 1.264 / 1.271 | +4,75,763 / +5,05,527 |
+| vw2_beyond veto / wait | 125 / 205 | **1.980** / 1.882 | 94 / 131 | **0.910** / 0.940 | 1.330 / 1.362 | +1,72,310 / +2,62,587 |
+| vw1_inside veto / wait | 24 / 227 | 1.781 / 1.592 | 12 / 160 | 0.865 / 1.198 | 1.387 / 1.388 | +32,496 / +3,10,998 |
+| vw2_inside veto / wait | 342 / 435 | 1.290 / 1.464 | 228 / 300 | 1.200 / 1.134 | 1.246 / 1.296 | +3,35,949 / +5,15,899 |
+
+| ATM option (Strategy 111's exits) | IS trades | IS PF | OOS trades | OOS PF | All PF | All net ₹ |
+|---|---|---|---|---|---|---|
+| as built | 258 | 1.420 | 320 | 1.154 | 1.260 | +2,09,898 |
+| rsi1_50 veto / wait | 258 / 258 | 1.420 / 1.420 | 320 / 320 | 1.154 / 1.154 | 1.260 / 1.260 | +2,09,898 / +2,09,898 |
+| rsi5_50 veto / wait | 257 / 258 | 1.409 / 1.425 | 318 / 319 | 1.141 / 1.143 | 1.248 / 1.256 | +1,99,660 / +2,05,664 |
+| rsi1_70 veto / wait | 156 / 242 | 1.172 / 1.476 | 185 / 297 | 1.149 / 1.177 | 1.159 / 1.300 | +76,816 / +2,18,858 |
+| rsi5_70 veto / wait | 90 / 216 | 1.512 / 1.350 | 117 / 277 | 0.920 / 1.027 | 1.146 / 1.156 | +43,770 / +1,04,530 |
+| sma1 veto / wait | 252 / 256 | 1.405 / 1.400 | 317 / 320 | 1.147 / 1.149 | 1.249 / 1.249 | +1,98,993 / +2,02,036 |
+| sma5 veto / wait | 255 / 258 | 1.408 / 1.404 | 311 / 317 | 1.124 / 1.146 | 1.239 / 1.251 | +1,90,454 / +2,01,486 |
+| vw1_beyond veto / wait | 250 / 257 | 1.394 / 1.405 | 308 / 318 | 1.142 / 1.130 | 1.243 / 1.241 | +1,91,170 / +1,94,870 |
+| vw2_beyond veto / wait | 76 / 124 | 2.063 / 1.749 | 92 / 129 | 1.318 / 1.119 | 1.592 / 1.390 | +1,37,324 / +1,39,982 |
+| vw1_inside veto / wait | 8 / 118 | **2.791** / 1.611 | 12 / 159 | **1.542** / 1.182 | 1.914 / 1.339 | +18,728 / +1,18,164 |
+| vw2_inside veto / wait | 182 / 240 | 1.188 / 1.504 | 228 / 299 | 1.083 / 1.091 | 1.126 / 1.255 | +72,574 / +1,87,304 |
+
+**Reading.** The pre-set rule picks "beyond VWAP + 2 sigma, veto" on futures (IS 1.98 → OOS 0.91, below the as-built 1.106) and "inside VWAP + 1 sigma, veto" on the option (8 in-sample trades - no evidence; the rule had no minimum trade count, which it should have had). RSI > 50 is nearly always true at a Jilly breakout (the 1-minute version changes 0 - 2 trades). SMA 20 direction removes a few trades and lowers PF slightly in both books. Vetoes cut trades hard and mostly cut profit; "wait" versions stay near the as-built numbers. "rsi1_70 wait" (skip a signal while RSI(1m) is at 70+ / 30-, take the next check) is the one filter above as-built in both halves of both books (futures 1.446 → 1.477 / 1.106 → 1.152, net +₹27,202; option 1.420 → 1.476 / 1.154 → 1.177, net +₹8,960), but it was seen with both halves on the table and the gain is small against the trade-to-trade noise.
+
+**Open (not adopted).** If wanted, pre-register "rsi1_70 wait" as a candidate and judge it on data after 2026-10-23 only (forward paper trading); the in-sample selection for any other filter should require at least half the as-built trade count.
+
 ### S137. Lab v2 Strategies 129 / 130 - Strategy 111 with scale-out lots (+20 / +30 premium points) and with a reverse trade when the trade fails back inside UB / LB. Measured 2018 - 2026: both lose against Strategy 111. The +20 / +30 lots lose on their own (PF 0.75 - 0.87) and take the three-lot book from PF 1.26 to 1.00; the "failure" (3 closes back across the line) fires on 80% of trades, cutting them early loses more than holding them, and the reverse trades lose too (futures PF 1.27 → 0.97). Nothing adopted
 
 | | |

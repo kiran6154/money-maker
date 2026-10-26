@@ -162,6 +162,7 @@ def engine(J):
     N = J["atr_n"]; A = np.full(len(TR), np.nan); A[N - 1] = TR[:N].mean()
     for i in range(N, len(TR)): A[i] = (A[i - 1] * (N - 1) + TR[i]) / N
     bar5 = np.repeat(np.arange(len(H5)), np.diff(cb))                 # the 5-minute bar of each 1-minute bar
+    XF = _xfilters(J, c, C5) if J.get("xfilter") else None
     out = []
     pc_last, exp_prev = None, None
     for s, (a, z) in enumerate(S):
@@ -187,6 +188,8 @@ def engine(J):
         rec.update(ORH=ORH, ORL=ORL, ORM=_r05((ORH + ORL) / 2))
         hlc3 = (h[a:z] + l[a:z] + c[a:z]) / 3; cv = np.cumsum(v[a:z]); vw = np.where(cv > 0, np.cumsum(hlc3 * v[a:z]) / np.where(cv > 0, cv, 1), np.nan)
         rec["vwap"] = vw
+        if XF is not None:                                            # the session VWAP's volume-weighted standard deviation
+            sd = np.sqrt(np.maximum(np.where(cv > 0, np.cumsum(hlc3 * hlc3 * v[a:z]) / np.where(cv > 0, cv, 1), np.nan) - vw * vw, 0))
         for ck in range(J["ck_first"], J["ck_last"] + 1, J["ck_step"]):
             w = np.nonzero(k == ck)[0]
             if not len(w): continue
@@ -195,15 +198,61 @@ def engine(J):
             if C > ORH + J["atr_buf"] * atr and C > UB[ck - 1] and C > vw[i - a]: side = 1
             elif C < ORL - J["atr_buf"] * atr and C < LB[ck - 1] and C < vw[i - a]: side = -1
             else: continue
+            if XF is not None and not _xok(J["xfilter"], XF, side, i, bar5[i], C, vw[i - a], sd[i - a]):
+                if J.get("xmode", "veto") == "veto": rec["why"] = f"filtered: {J['xfilter']}"; break
+                continue                                              # "wait": the next check time that passes both
             if i + 1 >= z: break
             rec.update(signal=side, i=i, key=ck, close=C, atr=atr, fill_i=i + 1, fill=float(o[i + 1]))
             break
-        if rec["signal"] is None: rec["why"] = "no signal"
+        if rec["signal"] is None and not rec["why"]: rec["why"] = "no signal"
     _ENG.clear(); _ENG[key] = (f, keyv, out); _AUX["atr"] = (A, bar5)
     return _ENG[key]
 
 
 _AUX = {}
+
+
+def _rsi(x, n=14):
+    """Wilder RSI of a continuous close series."""
+    d = np.diff(x, prepend=x[0]); up, dn = np.maximum(d, 0), np.maximum(-d, 0)
+    au, ad = np.full(len(x), np.nan), np.full(len(x), np.nan)
+    if len(x) <= n: return au
+    au[n], ad[n] = up[1:n + 1].mean(), dn[1:n + 1].mean()
+    for i in range(n + 1, len(x)):
+        au[i] = (au[i - 1] * (n - 1) + up[i]) / n; ad[i] = (ad[i - 1] * (n - 1) + dn[i]) / n
+    return 100 - 100 / (1 + au / np.where(ad > 0, ad, 1e-12))
+
+
+def _sma(x, n=20):
+    out = np.full(len(x), np.nan); cs = np.cumsum(np.insert(x, 0, 0.0)); out[n - 1:] = (cs[n:] - cs[:-n]) / n
+    return out
+
+
+def _xfilters(J, c, C5):
+    """The extra-filter series (opt-in `xfilter`, research): RSI 14 and SMA 20 on the near-month future's 1-minute closes
+    and its 5-minute closes, continuous across sessions and contract rolls (BUILD)."""
+    if "xf" not in _AUX: _AUX["xf"] = dict(rsi1=_rsi(c), rsi5=_rsi(C5), sma1=_sma(c), sma5=_sma(C5))
+    return _AUX["xf"]
+
+
+def _xok(name, X, side, i, b5, C, vw, sd):
+    """Does the signal at 1-minute bar i (5-minute bar b5, complete at i: the checks fall on 5-minute boundaries) pass?
+    A long's rule; a short's is the mirror."""
+    s = side
+    if name.startswith("rsi"):
+        r = X["rsi1"][i] if name[3] == "1" else X["rsi5"][b5]
+        if np.isnan(r): return False
+        lvl = float(name.split("_")[1])                               # rsi5_50: RSI > 50 for a long; rsi5_70: RSI < 70
+        return (r > 50 if s > 0 else r < 50) if lvl == 50 else (r < lvl if s > 0 else r > 100 - lvl)
+    if name.startswith("sma"):                                        # SMA 20 rising (falling for a short): now vs one candle back
+        q = X["sma1"] if name[3] == "1" else X["sma5"]; j = i if name[3] == "1" else b5
+        if j < 1 or np.isnan(q[j - 1]): return False
+        return (q[j] > q[j - 1]) if s > 0 else (q[j] < q[j - 1])
+    if name.startswith("vw"):                                         # vw1_beyond: close beyond VWAP + 1 sigma; vw2_inside: within 2 sigma
+        k = float(name[2]); edge = vw + s * k * sd
+        beyond = (C > edge) if s > 0 else (C < edge)
+        return beyond if name.endswith("beyond") else not beyond
+    raise ValueError(name)
 
 
 def _resignal(J, f, keyv, r, k):
