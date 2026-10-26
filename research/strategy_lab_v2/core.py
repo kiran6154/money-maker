@@ -1084,10 +1084,40 @@ def strategy_signals(ctx, bars):
     return ctx["mod"].signals(bars, dict(ctx["spec"], rules=rules))
 
 
+def own_excursions(out, ctx=None):
+    """Max profit / max loss (mfe / mae, their times, which came first) for the trades of a strategy with its own run(ctx)
+    that did not set them (Jilly, the gap strategies, the CAGR book, ...): read on the traded instrument's own 1-minute
+    candles from the download store - the option contract, or the near-month future - from the entry to the exit."""
+    import store_reader
+    fut, opt, und = None, {}, None
+    for res in out.values():
+        for tr in res.get("trades", []):
+            if tr.get("und_exit") is None and tr.get("und_entry") is not None and ctx is not None:   # the underlying at the exit
+                if und is None: und = family("jilly")._store_bars("index" if ctx["underlying"] == "INDEX" else "fut")
+                q = int(np.searchsorted(und.t, tr["exit_time"], "right")) - 1
+                if q >= 0: tr["und_exit"] = float(und.c[q])
+            if "mfe" in tr: continue
+            d0, d1 = tstr(tr["entry_time"])[:10], tstr(tr["exit_time"])[:10]
+            if tr.get("opt_type") in ("CE", "PE") and tr.get("expiry") and tr.get("strike"):
+                key = (tr["expiry"], int(tr["strike"]), tr["opt_type"], d0, d1)
+                if key not in opt:
+                    oc = store_reader.option_candles(*key, "minute") or []
+                    opt[key] = Bars(np.array([x[0] for x in oc], dtype=np.int64), *(np.array([x[j] for x in oc], dtype=float) for j in (1, 2, 3, 4)),
+                                    np.zeros(len(oc))) if oc else None
+                b = opt[key]
+            elif tr.get("opt_type") == "FUT":
+                if fut is None: fut = family("jilly")._store_bars("fut")
+                b = fut
+            else: b = None
+            if b is None or not len(b.t): tr.update(mfe=0.0, mae=0.0, mfe_time=None, mae_time=None, first_move="")
+            else: excursion(b, tr, tr["position"] == "LONG")
+    return out
+
+
 def run_type(ctx):
     """{choice: dict(trades, skipped, signals)} for one strategy type over one window (v1 run_variant). A strategy module
     with its own run(ctx) (c2c) produces the trades itself; pricing, stats and results stay here."""
-    if hasattr(ctx["mod"], "run"): return ctx["mod"].run(ctx)
+    if hasattr(ctx["mod"], "run"): return own_excursions(ctx["mod"].run(ctx), ctx)
     typ, spec, P = ctx["type"], ctx["spec"], ctx["position"]
     sq = P["square_off"]
     pmode = P["exit"] == "position"

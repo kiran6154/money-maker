@@ -51,6 +51,17 @@ export class ChartView {
     // triggers the next one, so zooming out cannot run away
     for (const ev of ["pointerdown", "wheel", "touchstart", "keydown"])
       root.addEventListener(ev, () => { this.userMoved = true; }, { passive: true, capture: true });
+    // the chart library stops a zoom-out once every loaded candle is on screen, so the wheel never reaches the first
+    // candle's edge: a wheel zoom-out with the first candle already visible loads the earlier sessions (the newer ones
+    // when nothing is left before)
+    root.addEventListener("wheel", (e) => {
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) this.lastWheel = Date.now();   // a vertical wheel zooms: the range listener below then loads nothing by itself
+      if (e.deltaY <= 0 || !e.target.closest(".ch-main")) return;
+      const r = this.charts[0]?.timeScale().getVisibleLogicalRange(), n = this.data?.candles?.length || 0;
+      if (!r || !n || r.from > 0.5) return;
+      this.userMoved = true;
+      this.zoomGrow = true; this.edge(this.edgeDone[-1] && r.to >= n - 1.5 ? 1 : -1); this.zoomGrow = false;
+    }, { passive: true, capture: true });
     this.edgeDone = {};
     const box = $(".ch-box", root);
     const h = pref("chartH"); if (h) box.style.height = h + "px";
@@ -124,6 +135,7 @@ export class ChartView {
     if (this.extending || this.hooks.static || !this.data || (this.data.sessions || 1) >= MAX_SESSIONS) return;
     this.extending = true;
     const keep = this.keepOf(dir);
+    if (keep && this.zoomGrow) keep.zoom = true;           // a wheel zoom-out: show what is loaded plus the new session
     const { code, run, type, choice } = this.ctx, start = this.day, end = this.to || this.day, span = this.data.sessions || 1;
     let d = new Date((dir < 0 ? start : end) + "T00:00:00Z");
     try {
@@ -134,6 +146,9 @@ export class ChartView {
         let data;
         try { data = await api("/api/chart?" + new URLSearchParams({ code, run: run.run, type, choice, day, to })); } catch (e) { continue; }
         if ((data.sessions || 1) <= span) continue;
+        // it must add candles on the side asked for: past the last session the server answers with the window moved back
+        const c0 = this.data.candles || [], c1 = data.candles || [];
+        if (c0.length && c1.length && (dir > 0 ? c1[c1.length - 1][0] <= c0[c0.length - 1][0] : c1[0][0] >= c0[0][0])) break;
         const my = ++this.req;
         this.day = day; this.to = to; this.data = data; this.keepRange = this.fitAll ? null : keep;
         if (this.fitAll && this.refocus) this.focusTime = this.refocus;
@@ -510,7 +525,7 @@ export class ChartView {
     });
     // past the first candle -> older sessions; past the last -> newer (only after the reader moved the chart: see edge())
     if (main) ch.timeScale().subscribeVisibleLogicalRangeChange((r) => {
-      if (!r || !this.userMoved) return;
+      if (!r || !this.userMoved || Date.now() - (this.lastWheel || 0) < 400) return;   // a drag past an edge; zooms load in the wheel listener
       if (r.from < -0.5) this.edge(-1); else if (r.to > C0.length - 0.5) this.edge(1);
     });
     requestAnimationFrame(() => {
@@ -519,7 +534,10 @@ export class ChartView {
         try {
           if (r.logical) {                         // the same bars on screen: shift by the candles added before the old first one
             const add = r.oldFirst != null ? C0.filter((c) => c[0] < r.oldFirst).length : 0;
-            ch.timeScale().setVisibleLogicalRange({ from: r.logical.from + add, to: r.logical.to + add });
+            const last = C0.length - 1;
+            if (r.zoom) ch.timeScale().setVisibleLogicalRange(r.dir < 0 ? { from: 0, to: Math.min(r.logical.to + add, last) }
+                                                                          : { from: Math.max(0, r.logical.from + add), to: last });
+            else ch.timeScale().setVisibleLogicalRange({ from: r.logical.from + add, to: r.logical.to + add });
           } else ch.timeScale().setVisibleRange(r);
         } catch (e) { ch.timeScale().fitContent(); }
       } else if (this.focusTime && main) {

@@ -100,6 +100,156 @@
      }
     }
    }
+  },
+  {
+   "version": 2,
+   "at": "2026-10-26T03:38:05",
+   "key": "6d11d2a4ac6d",
+   "code": "7e4378ec7351",
+   "definition": {
+    "code": "ST116",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 1,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "prev_swing",
+     "entry_rule": "jilly_ext_v1",
+     "exit_rule": "next_choch"
+    },
+    "jext": {
+     "mode": "setup",
+     "sides": "jilly",
+     "minutes": 1,
+     "warm": 2,
+     "rules": {
+      "break_mode": "touch",
+      "choch_mode": "touch",
+      "avwap_weight": "volume",
+      "sl_rule": "prev_swing"
+     }
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "15:20",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 0.5
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY"
+     ],
+     "expiry_min_days": 0,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATM"
+     ],
+     "strike_default": "ATM",
+     "atr_period": 14
+    }
+   },
+   "changes": [
+    "code changed (core.py, the strategy file or its family module)"
+   ],
+   "results": {
+    "all-data_1m": {
+     "FUT": {
+      "-": {
+       "trades": 1204,
+       "wins": 313,
+       "pts": 576.45,
+       "net_inr": -342762.14,
+       "pf": 0.68,
+       "max_dd_inr": -349196.14,
+       "t_stat": -4.12
+      }
+     },
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 876,
+       "wins": 211,
+       "pts": -817.55,
+       "net_inr": -106196.78,
+       "pf": 0.75,
+       "max_dd_inr": -120582.06,
+       "t_stat": -2.33
+      }
+     }
+    },
+    "2018-22_1m": {
+     "FUT": {
+      "-": {
+       "trades": 706,
+       "wins": 186,
+       "pts": 372.6,
+       "net_inr": -125150.63,
+       "pf": 0.76,
+       "max_dd_inr": -130541.17,
+       "t_stat": -2.16
+      }
+     },
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 378,
+       "wins": 82,
+       "pts": -263.95,
+       "net_inr": -39618.49,
+       "pf": 0.79,
+       "max_dd_inr": -54840.51,
+       "t_stat": -1.3
+      }
+     }
+    },
+    "2023-26_1m": {
+     "FUT": {
+      "-": {
+       "trades": 498,
+       "wins": 127,
+       "pts": 203.85,
+       "net_inr": -217611.51,
+       "pf": 0.6,
+       "max_dd_inr": -223190.91,
+       "t_stat": -3.65
+      }
+     },
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 498,
+       "wins": 129,
+       "pts": -553.59,
+       "net_inr": -66578.29,
+       "pf": 0.73,
+       "max_dd_inr": -69659.75,
+       "t_stat": -1.95
+      }
+     }
+    }
+   }
   }
  ]
 }
