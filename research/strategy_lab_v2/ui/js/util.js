@@ -116,6 +116,8 @@ export function algorithm(spec) {
       S(`At the closes of 09:45, 10:00 … 14:00: LONG if close > ORH + ${y.atr_buf}·ATR and > UB(key) and > VWAP; SHORT the mirror. The first signal of the day only; fill at the next 1-minute bar's open.`),
       S(`Futures: stop = fill ∓ ${y.stop_atr} × ATR, target ${y.target_r}R. A touch exits at the next minute's open (both in one minute: the stop); flat at the ${y.flatten} open.`),
       S(`Options (from ${y.opt_from}): ATM = round(spot at the signal / 50) × 50, or 1-ITM; CE for a long signal, PE for a short; the nearest weekly on or after today. Stop on the future: ${y.opt_stop === "orm" ? "the OR midpoint" : `${y.stop_atr} × ATR`}; target ${y.target_r_opt}R on the future; the option is sold at the open of the minute after the futures trigger.`),
+      ...(y.scale_pts ? [S(`Lots (options): ${y.scale_pts.length + 1} lots bought; lot j is sold at entry + ${y.scale_pts.join(" / + ")} premium points (a resting limit, before the final exit), the last lot on the exits above.`)] : []),
+      ...(y.fail_rev ? [S(`Failure → reverse: a long whose future closes back below UB(key) (a short: back above LB(key)) for ${y.fail_rev} straight 1-minute closes is closed at the next open and the other side taken there, with the same stop / target rules; once a day.`)] : []),
       S("Costs: 0.5 pt a side on futures, max(0.5, 0.5% of premium) on options; F&O charges by date (STT 0.05% futures / 0.15% options from April 2026); lot 65. Data: the download store to 2026-10-23.")];
   }
   if (spec.rules?.entry_rule === "foundation_opt_v1") {   // Strategy 94: Strategy 1 on the option's own candles, previous-day range tagged

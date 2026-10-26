@@ -457,6 +457,45 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S137. Lab v2 Strategies 129 / 130 - Strategy 111 with scale-out lots (+20 / +30 premium points) and with a reverse trade when the trade fails back inside UB / LB. Measured 2018 - 2026: both lose against Strategy 111. The +20 / +30 lots lose on their own (PF 0.75 - 0.87) and take the three-lot book from PF 1.26 to 1.00; the "failure" (3 closes back across the line) fires on 80% of trades, cutting them early loses more than holding them, and the reverse trades lose too (futures PF 1.27 → 0.97). Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; Strategy 111 and the other Jilly strategies unchanged (re-run before / after the code change: ST110, ST111, ST112, ST119 identical trade counts and net) |
+| Code | `research/strategy_lab_v2/strategies/jilly.py` (`scale_pts`, `fail_rev`, `_walk_fail`, `_reverse_of`), `st129.py`, `st130.py` |
+
+**Build** (the user's request: "enter 3 lots, exit one at 20 points, exit 2nd at 30 points", points on the option premium; then "one lot per side, if the sell fails - it goes above green or below red and sustains - take the reverse trade", green = LB, red = UB on the Jilly chart). ST129: Strategy 111's ATM / 1-ITM option bought as 3 lots; lots 1 and 2 are resting limits at entry + 20 / + 30 premium points (filled at the limit, or the minute's open when it opens beyond), any minute from the entry to before the final exit; lot 3 and any lot whose limit is not reached exit on Strategy 111's rules (OR-midpoint stop and 2R on the future, 15:20). Options only. ST130: one lot; a long (taken above UB) fails when the future closes below UB(key) for 3 consecutive 1-minute closes, a short (below LB) when it closes above LB(key) 3 times (BUILD: "sustains" = 3 closes, the n = 3 the user chose for Strategies 88 / 89); checked after the bar's stop / target touch; the trade is closed at the next open and the other side taken there (ATM / 1-ITM from the spot at the failure minute for options), its stop / target by the same rules from the failure bar, flat 15:20; a reverse does not reverse again. Futures and options.
+
+| ST129 options vs Strategy 111 (2020-02 - 2026-10) | Trades | Win % | Net PF | w/o top-10 | PF 2018-22 / 2023-26 | Net ₹ | Max DD ₹ |
+|---|---|---|---|---|---|---|---|
+| ATM: ST111, 1 lot | 578 | 43.1 | 1.260 | 1.056 | 1.42 / 1.15 | +2,09,898 | -76,890 |
+| ATM: ST111 x 3 lots (same exits) | 1,734 | 43.1 | 1.260 | 1.159 | 1.42 / 1.15 | +6,29,694 | -2,30,670 |
+| ATM: ST129, 3 lots | 1,734 | 53.9 | 0.995 | 0.912 | 1.12 / 0.91 | -10,658 | -2,33,523 |
+| - lot 1 (+20) | 578 | 62.6 | 0.747 | | 0.85 / 0.68 | -1,39,028 | |
+| - lot 2 (+30) | 578 | 55.9 | 0.873 | | 0.96 / 0.81 | -81,529 | |
+| - lot 3 (spec exits = ST111) | 578 | 43.1 | 1.260 | | 1.42 / 1.15 | +2,09,898 | |
+| 1-ITM: ST111 x 3 lots | 1,734 | 44.3 | 1.260 | 1.167 | 1.43 / 1.15 | +7,24,165 | -2,61,721 |
+| 1-ITM: ST129, 3 lots | 1,734 | 57.2 | 1.007 | 0.927 | 1.14 / 0.92 | +15,219 | -2,38,552 |
+
+ATM lot exits: lot 1 - 356 at +20, 143 stopped, 79 at 15:20; lot 2 - 307 at +30, 166 stopped, 105 at 15:20. The win rate rises (43% → 54 - 57%) but a +20 / +30 win is smaller than the loss when the future's OR-midpoint stop is hit first, and the lots give up the trend days that pay Strategy 111. ST129 (ATM) is below ST111 x 3 in every year but 2023 (about equal) and 2025 (both lose about ₹1.4 lakh); 2024: ₹+10,473 against ₹+2,91,981.
+
+| ST130 vs Strategy 111 | Trades | Win % | Net PF | w/o top-10 | PF 2018-22 / 2023-26 | Net ₹ | Max DD ₹ |
+|---|---|---|---|---|---|---|---|
+| Futures: ST111 | 789 | 54.5 | 1.269 | 1.141 | 1.45 / 1.11 | +5,08,259 | -1,60,451 |
+| Futures: ST130 all | 1,417 | 34.8 | 0.965 | 0.870 | 1.02 / 0.91 | -93,459 | -1,92,334 |
+| - the 628 failed trades, closed for the reverse | 628 | 10.0 | 0.072 | | | -9,20,027 | |
+| - the same 628 held to the spec exits (ST111) | 628 | 43.6 | 0.610 | | | -7,33,781 | |
+| - the 628 reverse trades | 628 | 43.6 | 0.750 | | 0.72 / 0.79 | -4,15,473 | |
+| ATM: ST111 | 578 | 43.1 | 1.260 | 1.056 | 1.42 / 1.15 | +2,09,898 | -76,890 |
+| ATM: ST130 all | 1,007 | 30.4 | 0.988 | 0.831 | 0.97 / 1.00 | -14,118 | -81,817 |
+| 1-ITM: ST130 all | 1,007 | 33.0 | 1.004 | 0.858 | 0.98 / 1.02 | +5,146 | -84,566 |
+
+The failure fires on 628 of 789 futures trades (430 of 578 option trades): UB(key) / LB(key) widen through the day with sigma, and a breakout usually closes back inside the line within the first minutes. Those trades do lose as a group when held (PF 0.61), but closing them at the failure loses more (the stop is often further away than the next few minutes' move back), and the reverse trades lose as well (futures PF 0.75; 583 of 628 run to 15:20). Option books: ATM ST130 2023 - 26 is break-even (PF 1.00) where ST111 made PF 1.15.
+
+Lab pages (cache to 2026-10-09): ST129 ATM PF 0.99, 1-ITM 1.00; ST130 futures 0.97, ATM 0.99, 1-ITM 1.00.
+
+**Open (not adopted).** A stricter failure (more closes, or a close beyond the OR midpoint rather than the band line) would fire less often; untested, and any count must be chosen on 2018 - 22 and read on 2023 - 26 only.
+
 ### S136. Lab v2 Strategies 125 - 128: gap days (0.2% and more) classified by the day's first CHoCH / BOS on the NIFTY spot as "follow" (the break goes the gap's way) or "reverse", the 150-point ITM option bought that way. Measured 2018-02 - 2026-10: all four lose, before costs as well (gross PF 0.91 - 0.98), in both halves; neither follow nor reverse has an edge; Strategy 124's opening-range read stays the better gap-day entry
 
 | | |

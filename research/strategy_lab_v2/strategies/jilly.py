@@ -259,6 +259,35 @@ def _walk(f, keyv, r, stop, target, side, flat_key):
     return r["z"] - 1, "eod", float(c[r["z"] - 1])
 
 
+def _walk_fail(J, f, keyv, r, stop, target, side, flat_key):
+    """_walk plus the failure (`fail_rev` = N): N consecutive 1-minute closes of the future back across the band line the
+    signal broke - below UB(key) after a long, above LB(key) after a short. Returns (exit bar, why, price, failure bar or
+    None); a touch of the stop / target on a bar comes before that bar's close."""
+    h, l, o, c = f.h, f.l, f.o, f.c
+    N = J["fail_rev"]; line = r["UB"] if side > 0 else r["LB"]; run_n = 0
+    for m in range(r["fill_i"], r["z"]):
+        if keyv[m] >= flat_key: return m, "eod", float(o[m]), None
+        hit_s = (l[m] <= stop) if side > 0 else (h[m] >= stop)
+        hit_t = (h[m] >= target) if side > 0 else (l[m] <= target)
+        if hit_s or hit_t:
+            why = "stop_loss" if hit_s else "target 1"
+            return ((m + 1, why, float(o[m + 1])) if m + 1 < r["z"] else (m, why, float(c[m]))) + (None,)
+        k = int(keyv[m])
+        back = (c[m] < line[k - 1]) if side > 0 else (c[m] > line[k - 1])
+        run_n = run_n + 1 if back else 0
+        if run_n >= N and m + 1 < r["z"] and keyv[m + 1] < flat_key:
+            return m + 1, "failed_reverse", float(o[m + 1]), m
+    return r["z"] - 1, "eod", float(c[r["z"] - 1]), None
+
+
+def _reverse_of(J, f, r, m):
+    """The reverse trade after a failure on bar m: the other side, filled at bar m + 1's open, its stop / target by the same
+    rules from there (the ATR of bar m)."""
+    A, bar5 = _AUX["atr"]
+    return dict(r, signal=-r["signal"], i=m, close=float(f.c[m]), atr=float(A[bar5[m]]), fill_i=m + 1, fill=float(f.o[m + 1]),
+                key=int((f.t[m] % DAY - 555 * 60) // 60 + 1), reversed=True)
+
+
 def run(ctx):
     spec = ctx["spec"]; J = spec["jilly"]; typ = ctx["type"]; lots = ctx["position"]["lots"]
     f, keyv, E = engine(J)
@@ -280,17 +309,22 @@ def run(ctx):
             pos = "LONG" if side > 0 else "SHORT"
             base = dict(dir="up" if side > 0 else "down", signal="BULLISH" if side > 0 else "BEARISH", choch_time=int(f.t[r["i"]]),
                         und_entry=fill, stale=False, lots=lots, tranche="", sl=None)
+            walk = (lambda st, tg: _walk_fail(J, f, keyv, r, st, tg, side, flat_key)) if J.get("fail_rev") and not r.get("reversed") \
+                else (lambda st, tg: _walk(f, keyv, r, st, tg, side, flat_key) + (None,))
+            tag = " · reverse" if r.get("reversed") else ""
             if typ == "FUT":
                 stop, target = _stop_target(J, r, side, fill, dist, J.get("fut_stop", "atr"), J["target_r"])
-                m, why, xp = _walk(f, keyv, r, stop, target, side, flat_key)
+                m, why, xp, mf = walk(stop, target)
+                if mf is not None: chain.insert(0, (_reverse_of(J, f, r, mf), nreset))
                 _reset(J, f, keyv, r, m, why, nreset, chain)
                 rec = dict(base, position=pos, opt_type="FUT", kind="FUT", instrument=f"NIFTY FUT {f.extra['expiry'][r['a']]}", strike=0, expiry=str(f.extra["expiry"][r["a"]]),
                            entry_time=int(f.t[r["fill_i"]]), entry_px=fill, exit_time=int(f.t[m]), exit_px=xp,
-                           exit_reason=why, open=False, sl=stop, und_exit=xp, label=f"{pos} FUT" + (f" · reset {nreset}" if nreset else ""), signal_key=r["key"])
+                           exit_reason=why, open=False, sl=stop, und_exit=xp, label=f"{pos} FUT" + (f" · reset {nreset}" if nreset else "") + tag, signal_key=r["key"])
                 trs.append(_price(ctx, rec, "FUT")); continue
             # ---- options: the stop / target read on the future, the option bought and sold
             stop, target = _stop_target(J, r, side, fill, dist, J["opt_stop"], J["target_r_opt"])
-            m, why, xp = _walk(f, keyv, r, stop, target, side, flat_key)
+            m, why, xp, mf = walk(stop, target)
+            if mf is not None: chain.insert(0, (_reverse_of(J, f, r, mf), nreset))
             _reset(J, f, keyv, r, m, why, nreset, chain)
             si = int(np.searchsorted(sp.t, f.t[r["i"]]))
             if si >= len(sp) or sp.t[si] != f.t[r["i"]]: skipped.append(dict(base, position="LONG", opt_type="", instrument="", entry_time=int(f.t[r["fill_i"]]), why="no spot candle at the signal minute")); continue
@@ -309,7 +343,20 @@ def run(ctx):
             xpx = float(oc[ix][1]) if ix < len(ot) else float(oc[-1][4])
             rec = dict(base, position="LONG", opt_type=right, kind="OPT", instrument=name, strike=k, expiry=ex, entry_time=int(ot[ie]), entry_px=float(oc[ie][1]),
                        exit_time=int(ot[ix]) if ix < len(ot) else int(ot[-1]), exit_px=xpx, exit_reason=why, open=False, sl=stop, und_exit=xp,
-                       label=f"LONG {right} ({'long' if side > 0 else 'short'} signal)" + (f" · reset {nreset}" if nreset else ""), signal_key=r["key"])
+                       label=f"LONG {right} ({'long' if side > 0 else 'short'} signal)" + (f" · reset {nreset}" if nreset else "") + tag, signal_key=r["key"])
+            if J.get("scale_pts"):
+                # lot j sells at entry + scale_pts[j] premium points: a resting limit, filled at the target (at the open when
+                # the minute opens beyond it) on a minute before the final exit minute; the last lot keeps the spec's exits
+                e0, lim = float(oc[ie][1]), min(ix, len(ot))
+                for j, pts in enumerate(J["scale_pts"]):
+                    tgt = e0 + pts
+                    q = next((q for q in range(ie, lim) if oc[q][2] >= tgt), None)
+                    part = dict(rec, tranche=f"T{j + 1} +{pts:g}")
+                    if q is not None:
+                        part.update(exit_time=int(ot[q]), exit_px=max(tgt, float(oc[q][1])) if q > ie else tgt, exit_reason=f"target +{pts:g}")
+                    part["label"] = rec["label"] + f" · lot {j + 1}"
+                    trs.append(_price(ctx, part, "OPT"))
+                rec = dict(rec, tranche="runner", label=rec["label"] + f" · lot {len(J['scale_pts']) + 1}")
             trs.append(_price(ctx, rec, "OPT"))
         trs.sort(key=lambda x: x["entry_time"])
         res[ch] = dict(trades=trs, skipped=skipped, signals=[])

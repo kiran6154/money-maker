@@ -92,6 +92,8 @@ LINEAGE = {
     "ST84": ("ST83", "The reclaim only arms the setup; the entry waits for the first BOS / CHoCH that way on the 1-minute structure (instead of the blind entry)."),
     "ST85": ("ST83", "The same signals traded on options: a long signal sells the PE at the day's low, a short signal sells the CE at the day's high; out when the index closes back through the strike, else 15:15; both sides, one position per side."),
     "ST94": ("ST1", "Strategy 1's rules on the day-open ATM option's own candles: a bullish SETUP buys the option, out at the previous swing's stop or the next CHoCH; each trade tagged inside / above / below the option's previous-session range."),
+    "ST130": ("ST111", "One lot; a trade whose future closes back inside the band across the line it broke (a long below UB, a short above LB) for 3 straight 1-minute closes is closed at the next open and reversed there, same exit rules, once a day."),
+    "ST129": ("ST111", "The options in 3 lots: lot 1 sold at +20 premium points, lot 2 at +30 (resting limits), lot 3 on the spec's exits."),
     "ST128": ("ST127", "Exit at the next 5-minute CHoCH against the trade instead of the premium stop and trail; flat 15:15."),
     "ST127": ("ST125", "The structure read on 5-minute index candles."),
     "ST126": ("ST125", "Exit at the next 1-minute CHoCH against the trade instead of the premium stop and trail; flat 15:15."),
