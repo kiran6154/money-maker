@@ -457,6 +457,30 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S152. Strategy 1's trades against the classic daily pivots (the user: "add pivot to Strategy 1 and validate how many fail inside R1 - S1 and how many outside"). Measured on all 8,326 futures trades 2018-01 - 2026-10: 85.8% fail inside S1 - R1 (5,857 trades, PF 0.28) and 83.6% outside (2,469, PF 0.36); every pivot zone and both pivot sides lose with 80 - 88% failures, so a pivot filter cannot turn Strategy 1 around. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; Strategy 1 unchanged |
+| Code | `research/strategy_lab_v2/tools/st1_pivots.py` |
+
+**Build.** Pivots from the previous session's near-month futures (the download store): P = (H + L + C) / 3, R1 = 2P - L, S1 = 2P - H, R2 = P + (H - L), S2 = P - (H - L). Each saved Strategy 1 trade (results/ST1/all-data_1m/FUT, 1-minute, flat 15:25) placed by its entry price; failed = net <= 0 after costs.
+
+| Entry zone | Trades | Failed | Fail % | Net ₹ | PF | PF 2018-22 / 2023-26 | Avg net ₹ |
+|---|---|---|---|---|---|---|---|
+| inside S1 - R1 | 5,857 | 5,024 | 85.8 | -60,26,935 | 0.28 | 0.26 / 0.29 | -1,029 |
+| outside (beyond R1 or S1) | 2,469 | 2,065 | 83.6 | -21,64,938 | 0.36 | 0.33 / 0.38 | -877 |
+| - above R2 | 271 | 226 | 83.4 | -2,12,683 | 0.42 | 0.33 / 0.47 | -785 |
+| - R1 - R2 | 731 | 600 | 82.1 | -5,63,387 | 0.41 | 0.38 / 0.42 | -771 |
+| - S1 - S2 | 956 | 801 | 83.8 | -8,99,117 | 0.31 | 0.33 / 0.30 | -940 |
+| - below S2 | 511 | 438 | 85.7 | -4,89,750 | 0.36 | 0.28 / 0.40 | -958 |
+
+By side: the least bad cells are longs above R2 (168 trades, 81.5% fail, PF 0.55) and shorts below S2 (301, 84.1%, PF 0.49) - breakouts beyond the second pivot in their own direction; the worst are longs below S2 (88.1%, PF 0.17) and shorts above R2 (86.4%, PF 0.23) - counter-trend entries beyond the far pivot. With the pivot (a long above P / a short below P) 4,719 trades PF 0.30, against it 3,607 PF 0.30 - no difference.
+
+**Reading.** 70% of Strategy 1's entries happen inside S1 - R1, where it fails slightly more often (85.8% vs 83.6%) and loses more per trade (₹-1,029 vs ₹-877). The pivots do rank the zones in a sensible order - a breakout past R2 / S2 in its own direction is the least bad, a counter-trend trade beyond the far pivot the worst - but the best zone still fails four trades in five and loses ₹600 - 800 a trade; Strategy 1's problem is the 1-minute entries and costs (S141), not where they sit against the pivots.
+
+**Open (not adopted).** A pivot zone as a filter on a profitable book (e.g. Jilly) is untested.
+
 ### S151. CHoCH to CHoCH (Strategies 25 - 28 / 147 - 150) with compounding lots - "capital for 2 lots, trade 1; at 2x the capital trade 2 lots, and so on" (the user). Measured: the books never reach 2x the starting capital in any start year, so the rule never adds a lot; from 2018 every book runs out of the money for one lot within the first year; ST147 from 2025 ends +13% (1 lot throughout)
 
 | | |
