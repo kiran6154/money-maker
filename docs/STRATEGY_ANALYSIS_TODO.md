@@ -457,6 +457,33 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S156. TradeAutomation's "Multi MA Trend Following Strategy" (Pine, pasted by the user 2026-10-28) at its defaults - JMA(200, phase -45, power 2) slope turns, long only - on NIFTY near-month futures 2018-01 - 2026-10. Measured: no timeframe holds up; the default (long only) on 5-minute bars held across sessions PF 1.22 / 1.04 / 0.49 (2026), +3.2 L / +0.5 L / -2.9 L; intraday-only versions lose; 60-minute and daily trade too rarely (67 and 4 longs in 8 years) to judge. Nothing adopted. (The user's other request in the same message, "VWAP Range Breakout [Zeiierman]", is not built: tradingview.com could not be fetched and the source was not provided; nothing like it exists in the lab.)
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/multi_ma_jma.py` |
+
+**Rules, fixed before the run.** The script's JMA as written; long when it turns up, close when it turns down; orders at the signal bar's close; held across sessions (as written) and an intraday variant (flat at 15:20); long only (default), short only, long + short. Timeframes 5m / 15m / 60m (09:15-aligned) and daily. Futures rolls: the contract gap is not counted, a roll costs one more round trip. 1 point slippage + dated charges per round trip, 1 lot of 65; first 1,000 bars warm-up.
+
+| Timeframe | Hold | Side | Trades | Gross pts / trade | Win % | PF 2018-22 | PF 2023-26 | PF 2026 | Net 2018-22 ₹ | Net 2023-26 ₹ | Net 2026 ₹ | Max drawdown ₹ |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **5m** | **positional** | **long (default)** | 690 | +14.8 | 39 | 1.22 | 1.04 | 0.49 | +3,23,627 | +54,869 | -2,87,810 | -2,97,690 |
+| 5m | positional | short | 691 | +12.5 | 35 | 1.02 | 1.17 | 1.17 | +22,355 | +2,43,616 | +71,051 | -2,55,814 |
+| 5m | positional | both | 1,381 | +13.7 | 37 | 1.12 | 1.10 | 0.78 | +3,45,982 | +2,98,485 | -2,16,759 | -3,94,422 |
+| 5m | intraday | long | 680 | +4.6 | 51 | 0.94 | 0.98 | 0.58 | -48,069 | -14,562 | -92,654 | -1,20,950 |
+| 5m | intraday | short | 680 | +7.7 | 46 | 1.01 | 1.11 | 0.93 | +5,120 | +68,799 | -12,606 | -1,23,967 |
+| 5m | intraday | both | 1,360 | +6.2 | 49 | 0.97 | 1.04 | 0.74 | -42,949 | +54,237 | -1,05,260 | -1,89,724 |
+| 15m | positional | long | 242 | +10.3 | 40 | 1.33 | 0.81 | 0.30 | +2,63,173 | -2,14,473 | -3,11,029 | -3,74,730 |
+| 15m | positional | both | 485 | +6.2 | 37 | 1.12 | 0.88 | 0.63 | +2,00,695 | -2,39,666 | -2,65,570 | -4,46,495 |
+| 15m | intraday | both | 467 | +1.4 | 48 | 0.87 | 0.83 | 0.73 | -59,049 | -85,833 | -45,475 | -1,85,295 |
+| 60m | positional | long | 67 | -0.0 | 28 | 1.51 | 0.51 | 0.00 | +2,30,485 | -2,75,833 | -1,12,696 | -4,01,032 |
+| 60m | positional | both | 134 | -8.4 | 31 | 1.20 | 0.68 | 1.55 | +1,93,297 | -3,57,728 | +96,181 | -5,88,992 |
+| Daily | positional | long | 4 | +3.6 | 25 | 0.00 | 1.25 | 0.00 | -54,660 | +39,337 | -1,33,551 | -1,58,084 |
+| Daily | positional | both | 9 | +329.6 | 44 | 0.00 | 2.27 | 1.35 | -65,026 | +2,28,553 | +46,562 | -1,33,551 |
+
+**Reading.** A 200-length JMA is a slow trend line; its slope turns are a trend-following entry that made money on 5-minute and 15-minute longs in 2018-22 (a rising market) and fades after, with drawdowns of 3 - 4.5 L on one lot. The daily and 60-minute rows are a handful of trades and say nothing. Other trend selectors in the script (EMA, HMA, SuperTrend ...) were not run - picking one after seeing these rows would be a re-pick; it would need its own pre-registration.
+
 ### S155. 1-minute Supertrend option selling that turns into a straddle, the losing leg cut on a range breakout (the user, 2026-10-28: "take a position on the 1-minute Supertrend; if the other side comes make it a straddle; on a range breakout exit the loss-making one; only sell"). Measured on NIFTY weekly options 2018-01 - 2026-10 (2,150 days): it loses in every year; the straddle beats plain flip-selling (PF 0.86 / 0.83 vs 0.75 / 0.76) but the breakout cuts lose -7.2 points a leg on 9,404 legs while the legs held to 15:20 make +21 - the range breakouts are mostly false. Nothing adopted
 
 | | |
