@@ -457,6 +457,37 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S157. "VWAP Range Breakout (Zeiierman)" (Pine v6 indicator, source pasted by the user 2026-10-28; it did not exist in the lab) ported at its defaults and traded on NIFTY near-month futures 2018-01 - 2026-10. Measured: no signal of the indicator holds after 2022; the pre-registered pick (5-minute breakout circles, follow and reverse) PF 1.04 / 0.76 / 0.48 (2026); the arrows (mean reversion inside the range) and X fakeouts lose on every timeframe; the Smart-Trend filter does not help. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/zeiierman_vwap_range.py` (the port: range engine, Smart Trend, arrows, X, retests) |
+
+**Port** at the defaults (Re-anchor 3, Equilibrium 20, Deviation memory 100, Width 4.0, Smart Trend 200 / 1.5; futures volume). A range is fixed until a whole candle closes beyond it (breakout circle), then re-anchors at the 3-bar VWAP with width = max(4 x the volume-weighted deviation from the 20-bar VWAP over 100 bars, the bar's reach). Width 4 makes ranges wide: 3,744 breaks on 1-minute bars in 2,175 days, 948 on 5-minute, 412 on 15-minute.
+
+**Trades, fixed before the run** (next bar's open; entries 09:20 - 14:30; out by 15:20; 1 lot): BRK follow the breakout, out / reverse on the opposite one; BRK+T only when the Smart Trend agrees; RET the retest after a break, out on the opposite break or a close back past the boundary; ARR the arrows, out at the range centre or a new range; XF the X markers the same way. Pick = best 2018-22 PF with >= 200 trades.
+
+| Timeframe | Rule | Trades | Gross pts / trade | Win % | PF 2018-22 | PF 2023-26 | PF 2026 | Net 2018-22 ₹ | Net 2023-26 ₹ | Net 2026 ₹ |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1m | BRK | 1,751 | -0.03 | 44 | 0.87 | 0.80 | 0.93 | -2,65,125 | -4,11,511 | -27,366 |
+| 1m | BRK+T | 1,116 | +2.04 | 46 | 0.98 | 0.80 | 0.70 | -22,416 | -2,58,780 | -79,539 |
+| 1m | RET | 786 | -0.78 | 10 | 0.65 | 0.47 | 0.62 | -1,14,618 | -2,31,532 | -37,548 |
+| 1m | ARR | 4,568 | -2.96 | 57 | 0.68 | 0.58 | 0.74 | -10,93,505 | -15,39,178 | -1,65,825 |
+| 1m | XF | 1,540 | -1.12 | 25 | 0.67 | 0.58 | 0.54 | -2,99,965 | -3,98,533 | -91,109 |
+| **5m** | **BRK (pick)** | 609 | +1.81 | 50 | 1.04 | 0.76 | 0.48 | +26,096 | -1,86,288 | -1,08,238 |
+| 5m | BRK+T | 366 | -0.69 | 50 | 1.00 | 0.67 | 0.50 | -370 | -1,55,003 | -57,113 |
+| 5m | RET | 233 | -2.30 | 23 | 0.77 | 0.54 | 0.03 | -37,502 | -85,721 | -54,968 |
+| 5m | ARR | 1,374 | -4.49 | 51 | 0.83 | 0.60 | 0.60 | -2,65,647 | -6,60,311 | -1,35,719 |
+| 5m | XF | 427 | -10.17 | 27 | 0.65 | 0.37 | 0.55 | -1,70,747 | -2,70,356 | -46,384 |
+| 15m | BRK | 266 | +0.22 | 52 | 1.11 | 0.65 | 0.35 | +31,186 | -1,30,561 | -62,079 |
+| 15m | BRK+T | 146 | -2.35 | 49 | 0.82 | 0.74 | 0.44 | -32,923 | -45,587 | -30,271 |
+| 15m | RET | 97 | +0.68 | 36 | 0.41 | 1.37 | 1.12 | -58,517 | +26,206 | +1,164 |
+| 15m | ARR | 696 | -4.76 | 45 | 0.89 | 0.58 | 0.84 | -1,00,181 | -3,87,077 | -35,398 |
+| 15m | XF | 195 | +4.68 | 43 | 0.98 | 0.94 | 0.67 | -4,786 | -12,680 | -19,128 |
+
+**Reading.** The indicator's range is a volatility box re-anchored on breaks; following the break has no edge after costs, fading inside the box (the arrows) loses on every timeframe, and the Smart Trend filter cuts trades without improving them. The 15-minute retest row (PF 1.37 after 2022) is 97 trades and lost in 2018-22 - not a finding. Not verified: bar-for-bar parity with TradingView (no TradingView export to compare).
+
 ### S156. TradeAutomation's "Multi MA Trend Following Strategy" (Pine, pasted by the user 2026-10-28) at its defaults - JMA(200, phase -45, power 2) slope turns, long only - on NIFTY near-month futures 2018-01 - 2026-10. Measured: no timeframe holds up; the default (long only) on 5-minute bars held across sessions PF 1.22 / 1.04 / 0.49 (2026), +3.2 L / +0.5 L / -2.9 L; intraday-only versions lose; 60-minute and daily trade too rarely (67 and 4 longs in 8 years) to judge. Nothing adopted. (The user's other request in the same message, "VWAP Range Breakout [Zeiierman]", is not built: tradingview.com could not be fetched and the source was not provided; nothing like it exists in the lab.)
 
 | | |
