@@ -457,6 +457,35 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S159. Point & Figure breakouts, 0.5% box / 1% reversal, with a stop x reward : risk grid (the user, 2026-10-28: "use point and figure with 0.5% box size, 1% reversal; if a new box is printed above the highest high of the two previous green columns buy, vice versa sell; optimise risk to reward"). Measured on NIFTY near-month futures 2018-01 - 2026-10, 133 combinations: the pre-registered pick (best 2018-22 PF, >= 100 trades) - daily chart, stop one box beyond the breakout box, 3R target - PF 2.25 / 0.66 / 0.28 (2026), +3.57 L / -1.52 L / -1.11 L; it does not hold. 20 combinations are profitable in both halves and 19 of them are the 15-minute chart traded intraday (best: trailing reversal stop, 2R - PF 1.24 / 1.40 / 0.93, +10.8 pts a trade, t 1.39), but the target barely matters there (83% of trades end at 15:20) and 2026 is below 1 in every one. No reward : risk setting is robust. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/pnf_breakout.py` (grid + report; `results/pnf_breakout/combinations.csv`, git-ignored) |
+
+**Fixed before the run.** Chart on NIFTY index closes (close method), percentage boxes on a log grid (box k = 1.005^k .. 1.005^(k+1)), reversal 2 boxes (1%); fed by 1-minute, 15-minute, 60-minute (09:15-aligned) or daily closes. BUY the first time the current X column's top is above the tops of both previous X columns (once per column); SELL mirrored on O columns. Futures, 1 lot of 65, entry at the signal bar's last-minute close (never the 09:15 print); the opposite signal always closes and reverses. Stops (index levels, checked on every 1-minute close, filled at that minute's futures close): B1 one box beyond the breakout box (~0.5-1% risk); REV the chart's own reversal point, trailing; COL one box beyond the far end of the breakout column (classic P&F stop); SAR only the opposite signal. Targets 1 / 1.5 / 2 / 3 / 5 R or none. Intraday (entries to 15:00, flat 15:20) or positional (rolls carried, the overnight index move counted, one more round trip per roll). 1 point slippage + dated charges. A truncation test (chart cut at 5 random bars per feed) leaves every earlier signal unchanged.
+
+The box is large: the charts give only 110 (daily) - 298 (1-minute) signals in 8.8 years, 100 - 230 trades per combination.
+
+PF 2018-22 / 2023-26 / 2026 by chart, hold and stop (best and worst target in brackets):
+
+| Chart | Hold | B1 | REV (trailing) | COL | SAR |
+|---|---|---|---|---|---|
+| 1m | intraday | 1.03 - 1.26 / 0.56 - 0.78 / 0.37 - 0.46 | 1.01 - 1.07 / 0.75 - 0.93 / 0.42 | 0.93 - 1.01 / 0.86 - 0.98 / 0.52 | 0.94 / 0.86 / 0.52 |
+| 1m | positional | 1.01 - 1.34 / 0.63 - 0.95 / 0.54 - 1.56 | 0.96 - 1.27 / 0.68 - 0.91 / 0.57 - 0.70 | 0.96 - 1.20 / 0.39 - 0.76 / 0.28 - 0.72 | 1.02 / 0.60 / 0.75 |
+| 15m | intraday | 1.11 - 1.23 / 1.14 - 1.36 / 0.82 - 0.99 | 1.14 - 1.24 / 1.35 - 1.48 / 0.93 | 1.09 / 1.30 - 1.45 / 0.84 | 1.15 / 1.30 / 0.84 |
+| 15m | positional | 1.12 - 1.62 / 0.54 - 0.92 / 0.25 - 0.64 | 0.94 - 1.15 / 0.54 - 0.70 / 0.35 - 0.42 | 0.90 - 1.26 / 0.54 - 0.67 / 0.42 - 0.56 | 1.30 / 0.44 / 0.51 |
+| 60m | intraday | 0.99 - 1.12 / 0.68 - 0.91 / 0.47 - 0.51 | 0.93 - 1.09 / 0.74 - 0.78 / 0.49 | 1.25 / 0.72 / 0.44 | 1.34 / 0.72 / 0.44 |
+| 60m | positional | 1.10 - 1.42 / 0.24 - 0.75 / 0.02 - 0.38 | 1.06 - 1.23 / 0.32 - 0.48 / 0.13 - 0.30 | 0.94 - 1.16 / 0.42 - 0.71 / 0.28 - 0.54 | 1.10 / 0.43 / 0.34 |
+| D | positional | 1.07 - 2.25 / 0.66 - 1.21 / 0.28 - 0.60 | 1.18 - 1.85 / 0.52 - 0.67 / 0.27 - 0.42 | 1.30 - 1.93 / 0.88 - 1.06 / 0.68 - 1.01 | 1.71 / 0.98 / 1.16 |
+
+Reward : risk. On the positional books the higher targets lift 2018-22 (daily B1: 1R 1.07 -> 3R 2.25 -> 5R 2.06; daily COL 1R 1.70 -> 2R 1.84) and the trend years 2020 - 2022 carry it; after 2022 every daily / 60-minute positional setting drops below 1 except daily B1 2R / no-target (1.03 / 1.21, 110 / 73 trades) and daily COL 1.5 - 2R (1.03 / 1.06, 51 - 59 trades) - too few trades to separate from luck. On intraday books the target hardly binds (a 0.5% box is ~120 index points, so 2R+ targets are rarely reached before 15:20). No single R is best across charts; the best 2018-22 R flips sign after.
+
+The 15-minute intraday family (all 19 settings PF > 1 in both halves, the only consistent block): REV 2R by year (₹, 1 lot) 2018 -12,301, 2019 +7,155, 2020 +32,356, 2021 +41,744, 2022 -787, 2023 +27,271, 2024 +48,982, 2025 +11,966, 2026 -6,762; exits 176 at 15:20, 28 stop, 7 target; long +84,359 / short +65,263; 53% positive weeks, worst week -22,961, t 1.39 per trade. Found after the pick, not pre-registered, and 1-minute / 60-minute intraday on the same rule lose - treat it as a lead at most.
+
+Open: (1) forward paper test of the 15-minute intraday breakout (REV stop, 2R or none) without re-tuning; (2) a smaller box (0.25%) or high/low method would give enough trades to judge the daily / positional books - not run. Impact of either: Unquantified.
+
 ### S158. Option BUYING on Supertrend flips - the full grid the user asked for (2026-10-28: "all combinations ... different Supertrend configs, premium 500+, ATM, below 50, intraday and positional, till expiry, 2x the premium, not closing at all"). Measured on NIFTY options 2018-01 - 2026-10, 288 combinations, 820,001 trades: pooled, every strike x exit loses in both halves; 30 combinations are profitable in both 2018-22 and 2023-26 (about what 288 tries throw up by chance); the pre-registered pick (best 2018-22 PF) - 60-minute ST(10,3), ATM, intraday - PF 1.41 / 1.30 / 0.84 (2026), +80,866 / +75,207 / -14,460, its profit made in 2020 and 2024. The only family positive in both halves pooled over strikes and exits is 60-minute ST(10,3) (PF 1.08 / 1.27). Nothing adopted
 
 | | |
