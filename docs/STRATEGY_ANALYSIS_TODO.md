@@ -457,6 +457,51 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S158. Option BUYING on Supertrend flips - the full grid the user asked for (2026-10-28: "all combinations ... different Supertrend configs, premium 500+, ATM, below 50, intraday and positional, till expiry, 2x the premium, not closing at all"). Measured on NIFTY options 2018-01 - 2026-10, 288 combinations, 820,001 trades: pooled, every strike x exit loses in both halves; 30 combinations are profitable in both 2018-22 and 2023-26 (about what 288 tries throw up by chance); the pre-registered pick (best 2018-22 PF) - 60-minute ST(10,3), ATM, intraday - PF 1.41 / 1.30 / 0.84 (2026), +80,866 / +75,207 / -14,460, its profit made in 2020 and 2024. The only family positive in both halves pooled over strikes and exits is 60-minute ST(10,3) (PF 1.08 / 1.27). Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/st_optbuy_grid.py` (the grid), `tools/st_optbuy_report.py` (tables; output in the git-ignored `results/optbuy_grid/`) |
+
+**Grid, fixed before the run.** Supertrend (hl2, Wilder ATR) on near-month futures candles of 1 / 5 / 15 / 60 minutes x (ATR, multiplier) (7,2), (10,2), (10,3), (14,4). Flip up buys a CE, flip down a PE, at the minute after the flip candle, entries 09:20 - 15:00, one position at a time per combination; the nearest expiry on or after the day (weekly from 2019, 0DTE on expiry days). Strikes: ATM (index rounded to 50); P500 = nearest-ATM in-the-money strike with premium >= 500 at the signal; P50 = nearest-ATM out-of-the-money strike with premium < 50. Exits: intraday (opposite flip or 15:20); intraday + sell at 2x; positional (opposite flip, carried overnight, or the expiry close); positional + 2x; to expiry (never closed); to expiry + 2x. Lab option slippage and dated charges, 1 lot of 65 in every year.
+
+Pooled over the 16 signal sets:
+
+| Strike | Exit | Trades | Win % | Avg return on premium | Hit 2x | PF 2018-22 | PF 2023-26 | PF 2026 |
+|---|---|---|---|---|---|---|---|---|
+| ATM | intraday | 69,284 | 28 | -3% | | 0.84 | 0.77 | 0.79 |
+| ATM | intraday + 2x | 70,570 | 28 | -4% | 6% | 0.78 | 0.74 | 0.79 |
+| ATM | positional | 65,624 | 26 | -3% | | 0.86 | 0.83 | 0.84 |
+| ATM | positional + 2x | 67,785 | 27 | -4% | 9% | 0.80 | 0.77 | 0.86 |
+| ATM | to expiry | 6,096 | 33 | -4% | | 0.89 | 0.91 | 0.85 |
+| ATM | to expiry + 2x | 8,768 | 45 | -9% | 40% | 0.90 | 0.85 | 0.98 |
+| P50 | intraday | 69,442 | 24 | -5% | | 0.74 | 0.67 | 0.69 |
+| P50 | positional | 65,776 | 22 | -5% | | 0.77 | 0.73 | 0.66 |
+| P50 | to expiry | 6,111 | 19 | -11% | | 0.85 | 0.86 | 0.54 |
+| P50 | to expiry + 2x | 8,972 | 42 | -14% | 41% | 0.80 | 0.71 | 0.84 |
+| P500 | intraday | 58,858 | 33 | -1% | | 0.71 | 0.80 | 0.79 |
+| P500 | positional | 55,976 | 31 | -1% | | 0.76 | 0.90 | 0.87 |
+| P500 | to expiry | 5,811 | 47 | -1% | | 0.94 | 0.94 | 0.94 |
+| P500 | to expiry + 2x | 6,191 | 47 | -1% | 8% | 0.92 | 0.98 | 1.20 |
+
+By signal (all strikes and exits pooled), PF 2018-22 / 2023-26: 1-minute 0.55 - 0.73 / 0.68 - 0.78 (the worst - many flips, costs and decay); 5-minute 0.86 - 1.11 / 0.86 - 0.98; 15-minute 0.95 - 1.03 / 0.77 - 0.98; 60-minute (7,2) 1.04 / 0.85, (10,2) 1.02 / 0.87, (10,3) 1.08 / 1.27, (14,4) 0.94 / 1.12.
+
+The best combinations profitable in both halves (>= 100 trades; 30 of 288 qualify):
+
+| Signal | Strike | Exit | Trades | Win % | PF 2018-22 | PF 2023-26 | PF 2026 | Net 2018-22 ₹ | Net 2023-26 ₹ | Max DD ₹ |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **60m ST(10,3)** | **ATM** | **intraday (the pick)** | 404 | 44 | 1.41 | 1.30 | 0.84 | +80,866 | +75,207 | -53,850 |
+| 60m ST(10,3) | P500 | positional | 275 | 45 | 1.22 | 1.40 | 1.36 | +1,36,497 | +3,05,950 | -1,37,973 |
+| 60m ST(10,3) | ATM | positional | 308 | 35 | 1.19 | 1.31 | 1.27 | +95,364 | +1,59,842 | -1,52,861 |
+| 5m ST(14,4) | P500 | to expiry | 394 | 51 | 1.12 | 1.28 | 1.21 | +1,52,684 | +3,81,123 | -1,95,573 |
+| 5m ST(14,4) | P500 | positional + 2x | 1,240 | 40 | 1.23 | 1.12 | 1.26 | +3,66,895 | +2,21,208 | -1,70,129 |
+| 60m ST(14,4) | ATM | intraday | 297 | 42 | 1.22 | 1.20 | 1.25 | +37,041 | +38,938 | -44,475 |
+
+By year (₹ thousand): the pick -1 / +12 / +65 / +10 / -4 / -10 / +81 / +18 / -14 (2018 - 2026); 60m ST(10,3) ATM positional +38 / +10 / +77 / -28 / -2 / -18 / +160 / -16 / +33; 60m ST(10,3) P500 positional -35 / -37 / +82 / +31 / +95 / -26 / +254 / +4 / +73; 5m ST(14,4) P500 to expiry -29 / +91 / -122 / +142 / +71 / +86 / +19 / +207 / +70.
+
+**Reading.** Buying options on Supertrend flips loses as a whole: cheap far OTM (< 50) is the worst (decay), 1-minute signals are the worst timeframe, the 2x target rarely changes much (it trims winners as often as it saves losers), and never closing helps only the deep ITM (500+) leg, which behaves like futures. The surviving combinations are slow signals (60-minute, wide multipliers) on ATM / deep ITM, with a few hundred trades over 8 years and their profit made mostly in 2020 and 2024 (the big trend years); with 288 combinations tried, 30 passing both halves is no more than chance would give, so none is a finding yet. Open: 60-minute ST(10,3) on ATM / 500+ premium as a forward paper test from 2026-10-29, judged on its own new trades.
+
 ### S157. "VWAP Range Breakout (Zeiierman)" (Pine v6 indicator, source pasted by the user 2026-10-28; it did not exist in the lab) ported at its defaults and traded on NIFTY near-month futures 2018-01 - 2026-10. Measured: no signal of the indicator holds after 2022; the pre-registered pick (5-minute breakout circles, follow and reverse) PF 1.04 / 0.76 / 0.48 (2026); the arrows (mean reversion inside the range) and X fakeouts lose on every timeframe; the Smart-Trend filter does not help. Nothing adopted
 
 | | |
