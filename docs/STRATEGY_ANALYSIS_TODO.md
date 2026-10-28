@@ -457,6 +457,25 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S155. 1-minute Supertrend option selling that turns into a straddle, the losing leg cut on a range breakout (the user, 2026-10-28: "take a position on the 1-minute Supertrend; if the other side comes make it a straddle; on a range breakout exit the loss-making one; only sell"). Measured on NIFTY weekly options 2018-01 - 2026-10 (2,150 days): it loses in every year; the straddle beats plain flip-selling (PF 0.86 / 0.83 vs 0.75 / 0.76) but the breakout cuts lose -7.2 points a leg on 9,404 legs while the legs held to 15:20 make +21 - the range breakouts are mostly false. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/st_straddle.py` |
+
+**Rules, fixed before the run.** Supertrend(10, 3) on 1-minute near-month futures. Flat: a flip 09:20 - 14:30 sells one ATM weekly option at the next minute's open (flip down -> CE, flip up -> PE; ATM from the index; nearest weekly on or after the day); the range starts there. One leg: the opposite flip sells the other option (V1 at the held leg's strike = a true straddle; V2 at that minute's ATM); the range freezes = futures high / low since the held leg's entry. Straddle: a 1-minute close above the range buys back the CE, below buys back the PE; the kept leg is one leg again (range restarts; the next opposite flip re-straddles). Conversions until 15:10, all bought back 15:20, no stop on a single leg. Lab option slippage and dated charges, lot 65. B0 = sell on every flip, buy back and reverse on the next.
+
+| Version | Legs | Avg pts / leg (after slippage) | Charges ₹ / leg | Win % legs / days | PF 2018-22 | PF 2023-26 | PF 2026 | Net 2018-22 ₹ | Net 2023-26 ₹ | Net 2026 ₹ | Worst day ₹ | Max drawdown ₹ |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **V1 straddle at the held strike (as asked)** | 12,277 | -0.61 | 60 | 35 / 42 | 0.86 | 0.83 | 0.75 | -5,30,977 | -6,96,984 | -2,49,980 | -20,242 | -12,27,975 |
+| V2 second leg at that minute's ATM | 12,241 | -0.26 | 59 | 36 / 45 | 0.91 | 0.84 | 0.76 | -3,27,119 | -5,98,484 | -2,22,843 | -16,863 | -9,25,778 |
+| B0 sell on each flip, no straddle | 16,011 | -0.79 | 59 | 35 / 38 | 0.75 | 0.76 | 0.71 | -9,06,478 | -8,57,251 | -2,51,501 | -18,738 | -17,61,813 |
+
+V1 by year (₹): 2018 -1,62,394; 2019 -95,215; 2020 -1,498; 2021 -93,258; 2022 -1,78,611; 2023 -1,40,609; 2024 -1,33,278; 2025 -1,73,116; 2026 -2,49,980. Exits: 9,404 breakout buy-backs, -7.2 points a leg, -49.8 L; 2,873 legs held to 15:20, +21.0 points, +37.6 L. About 6 legs a day (max 13).
+
+**Reading.** Turning the flip into a straddle does help - it trades fewer legs and the second leg collects decay the plain flip book gives away - but the 1-minute range around a flip is narrow, so a 1-minute close outside it is mostly noise: the cut leg is bought back near its high and the market comes back. The legs that survive to the close earn the decay (+21 points), which says the edge here is in holding the straddle, not in cutting it on a 1-minute break. Open (not tested, needs pre-registration): a wider break (5-minute close, or the range plus a buffer), or keeping the straddle and cutting a leg only on a premium stop.
+
 ### S154. Sideways from the Choppiness Index, its integral as a grade of the sideways stretch, and whether the grade says anything about the breakout (the user, 2026-10-28, after the range-band charts: sideways = the sum of the last candles' ranges much larger than their high-low span; then "apply integration in this and grade its quality"). Measured on 5-minute futures 2018-01 - 2026-10: the integral grades the sideways stretch (longer, narrower boxes score higher) but not the breakout - on a fixed 30-point target A / B / C follow through equally (37 / 37 / 36% in 2018-22, 40 / 44 / 45% in 2023-26) and no worse than breaks not from sideways (39 / 48%); every grade's break trade loses after costs. Nothing adopted
 
 | | |
