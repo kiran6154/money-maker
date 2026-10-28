@@ -457,6 +457,27 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S154. Sideways from the Choppiness Index, its integral as a grade of the sideways stretch, and whether the grade says anything about the breakout (the user, 2026-10-28, after the range-band charts: sideways = the sum of the last candles' ranges much larger than their high-low span; then "apply integration in this and grade its quality"). Measured on 5-minute futures 2018-01 - 2026-10: the integral grades the sideways stretch (longer, narrower boxes score higher) but not the breakout - on a fixed 30-point target A / B / C follow through equally (37 / 37 / 36% in 2018-22, 40 / 44 / 45% in 2023-26) and no worse than breaks not from sideways (39 / 48%); every grade's break trade loses after costs. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/chop_integral.py` |
+
+**Rules.** CHOP(12) on 5-minute near-month futures from the previous 12 candles (n-1 lag): path = sum of (high - low), span = highest high - lowest low, CHOP = 100 log10(path / span) / log10(12); sideways when CHOP >= 50 (N and the cutoff were picked by eye on 21-23 Oct 2026 charts for the user, not tuned here; the textbook 61.8 shaded only 12 - 14% of candles). Integral = the area above 50 over the running sideways stretch. Breakout = a close outside the previous-12 high / low box with the candle before sideways, 09:30 - 14:30; trade in at the next open, stop on a close past the box's other side, out after 1 hour or at 15:20. Grade = the integral's 2018-22 terciles (C < 24 <= B < 78 <= A), the same cut points on 2023-26. Half of all 5-minute candles read sideways at 50.
+
+| Breaks | Trades | Avg stretch, candles | Median box, pts | Went 1x box the break's way | Gross pts / trade | PF 2018-22 | PF 2023-26 | PF 2026 | Net 2018-22 ₹ | Net 2023-26 ₹ |
+|---|---|---|---|---|---|---|---|---|---|---|
+| not from sideways (reference) | 8,208 | 0 | 83 | 9% | +0.55 | 0.80 | 0.68 | 0.75 | -10,70,716 | -17,92,104 |
+| all from sideways | 10,119 | 9 | 44 | 24% | +0.71 | 0.80 | 0.64 | 0.51 | -11,81,830 | -23,20,077 |
+| grade A | 3,754 | 16 | 39 | 29% | +1.76 | 0.85 | 0.67 | 0.53 | -2,76,230 | -8,52,177 |
+| grade B | 3,201 | 6 | 44 | 25% | -0.13 | 0.78 | 0.61 | 0.49 | -4,56,618 | -7,83,912 |
+| grade C | 3,164 | 2 | 51 | 19% | +0.30 | 0.78 | 0.64 | 0.52 | -4,48,982 | -6,83,987 |
+
+Follow-through measured as 1x the box width ranks A > B > C in both halves (32 / 27 / 20% and 25 / 21 / 18%), but A boxes are narrower, so that target is easier. On a fixed 30 points from the entry before the stop (added after the first run to separate the two): 37 / 37 / 36% (2018-22), 40 / 44 / 45% (2023-26); breaks not from sideways 39 / 48%. By stretch length alone the 1x-box rate rises 20% (1-3 candles) -> 30% (13+), the same width effect.
+
+**Reading.** The integral is a fair grade of how sideways a stretch was - long, tight, choppy stretches score A - and it is a usable sideways detector (it reads the 21-23 Oct 2026 days the way the eye does). It does not grade the breakout: a long tight range is not followed by a bigger move in points, and a breakout trade on its own loses in every grade. Open: use the CHOP sideways flag as a no-trade filter on a book that already makes money (Jilly, the S149 candidate) - not tested, would need its own pre-registration.
+
 ### S153. Multi-timeframe Supertrend (the user, 2026-10-28: "if the daily, 15-minute and 5-minute Supertrend are in the same direction, trade the 1-minute in the same direction"). Measured on near-month futures 2018-01 - 2026-10: the gross edge is 0 - 2 points a trade against a 4 - 13 point cost, so all six pre-registered versions lose in both halves and in 2026; the pick (fresh 4-way alignment, out on the 5-minute flip) PF 0.93 / 0.73 / 0.49, and through a 100-point ITM weekly option 0.94 / 0.80 / 0.57. Nothing adopted
 
 | | |
