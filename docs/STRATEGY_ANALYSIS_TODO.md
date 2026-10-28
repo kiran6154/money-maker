@@ -457,6 +457,49 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S161. The four community strategies of the ThinkMarkets article "Best community TradingView strategies to trade in 2026" (the user's build guides, 2026-10-29: Dynamic Swing Anchored VWAP, ICT Holy Trinity, Diamond-Triangle with dynamic trailing, DMI Toolbox), each coded as its guide writes it on NIFTY near-month futures 2018-01 - 2026-10. Measured: 2 of 103 settings are profitable in both 2018-22 and 2023-26; three of the four strategies fail after 2022; the Diamond-Triangle skeleton on 60-minute bars held overnight is the one survivor - PF 1.17 / 1.39 / 1.18 (2026), +2.87 L / +5.83 L / +0.71 L, t 2.04, positive 2020 - 2026, stable under nearby EMA / ATR / chop settings but not on 30m, 120m or with a 5-bar lookback. A lead for a forward paper test, nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/thinkmarkets4.py` (output `results/thinkmarkets4/summary.csv`, git-ignored) |
+
+**Fixed before the run.** The guides are sketches, not the scripts' sources; each is coded as written at its defaults plus only the variants it names. DSAV: pivots(50, 50), bullish regime when the newest confirmed pivot is a low, long on the turn bullish, flat on the turn bearish (long only; mirror and swing 20 / 100 also run). ICT: swing 10, sweep of the last swing low by >= 0.5 ATR(14) with a close back above, structure = close > SMA 50 (skeleton) or the last break of structure, trend = close > EMA 200; stop at the sweep candle, 2R (3R also). DIAM: EMA 10 / 20 cloud, higher low = low > lowest(low,3)[1] and low == lowest(low,3) (the guide's formula), chop |EMA10 - EMA20| / close > 0.1 %, long on a higher low on either side of the cloud (diamond / triangle), short mirror, an opposite signal reverses; stop 2 ATR(14) fixed from entry (skeleton) or trailed. DMI: DMI(14), long on +DI crossing -DI with ADX > 25, exit on the opposite cross or ADX turning down; ADX 20 / 30 / none and the short mirror. Orders at the next bar's open (TradingView default), stops at the worse of open / stop, targets at the level; charts 5m / 15m / 60m / daily, held overnight (rolls carried, one more round trip) or intraday (no entry after 15:00, flat 15:15); 1 point slippage + dated charges, 1 lot of 65. Pick = best 2018-22 PF with >= 100 trades.
+
+| Strategy | Pick (best 2018-22) | Trades | PF 2018-22 | PF 2023-26 | PF 2026 | Net 2018-22 / 2023-26 / 2026 ₹ | t |
+|---|---|---|---|---|---|---|---|
+| Swing-anchored VWAP | swing 50, long + short, 60m intraday | 112 | 1.44 | 0.88 | 0.95 | +44,404 / -13,402 / -953 | 0.54 |
+| ICT Holy Trinity | BOS structure, 3R, 5m positional | 194 | 0.95 | 0.75 | 0.87 | -10,164 / -38,401 / -8,148 | -0.70 |
+| **Diamond-Triangle** | **fixed 2 ATR, 60m positional** | **688** | **1.17** | **1.39** | **1.18** | **+2,86,881 / +5,83,201 / +70,911** | **2.04** |
+| DMI Toolbox | ADX > 25 long (default), 60m intraday | 145 | 1.48 | 0.61 | 0.30 | +69,849 / -93,891 / -64,050 | -0.27 |
+
+Notes. DMI loses in every 5m and 15m setting (no-filter 5m: -24.8 L). ICT at its defaults trades 40 - 55 times on 15m and 5 - 13 on 60m - its large 60m PFs are a handful of trades. DSAV default (swing 50 long) loses after 2022 on every chart.
+
+Diamond-Triangle 60m checks: by year (₹k) 2018 -57, 2019 -41, 2020 +77, 2021 +234, 2022 +74, 2023 +42, 2024 +304, 2025 +167, 2026 +71; longs +5.18 L (343), shorts +3.52 L (345); exits: 380 reversals +37.7 L, 308 stops -29.0 L (a stop-and-reverse system); max DD -2.23 L. Neighbours (PF 2018-22 / 2023-26 / 2026): ATR x1.5 1.03 / 1.48 / 1.32, x2.5 1.09 / 1.45 / 1.11, x3 1.11 / 1.33 / 1.07; chop 0.05 % 1.15 / 1.28 / 0.93, 0.2 % 1.30 / 1.36 / 0.97, none 1.14 / 1.20 / 1.00; EMA 8 / 21 1.06 / 1.52 / 1.54, 12 / 26 1.22 / 1.48 / 1.14; lookback 5 1.21 / 0.90 / 0.37; 30m 1.03 / 1.10 / 0.77; 120m 1.07 / 0.65 / 0.26. Chosen among 103 settings, so some of it is selection; the neighbourhood check is the reason it is kept as a lead.
+
+Open: forward paper test of DIAM 60m (EMA 10 / 20, chop 0.1 %, fixed 2 ATR, stop and reverse) without re-tuning - Impact Unquantified.
+
+### S160. "Eye Smart VWAP [EyeAlgo]" (Pine v6, source and description pasted by the user 2026-10-29) ported at its defaults and its retest setups traded on NIFTY near-month futures 2018-01 - 2026-10. Measured: every chart and side loses after 2022 except the pre-registered pick, 15m held as written, short only - 86 setups, PF 2.13 / 1.48 / 2.45 (2026), +1.92 L / +1.17 L / +0.73 L, t 1.96 - which does not survive the neighbouring charts (10m 0.91 / 0.98, 20m 1.03 / 0.88, 30m 1.21 / 0.54) and is carried by 2020 (6 setups, +84k) and 2022 (+1.05 L). Treated as chance; nothing adopted. (An earlier claude.ai session had tested a port on the NIFTY index with range weights - D:/nifty_data/Claude outputs/options_and_eye_vwap.zip - with the same 15m-short pocket; it was not recorded here.)
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/eye_smart_vwap.py` (output `results/eye_smart_vwap/summary.csv`, git-ignored) |
+
+**Port and rules, fixed before the run.** Preset "Auto by timeframe" (<= 5m: swing 6, anchor gap 8, stretch 2 sigma; 15m - 60m: 10 / 10 / 1.5). Anchors: structure break (close beyond an unused confirmed swing -> anchored at the lowest low / highest high since that swing, <= 300 bars) or liquidity sweep (wick >= 0.25 ATR(14) beyond the swing, close back inside), at least `gap` bars after the last anchor decision. Smart VWAP = hlc3 weighted by futures volume from the anchor, sigma = weighted SD. Retest long: bullish anchor, >= stretch sigma above the VWAP within 30 bars (only >= 10 bars after the anchor with sigma >= 0.3 ATR), low within 0.25 sigma of the VWAP, green close above it, close above the Daily and Weekly VWAP, VWAP above its value 3 bars back, first retest of the anchor (counted only when a setup opens), no setup open; short mirror. Stop 1 sigma beyond the VWAP (>= 0.5 ATR), half at 1R then stop to entry, rest at 2R, time exit 60 bars; entry at the signal close. One setup = 2 lots of 65; stop checked first on a bar touching both (as the script); fills at the worse of open / stop (the script assumes exact levels); 1 point slippage + dated charges per lot. As written (held across sessions, closed at a futures roll) and intraday (no entry after 15:00, flat 15:15); both / long / short; 1 / 5 / 15 / 60m.
+
+| Chart | Hold | Side | Setups | PF 2018-22 | PF 2023-26 | PF 2026 | Net 2018-22 / 2023-26 ₹ | t |
+|---|---|---|---|---|---|---|---|---|
+| 1m | as written | both | 583 | 0.90 | 0.60 | 0.54 | -29,006 / -2,15,766 | -2.44 |
+| 5m | as written | both | 131 | 0.57 | 0.59 | 1.58 | -96,390 / -1,16,553 | -2.35 |
+| 15m | as written | both | 161 | 1.54 | 1.17 | 0.87 | +2,06,291 / +88,300 | 1.44 |
+| **15m** | **as written** | **short (pick)** | **86** | **2.13** | **1.48** | **2.45** | **+1,91,632 / +1,16,538** | **1.96** |
+| 15m | as written | long | 75 | 1.07 | 0.89 | 0.21 | +14,659 / -28,238 | -0.10 |
+| 15m | intraday | both | 155 | 1.48 | 0.60 | 0.27 | +99,730 / -1,89,866 | -0.69 |
+| 60m | as written | both | 64 | 0.58 | 0.31 | 0.03 | -2,24,119 / -3,62,659 | -2.55 |
+
+Pick by year (setups, ₹): 2018 7 +26,826; 2019 14 -14,520; 2020 6 +84,301; 2021 4 -9,788; 2022 12 +1,04,813; 2023 13 +2,821; 2024 13 +25,440; 2025 9 +14,851; 2026 8 +73,427. 26 of 86 end at the full stop; average +0.31 R.
+
 ### S159. Point & Figure breakouts, 0.5% box / 1% reversal, with a stop x reward : risk grid (the user, 2026-10-28: "use point and figure with 0.5% box size, 1% reversal; if a new box is printed above the highest high of the two previous green columns buy, vice versa sell; optimise risk to reward"). Measured on NIFTY near-month futures 2018-01 - 2026-10, 133 combinations: the pre-registered pick (best 2018-22 PF, >= 100 trades) - daily chart, stop one box beyond the breakout box, 3R target - PF 2.25 / 0.66 / 0.28 (2026), +3.57 L / -1.52 L / -1.11 L; it does not hold. 20 combinations are profitable in both halves and 19 of them are the 15-minute chart traded intraday (best: trailing reversal stop, 2R - PF 1.24 / 1.40 / 0.93, +10.8 pts a trade, t 1.39), but the target barely matters there (83% of trades end at 15:20) and 2026 is below 1 in every one. No reward : risk setting is robust. Nothing adopted
 
 | | |
