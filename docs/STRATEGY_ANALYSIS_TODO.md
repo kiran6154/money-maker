@@ -457,6 +457,30 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S153. Multi-timeframe Supertrend (the user, 2026-10-28: "if the daily, 15-minute and 5-minute Supertrend are in the same direction, trade the 1-minute in the same direction"). Measured on near-month futures 2018-01 - 2026-10: the gross edge is 0 - 2 points a trade against a 4 - 13 point cost, so all six pre-registered versions lose in both halves and in 2026; the pick (fresh 4-way alignment, out on the 5-minute flip) PF 0.93 / 0.73 / 0.49, and through a 100-point ITM weekly option 0.94 / 0.80 / 0.57. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/supertrend_mtf.py` |
+
+**Rules, pre-registered.** Supertrend(10, 3) on hl2, Wilder ATR. Daily = yesterday's completed daily bar (today's is not known intraday); 15m / 5m = the last completed candle; 1m = the 1-minute Supertrend. Entries 09:30 - 14:30 at the next minute's open, one position at a time: E1 the 1-minute Supertrend flips to the side the three higher frames agree on; E2 all four agree and did not the minute before. Exits at the next open: X1 / X2 / X3 = the 1m / 5m / 15m Supertrend flips against; always out at 15:20. Pick = the best 2018-22 PF. The three higher frames agree on 37% of 09:30 - 14:30 minutes (long 24%, short 14%).
+
+| Version | Trades | Avg hold, min | Gross pts / trade | Win % | PF 2018-22 | PF 2023-26 | PF 2026 | Net 2018-22 ₹ | Net 2023-26 ₹ | Net 2026 ₹ |
+|---|---|---|---|---|---|---|---|---|---|---|
+| E1 1m flip / X1 1m flip | 2,350 | 42 | +0.41 | 30 | 0.70 | 0.59 | 0.28 | -3,36,975 | -4,92,632 | -2,98,027 |
+| E1 1m flip / X2 5m flip | 1,083 | 150 | +1.92 | 38 | 0.93 | 0.79 | 0.38 | -74,922 | -2,06,585 | -2,25,918 |
+| E1 1m flip / X3 15m flip | 1,032 | 218 | +0.69 | 47 | 0.89 | 0.81 | 0.41 | -1,41,026 | -2,10,187 | -2,43,294 |
+| E2 fresh 4-way align / X1 1m flip | 3,147 | 41 | -0.22 | 30 | 0.70 | 0.54 | 0.33 | -4,67,281 | -7,73,234 | -3,54,958 |
+| **E2 fresh 4-way align / X2 5m flip (pick)** | 1,480 | 146 | +0.79 | 39 | 0.93 | 0.73 | 0.49 | -99,811 | -3,89,363 | -2,30,086 |
+| E2 fresh 4-way align / X3 15m flip | 1,306 | 214 | -0.17 | 46 | 0.92 | 0.75 | 0.50 | -1,27,002 | -3,90,107 | -2,45,701 |
+
+The pick by year (gross / cost points a trade, net ₹): 2018 +2.6 / 3.8, -13,291; 2019 +2.3 / 4.0, -17,706; 2020 +5.2 / 3.9, +15,194; 2021 +6.0 / 4.9, +12,029; 2022 -2.7 / 5.1, -96,037; 2023 +8.1 / 5.4, +30,820; 2024 -7.4 / 6.8, -1,28,776; 2025 +1.9 / 8.2, -61,322; 2026 -13.7 / 13.2, -2,30,086. Longs lose more than shorts overall (-2.95 L of the -4.89 L).
+
+Through a weekly option 100 points in the money (S150's method): the pick 1,448 trades, PF 0.94 / 0.80 / 0.57; E1 / X2 0.95 / 0.91 / 0.49; E2 / X3 0.92 / 0.81 / 0.56 - cheaper than futures but still below 1.
+
+**Reading.** Agreement of the daily, 15m and 5m Supertrend picks the trend side only marginally better than chance on a 1-minute entry (a few points gross in the good years, negative in 2022, 2024, 2026), and the 1-minute flip that times the entry is inside normal noise - the 1m exit versions trade 3x as often and lose most. Not tried (open): Supertrend alignment as a filter on a book that already makes money (Jilly, the S149 candidate), or other (ATR, multiplier) settings - those would need their own pre-registration, not a re-pick on these numbers.
+
 ### S152. Strategy 1's trades against the classic daily pivots (the user: "add pivot to Strategy 1 and validate how many fail inside R1 - S1 and how many outside"). Measured on all 8,326 futures trades 2018-01 - 2026-10: 85.8% fail inside S1 - R1 (5,857 trades, PF 0.28) and 83.6% outside (2,469, PF 0.36); every pivot zone and both pivot sides lose with 80 - 88% failures, so a pivot filter cannot turn Strategy 1 around. Nothing adopted
 
 | | |
