@@ -457,6 +457,56 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S162. The handoff "NIFTY Supertrend / CHoCH-BOS option strategies" spec (v2, attached by the user 2026-10-28, from a claude.ai session) built as `research/strategy_lab_v2/nifty_bt/` and every §0 study re-run on the current store, 2018-01 - 2026-10-19. Measured: the engine reproduces the golden trade lists wherever the data is the same (first 20 trades identical in all seven, 99.8-100 % identical exits on shared entries) and the spec's headline numbers within -5 % .. +5 % (e.g. ₹100+ SELL + BUY +17.08 L vs +17.40 L, ST-swing ₹100+ positional +15.46 L vs +14.83 L, 225 / 256 grid books positive in both halves vs 218); the gaps come from data the store gained or changed since the handoff. The books are strongly positive in both halves (₹100+ positional SELL + BUY 9/9 years, DD -0.79 L) - but they are option-premium-chart strategies never forward-tested, and the ₹500+ books trade contracts that do not print on 47 % of their minutes. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no live strategy changed |
+| Code | `research/strategy_lab_v2/nifty_bt/` (README there); spec, golden lists and the handoff's reference code in `nifty_bt/spec/`; outputs in the git-ignored `results/nifty_bt/` |
+
+**Golden lists** (`python -m nifty_bt.golden`; pass = count and net within ±1 % and the first 20 trades exact):
+
+| Book | Golden trades / net | Ours, full store | Ours, handoff window (`NBT_PARITY_DAYS=14`) |
+|---|---|---|---|
+| G1 ₹100+ SELL · 5m ST(4,3) swing CHoCH+BOS · lock50 | 1,153 / +8,94,411 | 1,172 / +8,87,290 | 1,161 / +8,90,560 **pass** |
+| G2 ₹100+ BUY · 15m ST(4,3) swing CHoCH · lock50 | 410 / +5,88,240 | 413 / +6,58,918 | 409 / +6,75,351 |
+| G3 ₹100+ SELL · 15m ST + 5m confirm · lock / ₹50 | 1,541 / +7,92,410 | 1,554 / +7,75,425 | 1,546 / +7,76,105 (-2.1 %) |
+| G4 ₹100+ BUY · 15m ST + 5m confirm · lock -> expiry | 1,322 / +9,47,207 | 1,330 / +9,32,725 | 1,323 / +9,39,665 **pass** |
+| G5 ATM SELL · 60m ST(4,3) flip · front expiry | 584 / +7,43,214 | 533 / +7,77,246 | 527 / +7,55,785 (7 days: 658 / +6,48,602; 10: 575 / +8,28,734) |
+| G6 ₹100+ SELL · 15m pivot CHoCH/BOS -> ST(10,3) | 2,401 / +8,83,110 | (CHoCH only by mistake in the first run) | 2,403 / +9,03,859 (+2.3 %) |
+| G7 intraday ₹100+ BUY · 15m ST(10,3) + 5m · EMA20 · chop | 474 / +1,99,409 | 483 / +2,05,195 | 476 / +2,10,931 (all 474 golden trades matched) |
+
+Why not every list passes: the store was re-downloaded 2026-10-25; from 2019 the handoff's expiry folders held only about the two weeks before expiry (ours: months), which changes indicator warm-up and adds trading days (e.g. 2018-12-28 .. 2019-01-21 on the 2019-01-31 expiry); some index rows differ too (G7's two extra trades pass the chop filter by a wide margin in our index data). G2 (swing state carried from the first bar) and G5 (60-minute ST over the whole folder) are the most sensitive to where history starts; the exact handoff window cannot be recovered.
+
+**Every §0 study on the current store** (`python -m nifty_bt.books`; 1 lot of 75 per leg, ₹0.10 slippage per side unless noted):
+
+| Book | Trades | Net ₹ | Spec ₹ | 2018-22 / 2023-26 ₹ | ₹1 / ₹2 slip ₹ | Max DD ₹ | Years + |
+|---|---|---|---|---|---|---|---|
+| §6.6 ₹100+ SELL (15m ST(4,3) + 5m, lock50 / ₹50) | 1,554 | +7,75,425 | +7,92,410 | +4,35,797 / +3,39,629 | +5,65,635 / +3,32,535 | -61,512 | 8/9 |
+| §6.6 ₹100+ BUY (same, lock -> expiry) | 1,330 | +9,32,725 | +9,47,207 | +4,58,542 / +4,74,183 | +7,53,175 / +5,53,675 | -1,05,990 | 8/9 |
+| §6.6 ₹100+ SELL + BUY | 2,884 | +17,08,150 | +17,40,000 | +8,94,338 / +8,13,812 | +13,18,810 / +8,86,210 | -1,04,329 | 8/9 |
+| §6.3 ₹100+ SELL, 1m confirm, ST exit | 1,638 | +7,71,871 | +7,84,000 | +4,21,834 / +3,50,037 | +5,50,741 / +3,05,041 | -60,160 | 9/9 |
+| §12.2 ₹100+ positional SELL + BUY (best leg on 2018-22) | 1,585 | +15,46,208 | +14,83,000 | +7,14,745 / +8,31,463 | +13,32,233 / +10,94,483 | -79,370 | 9/9 |
+| §12.2 ₹100+ intraday SELL + BUY | 2,743 | +4,02,887 | +4,26,000 | +2,14,052 / +1,88,835 | +32,582 / -3,78,868 | -1,53,057 | 6/9 |
+| §12.2 ₹500+ positional SELL + BUY (illiquid) | 2,467 | +41,50,131 | +41,36,000 | +18,00,149 / +23,49,983 | +38,17,086 / +34,47,036 | -2,10,727 | 9/9 |
+| §6.4 ₹500+ SELL lock (illiquid) | 1,449 | +14,62,201 | +15,18,000 | +6,69,525 / +7,92,676 | +12,66,586 / +10,49,236 | -1,18,232 | 9/9 |
+| §6.5 ₹500+ BUY lock -> expiry (illiquid) | 1,346 | +14,85,019 | +14,20,000 | +6,95,791 / +7,89,227 | +13,03,309 / +11,01,409 | -1,45,252 | 8/9 |
+| §12.4 ₹100+ 15m pivot CHoCH -> ST SELL + BUY | 4,542 | +15,30,757 | +15,18,000 | +7,92,254 / +7,38,503 | +9,17,587 / +2,36,287 | -1,12,449 | 9/9 |
+| §12.5 intraday 5m-confirm portfolio (best leg each, 4 legs) | 16,186 | +16,63,995 | +8,57,000 | +13,29,348 / +3,34,647 | -5,21,115 / -29,49,015 | -4,82,587 | 7/9 |
+| §12.6 dual ST SELL (best: 3m (10,4)/(5,2), agree, slow exit, <= 2/day) | 4,372 | +3,19,911 | +3,30,000 | +2,49,482 / +70,430 | -2,70,309 / -9,26,109 | -45,399 | 8/9 |
+| §12.6 dual ST BUY (best: 5m, agree, fast exit, <= 2/day) | 3,823 | +4,20,379 | +4,12,000 | +3,34,659 / +85,721 | -95,726 / -6,69,176 | -1,08,455 | 8/9 |
+| §12.3 ₹100+ 1m ST(4,3) swings · 5m signals | 9,460 | +17,41,306 | +17,89,000 | +9,52,080 / +7,89,226 | +4,64,206 / -9,54,794 | -1,06,331 | 9/9 |
+| §12.3 same with 1m ST(10,4) | 5,851 | +14,78,529 | +14,62,000 | +8,25,317 / +6,53,213 | +6,88,644 / -1,89,006 | -1,02,718 | 9/9 |
+
+Grids: §12.2 Supertrend-swing 225 / 256 books positive in both halves (spec 218 / 256); §12.5 intraday 5m-confirm grid 292 / 432 (68 %; spec "69 % of combinations"). The §12.5 portfolio is +94 % against the spec because the best-2018-22 leg differs on the new data; it collapses at ₹1 slippage.
+
+§12.7 (₹500+ positional SELL + BUY, ₹1 slippage, cap 10 lots): capital per lot-per-leg ₹9.69 L (spec 9.19 L); fixed 1 lot -> ₹35.4 L, CAGR 15.9 %, DD -2.2 L (spec 35.0 L / 16.4 %); double, never reduce -> 64.3 L / 24.0 % / DD -8.1 L (spec 62.5 L / 24.3 % / -12.9 L); double / halve -> 58.0 L / 22.6 % / -7.3 L (spec 66.9 L / 25.3 % / -8.1 L); add one lot -> 77.7 L / 26.7 % / -13.5 L (spec 82.9 L / 28.4 % / -15.6 L).
+§5.5 hedge on the ₹100+ SELL book: naked +7.75 L; with a ₹5 / ₹10 / ₹20 OTM hedge per trade +5.19 L / +4.47 L / +3.40 L (the hedge costs 33 - 56 % of the profit; spec 40 - 65 %).
+Flat 1-minute candles on watched days (30 random expiries): ₹100+ 2.6 % (p90 6 %); ₹500+ 47 % (p10 7 %, p90 80 %) - every ₹500+ number above rests on stale prints and should be read as a delta-0.9 futures-like trade, not a fillable option book.
+§9 validation (`python -m nifty_bt.validate`): look-ahead (10:03 sees the 09:55 5-minute bar, 10:14 the 09:45 15-minute bar), Supertrend / structure truncation, strikes only from 09:19 closes and never on expiry day, three random trades per book re-checked against raw candles (entry = next 1-minute open, fills, charges, net), locked-trade exits, no overlap within a leg - all pass.
+
+Open (Impact Unquantified for each): (1) paper-trade the ₹100+ positional books (§6.6 or §12.2) exactly as specified before anything else (§10 of the spec); (2) the lock trigger as a % of premium, and one hedge per expiry per leg (spec §11); (3) bid / ask fills - every number here assumes trading at the 1-minute open / level.
+
 ### S161. The four community strategies of the ThinkMarkets article "Best community TradingView strategies to trade in 2026" (the user's build guides, 2026-10-29: Dynamic Swing Anchored VWAP, ICT Holy Trinity, Diamond-Triangle with dynamic trailing, DMI Toolbox), each coded as its guide writes it on NIFTY near-month futures 2018-01 - 2026-10. Measured: 2 of 103 settings are profitable in both 2018-22 and 2023-26; three of the four strategies fail after 2022; the Diamond-Triangle skeleton on 60-minute bars held overnight is the one survivor - PF 1.17 / 1.39 / 1.18 (2026), +2.87 L / +5.83 L / +0.71 L, t 2.04, positive 2020 - 2026, stable under nearby EMA / ATR / chop settings but not on 30m, 120m or with a 5-bar lookback. A lead for a forward paper test, nothing adopted
 
 | | |
