@@ -457,6 +457,36 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S165. Buy the option when its own RSI(14) rises back above 30 - and is there an exit that wins 80 % of the time and makes money (the user, 2026-10-29: "check when to buy option directly looking at option rsi is below 30 and raises above that which will make us trades profitable 80% of time"). Measured on the 09:19 ATM / Rs100+ picks, CE and PE, 2018-01 - 2026-10-19, 4 bar sizes x 15 exits x 2 picks = 120 versions: an 80 % win rate is reachable (target +5 %, stop -30 % or none: 78 - 83 % winners on every bar size) but every such version loses money - the average win is Rs260 - 340 and the average loss Rs1,700 - 2,600, PF 0.51 - 0.74, 0 of 9 years positive. No version of the signal makes money: the best are 15-minute bars held to 15:15 or to RSI 70 (PF 1.02 - 1.05, ~40 % winners, t < 0.7, 2023-26 below 1). Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/rsi_buy.py` (outputs `results/nifty_bt/rsi_buy/`, git-ignored) |
+
+**Rules, fixed before the run.** Contract = nifty_bt's 09:19 pick (ATM / p100, CE and PE, expiry strictly after the day). RSI(14), Wilder, on the contract's own 1 / 3 / 5 / 15-min bars (09:15-anchored, the two previous sessions as warm-up). Signal = a bar closing with RSI > 30 after a bar with RSI <= 30, closing 09:20 - 14:30; entry at the signal close; one position per contract at a time; flat at 15:15. Exits on 1-min bars (stop first when a minute touches both; stop at the worse of open / stop): target +5 / 10 / 20 % with stop -10 / 20 / 30 % or none; RSI back to 50 or 70 (at that bar's close); 15:15. 1 lot of 75, nifty_bt charges, Rs0.10 a side.
+
+**Win rate vs money** (ATM; p100 within a point or two of win rate and the same sign everywhere):
+
+| Bar | Exit | Trades | Win % (net of costs) | Avg win / avg loss ₹ | Net ₹ | PF 2018-22 / 2023-26 |
+|---|---|---|---|---|---|---|
+| 1m | +5 % / no stop | 7,872 | 82.5 | 331 / -2,623 | -14.65 L | 0.54 / 0.66 |
+| 5m | +5 % / no stop | 3,253 | 81.6 | 302 / -2,344 | -5.99 L | 0.57 / 0.57 |
+| 5m | +5 % / -30 % | 3,640 | 78.2 | 291 / -1,756 | -5.64 L | 0.59 / 0.60 |
+| 15m | +5 % / no stop | 1,665 | 82.6 | 336 / -2,462 | -2.49 L | 0.62 / 0.68 |
+| 15m | +5 % / -30 % | 1,762 | 80.2 | 330 / -1,994 | -2.27 L | 0.63 / 0.74 |
+| 5m | +10 % / -20 % | 3,775 | 59.6 | 640 / -1,363 | -6.37 L | 0.70 / 0.69 |
+| 5m | RSI 50 | 2,708 | 53.5 | 1,126 / -1,724 | -5.36 L | 0.75 / 0.76 |
+| 15m | 15:15 | 1,409 | 40.0 | 3,353 / -2,169 | +52,917 | 1.09 / 0.96 |
+| 15m | RSI 70 | 1,409 | 40.2 | 3,292 / -2,172 | +32,055 | 1.09 / 0.94 |
+| p100 15m | RSI 70 | 1,404 | 40.7 | 3,134 / -2,045 | +86,296 | 1.14 / 0.95 |
+
+With a +5 % target and no stop the trade needs about 88 % winners to break even (2,400 / (2,400 + 330)); it gets 82 %. 1-, 3- and 5-minute bars lose in every exit (PF 0.53 - 0.92, t down to -26); at Rs1 slippage every version loses.
+
+**Reading.** RSI under 30 on an intraday option chart mostly marks a premium that keeps falling (time decay plus the underlying's move), so the bounce after the cross is small and short: a tight target is hit often, but the days it is not hit cost 7 - 8 times as much. Win rate here is set by the target / stop ratio, not by the signal - every 80 % version loses in every year. Open: none proposed; the signal has no edge to build on at any bar size tested.
+
+---
+
 ### S164. The option's own session VWAP together with CHoCH / BOS on the option's chart (the user, 2026-10-29: "use session vwap along with choch bos"). Measured 2018-01 - 2026-10-19. (A) As a gate on the existing structure books it is not an improvement overall: 90-99 % of their trades are already on the VWAP's side; it lifts the G4 buys (ST154 / ST158 BUY: the 163 against-VWAP buys are flat, PF 0.96, so dropping them takes PF 1.37 -> 1.42, net +12k) but would cut the G2 buys' best trades (ST152 / ST159 BUY: 36 against-VWAP buys PF 2.83, +1.52 L). (B) Standalone on the 09:19 ATM / Rs100+ picks: writing the option on a bearish CHoCH / BOS that closes below the session VWAP, stop at the last swing high, exit on a 5-min close back above the VWAP (or 15:15) is positive in all 8 neighbouring versions (PF 1.13 - 1.18, both halves > 1, t 2.8 - 4.3), and the VWAP gate beats the same signals without it in all 8 - but it makes 2.1 - 2.4 points a trade and breaks even at Rs0.6 - 0.8 slippage a side; at Rs1 every version loses. Buying on bullish events above the VWAP is flat (PF 0.98 - 1.10, 2023-26 ~1.0). Nothing adopted
 
 | | |
