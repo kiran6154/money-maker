@@ -457,6 +457,30 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S169. The S168 short ladder re-centred every hour instead of every 15 minutes (the user, 2026-10-30: "do it for 1hour adjustments"). Measured 2018-01 - 2026-10-19, same ladder, expiry, stop and charges: hourly re-centring is better than 15 minutes in every version except the worst day. Intraday no stop +31.4 L (15 min: +21.2 L; PF 1.31, t 3.64, 7/9 years; non-expiry days now +13.7 L vs +3.8 L) and it survives Rs0.25 slippage (+18.7 L) but not Rs0.50 (-2.4 L). Positional no stop +91.5 L (15 min: +85.0 L; PF on days 1.79, 1.92 / 1.68 by half, 9/9 years, max DD -4.69 L, worst day -3.09 L on the 2025-04-07 gap, +75.1 L at Rs0.50). The Rs50k stop again lowers every version (intraday +24.3 L, positional +73.9 L) and makes the worst day / week worse, not better. Margin not modelled. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/ladder_stop.py` with `LADDER_STEP=60` (outputs `results/nifty_bt/ladder_stop_60m/`, git-ignored) |
+
+**Rules.** Exactly S168 (one short lot of CE ATM .. ATM+450 and PE ATM .. ATM-450, current weekly, spike filter, Rs50k stop variants, Rs0.10 a side) with re-centring at 09:15 and then 10:15, 11:15, 12:15, 13:15, 14:15; the `stop_roll` check runs only at those times.
+
+| Mode | Stop | Stops | Net ₹ (15-min S168) | Rolls / day | Win days | Worst day | Worst week | Max DD | PF days (2018-22 / 2023-26) | t | Rs0.25 / Rs0.50 a side |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| intraday | none | 0 | **+31.4 L** (+21.2 L) | 6.4 | 62.2 % | -1.65 L | -1.98 L | -8.14 L | 1.31 (1.24 / 1.37) | 3.64 | +18.7 L / -2.4 L |
+| intraday | every minute | 78 | +24.3 L (+15.7 L) | 6.1 | 62.1 % | -2.51 L | -3.04 L | -9.07 L | 1.22 | 2.78 | +11.8 L / -9.0 L |
+| intraday | at rolls | 41 | +26.5 L (+15.7 L) | 6.3 | 62.2 % | -2.51 L | -3.18 L | -10.0 L | 1.25 | 2.94 | +13.8 L / -7.2 L |
+| **positional** | **none** | 0 | **+91.5 L** (+85.0 L) | 9.0 | 70.8 % | -3.09 L | -2.54 L | -4.69 L | 1.79 (1.92 / 1.68) | 7.79 | +85.4 L / +75.1 L |
+| positional | every minute | 93 | +73.9 L (+72.0 L) | 8.3 | 70.4 % | -3.49 L | -3.80 L | -9.04 L | 1.59 | 6.24 | +67.7 L / +57.4 L |
+| positional | at rolls | 64 | +75.9 L (+75.5 L) | 8.6 | 70.4 % | -3.49 L | -3.32 L | -7.76 L | 1.61 | 6.29 | +69.7 L / +59.3 L |
+
+Expiry days vs other days: intraday no stop +17.7 L / +13.7 L; positional no stop +29.9 L / +61.6 L. By year, intraday no stop (₹ L): 2018 -2.21, 2019 -0.75, 2020 +0.04, 2021 +9.46, 2022 +4.71, 2023 +2.96, 2024 +4.49, 2025 +10.66, 2026 +2.04; positional no stop: +2.97, +5.76, +11.69, +14.80, +12.52, +5.49, +10.98, +18.32, +8.99. Worst days: intraday no stop 2024-06-04 -1.65 L, 2019-09-20 -1.61 L, 2024-05-16 -1.47 L; with a stop 2020-03-13 -2.51 L (the circuit-halt open went straight through it); positional 2025-04-07 -3.09 L, 2024-06-04 -2.36 L, 2020-03-19 -2.14 L; with a stop 2026-02-03 -3.49 L.
+
+**Reading.** Fewer re-centrings mean fewer losses locked in on intraday swings that come back and fewer legs paying charges (6.4 rolls a day vs 15.0), so the intraday book stops depending on expiry day alone (non-expiry days +13.7 L) and carries Rs0.25 slippage. Every rolling interval tested so far ranks the same way - 5 min < 15 min < 30 min < 60 min - which says the roll itself costs money and the edge is the time decay of the ladder; the interval was not picked on these numbers and the next step out (no re-centring at all) would be the natural control. The stop still books losses that would have reversed and cannot stop gaps. Open (Impact Unquantified): a no-re-centring control (sell the 09:15 ladder and hold it); margin and peak exposure (the deciding number for positional); a hedged-wing version; real fills on far-OTM legs.
+
+---
+
 ### S168. The S167 short ladder with a Rs50,000 loss stop, intraday and positional (the user, 2026-10-29: "when rolling stop if loss is more than 50k, check both intraday and positional"). Measured 2018-01 - 2026-10-19 on the current weekly, 15-minute re-centring: the stop lowers the result in every version and does not cap the loss when the market gaps. Intraday: +21.2 L without a stop, +15.7 L with it (checked every minute; worst day -1.96 L -> -1.08 L, 53 stops, PF 1.23 -> 1.16, non-expiry days -1.3 L). Positional - the ladder carried overnight to the expiry day's 15:15 - is much stronger than intraday: +85.0 L without a stop (PF on days 1.83, 2.21 / 1.57 by half, 9/9 years, avg week +20.6k, worst week -2.05 L, max DD -4.96 L, worst day -2.79 L on the 2025-04-07 gap), +72.0 L with the stop (77 stops; worst day -2.97 L - a gap opens below the stop). At Rs0.50 slippage a side positional is still +58.1 L. Margin for 20 naked legs held overnight is not modelled. Nothing adopted
 
 | | |

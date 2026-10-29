@@ -14,7 +14,7 @@ ladder (same expiry, or the next one after an expiry day).
 Lot 75, nifty_bt charges per leg, Rs0.10 a side (Rs0.25 / 0.50 shown). Daily P&L = change in equity (booked net + open legs
 marked at the day's last close).
 
-    python tools/ladder_stop.py      (from research/strategy_lab_v2)
+    python tools/ladder_stop.py      (from research/strategy_lab_v2; LADDER_STEP=60 for hourly re-centring)
 """
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -26,9 +26,9 @@ from nifty_bt.costs import costs, LOT
 from ladder_short import ladder, STEP_K, OPEN, EOD, COLS
 
 data.FILES = ("", ".wide", ".wide3k"); data._zip_members.cache_clear(); data.expiries.cache_clear()
-OUT = os.path.join(chain.CACHE, "ladder_stop")
+STEP, STOP = int(os.environ.get("LADDER_STEP", "15")), -50000.0      # minutes between re-centring (S168: 15, S169: 60)
+OUT = os.path.join(chain.CACHE, "ladder_stop" + ("" if STEP == 15 else f"_{STEP}m"))
 os.makedirs(OUT, exist_ok=True)
-STEP, STOP = 15, -50000.0
 SPIKES = [0]
 
 
