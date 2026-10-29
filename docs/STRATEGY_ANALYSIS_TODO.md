@@ -457,6 +457,29 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S170. Rating NIFTY's intraday movement as directional / sideways at each hour, from what is known then (the user, 2026-10-30: "can we rate the strength of price movement as directional sideways so on"). Measured 2018-01 - 2026-10-19, 2,143 sessions: the rating describes the morning well but predicts little about the rest of the day - a strong trend at 10:15 continues to 15:15 only 51 - 55 % of the time (rest-of-day move with the trend -0.02 .. 0 ADR); at 11:15 it continues 62 - 69 % (+0.11 ADR). As the fixed thresholds were set, the full-day rating calls 92 % of days sideways, so they are too loose for a day-level label. For the S169 hourly ladder (intraday, no stop) it separates days sharply - sideways at 10:15 +3,875 a day (70 % winners) vs strong up / down -9,775 / -6,608 (34 - 36 % winners) - but most of that is the 09:15 - 10:15 move already lost; known before the open, gap days (|gap| >= 0.25 ADR) average +663 vs +2,201 without. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/regime_rating.py` (outputs `results/nifty_bt/regime_rating/`, git-ignored) |
+
+**Rules, fixed before the run.** NIFTY index 5-min bars from 09:15; at checkpoint t (10:15 .. 14:15): move = close - the 09:15 open; ER = |move| / Σ|5-min close changes| (Kaufman efficiency); S = |move| / ADR20 (mean high-low of the 20 previous sessions). Strong trend: ER >= 0.5 and S >= 0.5; mild: ER >= 0.3 and S >= 0.25; else sideways; side from the move's sign. Pre-open: yesterday's full-day rating + gap (09:15 open - previous close) >= 0.25 ADR.
+
+| At | Rating | Days | Continue to 15:15 | Rest-of-day move with it (ADR) | Rest-of-day range (ADR) | Ladder day ₹ (avg, win %) |
+|---|---|---|---|---|---|---|
+| 10:15 | strong up / down | 96 / 156 | 51.0 / 55.1 % | -0.005 / -0.017 | 0.86 / 1.00 | -9,775 (34 %) / -6,608 (36 %) |
+| 10:15 | mild up / down | 261 / 328 | 54.8 / 53.7 % | +0.040 / +0.046 | 0.81 / 0.89 | +976 / -444 |
+| 10:15 | sideways | 1,302 | - | - | 0.81 | +3,875 (70 %) |
+| 11:15 | strong up / down | 61 / 67 | 62.3 / 68.7 % | +0.122 / +0.106 | 0.71 / 0.89 | |
+| 12:15 | strong up / down | 21 / 26 | 47.6 / 61.5 % | +0.114 / +0.145 | 0.64 / 0.97 | |
+
+Share rated sideways: 61 % at 10:15, 71 % at 11:15, 80 % at 12:15, 89 % at 14:15, 92 % at the close. Ladder by end-of-day rating (not known in advance): sideways +2,395 a day (1,948 days), mild up / down -7,607 / -10,443.
+
+**Reading.** An efficiency + strength rating names the morning's character but the morning's direction does not carry: after a strong first hour the rest of the day is a coin flip, with a weak continuation from 11:15. Its use for the ladder is as a risk flag rather than a forecast - the losing ladder days are the ones already trending by 10:15 - and the next test would be the ladder flattened (or not re-centred) when the 10:15 / 11:15 rating turns strong, run as a new pre-registered study. The full-day thresholds need re-setting (a day-level ER over 5-min bars rarely reaches 0.3); that would be a new study, not a retune of this one. Open (Impact Unquantified): the ladder with a rating-based exit; a stricter day-level label.
+
+---
+
 ### S169. The S168 short ladder re-centred every hour instead of every 15 minutes (the user, 2026-10-30: "do it for 1hour adjustments"). Measured 2018-01 - 2026-10-19, same ladder, expiry, stop and charges: hourly re-centring is better than 15 minutes in every version except the worst day. Intraday no stop +31.4 L (15 min: +21.2 L; PF 1.31, t 3.64, 7/9 years; non-expiry days now +13.7 L vs +3.8 L) and it survives Rs0.25 slippage (+18.7 L) but not Rs0.50 (-2.4 L). Positional no stop +91.5 L (15 min: +85.0 L; PF on days 1.79, 1.92 / 1.68 by half, 9/9 years, max DD -4.69 L, worst day -3.09 L on the 2025-04-07 gap, +75.1 L at Rs0.50). The Rs50k stop again lowers every version (intraday +24.3 L, positional +73.9 L) and makes the worst day / week worse, not better. Margin not modelled. Nothing adopted
 
 | | |
