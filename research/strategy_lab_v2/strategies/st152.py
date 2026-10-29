@@ -19,7 +19,7 @@ SPEC = {'code': 'ST152',
            'sl_rule': 'none',
            'entry_rule': 'handoff_v1',
            'exit_rule': 'next_choch'},
- 'handoff': {'source': 'golden', 'file': 'G2', 'side': 1},
+ 'handoff': {'source': 'golden', 'file': 'G2', 'side': 1, 'chart': {'chart': 'stswing', 'tf': 15, 'p': 4, 'm': 3.0}},
  'lot_size': 75,
  'capital': {'futures_margin': 120000, 'short_option_margin': 150000},
  'position': {'lots': 1, 'square_off': None, 'lock': 'strike', 'scale_out': []},
@@ -43,7 +43,7 @@ SPEC = {'code': 'ST152',
 
 _F = core.family("handoff")
 ENTRY_RULES, TYPES, UNDERLYINGS, OWN_COVERAGE, REFUSED_WHY = _F.ENTRY_RULES, _F.TYPES, _F.UNDERLYINGS, _F.OWN_COVERAGE, _F.REFUSED_WHY
-run, chart_main = _F.run, _F.chart_main
+run, chart_main, chart_leg = _F.run, _F.chart_main, _F.chart_leg
 
 
 def signals(bars, spec):

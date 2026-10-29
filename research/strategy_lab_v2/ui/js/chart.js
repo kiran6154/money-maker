@@ -252,6 +252,8 @@ export class ChartView {
     // row 2: the CE pane and the PE pane, side by side
     const host = $(".ch-panes", this.root);
     if (this.hooks.static) { host.innerHTML = ""; this.sync(); return; }
+    // a strategy whose signals are all read on the option panes asks for them full width and tall (the handoff books)
+    host.classList.toggle("wide", Object.values(this.panes || {}).some((p) => p && p.data && p.data.wide));
     const note = this.paneSrc?.note || "";
     host.innerHTML = ["CE", "PE"].map((r) => {
       const p = this.panes[r] || { insts: [] };
@@ -284,7 +286,8 @@ export class ChartView {
       <span class="muted">· ${v.candles.length} candles · ${v.line_names.map((nm, n) => `<span style="color:${v.line_colors[n]};font-weight:600">${esc(nm)}</span>`).join(" ")}</span></div>
       <div class="view-c ${kind}" data-k="${k}"></div></div>`).join("");
     views.forEach((v, k) => this.draw($(`.view-c[data-k="${k}"]`, host),
-      { day: d.day, to: d.to, inst: d.inst, cols: d.cols, trades: d.trades, candles: v.candles, lines: v.lines, line_names: v.line_names, line_colors: v.line_colors, sessions: d.sessions },
+      { day: d.day, to: d.to, inst: d.inst, cols: d.cols, trades: d.trades, candles: v.candles, lines: v.lines, line_names: v.line_names, line_colors: v.line_colors, sessions: d.sessions,
+        events: v.events, swings: v.swings, label_bos: d.label_bos },   // a view may carry its own structure (the handoff books' 15-minute leg)
       { own: true }));
   }
 
@@ -461,7 +464,8 @@ export class ChartView {
       if (a.back && a.back.length > 1) line({ color: col, lineWidth: 1, lineStyle: 1 }, a.back.map(([x, v]) => ({ time: x, value: v })));
     }
     if (on.struct && d.events) for (const [x, kind, dir] of d.events)
-      M.push({ time: x, position: dir === "up" ? "aboveBar" : "belowBar", color: kind === "BOS" ? GREY : PURPLE, shape: "circle", size: kind === "BOS" ? 0.2 : 0.5, text: kind === "BOS" ? "" : "CHoCH" });
+      M.push({ time: x, position: dir === "up" ? "aboveBar" : "belowBar", color: kind === "BOS" ? GREY : PURPLE, shape: "circle",
+               size: kind === "BOS" ? (d.label_bos ? 0.4 : 0.2) : 0.5, text: kind === "BOS" ? (d.label_bos ? "BOS" : "") : "CHoCH" });
     const C = Object.fromEntries(d.cols.map((k, i) => [k, i]));
     let lo = Infinity, hi = -Infinity; for (const c of C0) { if (c[3] < lo) lo = c[3]; if (c[2] > hi) hi = c[2]; }
     const onScale = (v) => v != null && v >= lo - (hi - lo) * 0.5 && v <= hi + (hi - lo) * 0.5;
@@ -560,7 +564,8 @@ export class ChartView {
     const n = d.trades.length, net = d.trades.reduce((a, r) => a + r[d.cols.indexOf("net")], 0);
     $(".ch-legend", this.root).innerHTML =
       (d.reference ? `<b>Futures for reference only: the signals are read on each option's own chart (CE / PE below).</b> ` : "") +
-      (d.derived ? `<b>Derived candles: ${esc(d.derived.what)}${d.derived.legs ? ` (${esc(d.derived.legs.filter((g) => g.strike).map((g) => `${g.day.slice(5)}: ${g.strike}${g.gap_restart ? " (gap: restarted)" : ""}`).join(", "))})` : ""}. ` +
+      (d.derived?.plain ? `<b>${esc(d.derived.what)}.</b> ` :                     // a strategy's own wording (the handoff books)
+       d.derived ? `<b>Derived candles: ${esc(d.derived.what)}${d.derived.legs ? ` (${esc(d.derived.legs.filter((g) => g.strike).map((g) => `${g.day.slice(5)}: ${g.strike}${g.gap_restart ? " (gap: restarted)" : ""}`).join(", "))})` : ""}. ` +
                    `The market structure and the signals are read on these candles; the legs are below.</b> ` : "") +
       `${esc(this.day)}${this.to && this.to !== this.day ? " → " + esc(this.to) : ""} · ${d.sessions} session${d.sessions > 1 ? "s" : ""} · ` +
       `${d.candles.length} candles · ${n} trade${n === 1 ? "" : "s"} <span class="${net > 0 ? "pos" : net < 0 ? "neg" : ""}">${inr(net)}</span>` +

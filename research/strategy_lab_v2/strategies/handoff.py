@@ -67,25 +67,95 @@ def signals(bars, spec):
     return core.foundation(bars, spec["rules"])
 
 
+# ------------------------------------------------------------------ charts (nifty_bt/chartdata.py builds every line and mark)
+RECIPE_WHAT = {
+    "stswing": "Supertrend on the premium (green up / red down); swing = the highest high (lowest low) of a finished Supertrend segment, "
+               "marked when the segment flips; CHoCH / BOS = a close beyond the last swing",
+    "chochst": "pivot swings ({N} bars each side, marked when confirmed) and their CHoCH / BOS; the Supertrend has to agree before the entry",
+    "conf": "5-minute candles: the 3-bar pivot CHoCH / BOS are the entry trigger; the 15-minute Supertrend is drawn as the engine knew it at "
+            "each 5-minute close (the trade needs it on its side); the 15-minute chart is below",
+    "intraday": "5-minute candles: the 3-bar pivot CHoCH / BOS trigger; the 15-minute Supertrend and EMA20 as known at each 5-minute close "
+                "(a close through the EMA20 exits); the 15-minute chart is below; flat by 15:15",
+    "atm": "60-minute candles of the front-expiry ATM contract over its whole folder history; sold when the Supertrend turns down",
+}
+
+
+def _recipe(spec):
+    return {k: v for k, v in spec["handoff"]["chart"].items()}
+
+
+def _rule(spec):
+    return spec["handoff"]["chart"].get("first", "atm" if spec["handoff"]["chart"]["chart"] == "atm" else "p100")
+
+
+def _sessions(day, to):
+    from nifty_bt import chain
+    d0, d1 = pd.Timestamp(day), pd.Timestamp(to)
+    return [d for d in chain.sessions() if d0 <= d <= d1]
+
+
+def _trade_info(spec, body, day, to):
+    """the run's trades overlapping day..to with nifty_bt's own fields (signal time, initial stop, lock, timeframe)."""
+    C = {k: i for i, k in enumerate(body["cols"])}
+    T = trades_of(spec["handoff"]); T = T.assign(kk=T.entry_time.dt.strftime("%Y-%m-%d %H:%M"), expiry=T.expiry.astype(str).str[:10])
+    by = {(r.expiry, int(r.strike), r.right, r.kk): r for r in T.itertuples(index=False)}
+    out = []
+    for x in body["trades"]:
+        if str(x[C["exit_time"]])[:10] < day or str(x[C["entry_time"]])[:10] > to: continue
+        key = (str(x[C["expiry"]]), int(x[C["strike"]]), str(x[C["opt_type"]]))
+        r = by.get(key + (str(x[C["entry_time"]])[:16],))
+        if r is None: continue
+        st = str(getattr(r, "st", "") or "")
+        out.append(dict(key=key, right=key[2], row=x, side=int(r.side), sig=np.datetime64(r.sig),
+                        entry_time=np.datetime64(r.entry_time), exit_time=np.datetime64(r.exit_time), entry=float(r.entry),
+                        stop0=getattr(r, "stop0", None), lock=getattr(r, "lock", None), tf=int(st.split("m")[0]) if st[:1].isdigit() else None))
+    for o in out: o["t_in"], o["t_out"] = pd.Timestamp(o["entry_time"]), pd.Timestamp(o["exit_time"])
+    return out
+
+
 def chart_main(ctx, body, day, to):
-    """The traded contract's own candles on the book's timeframe (the first trade entered in the range, else the latest one
-    open by then), with every trade on that contract."""
-    from nifty_bt import data, indicators as I
-    C = {k: i for i, k in enumerate(body["cols"])}; rows = body["trades"]
-    pick = next((x for x in rows if day <= str(x[C["entry_time"]])[:10] <= to), None)
-    if pick is None:
-        live = [x for x in rows if str(x[C["entry_time"]])[:10] <= to and str(x[C["exit_time"]])[:10] >= day]
-        pick = live[-1] if live else None
-    if pick is None: raise ValueError(f"no trade open between {day} and {to}")
-    exp, k, r = str(pick[C["expiry"]]), int(pick[C["strike"]]), str(pick[C["opt_type"]])
-    X = data.read_expiry(exp, strikes={k})
-    g = X[(X.strike == k) & (X.right == r)].reset_index(drop=True)
-    B = I.agg(g, core.TF_MIN[ctx["spec"]["timeframe"]])
-    dd = B.bk.dt.strftime("%Y-%m-%d")
-    sel = np.nonzero(((dd >= day) & (dd <= to)).values)[0]
-    if not len(sel): sel = np.nonzero((dd >= str(pick[C["entry_time"]])[:10]).values)[0][:80]
-    candles = [[_ts(B.bk.iloc[i]), float(B.open.iloc[i]), float(B.high.iloc[i]), float(B.low.iloc[i]), float(B.close.iloc[i]), 0.0] for i in sel]
-    nm = f"NIFTY {Dt.date.fromisoformat(exp):%d%b%y} {k} {r}".upper()
-    return dict(day=day, to=to, inst=nm, candles=candles, cols=body["cols"], trades=[x for x in rows if str(x[C["instrument"]]) == nm],
-                own=True, lines=[], line_names=[], line_colors=[], sessions=len(set(dd.iloc[sel])) if len(sel) else 1,
-                derived=dict(what=f"{nm}, {ctx['spec']['timeframe']} bars of the option itself"))
+    """NIFTY (index) candles on the book's chart timeframe, for reference - every signal is read on the option's own chart,
+    in the CE / PE panes below (chart_leg). The trades are marked where they happened."""
+    from nifty_bt import chartdata as CD
+    R = _recipe(ctx["spec"]); tf = CD.pane_tf(R)
+    B = CD.index_bars(tf); m = ((B.bk >= pd.Timestamp(day)) & (B.bk < pd.Timestamp(to) + pd.Timedelta(days=1))).values
+    if not m.any(): raise ValueError(f"no index candles between {day} and {to}")
+    S = B[m]
+    candles = [[CD.ts(t), float(o), float(h), float(l), float(c), 0.0] for t, o, h, l, c in zip(S.bk, S.open, S.high, S.low, S.close)]
+    what = RECIPE_WHAT[R["chart"]].format(**R)
+    info = _trade_info(ctx["spec"], body, day, to)
+    chop = ""
+    if R["chart"] == "intraday":
+        chop = " · chop filter at each signal (needs range / ADR >= 0.8, ER >= 0.10, position in the day's range >= 0.8): " + "; ".join(
+            f"{str(o['sig'])[5:16].replace('T', ' ')} ER {c['ER']} rng/ADR {c['rng_adr']} pos {c['pos'] if o['side'] * (1 if o['right'] == 'CE' else -1) > 0 else round(1 - c['pos'], 2)}"
+            for o in info if o["t_in"].strftime("%Y-%m-%d") >= day for c in [CD.chop_at(o["sig"])])
+    return dict(day=day, to=to, inst=f"NIFTY index {tf}m", candles=candles, cols=body["cols"], trades=[o["row"] for o in info], own=False,
+                sessions=len(set(S.bk.dt.normalize())),
+                derived=dict(plain=True, what=f"NIFTY index {tf}-minute candles for reference only - the book reads nothing here; each signal is read on "
+                                  f"the option's own chart in the CE / PE panes below: {what}; red step = the stop in force, grey = the lock "
+                                  f"trigger (entry -/+ 50); purple tags = where the pane moves to another contract{chop}"))
+
+
+def chart_leg(ctx, body, day, to, atm=None, inst=None):
+    """One right's option chart over day..to: 'ATM' = the contract the book watched or held each session (the day's ₹100+ pick,
+    the front ATM for G5, or the open trade's contract), or one traded contract over the whole range - candles of the option
+    itself with the Supertrend, swings, CHoCH / BOS, the stop path, the lock level and the trades, as the engine read them."""
+    from nifty_bt import chartdata as CD
+    spec = ctx["spec"]; R = _recipe(spec); rule = _rule(spec)
+    days = _sessions(day, to)
+    if not days: raise ValueError(f"no sessions between {day} and {to}")
+    info = _trade_info(spec, body, (days[0] - pd.Timedelta(days=40)).strftime("%Y-%m-%d"), to)   # positions opened before the range
+    by = {}
+    for o in info: by.setdefault(o["key"], []).append(o)
+    one = None
+    if inst:
+        C = {k: i for i, k in enumerate(body["cols"])}
+        x = next((x for x in body["trades"] if str(x[C["instrument"]]) == inst), None)
+        if x is None: raise ValueError(f"{inst} is not traded in this run")
+        one = (str(x[C["expiry"]]), int(x[C["strike"]]), str(x[C["opt_type"]]))
+    right = one[2] if one else atm
+    out = CD.pane(R, rule, days, info, lambda k: by.get(k, []), right=right, inst=one)
+    nm = inst or f"{right} watched / held: " + ", ".join(n.split(" ", 1)[1] for n in out.pop("names"))
+    out.pop("names", None)
+    return dict(out, day=day, to=to, inst=nm, cols=body["cols"], own=True, sessions=len(days),
+                derived=dict(plain=True, what=RECIPE_WHAT[R["chart"]].format(**R)))

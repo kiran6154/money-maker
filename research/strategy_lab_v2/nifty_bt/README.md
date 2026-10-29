@@ -13,6 +13,14 @@ python -m nifty_bt.validate          # §9 checks: look-ahead, truncation, strik
 ```
 On the dashboard: ST151 - ST157 (G1 - G7), ST158 (§6.6 ₹100+ SELL + BUY), ST159 (§12.2 ₹100+ positional SELL + BUY), via
 `strategies/handoff.py`, which reads the trade lists above (rerun `golden` / `books`, then the strategy's backtest, after a change).
+Charts (`chartdata.py`): the main chart is the NIFTY index for reference; the CE / PE panes (full width) are the option itself -
+per session the contract the book watched (the day's pick) or held (an open trade's contract; a purple tag marks each switch),
+or one traded contract picked in the pane - rebuilt as the books built it, with the Supertrend (green up / red down), the swings
+and CHoCH / BOS the entry read (Supertrend segments, pivots, or the 5-minute pivots under the 15-minute Supertrend as known at
+each 5-minute close), EMA20 (G7), the stop in force at each bar (trailed to newer swings, to the entry after +50) and the lock
+trigger, and a 15-minute view for the books that read two timeframes. On 25 random trades per book (225) the entry's event and
+Supertrend side sit on the signal bar and the drawn stop starts at the engine's stop; on 120 stop exits the drawn stop ends at the
+fill (or the fill gapped through it).
 
 Run from `research/strategy_lab_v2`. The first run builds `results/nifty_bt/chain_0919.parquet` and `picks.parquet`
 (~6 minutes); the books' candidate pass takes ~20-40 minutes and is cached as `results/nifty_bt/books/cand_*.parquet`.
@@ -26,6 +34,7 @@ Run from `research/strategy_lab_v2`. The first run builds `results/nifty_bt/chai
 | `costs.py` | §2.4 | option charges (lot a parameter, 75 by default) |
 | `engine.py` | §3.4, §5, §6, §12.2-12.5 | `Contract`, swing trades (trail, lock50), ST + confirm SELL / BUY with exits and the §5.4 locks, pivot CHoCH -> ST, intraday grid, §6.1 ATM book, `sequence()` |
 | `research.py` | §5.5, §12.3, §12.6, §12.8 | hedge overlay, 1-min swings / 5-min signals, dual Supertrend (+ daily caps), late entry |
+| `chartdata.py` | - | the dashboard charts: each contract rebuilt as the books built it; Supertrend line, swings, CHoCH / BOS, stop path, lock level, chop values (checked against the engine's own functions) |
 | `report.py` | §2.9, §12.7 | stats (2018-22 / 2023-26, ₹1 / ₹2 slippage, yearly), flat-candle share, lot scaling, `SizingPolicy` (Fixed, DoubleUp, DoubleUpDown, AddOne), compounding |
 
 ## Golden parity (why the lists do not match to the trade)
