@@ -457,6 +457,26 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S172. S171 with the CE basket going down from the ATM - CE ATM, ATM-50 .. ATM-450, i.e. the ATM and nine in-the-money calls (the user, 2026-10-30: "10 CE basket should be ATM, ATM-50 so on"). Measured 2018-01 - 2026-10-19, 1,779 sessions with all 10 strikes printing: the ITM basket's structure differs a little more from the ATM CE's than the OTM basket did (83 - 86 % of events coincide within 3 minutes, vs ~90 %), but it is no better: on sideways days ~27 CHoCH + BOS a day, 48.7 % go their way over the next 15 minutes, 35.5 % are reversed within 15 minutes (ATM CE 46.8 % / 33.4 %). On trend days basket BOS 54.2 % vs ATM CE 53.9 %. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/basket_structure.py` with `BASKET=itm` (outputs `results/nifty_bt/basket_structure_itm/` incl. `chart.html` - 13 sideways + 4 trend days, git-ignored) |
+
+**Rules.** Exactly S171 with the basket strikes ATM - 50k (k = 0 .. 9). Days need all 10 strikes printing (1,779 of 2,143; deep ITM strikes print less often - 532 sideways, 427 trend, 820 between days).
+
+| Day type | Chart | Events / day | Next 15 min goes its way | Reversed within 15 min | Agreement with the other chart |
+|---|---|---|---|---|---|
+| sideways | ITM basket | 26.9 (14.0 CHoCH + 13.0 BOS) | 48.7 % | 35.5 % | 83.6 % |
+| sideways | ATM CE | 26.1 | 46.8 % | 33.4 % | 86.2 % |
+| trend | ITM basket | 26.6 | 52.1 % (BOS 54.2 %) | 33.8 % | 81.7 % |
+| trend | ATM CE | 26.0 | 51.5 % (BOS 53.9 %) | 30.8 % | 83.8 % |
+
+**Reading.** In-the-money calls move almost one-for-one with NIFTY, so the ITM basket is close to an index chart and its swings separate a little from the ATM CE's (whose premium also carries time decay and volatility); the separation does not make the structure more useful - sideways-day CHoCH / BOS on 1-min bars stays a coin flip on either. Open: as S171 (5- / 15-min bars).
+
+---
+
 ### S171. CHoCH / BOS on the 10 ladder CEs added up into one 1-min chart vs on the ATM CE alone, sideways vs trend days (the user, 2026-10-30: "show me the chart of cumulative candle data of 10 ce see in 1min chart see if choch and bos in that is different than atm in sideways market"). Measured 2018-01 - 2026-10-19, 2,088 sessions: the two charts give practically the same structure - about 26 CHoCH + BOS a day on each, and ~90 % of either chart's events have a same-direction event on the other within 3 minutes, on sideways days as on trend days. On sideways days 1-min CHoCH / BOS on either is noise: ~13 CHoCH + ~13 BOS a day, a third reversed within 15 minutes, and the move 15 minutes after an event goes its way 46 - 47 % of the time. Adding the strikes up does not filter it. Nothing adopted
 
 | | |

@@ -13,7 +13,7 @@ on the other within +-3 minutes; follow-through = the move over the next 15 minu
 whipsaw = an opposite event within 15 minutes.
 Output: results/nifty_bt/basket_structure/summary.csv and chart.html (sample sideways and trend days, both charts).
 
-    python tools/basket_structure.py     (from research/strategy_lab_v2; needs results/nifty_bt/regime_rating/ratings.parquet)
+    python tools/basket_structure.py     (BASKET=itm for ATM .. ATM-450; from research/strategy_lab_v2; needs results/nifty_bt/regime_rating/ratings.parquet)
 """
 import os, sys, json, random
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -22,7 +22,8 @@ import numpy as np, pandas as pd
 from nifty_bt import data, chain, indicators as I
 
 data.FILES = ("", ".wide", ".wide3k"); data._zip_members.cache_clear(); data.expiries.cache_clear()
-OUT = os.path.join(chain.CACHE, "basket_structure")
+STEP_SIGN = -1 if os.environ.get("BASKET", "otm") == "itm" else 1     # otm: ATM .. ATM+450 (S171); itm: ATM .. ATM-450 (S172)
+OUT = os.path.join(chain.CACHE, "basket_structure" + ("_itm" if STEP_SIGN < 0 else ""))
 os.makedirs(OUT, exist_ok=True)
 N, FWD, MATCH = 3, 15, 3
 COLS = ("datetime", "strike", "right", "open", "high", "low", "close")
@@ -44,7 +45,7 @@ def agree(a, b):
 
 
 def day_frames(X, D, A):
-    g = X[(X.date == D) & (X.right == "CE") & (X.strike.isin([A + 50 * k for k in range(10)]))]
+    g = X[(X.date == D) & (X.right == "CE") & (X.strike.isin([A + STEP_SIGN * 50 * k for k in range(10)]))]
     if g.strike.nunique() < 10: return None
     piv = {c: g.pivot_table(index="tod", columns="strike", values=c, aggfunc="last").sort_index() for c in ("open", "high", "low", "close")}
     cl = piv["close"].ffill()
@@ -69,7 +70,7 @@ def run():
     pick = set(random.sample(list(R.index[R.type == "sideways"]), 14)) | set(random.sample(list(R.index[R.type == "trend"]), 6))
     for e in sorted(jobs):
         ATMs = {D: int(round(s0915[D] / 50) * 50) for D in jobs[e]}
-        X = data.read_expiry(e, columns=COLS, strikes={A + 50 * k for A in ATMs.values() for k in range(10)})
+        X = data.read_expiry(e, columns=COLS, strikes={A + STEP_SIGN * 50 * k for A in ATMs.values() for k in range(10)})
         if X is None: continue
         X = X[X.right == "CE"]
         for D in jobs[e]:
@@ -132,5 +133,6 @@ if __name__ == "__main__":
                              fwd15_pos=round((h.fwd > 0).mean() * 100, 1), whipsaw_pct=round(h.whip.mean() * 100, 1)))
     S = pd.DataFrame(rows); S.to_csv(os.path.join(OUT, "summary.csv"), index=False); print(S.to_string(index=False))
     print(Dd.groupby("type")[["basket_in_atm", "atm_in_basket"]].mean().round(1))
-    with open(os.path.join(OUT, "chart.html"), "w", encoding="utf-8") as fh: fh.write(HTML.replace("__DATA__", json.dumps(charts)))
+    html = HTML if STEP_SIGN > 0 else HTML.replace("ATM .. ATM+450", "ATM, ATM-50 .. ATM-450 (in the money)")
+    with open(os.path.join(OUT, "chart.html"), "w", encoding="utf-8") as fh: fh.write(html.replace("__DATA__", json.dumps(charts)))
     print("chart days", len(charts))
