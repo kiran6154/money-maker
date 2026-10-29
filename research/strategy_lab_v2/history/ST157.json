@@ -1,0 +1,141 @@
+{
+ "code": "ST157",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-29T06:12:20",
+   "key": "dc0a8d4de2ec",
+   "code": "0ed1ab87fcad",
+   "definition": {
+    "code": "ST157",
+    "timeframe": "15minute",
+    "underlying": "INDEX",
+    "warmup_days": 1,
+    "rules": {
+     "break_mode": "close",
+     "choch_mode": "close",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "handoff_v1",
+     "exit_rule": "next_choch"
+    },
+    "handoff": {
+     "source": "golden",
+     "file": "G7",
+     "side": 1
+    },
+    "lot_size": 75,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": null,
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 0.5
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.1
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.1
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 0,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATM"
+     ],
+     "strike_default": "ATM",
+     "atr_period": 14
+    }
+   },
+   "changes": [],
+   "results": {
+    "all-data_15m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 480,
+       "wins": 213,
+       "pts": 3196.8,
+       "net_inr": 197053.48,
+       "pf": 1.32,
+       "max_dd_inr": -38040.57,
+       "t_stat": 2.15
+      },
+      "M-ATM": {
+       "trades": 480,
+       "wins": 213,
+       "pts": 3196.8,
+       "net_inr": 197053.48,
+       "pf": 1.32,
+       "max_dd_inr": -38040.57,
+       "t_stat": 2.15
+      }
+     }
+    },
+    "2018-22_15m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 257,
+       "wins": 120,
+       "pts": 2108.0,
+       "net_inr": 135442.8,
+       "pf": 1.47,
+       "max_dd_inr": -34476.02,
+       "t_stat": 2.2
+      },
+      "M-ATM": {
+       "trades": 257,
+       "wins": 120,
+       "pts": 2108.0,
+       "net_inr": 135442.8,
+       "pf": 1.47,
+       "max_dd_inr": -34476.02,
+       "t_stat": 2.2
+      }
+     }
+    },
+    "2023-26_15m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 223,
+       "wins": 93,
+       "pts": 1088.8,
+       "net_inr": 61610.67,
+       "pf": 1.19,
+       "max_dd_inr": -38040.57,
+       "t_stat": 0.9
+      },
+      "M-ATM": {
+       "trades": 223,
+       "wins": 93,
+       "pts": 1088.8,
+       "net_inr": 61610.67,
+       "pf": 1.19,
+       "max_dd_inr": -38040.57,
+       "t_stat": 0.9
+      }
+     }
+    }
+   }
+  }
+ ]
+}

@@ -11,6 +11,9 @@ python -m nifty_bt.books             # every §0 study + §2.9 report (results/n
 NBT_NEXP=12 python -m nifty_bt.books # smoke test on the last 12 expiries
 python -m nifty_bt.validate          # §9 checks: look-ahead, truncation, strike timing, raw-candle fills, lock, sequencing
 ```
+On the dashboard: ST151 - ST157 (G1 - G7), ST158 (§6.6 ₹100+ SELL + BUY), ST159 (§12.2 ₹100+ positional SELL + BUY), via
+`strategies/handoff.py`, which reads the trade lists above (rerun `golden` / `books`, then the strategy's backtest, after a change).
+
 Run from `research/strategy_lab_v2`. The first run builds `results/nifty_bt/chain_0919.parquet` and `picks.parquet`
 (~6 minutes); the books' candidate pass takes ~20-40 minutes and is cached as `results/nifty_bt/books/cand_*.parquet`.
 

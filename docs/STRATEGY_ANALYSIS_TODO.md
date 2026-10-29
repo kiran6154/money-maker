@@ -473,7 +473,7 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | G3 ₹100+ SELL · 15m ST + 5m confirm · lock / ₹50 | 1,541 / +7,92,410 | 1,554 / +7,75,425 | 1,546 / +7,76,105 (-2.1 %) |
 | G4 ₹100+ BUY · 15m ST + 5m confirm · lock -> expiry | 1,322 / +9,47,207 | 1,330 / +9,32,725 | 1,323 / +9,39,665 **pass** |
 | G5 ATM SELL · 60m ST(4,3) flip · front expiry | 584 / +7,43,214 | 533 / +7,77,246 | 527 / +7,55,785 (7 days: 658 / +6,48,602; 10: 575 / +8,28,734) |
-| G6 ₹100+ SELL · 15m pivot CHoCH/BOS -> ST(10,3) | 2,401 / +8,83,110 | (CHoCH only by mistake in the first run) | 2,403 / +9,03,859 (+2.3 %) |
+| G6 ₹100+ SELL · 15m pivot CHoCH/BOS -> ST(10,3) | 2,401 / +8,83,110 | 2,421 / +8,96,295 (+1.5 %; the first full-store run counted CHoCH only, rebuilt 2026-10-29) | 2,403 / +9,03,859 (+2.3 %) |
 | G7 intraday ₹100+ BUY · 15m ST(10,3) + 5m · EMA20 · chop | 474 / +1,99,409 | 483 / +2,05,195 | 476 / +2,10,931 (all 474 golden trades matched) |
 
 Why not every list passes: the store was re-downloaded 2026-10-25; from 2019 the handoff's expiry folders held only about the two weeks before expiry (ours: months), which changes indicator warm-up and adds trading days (e.g. 2018-12-28 .. 2019-01-21 on the 2019-01-31 expiry); some index rows differ too (G7's two extra trades pass the chop filter by a wide margin in our index data). G2 (swing state carried from the first bar) and G5 (60-minute ST over the whole folder) are the most sensitive to where history starts; the exact handoff window cannot be recovered.
@@ -504,6 +504,8 @@ Grids: §12.2 Supertrend-swing 225 / 256 books positive in both halves (spec 218
 §5.5 hedge on the ₹100+ SELL book: naked +7.75 L; with a ₹5 / ₹10 / ₹20 OTM hedge per trade +5.19 L / +4.47 L / +3.40 L (the hedge costs 33 - 56 % of the profit; spec 40 - 65 %).
 Flat 1-minute candles on watched days (30 random expiries): ₹100+ 2.6 % (p90 6 %); ₹500+ 47 % (p10 7 %, p90 80 %) - every ₹500+ number above rests on stale prints and should be read as a delta-0.9 futures-like trade, not a fillable option book.
 §9 validation (`python -m nifty_bt.validate`): look-ahead (10:03 sees the 09:55 5-minute bar, 10:14 the 09:45 15-minute bar), Supertrend / structure truncation, strikes only from 09:19 closes and never on expiry day, three random trades per book re-checked against raw candles (entry = next 1-minute open, fills, charges, net), locked-trade exits, no overlap within a leg - all pass.
+
+On the dashboard (2026-10-29): ST151 - ST157 = G1 - G7, ST158 = §6.6 ₹100+ SELL + BUY, ST159 = §12.2 ₹100+ positional SELL + BUY (`strategies/handoff.py` reads nifty_bt's trade lists; nothing is recomputed). The lab's sessions end 2026-10-09, so its 'All data' window drops nifty_bt's last ten days: ST158 2,872 trades +₹17,23,836 (nifty_bt to 10-19: 2,884 / +17,08,150), ST159 1,582 / +₹15,33,481, ST156 (G6) 2,416 / +₹8,82,940.
 
 Open (Impact Unquantified for each): (1) paper-trade the ₹100+ positional books (§6.6 or §12.2) exactly as specified before anything else (§10 of the spec); (2) the lock trigger as a % of premium, and one hedge per expiry per leg (spec §11); (3) bid / ask fills - every number here assumes trading at the 1-minute open / level.
 
