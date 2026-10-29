@@ -457,6 +457,30 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S167. Intraday short ladder - sell ATM + 9 OTM strikes on both CE and PE at 09:15, re-centre on the ATM every 15 minutes, buy everything back at 15:15 (the user, 2026-10-29: "start from 9:15, sell 10 strikes start from atm to otm on both ce and pe side. Step in 15min, when atm shifts close itm and sell atm and shift other side ... keep continuing for intraday"). Measured 2018-01 - 2026-10-19, 2,135 sessions: on the current weekly as written it makes +21.2 L at Rs0.10 slippage (PF 1.23, t 2.74, 6/9 years, max DD -6.6 L, worst day -1.96 L, worst intraday mark -3.99 L) - but +17.4 L of that is the 412 expiry days (PF 2.34, 9/9 years, worst day -1.21 L) and the other 1,723 days are flat (+3.8 L, PF 1.05, t 0.57; 2018, 2019, 2026 negative). With ~35 legs a day it is a slippage trade: Rs0.25 a side +4.4 L, Rs0.50 -23.5 L. Expiry day alone survives to Rs0.90 a side. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/ladder_short.py` (outputs `results/nifty_bt/ladder_short/`, git-ignored) |
+
+**Rules, fixed before the run.** The book always holds one short lot of CE ATM, ATM+50 .. ATM+450 and PE ATM, ATM-50 .. ATM-450; ATM = NIFTY 1-min close rounded to 50. 09:15: the 20 legs sold at the first minute's close. Every 15 minutes the ATM is re-read and the book moved to the new ladder: on a one-strike rise the old ATM CE (now ITM) is bought back, a new farthest-OTM CE sold, a new ATM PE sold and the PE now 10 strikes away bought back (mirror on a fall; a jump rolls several). Everything bought back at 15:15; no stop. Fills at each option's 1-min close (last printed close if it did not print that minute; a strike with no print yet that day is skipped until it prints). Lot 75 per leg, nifty_bt charges per leg, Rs0.10 a side. Expiry `front` = nearest on or after the day (expiry day included; the user's natural reading), `next` = nearest strictly after. Re-centring every 5 / 30 minutes run as sensitivity only.
+
+| Book | Re-centre | Legs / rolls a day | Win days | Avg day ₹ | Net ₹ | PF 2018-22 / 2023-26 | t | Worst day / worst mark ₹ | Rs0.25 / Rs0.50 a side |
+|---|---|---|---|---|---|---|---|---|---|
+| **front** | **15 min** | 34.9 / 15.0 | 58.0 % | +994 | **+21.2 L** | 1.31 / 1.17 | 2.74 | -1.96 L / -3.99 L | +4.4 L / -23.5 L |
+| front | 5 min | 46.9 / 26.9 | 54.0 % | +311 | +6.6 L | 1.10 / 1.05 | 0.88 | -2.65 L / -3.96 L | -15.9 L / -53.4 L |
+| front | 30 min | 29.9 / 10.0 | 60.2 % | +1,264 | +27.0 L | 1.27 / 1.30 | 3.41 | -1.47 L / -4.39 L | +12.6 L / -11.4 L |
+| next | 15 min | 34.9 / 14.9 | 57.4 % | +767 | +16.4 L | 1.23 / 1.11 | 1.99 | -1.96 L / -3.99 L | -0.4 L / -28.3 L |
+| front, expiry day only | 15 min | 35.2 / 15.2 | 67.7 % | +4,219 | **+17.4 L** (412 days) | 3.39 / 2.02 | 4.56 | -1.21 L / -1.92 L | +14.1 L / +8.7 L (Rs1: -2.2 L) |
+| front, other days | 15 min | 34.9 / 14.9 | 55.7 % | +223 | +3.8 L | 1.12 / 0.99 | 0.57 | -1.96 L / -3.99 L | -9.7 L / -32.2 L |
+
+By year (front, 15 min, ₹ L): 2018 -3.27, 2019 -1.28, 2020 +3.11, 2021 +8.03, 2022 +5.24, 2023 +1.94, 2024 +1.98, 2025 +8.09, 2026 -2.63; expiry days alone +0.23, +0.81, +1.28, +2.80, +2.25, +0.85, +2.07, +4.59, +2.51 (9/9). By the day's NIFTY move (front, 15 min): |move| <= 50 pts 804 days +3,552 a day; 50 - 100 +2,667; 100 - 150 +570; 150 - 200 -892; 200 - 300 -5,712; 300 - 500 -20,578 (64 days, -13.2 L); > 500 -29,874 (9 days). Worst days: 2024-06-04 (election result, -806 pts, 138 rolls) -1.96 L with a -3.99 L intraday mark; 2024-12-05 (expiry, +251) -1.21 L; 2025-05-12 (+393) -1.09 L.
+
+**Reading.** The ladder is a short-volatility book: it earns the day's time decay on 20 strikes and pays on every trend day, and re-centring locks the losses in rather than preventing them (more frequent re-centring is worse: 5 min +6.6 L vs 30 min +27.0 L). Away from expiry the decay it collects barely covers the trend days and the ~Rs2,400 a day of charges, so the result rests on fills; on expiry day the decay is large and the book is positive every year, with a break-even near Rs0.90 slippage a side. Margin for 20 naked short legs was not modelled (it is large; the worst intraday mark is -3.99 L on one lot a leg). Open (Impact Unquantified): measure real fills / spreads on the far OTM legs at roll times (Rs0.05 - 1 premiums, the deciding number); the margin and peak exposure per day; an expiry-day-only version with a day-loss stop, pre-registered before it is run; 30-min re-centring was not the user's rule and was not picked - it is sensitivity.
+
+---
+
 ### S166. Buy cheap out-of-the-money options - small fixed loss, hoping for the occasional multi-bagger (the user, 2026-10-29: "check for cheap premium where we get huge and loose less"). Measured 2018-01 - 2026-10-19, 5 premium bands x 3 horizons x 5 targets x CE / PE: the multi-baggers happen (on expiry day 12 - 14 % of Rs2 - 20 options touch 5x and 4 - 6 % touch 10x) but not often enough to pay for the zeros - every band, horizon and target loses after costs, CE and PE together (PF 0.20 - 0.96, 0 - 4 of 9 years positive). The one positive corner, expiry-day PE in the Rs20 - 40 band (+Rs44k - 52k on 357 trades, PF 1.08 - 1.10, t 0.5 - 0.6), is chance among 150 cells. Nothing adopted
 
 | | |
