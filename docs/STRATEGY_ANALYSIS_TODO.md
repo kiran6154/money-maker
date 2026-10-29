@@ -457,6 +457,45 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S164. The option's own session VWAP together with CHoCH / BOS on the option's chart (the user, 2026-10-29: "use session vwap along with choch bos"). Measured 2018-01 - 2026-10-19. (A) As a gate on the existing structure books it is not an improvement overall: 90-99 % of their trades are already on the VWAP's side; it lifts the G4 buys (ST154 / ST158 BUY: the 163 against-VWAP buys are flat, PF 0.96, so dropping them takes PF 1.37 -> 1.42, net +12k) but would cut the G2 buys' best trades (ST152 / ST159 BUY: 36 against-VWAP buys PF 2.83, +1.52 L). (B) Standalone on the 09:19 ATM / Rs100+ picks: writing the option on a bearish CHoCH / BOS that closes below the session VWAP, stop at the last swing high, exit on a 5-min close back above the VWAP (or 15:15) is positive in all 8 neighbouring versions (PF 1.13 - 1.18, both halves > 1, t 2.8 - 4.3), and the VWAP gate beats the same signals without it in all 8 - but it makes 2.1 - 2.4 points a trade and breaks even at Rs0.6 - 0.8 slippage a side; at Rs1 every version loses. Buying on bullish events above the VWAP is flat (PF 0.98 - 1.10, 2023-26 ~1.0). Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/svwap_choch.py` (outputs `results/nifty_bt/svwap_choch/`, git-ignored) |
+
+**Rules, fixed before the run.** Session VWAP = Σ hlc3 × volume / Σ volume of the contract's own 1-min bars from 09:15 that day, as known at each minute's close. (A) Each book trade's entry vs its contract's session VWAP at the signal close: "with" = BUY above / SELL below; the trades are the books' own, nothing re-simulated. (B) Contract = nifty_bt's 09:19 pick (ATM / p100, CE and PE, expiry strictly after the day). 5-min bars of the contract over the day and the two sessions before (pivot warm-up), CHoCH / BOS from `pivot_structure(N)`; signal bars closing 09:20 - 14:30; entry at the signal close; one position per contract at a time. BUY on a bullish event, SELL (write) on a bearish one; gate `svwap` = signal close on the trade's side of the VWAP, `none` = every event. Stop = the last confirmed swing low (BUY) / high (SELL), 1-min bars, fill at the worse of open / stop; exit `swing` = stop else 15:15, `swing+vwap` = also a 5-min close back across the VWAP. Grid N (2, 3) × CHoCH only / CHoCH + BOS × side × gate × exit × pick = 64. 1 lot of 75, nifty_bt charges, Rs0.10 a side.
+
+**(A) Books split by the session VWAP** (trades, PF, net):
+
+| Book | All | With VWAP | Against VWAP |
+|---|---|---|---|
+| ST151 G1 SELL | 1,172, 1.46, +8.87 L | 1,095, 1.45, +8.11 L | 77, 1.56, +76k |
+| ST152 G2 BUY (= ST159 BUY) | 413, 1.68, +6.59 L | 377, 1.57, +5.07 L | 36, 2.83, +1.52 L |
+| ST153 G3 SELL (= ST158 SELL) | 1,554, 1.33, +7.75 L | 1,434, 1.34, +7.14 L | 119, 1.27, +56k |
+| ST154 G4 BUY (= ST158 BUY) | 1,330, 1.37, +9.33 L | 1,167, 1.42, +9.45 L | 163, 0.96, -12k (0.99 / 0.91 by half) |
+| ST156 G6 SELL | 2,421, 1.35, +8.96 L | 2,265, 1.36, +8.55 L | 155, 1.19, +41k |
+| ST157 G7 BUY | 483, 1.33, +2.05 L | 482 | 1 |
+
+**(B) Standalone, SELL on bearish events, exit `swing+vwap`** (PF all / 2018-22 / 2023-26, net, t; same signals without the gate for comparison):
+
+| Pick | N | Events | Gate svwap | No gate | Break-even slip / side |
+|---|---|---|---|---|---|
+| ATM | 2 | both | 6,541: 1.13 / 1.18 / 1.08, +5.04 L, t 3.41 | 8,557: 1.07, +2.97 L | Rs0.61 (no gate 0.33) |
+| ATM | 2 | CHoCH | 4,074: 1.15 / 1.22 / 1.09, +3.59 L, t 3.13 | 5,680: 1.08 | Rs0.69 (0.35) |
+| ATM | 3 | both | 5,686: 1.17 / 1.22 / 1.12, +5.78 L, t 4.08, 9/9 yrs | 6,972: 1.13 | Rs0.78 (0.56) |
+| ATM | 3 | CHoCH | 3,380: 1.18 / 1.22 / 1.13, +3.58 L, t 3.24 | 4,392: 1.13 | Rs0.81 (0.54) |
+| p100 | 2 | both | 6,531: 1.15 / 1.22 / 1.08, +5.48 L, t 4.09 | 8,517: 1.08 | Rs0.66 (0.35) |
+| p100 | 2 | CHoCH | 4,073: 1.15 / 1.20 / 1.09, +3.25 L, t 3.14 | 5,655: 1.05 | Rs0.63 (0.27) |
+| p100 | 3 | both | 5,723: 1.17 / 1.24 / 1.09, +5.44 L, t 4.28, 9/9 yrs | 6,990: 1.11 | Rs0.73 (0.49) |
+| p100 | 3 | CHoCH | 3,415: 1.14 / 1.21 / 1.07, +2.72 L, t 2.79 | 4,419: 1.08 | Rs0.63 (0.36) |
+
+ATM N 3 CHoCH + BOS by year (₹k): 2018 +35, 2019 +27, 2020 +121, 2021 +132, 2022 +56, 2023 +6, 2024 +107, 2025 +45, 2026 (to 10-19) +50; CE +3.71 L, PE +2.08 L; exits 66 % VWAP, 29 % 15:15, 6 % stop. With exit `swing` only, the SELL side is PF 1.06 - 1.11. BUY on bullish events: gate `svwap` PF 0.99 - 1.10, 2023-26 0.93 - 1.04; without it 0.94 - 1.05.
+
+**Reading.** As a filter on the books the session VWAP mostly agrees with the structure already (CHoCH / BOS on an option's chart usually closes on the VWAP's side), so it removes few trades, and the ones it removes are good on G2 and only flat on G4 - not a rule to add. Standalone, the VWAP adds something real on the short side: in all eight versions it raises the PF over the same CHoCH / BOS signals and roughly doubles the slippage the trade can carry, and the result is stable across N, event type and pick. But the edge is about 2.3 premium points a trade on ~650 trades a year; it survives Rs0.10 slippage, not Rs1, and it is a short-option book (margin, gap risk on the 6 % stop exits not stressed). Open (Impact Unquantified): measure real fills / spreads on these contracts at the signal minutes (the deciding number); a no-signal baseline - write the same option at 09:20 and exit at the VWAP / 15:15 - to see how much is time decay rather than the structure; the 2023 near-zero year.
+
+---
+
 ### S163. The option's own previous-day average price as the gate to buy it the next day (the user, 2026-10-29: "validate what will happen if the previous day average price of option standalone is the gate to buy next day, cross over of that"). Measured on the 09:19 ATM and ₹100+ picks (CE and PE, nearest expiry after the day), 2018-01 - 2026-10-19, 48 combinations: no version is an edge. The best two (PE, cross-over, exit on a close back below the level) reach PF 1.14 - 1.16 with t < 1 and lose at ₹1 slippage; the CE side loses in 2023-26 in every version; buying at 09:20 with the option above vs below its previous-day average makes no consistent difference. On the existing BUY books the gate removes nothing: the G2 / ST159 buys always enter above the previous-day average, and the G4 / ST158 buys that enter below it do as well as or better than those above. Nothing adopted
 
 | | |
