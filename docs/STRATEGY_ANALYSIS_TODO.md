@@ -457,6 +457,35 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S166. Buy cheap out-of-the-money options - small fixed loss, hoping for the occasional multi-bagger (the user, 2026-10-29: "check for cheap premium where we get huge and loose less"). Measured 2018-01 - 2026-10-19, 5 premium bands x 3 horizons x 5 targets x CE / PE: the multi-baggers happen (on expiry day 12 - 14 % of Rs2 - 20 options touch 5x and 4 - 6 % touch 10x) but not often enough to pay for the zeros - every band, horizon and target loses after costs, CE and PE together (PF 0.20 - 0.96, 0 - 4 of 9 years positive). The one positive corner, expiry-day PE in the Rs20 - 40 band (+Rs44k - 52k on 357 trades, PF 1.08 - 1.10, t 0.5 - 0.6), is chance among 150 cells. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/cheap_premium.py` (outputs `results/nifty_bt/cheap_premium/`, git-ignored) |
+
+**Rules, fixed before the run.** Chain = every strike's 09:19 close from the regular, `.wide` and `.wide3k` files (the widest strike range in the store; about 1,500 - 4,500 points either side of spot), OTM only. Per day, right and band (Rs2 - 5, 5 - 10, 10 - 20, 20 - 40, 40 - 70) the strike whose 09:19 premium is nearest the band's middle; no strike in the band -> no trade (coverage: `next` 93 - 100 % of days in every band and year; expiry day 59 - 74 % in 2018 - 19 and >= 86 % from 2021, Rs40 - 70 only 0 - 84 %). Horizons: `0dte` = bought 09:20 on the expiry's own day, out by 15:15; `next/intraday` = the nearest expiry strictly after the day, out by 15:15; `next/to_expiry` = held to the expiry day's 15:15. Entry at the 09:19 close; target 2x / 3x / 5x / 10x (at the target, or the minute's open if above) or none; no stop (loss <= premium). 1 lot of 75, nifty_bt charges, Rs0.10 a side.
+
+**CE + PE together, no target / best target** (trades, win %, touched 5x / 10x %, avg win / loss ₹, net ₹, PF):
+
+| Horizon | Band | Trades | Win % | 5x / 10x touched | Avg win / loss | Net (no target) | PF | Best target |
+|---|---|---|---|---|---|---|---|---|
+| expiry day | 2-5 | 772 | 4.0 | 11.9 / 5.4 | 3,780 / -303 | -1.07 L | 0.52 | none |
+| expiry day | 5-10 | 714 | 9.1 | 13.6 / 6.3 | 4,371 / -588 | -98k | 0.74 | none |
+| expiry day | 10-20 | 736 | 15.4 | 13.5 / 4.3 | 4,767 / -1,100 | -1.47 L | 0.79 | 10x: -1.41 L |
+| expiry day | 20-40 | 692 | 24.3 | 10.1 / 1.6 | 5,772 / -2,048 | -1.03 L | 0.90 | 10x: -72k (PE alone +44k / +52k) |
+| expiry day | 40-70 | 350 | 27.4 | 5.7 / 0 | 7,109 / -3,474 | -2.00 L | 0.77 | 5x: -1.77 L |
+| next, same day | 2-5 ... 40-70 | 4,064 - 4,236 each | 11 - 35 | 0.6 - 2.4 / 0.1 - 0.6 | | -3.3 L .. -6.0 L | 0.31 - 0.86 | none better |
+| next, to expiry | 2-5 | 4,166 | 1.2 | 7.8 / 3.9 | 4,914 / -318 | -10.5 L | 0.20 | |
+| next, to expiry | 20-40 | 4,236 | 15.4 | 13.7 / 4.4 | 10,275 / -2,237 | -13.1 L | 0.84 | 10x: -9.3 L |
+| next, to expiry | 40-70 | 4,064 | 22.6 | 11.5 / 1.7 | 12,087 / -3,940 | -12.8 L | 0.90 | 10x: -4.96 L (PF 0.96) |
+
+Taking profit at 2x / 3x lifts the win rate (to 30 - 47 %) and loses more every time (PF 0.21 - 0.88). The cheapest bands lose most: at Rs2 - 5 the win rate is 1 - 15 % and costs (Rs40 brokerage + charges on a Rs260 position) are a large share of the stake. At Rs0.05 slippage nothing turns positive except the same expiry-day PE Rs20 - 40 cell.
+
+**Reading.** A cheap option is cheap because the market prices a small chance of the big move, and over 2018 - 2026 that price was, if anything, a little too high: the 5x / 10x days come at about the rate the premium implies, and the many expiries at zero plus the fixed costs make every version negative. Holding the next-week option to expiry is the worst (time decay on every day held). Open: none proposed - a trigger (a move or a volatility event that makes the big day more likely than the premium implies) would be a new study, not a fix of this one.
+
+---
+
 ### S165. Buy the option when its own RSI(14) rises back above 30 - and is there an exit that wins 80 % of the time and makes money (the user, 2026-10-29: "check when to buy option directly looking at option rsi is below 30 and raises above that which will make us trades profitable 80% of time"). Measured on the 09:19 ATM / Rs100+ picks, CE and PE, 2018-01 - 2026-10-19, 4 bar sizes x 15 exits x 2 picks = 120 versions: an 80 % win rate is reachable (target +5 %, stop -30 % or none: 78 - 83 % winners on every bar size) but every such version loses money - the average win is Rs260 - 340 and the average loss Rs1,700 - 2,600, PF 0.51 - 0.74, 0 of 9 years positive. No version of the signal makes money: the best are 15-minute bars held to 15:15 or to RSI 70 (PF 1.02 - 1.05, ~40 % winners, t < 0.7, 2023-26 below 1). Nothing adopted
 
 | | |
