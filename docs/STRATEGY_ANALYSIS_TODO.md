@@ -457,6 +457,45 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S163. The option's own previous-day average price as the gate to buy it the next day (the user, 2026-10-29: "validate what will happen if the previous day average price of option standalone is the gate to buy next day, cross over of that"). Measured on the 09:19 ATM and ₹100+ picks (CE and PE, nearest expiry after the day), 2018-01 - 2026-10-19, 48 combinations: no version is an edge. The best two (PE, cross-over, exit on a close back below the level) reach PF 1.14 - 1.16 with t < 1 and lose at ₹1 slippage; the CE side loses in 2023-26 in every version; buying at 09:20 with the option above vs below its previous-day average makes no consistent difference. On the existing BUY books the gate removes nothing: the G2 / ST159 buys always enter above the previous-day average, and the G4 / ST158 buys that enter below it do as well as or better than those above. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/prevavg_cross.py` (outputs `results/nifty_bt/prevavg/`, git-ignored) |
+
+**Rules, fixed before the run.** Contract per session and right = nifty_bt's 09:19 pick (ATM = strike nearest the 09:15 five-minute spot; p100 = cheapest premium in ₹100-500; expiry the nearest strictly after the day) - known at 09:20, no hindsight. Level L = the same contract's previous session: `vwap` = Σ hlc3 × volume / Σ volume of its 1-min bars, `mean` = mean of its 1-min closes (previous session needs >= 200 bars; 8,228 of 8,516 contract-days have it, all with volume). 5-min bars from 09:15, a bar known at its close; entries 09:20 - 14:30 at the signal close; one entry per contract per day. Entry `cross` = first close above L after a close <= L; `above` = first close above L (already above at 09:20 counts; median entry 09:20 vs 10:20-10:25 for `cross`). Exit `eod` = 15:15; `back` = first 5-min close back below L (73 % of trades), else 15:15; `low` = stop at the signal bar's low on 1-min bars, filled at the worse of open / stop (78 %), else 15:15. Baseline without the gate: buy at 09:20 (the 09:19 close), hold to 15:15, split by 09:19 close above / below L. 1 lot of 75, nifty_bt charges, ₹0.10 slippage per side (₹1 shown).
+
+**Standalone, CE + PE together** (PF 2018-22 / 2023-26, net ₹ total, t; `vwap` level):
+
+| Pick | Entry | Exit | Trades | PF | Net 2018-22 / 2023-26 | t | Net at ₹1 slip |
+|---|---|---|---|---|---|---|---|
+| ATM | cross | back | 1,773 | 1.00 / 0.89 | +2,185 / -79,965 | -0.66 | -3.17 L |
+| ATM | cross | eod | 1,773 | 0.93 / 0.85 | -1,06,183 / -2,48,705 | -1.77 | -5.94 L |
+| ATM | above | low | 2,742 | 0.89 / 1.02 | -1,60,321 / +22,870 | -0.76 | -5.08 L |
+| p100 | cross | back | 1,669 | 1.05 / 0.89 | +25,972 / -69,301 | -0.39 | -2.69 L |
+| p100 | above | back | 2,691 | 0.96 / 1.04 | -67,210 / +60,584 | -0.04 | -3.70 L |
+| ATM | no gate, 09:19 above L | eod | 1,701 | 0.83 / 0.97 | -2,73,564 / -44,567 | -1.57 | -5.48 L |
+| ATM | no gate, 09:19 below L | eod | 2,429 | 0.95 / 0.88 | -1,01,367 / -3,00,532 | -1.65 | -7.30 L |
+| p100 | no gate, 09:19 above L | eod | 1,735 | 0.84 / 0.93 | -2,78,124 / -85,558 | -2.05 | -5.98 L |
+| p100 | no gate, 09:19 below L | eod | 2,363 | 0.94 / 0.89 | -1,23,350 / -2,38,291 | -1.63 | -6.81 L |
+
+`mean` instead of `vwap` changes little (e.g. ATM cross / back 1.21 / 0.94, +67,625, t 0.57). By right: the best of all 48 are PE, cross, back - p100 `vwap` PF 1.03 / 1.24, +85,093, t 0.90, 7/9 years; ATM `mean` 1.12 / 1.20, +94,505, t 0.99 - and both lose at ₹1 slippage (-27k / -14k). CE cross / back: PF 1.08 - 1.36 in 2018-22 and 0.54 - 0.69 in 2023-26 in all four versions. Holding to 15:15 loses in every version (net per trade -0.5 to -3.8 points; time decay over the day). The gate does not separate days: with no gate, above-L vs below-L at 09:19 is -0.6 / -2.7 points (ATM CE mean) but -1.4 / -0.5 (ATM PE vwap) - no consistent sign.
+
+**As a gate on the existing BUY books** (trades split by entry price vs the entry contract's previous-day average; ST158's BUY leg is the G4 list and ST159's is the G2 list, so they repeat):
+
+| Book | All | Entry > prev avg (vwap) | Entry <= prev avg (vwap) | No previous day |
+|---|---|---|---|---|
+| ST152 / ST159 BUY (G2) | 413, PF 1.68, +6.59 L | 402, PF 1.78, +7.12 L | 0 | 11, -53k |
+| ST154 / ST158 BUY (G4) | 1,330, PF 1.37, +9.33 L | 1,024, PF 1.32, +6.29 L | 262, PF 1.37, +1.91 L | 44, +1.13 L |
+| ST157 (G7) | 483, PF 1.33, +2.05 L | 463, PF 1.33, +1.94 L | 14, -18.6k | 6, +29.9k |
+
+The G2 buys enter at 1.14x - 75x the previous-day average (median 1.64x): the CHoCH-after-Supertrend entry already sits far above it, so the gate never binds. On G4 the below-average buys are as good (PF 1.37 vs 1.32; with `mean` 1.47 vs 1.29), so the gate would cut ₹1.9 - 2.5 L of profit. G7's 14 - 22 below-average trades lose (-18.6k / -23.2k), too few to read (t -2.17 on 14 trades).
+
+**Reading.** On its own the previous-day average of an option is not a buy signal: the cross-over trades are a coin flip before costs, the option's intraday decay is a steady drag, and only the PE / exit-on-a-close-back-below corner is positive - at t < 1 among 48 combinations, which is what chance gives. As a filter on the books that already buy on structure it either never binds (G2) or removes good trades (G4). Open (Impact Unquantified): the gate across sessions (the previous day's average held as a positional level, not intraday) and on the SELL legs were not tested.
+
+---
+
 ### S162. The handoff "NIFTY Supertrend / CHoCH-BOS option strategies" spec (v2, attached by the user 2026-10-28, from a claude.ai session) built as `research/strategy_lab_v2/nifty_bt/` and every §0 study re-run on the current store, 2018-01 - 2026-10-19. Measured: the engine reproduces the golden trade lists wherever the data is the same (first 20 trades identical in all seven, 99.8-100 % identical exits on shared entries) and the spec's headline numbers within -5 % .. +5 % (e.g. ₹100+ SELL + BUY +17.08 L vs +17.40 L, ST-swing ₹100+ positional +15.46 L vs +14.83 L, 225 / 256 grid books positive in both halves vs 218); the gaps come from data the store gained or changed since the handoff. The books are strongly positive in both halves (₹100+ positional SELL + BUY 9/9 years, DD -0.79 L) - but they are option-premium-chart strategies never forward-tested, and the ₹500+ books trade contracts that do not print on 47 % of their minutes. Nothing adopted
 
 | | |
