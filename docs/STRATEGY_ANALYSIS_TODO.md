@@ -457,6 +457,29 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S171. CHoCH / BOS on the 10 ladder CEs added up into one 1-min chart vs on the ATM CE alone, sideways vs trend days (the user, 2026-10-30: "show me the chart of cumulative candle data of 10 ce see in 1min chart see if choch and bos in that is different than atm in sideways market"). Measured 2018-01 - 2026-10-19, 2,088 sessions: the two charts give practically the same structure - about 26 CHoCH + BOS a day on each, and ~90 % of either chart's events have a same-direction event on the other within 3 minutes, on sideways days as on trend days. On sideways days 1-min CHoCH / BOS on either is noise: ~13 CHoCH + ~13 BOS a day, a third reversed within 15 minutes, and the move 15 minutes after an event goes its way 46 - 47 % of the time. Adding the strikes up does not filter it. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/basket_structure.py` (outputs `results/nifty_bt/basket_structure/` incl. `chart.html` - 14 sideways + 6 trend days, both charts, git-ignored) |
+
+**Rules, fixed before the run.** Expiry = nearest on or after the day; ATM = NIFTY 09:15 1-min close rounded to 50; basket = CE ATM .. ATM+450 fixed for the day; basket candle = the sum of the 10 contracts' 1-min open / high / low / close (a contract's last close carried over a minute it did not print; the summed high / low bound the basket's true minute range). `pivot_structure(N = 3)` on each chart's 1-min bars of the day. Day type from S170: sideways = |close - open| < 0.25 ADR20 (622 days), trend >= 0.75 ADR20 (525), between (941). Agreement = share of one chart's events with a same-direction event on the other within ±3 minutes; follow-through = move over the next 15 minutes in the event's direction (% of price); whipsaw = an opposite event within 15 minutes.
+
+| Day type | Chart | Events / day (CHoCH + BOS) | Next 15 min goes its way | Reversed within 15 min | Agreement with the other chart |
+|---|---|---|---|---|---|
+| sideways | basket | 25.7 (13.2 + 12.5) | 47.4 % | 33.4 % | 91.4 % of basket events |
+| sideways | ATM CE | 26.2 (13.4 + 12.8) | 46.5 % | 33.9 % | 89.7 % of ATM events |
+| trend | basket | 25.3 (12.1 + 13.3) | 51.6 % (BOS 54.5 %) | 30.4 % | 89.1 % |
+| trend | ATM CE | 26.2 (12.4 + 13.8) | 51.2 % (BOS 53.4 %) | 31.3 % | 86.6 % |
+| between | basket / ATM CE | 25.7 / 26.2 | 48.6 / 47.8 % | 33.7 / 33.7 % | 90.8 / 89.0 % |
+
+(Mean 15-minute moves are skewed by cheap options' large percentage moves - e.g. trend-day BOS +2.8 - 3.0 % on average with 53 - 55 % positive - so the share going its way is the reading.)
+
+**Reading.** The 10 ladder CEs move together, so their sum is the ATM CE's shape scaled up, and the swings that make CHoCH / BOS fall on the same minutes; summing removes no noise. On sideways days a 1-min CHoCH or BOS on either chart is a coin flip with a one-in-three reversal inside 15 minutes; on trend days BOS is slightly better than chance (53 - 55 %). Open (Impact Unquantified): the same comparison on 5- / 15-min bars, where S162's books found their structure.
+
+---
+
 ### S170. Rating NIFTY's intraday movement as directional / sideways at each hour, from what is known then (the user, 2026-10-30: "can we rate the strength of price movement as directional sideways so on"). Measured 2018-01 - 2026-10-19, 2,143 sessions: the rating describes the morning well but predicts little about the rest of the day - a strong trend at 10:15 continues to 15:15 only 51 - 55 % of the time (rest-of-day move with the trend -0.02 .. 0 ADR); at 11:15 it continues 62 - 69 % (+0.11 ADR). As the fixed thresholds were set, the full-day rating calls 92 % of days sideways, so they are too loose for a day-level label. For the S169 hourly ladder (intraday, no stop) it separates days sharply - sideways at 10:15 +3,875 a day (70 % winners) vs strong up / down -9,775 / -6,608 (34 - 36 % winners) - but most of that is the 09:15 - 10:15 move already lost; known before the open, gap days (|gap| >= 0.25 ADR) average +663 vs +2,201 without. Nothing adopted
 
 | | |
