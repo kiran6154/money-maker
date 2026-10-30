@@ -1,0 +1,211 @@
+{
+ "code": "ST103",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-25T19:57:48",
+   "key": "d8a6eaf0d19a",
+   "code": "b6dd404c721a",
+   "definition": {
+    "code": "ST103",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 2,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "prev_swing",
+     "entry_rule": "ema_filter_v1",
+     "exit_rule": "next_choch"
+    },
+    "ema_filter": {
+     "period": 20,
+     "price": "with_trend",
+     "slope": true,
+     "notes": "price: 'with_trend' (close on the EMA's side) or 'none'; slope: the EMA above / below its value one candle before, on the entry candle"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM2",
+      "ITM1",
+      "OTM1",
+      "OTM2",
+      "OTM3",
+      "OTM4"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14,
+     "native_scan": {
+      "choices": [
+       "ATR2",
+       "ATM",
+       "ITM1",
+       "OTM1"
+      ],
+      "every_minutes": 5,
+      "one_per_side": true
+     }
+    }
+   },
+   "changes": [],
+   "results": {
+    "all-data_1m": {
+     "FUT": {
+      "-": {
+       "trades": 8242,
+       "wins": 1224,
+       "pts": -79854.55,
+       "net_inr": -8120298.49,
+       "pf": 0.3,
+       "max_dd_inr": -8120298.49,
+       "t_stat": -37.53
+      }
+     }
+    }
+   }
+  },
+  {
+   "version": 2,
+   "at": "2026-10-25T20:02:35",
+   "key": "3dcd3767219e",
+   "code": "17d7603296f9",
+   "definition": {
+    "code": "ST103",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 2,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "prev_swing",
+     "entry_rule": "ema_filter_v1",
+     "exit_rule": "next_choch"
+    },
+    "ema_filter": {
+     "period": 20,
+     "price": "with_trend",
+     "slope": true,
+     "candles_min": 1,
+     "notes": "price: 'with_trend' (close on the EMA's side) or 'none'; slope: the EMA above / below its value one candle before, on the entry candle; candles_min: 1 = the EMA of the 1-minute closes, 5 / 15 = of the 5- / 15-minute closes, the last completed candle's value at each 1-minute candle"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM2",
+      "ITM1",
+      "OTM1",
+      "OTM2",
+      "OTM3",
+      "OTM4"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14,
+     "native_scan": {
+      "choices": [
+       "ATR2",
+       "ATM",
+       "ITM1",
+       "OTM1"
+      ],
+      "every_minutes": 5,
+      "one_per_side": true
+     }
+    }
+   },
+   "changes": [
+    "ema_filter.candles_min: None -> 1",
+    "ema_filter.notes: \"price: 'with_trend' (close on the EMA's side) or 'none'; slope: the EMA above / below its value one candle before, on the entry candle\" -> \"price: 'with_trend' (close on the EMA's side) or 'none'; slope: the EMA above / below its value one candle before, on the entry candle; candles_min: 1 = the EMA of the 1-minute closes, 5 / 15 = of the 5- / 15-minute closes, the last completed candle's value at each 1-minute candle\""
+   ],
+   "results": {
+    "all-data_1m": {
+     "FUT": {
+      "-": {
+       "trades": 8242,
+       "wins": 1224,
+       "pts": -79854.55,
+       "net_inr": -8120298.49,
+       "pf": 0.3,
+       "max_dd_inr": -8120298.49,
+       "t_stat": -37.53
+      }
+     }
+    }
+   }
+  }
+ ]
+}
