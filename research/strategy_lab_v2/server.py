@@ -38,6 +38,7 @@ def family_of(spec):
     if rule == "rl_v1": return "Learner"
     if rule == "c2c_v1": return "CHoCH to CHoCH"
     if rule == "rainbow_v1": return "Rainbow"
+    if rule == "vred_v1": return "Volatility.RED"
     return "Managed exits" if core.position_of(spec)["exit"] == "position" else "Foundation"
 
 

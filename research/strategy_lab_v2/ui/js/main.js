@@ -4,7 +4,7 @@ import { $, $$, api, post, esc, inr, num, pct, cls, tsOf, pref, TYPE_LABEL, TF_L
 import { ChartView } from "./chart.js";
 import * as T from "./tabs.js";
 
-const FAMILY_ORDER = ["Foundation", "Managed exits", "FZ gate", "Learner", "CHoCH to CHoCH", "Rainbow"];
+const FAMILY_ORDER = ["Foundation", "Managed exits", "FZ gate", "Learner", "CHoCH to CHoCH", "Rainbow", "Volatility.RED"];
 const S = { list: [], code: null, family: pref("family") || "All", search: "", sort: pref("sort") || "code",
             label: null, run: null, type: null, exp: "W", strike: null, side: "all", result: null, rows: [], tab: pref("tab") || "trades",
             jobs: {}, sortCol: null, sortDir: 1 };
