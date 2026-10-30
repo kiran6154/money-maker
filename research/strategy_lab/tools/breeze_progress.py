@@ -117,7 +117,7 @@ def build(root, cap, cache):
     idx = summarise(iu, closed)
     index_whole = all((not u.is_final) or os.path.exists(u.final_path) for u in iu)
 
-    fut = opt = None
+    fut = opt = wid = w3 = None
     by_tier, by_year = {}, {}
     grids = [grid("Index by month", iu, closed, lambda u: u.uid.split("|")[1], "month file(s)")]
     if index_whole:
@@ -125,10 +125,14 @@ def build(root, cap, cache):
             days = bs.IndexDays(root)
             cal = bs.calendar_for(root, days.sessions)
             cache["units"] = (bs.futures_units(root, cal, days.sessions, frm, today, today),
-                              bs.options_units(root, cal, days, frm, today, today, (1, 2, 3), bs.WINGS))
+                              bs.options_units(root, cal, days, frm, today, today, (1, 2, 3), bs.WINGS),
+                              bs.wide_units(root, cal, days, frm, today, today, (1, 2), bs.WINGS, bs.WIDE_POINTS),
+                              bs.wide_units(root, cal, days, frm, today, today, (1, 2), bs.WINGS, bs.WIDE3000_POINTS,
+                                            inner=bs.WIDE_POINTS, tag="wide3k"))
             cache["at"] = time.time()
-        fu, ou = cache["units"]
-        fut, opt = summarise(fu, closed), summarise(ou, closed)
+        fu, ou, wu, w3u = cache["units"]
+        fut, opt, wid = summarise(fu, closed), summarise(ou, closed), summarise(wu, closed)
+        w3 = summarise(w3u, closed)
         g_t, g_y = defaultdict(list), defaultdict(list)
         for u in ou:
             g_t[u.tier].append(u)
@@ -141,18 +145,24 @@ def build(root, cap, cache):
         for t in sorted(g_t):
             grids.append(grid(f"Options by expiry month: {('', 'weekly expiries (45 days of history each)', 'monthly expiries (75 days of history each)')[t]}",
                               g_t[t], closed, lambda u: u.expiry[:7], "files"))
+        grids.insert(1, grid(f"Far strikes (index \u00b1{bs.WIDE_POINTS:,} points) by expiry month: files = expiry x 2-session "
+                             f"chunk of the extra contracts (*.wide.parquet)", wu, closed, lambda u: u.expiry[:7], "files"))
+        grids.insert(1, grid(f"Far strikes {bs.WIDE_POINTS:,} to {bs.WIDE3000_POINTS:,} points out by expiry month: files = "
+                             f"expiry x 2-session chunk (*.wide3k.parquet)", w3u, closed, lambda u: u.expiry[:7], "files"))
 
     # pace: calls in the ledger now against the previous page build
     now = time.time()
     rate = None
-    if "calls" in cache and now > cache["calls_at"] and cache.get("calls_day") == today.isoformat():
-        rate = (calls_today - cache["calls"]) * 60.0 / (now - cache["calls_at"])
+    # all days together: a run that started yesterday keeps counting under yesterday's date after midnight
+    calls_all = sum(calls.values())
+    if "calls" in cache and now > cache["calls_at"]:
+        rate = (calls_all - cache["calls"]) * 60.0 / (now - cache["calls_at"])
         cache["rates"] = (cache.get("rates", []) + [rate])[-10:]
-    cache.update(calls=calls_today, calls_at=now, calls_day=today.isoformat())
+    cache.update(calls=calls_all, calls_at=now)
     rates = cache.get("rates", [])
     pace = sum(rates) / len(rates) if rates else None
 
-    logs = sorted(glob.glob(os.path.join(root, "_meta", "run_*.log")))
+    logs = sorted(glob.glob(os.path.join(root, "_meta", "run_*.log")), key=os.path.getmtime)
     tail, log_age = [], None
     if logs:
         log_age = now - os.path.getmtime(logs[-1])
@@ -162,21 +172,32 @@ def build(root, cap, cache):
     size = sum(os.path.getsize(os.path.join(dp, f)) for k in bs.PHASES
                for dp, _, fs in os.walk(os.path.join(root, k)) for f in fs if f.endswith(".parquet"))
 
-    left = idx[3] + (fut[3] if fut else 0) + (opt[3] if opt else 0)
+    left = idx[3] + (fut[3] if fut else 0) + (opt[3] if opt else 0) + (wid[3] if wid else 0) + (w3[3] if w3 else 0)
+    # requests really asked so far against the plan: about 83% for the main options, about 50% for far strikes
+    left_real = idx[3] + (fut[3] if fut else 0) + 0.83 * (opt[3] if opt else 0) + 0.5 * (wid[3] if wid else 0) + 0.4 * (w3[3] if w3 else 0)
+    last = " ".join(tail[-3:]).lower()
     state = ("downloading" if running else
-             "day cap reached - needs tomorrow's session token" if calls_today >= cap - 100 else
+             "stopped: Breeze session expired - needs a new token" if "expired" in last else
+             "stopped on an error - see the log below" if "giving up" in last else
              "not running" if rates else "measuring pace...")
     eta_today = ""
-    if running and pace:
-        mins = max(0, min(cap - calls_today, left)) / pace
-        eta_today = f"today's run ends in about {int(mins // 60)} h {int(mins % 60):02d} min"
-    days_left = f"{-(-left // cap)} more day(s) at {cap:,} requests a day" if index_whole else \
-        "known once the index is complete (futures and options are planned from it)"
+    days_left = "known once the index is complete (futures and options are planned from it)"
+    if index_whole:
+        days_left = ("at most (contracts that stop trading going back are skipped: about 83% of main options and "
+                     "50% of far strikes is really asked)")
+        if running and pace:
+            hrs = left_real / pace / 60
+            eta_today = f"about {hrs:,.0f} hours of downloading left at this pace"
+            days_left += f"; {hrs / 9:,.0f} days at 9 hours a day, {hrs / 24:,.1f} days non-stop"
 
     rows = [bar(idx[1], idx[0], "Index", "months")]
     if fut:
         rows.append(bar(fut[1], fut[0], "Futures", f"contracts; {fut[4]} with no data at source"))
         rows.append(bar(opt[1], opt[0], "Options", f"files; at most {opt[3]:,} requests left; {opt[4]} with no data at source"))
+        rows.append(bar(wid[1], wid[0], f"Far strikes \u00b1{bs.WIDE_POINTS:,}",
+                        f"files; at most {wid[3]:,} requests left; {wid[4]} chunks with no extra candles"))
+        rows.append(bar(w3[1], w3[0], f"Far strikes {bs.WIDE_POINTS:,}-{bs.WIDE3000_POINTS:,}",
+                        f"files; at most {w3[3]:,} requests left; {w3[4]} chunks with no extra candles"))
     else:
         rows.append('<div class="row"><div class="lab">Futures, options</div><div class="note wide">'
                     'start after the index is complete</div></div>')
@@ -213,7 +234,7 @@ table{{border-collapse:collapse}}td{{padding:2px 18px 2px 0;font-variant-numeric
 <div class="sub">ICICI Breeze &rarr; {html.escape(root)} &middot; page written {dt.datetime.now():%Y-%m-%d %H:%M:%S}, reloads every 30 s</div>
 <div class="card"><div class="kpis">
 <div class="k"><b class="state {'' if running else 'stop'}">{html.escape(state)}</b><span>{html.escape(eta_today) or '&nbsp;'}</span></div>
-<div class="k"><b>{calls_today:,} / {cap:,}</b><span>Breeze requests used today</span></div>
+<div class="k"><b>{calls_today:,}</b><span>Breeze requests made today (no daily cap set)</span></div>
 <div class="k"><b>{f'{pace:.0f}' if pace is not None else '-'} / min</b><span>current pace</span></div>
 <div class="k"><b>{left:,}{'' if index_whole else '+'}</b><span>requests still to make: {html.escape(days_left)}</span></div>
 <div class="k"><b>{size / 1e6:,.1f} MB</b><span>data on disk</span></div>

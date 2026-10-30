@@ -39,7 +39,9 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 
 import pyarrow as pa
@@ -48,8 +50,40 @@ import pyarrow.parquet as pq
 DEFAULT_ROOT = "D:/nifty_data"
 DEFAULT_DAY_CAP = 4800
 MIN_GAP = 0.65            # seconds between two Breeze calls (a module global so the selftest can skip the waits)
+WORKERS = 1               # requests in flight at once (--workers); starts are still MIN_GAP apart
+WIDE_POINTS = 1500        # --phase wide: points beyond the index's range over an expiry's life
+WIDE3000_POINTS = 3000    # --phase wide3000: the band beyond --phase wide, out to this many points (2026-10-28)
+LIMIT_WAIT, LIMIT_TRIES = 60, 30                # Breeze says rate limit: wait a minute, slow down, try again
+SPEED_FILE = None         # <root>/_meta/speed.json: {"<phase>": {"gap": s, "workers": n}} read while running
+SPEED_KEY = "options"
+_speed_seen = [0.0, None]
+
+
+def speed_check(force=False):
+    """Pick up a changed gap / worker count from speed.json (at most every 20 s), so the pace can be tuned without a
+    restart (a restart after midnight needs a new Breeze token). A rate-limit slow-down is kept until the file changes."""
+    global MIN_GAP, WORKERS
+    now = time.monotonic()
+    if not SPEED_FILE or (not force and now - _speed_seen[0] < 20):
+        return
+    _speed_seen[0] = now
+    try:
+        mt = os.path.getmtime(SPEED_FILE)
+        if mt == _speed_seen[1]:
+            return
+        with open(SPEED_FILE, encoding="utf-8") as fh:
+            cfg = json.load(fh).get(SPEED_KEY) or {}
+        _speed_seen[1] = mt
+        gap, workers = float(cfg.get("gap", MIN_GAP)), max(1, int(cfg.get("workers", WORKERS)))
+        if (gap, workers) != (MIN_GAP, WORKERS):
+            print(f"  {dt.datetime.now():%H:%M:%S} speed.json: gap {MIN_GAP:.2f} -> {gap:.2f} s, workers {WORKERS} -> {workers}")
+            MIN_GAP, WORKERS = gap, workers
+    except (OSError, ValueError) as ex:
+        print(f"  speed.json not read: {ex}")
 BACKOFF = 5               # seconds x attempt after an exception
 ATTEMPTS = 4
+NET_TIMEOUT = 60          # seconds a single request may take
+NET_WAIT, NET_TRIES = 60, 120                   # no network: wait a minute and try again, for up to two hours
 TRUNCATE_AT = 1000        # a response this long may be cut short: the range is refetched one calendar day at a time
 PROGRESS_EVERY = 50
 EARLY_STOP = 4            # an options unit whose first 4 requests all return nothing is marked no_data_at_source
@@ -74,11 +108,25 @@ CREATE TABLE IF NOT EXISTS units (unit_id TEXT PRIMARY KEY, kind TEXT, status TE
 CREATE TABLE IF NOT EXISTS empty_requests (unit_id TEXT, kind TEXT, expiry TEXT, strike INT, right TEXT,
     from_date TEXT, to_date TEXT, message TEXT, asked_at TEXT);
 CREATE TABLE IF NOT EXISTS calls (day TEXT PRIMARY KEY, n INT);
+CREATE TABLE IF NOT EXISTS failed_requests (unit_id TEXT, kind TEXT, expiry TEXT, strike INT, right TEXT,
+    from_date TEXT, to_date TEXT, error TEXT, failed_at TEXT, resolved_at TEXT);
 """
 
 
 class DayCapReached(Exception):
     pass
+
+
+class RequestFailed(Exception):
+    """One request kept failing for a reason that is not the session: logged, its unit is retried later."""
+
+    def __init__(self, kind, a, b, meta, error):
+        super().__init__(error)
+        self.kind, self.a, self.b, self.meta, self.error = kind, a, b, meta, error
+
+
+FATAL = ("session", "expired", "authenticat", "api key", "api_key", "unauthor", "401", "403")
+RETRY_PASSES = 3          # at the end of a phase, units with failed requests are tried again this many times
 
 
 # ----------------------------------------------------------------------------- dates and the expiry calendar
@@ -356,7 +404,54 @@ def phase_units(root, phase, frm, to, today, tiers, wings):
     cal = calendar_for(root, idx.sessions)
     if phase == "futures":
         return futures_units(root, cal, idx.sessions, frm, to, today)
+    if phase == "wide":
+        return wide_units(root, cal, idx, frm, to, today, tiers, wings, WIDE_POINTS)
+    if phase == "wide3000":
+        return wide_units(root, cal, idx, frm, to, today, tiers, wings, WIDE3000_POINTS, inner=WIDE_POINTS, tag="wide3k")
     return options_units(root, cal, idx, frm, to, today, tiers, wings)
+
+
+def wide_units(root, cal, idx, frm, to, today, tiers, wings, points, inner=0, tag="wide"):
+    """The far strikes of expiries already in the store (asked for by the strategy lab, 2026-10-24): every 50-point
+    strike from (lowest index low - points) to (highest index high + points) over the expiry's whole window, CE and PE,
+    minus the contracts the options phase already plans for that expiry. Same 2-session chunks as the options files,
+    stored beside them as <from>__<to>.wide.parquet (store_reader reads every *.parquet in the expiry folder), so no
+    candle is stored twice. Only expiries whose folder already holds option files; newest first; pruned the same way.
+    With inner > 0 (--phase wide3000) the strikes inside the inner band are left out as well - --phase wide owns them -
+    and the files are <from>__<to>.<tag>.parquet with unit ids opt<tag>|..."""
+    base = options_units(root, cal, idx, frm, to, today, tiers, wings)
+    have = defaultdict(set)
+    chunks = defaultdict(list)
+    for u in base:
+        have[u.expiry].update((m[1], m[2]) for _, _, m in u.requests)
+        chunks[u.expiry].append(u)
+    out = []
+    for e in sorted(chunks, reverse=True):
+        folder = os.path.join(root, "options", "1minute", e[:4], e)
+        if not glob.glob(os.path.join(folder, "*__*[0-9].parquet")):
+            continue                                       # the expiry itself is not downloaded yet
+        us = sorted(chunks[e], key=lambda u: u.start, reverse=True)          # newest chunk first (pruning needs it)
+        span = [(u.start, os.path.basename(u.final_path)[:-len(".parquet")].split("__")[1]) for u in us]
+        days = [d for d in idx.sessions if d in idx.lohi and any(a <= d <= b for a, b in span)]
+        lo, hi = min(idx.lohi[d][0] for d in days), max(idx.lohi[d][1] for d in days)
+        ks = range(math.floor(lo / STRIKE_STEP) * STRIKE_STEP - points,
+                   math.ceil(hi / STRIKE_STEP) * STRIKE_STEP + points + 1, STRIKE_STEP)
+        k_lo, k_hi = (math.floor(lo / STRIKE_STEP) * STRIKE_STEP - inner,
+                      math.ceil(hi / STRIKE_STEP) * STRIKE_STEP + inner) if inner else (None, None)
+        mid = sum(idx.lohi[d][0] + idx.lohi[d][1] for d in days) / 2 / len(days)
+        extra = sorted(((k, r) for k in ks for r in ("CE", "PE") if (k, r) not in have[e]
+                        and not (inner and k_lo <= k <= k_hi)),
+                       key=lambda kr: (abs(kr[0] - mid), kr[0], kr[1] != "CE"))
+        if not extra:
+            continue
+        uids = [f"opt{tag}|{e}|{a}|{b}" for a, b in span]
+        for i, (u, (a, b)) in enumerate(zip(us, span)):
+            w = Unit(uids[i], "options", os.path.join(folder, f"{a}__{b}.{tag}.parquet"),
+                     os.path.join(folder, f"{a}__{b}.{tag}.partial.parquet"), True, [(a, b, (e, k, r)) for k, r in extra],
+                     expiry=e, tier=u.tier, start=a, early_stop=False)
+            w.later = uids[max(0, i - PRUNE_AFTER):i][::-1]                   # the chunks just after it in time
+            out.append(w)
+    return out
 
 
 def is_done(st, u):
@@ -378,9 +473,38 @@ def make_client():
         from breeze_connect import BreezeConnect
     except ImportError:
         sys.exit("breeze_connect is not installed: pip install breeze-connect")
+    import socket
+    socket.setdefaulttimeout(NET_TIMEOUT)         # the SDK sets no timeout: a dropped connection would hang for ever
+    import requests.adapters as ra                # ... and requests passes timeout=None explicitly, which overrides
+    if not getattr(ra.HTTPAdapter.send, "_breeze_store", False):      # the socket default: force one on every send
+        orig = ra.HTTPAdapter.send
+
+        def send(self, request, **kw):
+            if kw.get("timeout") is None:
+                kw["timeout"] = NET_TIMEOUT
+            return orig(self, request, **kw)
+        send._breeze_store = True
+        ra.HTTPAdapter.send = send
+    keep_awake()
     br = BreezeConnect(api_key=key)
     br.generate_session(api_secret=secret, session_token=token)
     return br
+
+
+def keep_awake():
+    """Ask Windows not to sleep while this process runs (a sleeping PC stalled the 2026-10-10 run). Process-scoped:
+    the request ends with the process; no power setting is changed."""
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)      # ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+    except Exception:
+        pass
+
+
+def is_network_error(ex):
+    t = f"{type(ex).__name__}: {ex}".lower()
+    return any(k in t for k in ("connection", "timed out", "timeout", "getaddrinfo", "name resolution",
+                                "max retries", "remotedisconnected", "ssl", "temporarily"))
 
 
 def breeze_args(kind, a, b, meta):
@@ -476,15 +600,16 @@ class Store:
         self.day = day or dt.date.today().isoformat()
         self.write = write
         self.last_call = 0.0
+        self.lock = threading.RLock()
         self.calls_total = 0
         self.cur_unit, self.cur_rows, self.unit_calls = "", 0, 0
         self.padded = 0
         path = os.path.join(root, "_meta", "ledger.sqlite")
         if write:
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            self.db = sqlite3.connect(path)
+            self.db = sqlite3.connect(path, check_same_thread=False, timeout=120)
         elif os.path.exists(path):
-            self.db = sqlite3.connect(path)
+            self.db = sqlite3.connect(path, check_same_thread=False, timeout=120)
         else:
             self.db = sqlite3.connect(":memory:")
         self.db.executescript(LEDGER_SCHEMA)
@@ -511,12 +636,17 @@ class Store:
             self.client = make_client()
         kw = breeze_args(kind, a, b, meta)
         resp = None
-        for attempt in range(1, ATTEMPTS + 1):
-            wait = MIN_GAP - (time.monotonic() - self.last_call)
-            if wait > 0:
-                time.sleep(wait)
-            self.last_call = time.monotonic()
-            self._count()
+        global MIN_GAP
+        attempt = net = limited = 0
+        while True:
+            attempt += 1
+            with self.lock:                       # starts are MIN_GAP apart whatever the number of workers
+                speed_check()
+                wait = MIN_GAP - (time.monotonic() - self.last_call)
+                if wait > 0:
+                    time.sleep(wait)
+                self.last_call = time.monotonic()
+                self._count()
             try:
                 resp = self.client.get_historical_data_v2(**kw)
                 # only a clean "no candles" answer may count as missing data: a throttle, an expired session or
@@ -529,11 +659,29 @@ class Store:
                         raise RuntimeError(f"Breeze status {status}: {etext[:200]}")
                 break
             except Exception as ex:
-                print(f"  retry {attempt}/{ATTEMPTS} {kind} {a}..{b}: {type(ex).__name__}: {ex}")
+                if is_network_error(ex) and net < NET_TRIES:      # the network, not Breeze: wait it out
+                    net += 1
+                    attempt -= 1
+                    print(f"  {dt.datetime.now():%H:%M:%S} no network ({net}/{NET_TRIES}), waiting {NET_WAIT} s: "
+                          f"{type(ex).__name__}: {str(ex)[:120]}")
+                    time.sleep(NET_WAIT if MIN_GAP else 0)
+                    continue
+                if "limit" in str(ex).lower() and limited < LIMIT_TRIES:      # throttled: back off and slow down
+                    limited += 1
+                    attempt -= 1
+                    with self.lock:
+                        MIN_GAP = min(0.65, MIN_GAP * 1.5) if MIN_GAP else 0.0
+                    print(f"  {dt.datetime.now():%H:%M:%S} rate limited by Breeze ({limited}/{LIMIT_TRIES}), waiting "
+                          f"{LIMIT_WAIT} s, gap now {MIN_GAP:.2f} s: {str(ex)[:160]}")
+                    time.sleep(LIMIT_WAIT if MIN_GAP else 0)
+                    continue
+                print(f"  retry {attempt}/{ATTEMPTS} {kind} {a}..{b}: {type(ex).__name__}: {str(ex)[:300]}")
                 if attempt == ATTEMPTS:
-                    if self.write:
-                        self.db.commit()
-                    sys.exit("giving up after repeated errors; run again to resume")
+                    if any(k in str(ex).lower() for k in FATAL):          # the login itself: nothing more can work
+                        if self.write:
+                            self.db.commit()
+                        sys.exit("giving up after repeated errors; run again to resume")
+                    raise RequestFailed(kind, a, b, meta, f"{type(ex).__name__}: {str(ex)[:300]}")
                 time.sleep(BACKOFF * attempt)
         rows = resp.get("Success") if isinstance(resp, dict) else None
         if not isinstance(rows, list):
@@ -570,6 +718,16 @@ class Store:
             return "all"
         return {(k, r) for k, r in self.db.execute("SELECT strike, right FROM empty_requests WHERE unit_id=?", (uid,))}
 
+    def record_failure(self, u, f):
+        """Keep the failed request (the unit is left undone and tried again at the end of the phase / next run)."""
+        if not self.write:
+            return
+        e, k, r = meta_fields(f.kind, f.meta)
+        with self.lock:
+            self.db.execute("INSERT INTO failed_requests VALUES (?,?,?,?,?,?,?,?,?,NULL)",
+                            (u.uid, f.kind, e, k, r, f.a, f.b, f.error, dt.datetime.now().isoformat(timespec="seconds")))
+            self.db.commit()
+
     def record_unit(self, u, status, requests, rows, dup, fname, notes, empties):
         if not self.write:
             return
@@ -581,6 +739,7 @@ class Store:
                             (u.uid, u.kind, e, k, r, sa, sb, msg or "", now))
         self.db.execute("INSERT OR REPLACE INTO units VALUES (?,?,?,?,?,?,?,?,?)",
                         (u.uid, u.kind, status, requests, rows, dup, fname, now, "; ".join(notes)))
+        self.db.execute("UPDATE failed_requests SET resolved_at=? WHERE unit_id=? AND resolved_at IS NULL", (now, u.uid))
         self.db.commit()
 
 
@@ -609,9 +768,10 @@ def run_unit(st, u):
                 if everything or (meta[1], meta[2]) in dead:
                     empties.append((a, b, meta, SKIP_NOTE))
             requests = [] if everything else [r for r in u.requests if (r[2][1], r[2][2]) not in dead]
-    for i, (a, b, meta) in enumerate(requests, 1):
-        got = 0
-        for sa, sb, rows, err in st.fetch(u.kind, a, b, meta):
+    def absorb(req, pieces):
+        a, b, meta = req
+        got, err = 0, ""
+        for sa, sb, rows, err in pieces:
             got += len(rows)
             if not rows and u.kind != "options":
                 empties.append((sa, sb, meta, err))
@@ -620,9 +780,20 @@ def run_unit(st, u):
         if u.kind == "options" and not got:          # one line per contract with no candles in the whole chunk
             empties.append((a, b, meta, err))
         st.cur_rows = len(recs)
-        if u.early_stop and i == EARLY_STOP and not recs:
+
+    head = requests[:EARLY_STOP] if u.early_stop else []          # the early-stop probe stays one at a time
+    for i, req in enumerate(head, 1):
+        absorb(req, st.fetch(u.kind, *req))
+        if i == EARLY_STOP and not recs:
             status = "no_data_at_source"
-            break
+    rest = requests[len(head):] if status is None else []
+    if WORKERS > 1 and len(rest) > 1:
+        with ThreadPoolExecutor(WORKERS) as pool:                 # answers are taken in request order
+            for req, pieces in zip(rest, pool.map(lambda r: st.fetch(u.kind, *r), rest)):
+                absorb(req, pieces)
+    else:
+        for req in rest:
+            absorb(req, st.fetch(u.kind, *req))
     if status is None:
         status = "ok" if recs else "empty"
     uniq, dup, differing = dedupe(u.kind, recs)
@@ -652,10 +823,31 @@ def run_phases(st, phases, frm, to, tiers, wings):
         units = phase_units(st.root, ph, frm, to, today, tiers, wings)
         todo = sum(1 for u in units if not is_done(st, u))
         print(f"phase {ph}: {len(units)} units, {todo} to do")
+        failed = []
         for u in units:
-            run_unit(st, u)
+            try:
+                run_unit(st, u)
+            except RequestFailed as f:            # logged; nothing of the unit is stored; carry on and come back
+                st.record_failure(u, f)
+                failed.append(u)
+                print(f"  {dt.datetime.now():%H:%M:%S} FAILED {u.uid}: {f.error[:200]} - unit left for the retry pass")
+        for n in range(1, RETRY_PASSES + 1):
+            if not failed:
+                break
+            print(f"retry pass {n}: {len(failed)} unit(s) with failed requests")
+            again = []
+            for u in failed:
+                try:
+                    run_unit(st, u)
+                except RequestFailed as f:
+                    st.record_failure(u, f)
+                    again.append(u)
+            failed = again
+        if failed:
+            print(f"{len(failed)} unit(s) still failing after {RETRY_PASSES} retry passes; they stay to do for the "
+                  f"next run and are listed in _missing/failed.csv")
         if ph == "options":
-            drop_stale_partials(st, units, today)
+            drop_stale_partials(st, units, today)                 # (not for "wide": it writes no partials)
 
 
 def drop_stale_partials(st, units, today):
@@ -702,6 +894,13 @@ def write_missing(st):
                     "message", "asked_at"])
         w.writerows(rows)
     os.replace(tmp, path)
+    fp = os.path.join(st.root, "_missing", "failed.csv")              # every failed request, resolved or not
+    with open(fp + ".tmp", "w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["unit_id", "kind", "expiry", "strike", "right", "from_date", "to_date", "error", "failed_at",
+                    "resolved_at"])
+        w.writerows(st.db.execute("SELECT * FROM failed_requests ORDER BY failed_at"))
+    os.replace(fp + ".tmp", fp)
 
 
 # ----------------------------------------------------------------------------- CLI modes
@@ -717,7 +916,7 @@ def plan(root, frm, to, phases, tiers, wings, cap):
         reqs = sum(len(u.requests) for u in todo)
         print(f"{ph}: {len(units)} units in range, {len(todo)} to do, {reqs} requests to do, "
               f"about {math.ceil(reqs / cap)} day(s) at a cap of {cap}")
-        if ph == "options" and todo:
+        if ph in ("options", "wide", "wide3000") and todo:
             per_tier, per_year = defaultdict(lambda: [0, 0]), defaultdict(lambda: [0, 0])
             for u in todo:
                 per_tier[u.tier][0] += 1
@@ -957,14 +1156,17 @@ def selftest():
 # ----------------------------------------------------------------------------- main
 
 def main(argv=None):
+    global MIN_GAP, WORKERS
     p = argparse.ArgumentParser(description="Breeze NIFTY 1-minute candles into a Parquet store.")
     p.add_argument("--root", default=DEFAULT_ROOT)
-    p.add_argument("--phase", default="all", choices=["index", "futures", "options", "all"])
+    p.add_argument("--phase", default="all", choices=["index", "futures", "options", "wide", "wide3000", "all"])
     p.add_argument("--from", dest="frm", default="2018-01-01")
     p.add_argument("--to", default=None)
     p.add_argument("--day-cap", type=int, default=DEFAULT_DAY_CAP)
     p.add_argument("--tiers", default="1,2", help="options: 1 = weekly expiries, 2 = monthly expiries")
     p.add_argument("--no-prune", action="store_true", help="options: ask every contract in every chunk")
+    p.add_argument("--gap", type=float, default=MIN_GAP, help="seconds between the starts of two requests")
+    p.add_argument("--workers", type=int, default=WORKERS, help="requests in flight at once")
     p.add_argument("--wings", type=int, default=WINGS)
     p.add_argument("--plan", action="store_true")
     p.add_argument("--probe", action="store_true")
@@ -983,6 +1185,9 @@ def main(argv=None):
         sys.exit("--tiers takes a subset of 1,2")
     global PRUNE
     PRUNE = not args.no_prune
+    MIN_GAP, WORKERS = args.gap, max(1, args.workers)
+    global SPEED_FILE, SPEED_KEY
+    SPEED_FILE, SPEED_KEY = os.path.join(args.root, "_meta", "speed.json"), args.phase
     phases = PHASES if args.phase == "all" else (args.phase,)
     if args.plan:
         return plan(args.root, frm, to, phases, tiers, args.wings, args.day_cap)
