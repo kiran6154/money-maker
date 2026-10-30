@@ -1,0 +1,4 @@
+pos_kind,n,kept,kept_share,net,mean_net,win_rate,pts,mean_pts,winners,big,huge,kept_net,skipped_net,kept_mean,skipped_mean,kept_win_rate,skipped_win_rate,big_skipped
+REENTER,140,140,1.0,-174340.19,-1245.29,0.1429,-420.0,-3.0,20,4,4,-174340.19,0.0,-1245.29,,0.1429,,0.0
+TAKE,605,605,1.0,-592923.59,-980.04,0.1686,645.85,1.07,102,40,21,-592923.59,0.0,-980.04,,0.1686,,0.0
+none,3757,0,0.0,-3382822.17,-900.41,0.1496,8493.2,2.26,562,250,121,0.0,-3382822.17,,-900.41,,0.1496,250.0

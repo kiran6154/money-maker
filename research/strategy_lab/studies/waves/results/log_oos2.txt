@@ -1,0 +1,130 @@
+start
+== study.py primary 5 2026
+D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\study.py:266: RuntimeWarning: Mean of empty slice
+  d[f"mean_mfe{h}"] = float(np.nanmean(g[f"mfe{h}"]))
+D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\study.py:267: RuntimeWarning: Mean of empty slice
+  d[f"mean_mae{h}"] = float(np.nanmean(g[f"mae{h}"]))
+2026 tf5: 18794 events, 14s
+== study.py primary 1 2025
+2025 tf1: 135197 events, 80s
+== study.py primary 3 2025
+2025 tf3: 42589 events, 14s
+== study.py primary 10 2025
+2025 tf10: 13508 events, 7s
+== study.py primary 15 2025
+2025 tf15: 9750 events, 6s
+== study.py primary 1 2026
+2026 tf1: 92678 events, 33s
+== study.py primary 3 2026
+2026 tf3: 30106 events, 10s
+== study.py primary 10 2026
+2026 tf10: 10319 events, 7s
+== study.py primary 15 2026
+2026 tf15: 7537 events, 5s
+== stages.py geometry 2025
+geometry done 4 s
+== stages.py decomp 2025
+decomp done 3 s
+== stages.py dte 2025
+D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\stages.py:462: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  for (db, money, right), z in b.groupby(["dteb", "money", "right"]):
+dte done 1 s
+== stages.py splits 2025
+D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\stages.py:619: RuntimeWarning: Mean of empty slice
+  n=int(ok.sum()), mean_net_log=float(np.nanmean(nl)), mean_rs_per_lot=float(np.nanmean(rs)),
+D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\stages.py:622: RuntimeWarning: Mean of empty slice
+  net_excess_log=float(np.nanmean(nl - rr + pm.xJ30)) if entry == "close" else None)
+D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\stages.py:619: RuntimeWarning: Mean of empty slice
+  n=int(ok.sum()), mean_net_log=float(np.nanmean(nl)), mean_rs_per_lot=float(np.nanmean(rs)),
+D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\stages.py:619: RuntimeWarning: Mean of empty slice
+  n=int(ok.sum()), mean_net_log=float(np.nanmean(nl)), mean_rs_per_lot=float(np.nanmean(rs)),
+D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\stages.py:622: RuntimeWarning: Mean of empty slice
+  net_excess_log=float(np.nanmean(nl - rr + pm.xJ30)) if entry == "close" else None)
+D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\stages.py:619: RuntimeWarning: Mean of empty slice
+  n=int(ok.sum()), mean_net_log=float(np.nanmean(nl)), mean_rs_per_lot=float(np.nanmean(rs)),
+D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\stages.py:619: RuntimeWarning: Mean of empty slice
+  n=int(ok.sum()), mean_net_log=float(np.nanmean(nl)), mean_rs_per_lot=float(np.nanmean(rs)),
+D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\stages.py:622: RuntimeWarning: Mean of empty slice
+  net_excess_log=float(np.nanmean(nl - rr + pm.xJ30)) if entry == "close" else None)
+D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\stages.py:619: RuntimeWarning: Mean of empty slice
+  n=int(ok.sum()), mean_net_log=float(np.nanmean(nl)), mean_rs_per_lot=float(np.nanmean(rs)),
+splits done 9 s
+== stages.py volume 2025
+volume done 24 s
+== stages.py dataset 2025
+921 rows, 48 plots
+dataset done 5 s
+== stages.py geometry 2026
+geometry done 3 s
+== stages.py decomp 2026
+decomp done 3 s
+== stages.py dte 2026
+D:\office\stocks\workspace\money-maker\research\strategy_lab\studies\waves\stages.py:462: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  for (db, money, right), z in b.groupby(["dteb", "money", "right"]):
+dte done 0 s
+== stages.py splits 2026
+splits done 6 s
+== stages.py volume 2026
+volume done 12 s
+== stages.py dataset 2026
+733 rows, 30 plots
+dataset done 4 s
+== stages.py null 2025
+val null rep 0
+val null rep 1
+val null rep 2
+val null rep 3
+val null rep 4
+val null rep 5
+val null rep 6
+val null rep 7
+val null rep 8
+val null rep 9
+val null rep 10
+val null rep 11
+val null rep 12
+val null rep 13
+val null rep 14
+val null rep 15
+val null rep 16
+val null rep 17
+val null rep 18
+val null rep 19
+null done 61 s
+== stages.py null 2026
+blind null rep 0
+blind null rep 1
+blind null rep 2
+blind null rep 3
+blind null rep 4
+blind null rep 5
+blind null rep 6
+blind null rep 7
+blind null rep 8
+blind null rep 9
+blind null rep 10
+blind null rep 11
+blind null rep 12
+blind null rep 13
+blind null rep 14
+blind null rep 15
+blind null rep 16
+blind null rep 17
+blind null rep 18
+blind null rep 19
+null done 52 s
+== stages.py grid 2025
+val L 8 done
+val L 10 done
+val L 12 done
+val L 14 done
+val L 16 done
+grid done 116 s
+== stages.py grid 2026
+blind L 8 done
+blind L 10 done
+blind L 12 done
+blind L 14 done
+blind L 16 done
+grid done 112 s
+OOS_END

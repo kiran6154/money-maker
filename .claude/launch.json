@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "strategy-lab-v2",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "research/strategy_lab_v2/server.py",
+        "8780"
+      ],
+      "port": 8780
+    },
+    {
+      "name": "nifty-bt-results",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m", "http.server", "8791", "--bind", "127.0.0.1",
+        "--directory", "research/strategy_lab_v2/results/nifty_bt"
+      ],
+      "port": 8791
+    }
+  ]
+}

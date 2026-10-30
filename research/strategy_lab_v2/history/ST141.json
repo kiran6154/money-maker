@@ -1,0 +1,115 @@
+{
+ "code": "ST141",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-26T15:59:33",
+   "key": "f5700cd3e974",
+   "code": "593958749ca4",
+   "definition": {
+    "code": "ST141",
+    "timeframe": "minute",
+    "underlying": "INDEX",
+    "warmup_days": 1,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "optsell15_v1",
+     "exit_rule": "next_choch"
+    },
+    "s11": {
+     "var": "F_choch_rsi",
+     "K": 3,
+     "gate": "fixed",
+     "universe": "clean",
+     "slots": 2
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "none",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 0.5
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 1.0
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 1.0
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "MONTHLY"
+     ],
+     "expiry_min_days": 0,
+     "strike_step": 50,
+     "strike_choices": [
+      "OTM"
+     ],
+     "strike_default": "OTM",
+     "atr_period": 14
+    }
+   },
+   "changes": [],
+   "results": {
+    "all-data_1m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "M-OTM": {
+       "trades": 96,
+       "wins": 86,
+       "pts": 7405.7,
+       "net_inr": 473091.99,
+       "pf": 3.24,
+       "max_dd_inr": -134089.87,
+       "t_stat": 4.47
+      }
+     }
+    },
+    "2018-23_1m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "M-OTM": {
+       "trades": 48,
+       "wins": 41,
+       "pts": 1419.15,
+       "net_inr": 88282.65,
+       "pf": 1.44,
+       "max_dd_inr": -134089.87,
+       "t_stat": 0.95
+      }
+     }
+    },
+    "2024-26_1m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "M-OTM": {
+       "trades": 48,
+       "wins": 45,
+       "pts": 5986.55,
+       "net_inr": 384809.34,
+       "pf": 32.15,
+       "max_dd_inr": -8688.82,
+       "t_stat": 9.07
+      }
+     }
+    }
+   }
+  }
+ ]
+}

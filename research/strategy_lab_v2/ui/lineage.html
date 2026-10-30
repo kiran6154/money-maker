@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Strategy tree</title>
+<link rel="stylesheet" href="css/app.css">
+<style>
+  #l-tree { overflow-x: auto; }
+  .tree { margin: 0; padding: 0; list-style: none; }
+  .node { min-width: 250px; overflow-wrap: anywhere; }
+  @media (max-width: 700px) { .tree ul { margin-left: 4px; padding-left: 8px; } }
+  .tree ul { list-style: none; margin: 0 0 0 14px; padding: 0 0 0 16px; border-left: 2px solid var(--line); }
+  .node { margin: 8px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+  .node.root { border-left: 4px solid var(--accent, #2962ff); }
+  .node h4 { margin: 0 0 4px; font-size: 15px; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+  .node h4 a { text-decoration: none; }
+  .chg { margin: 2px 0 6px; }
+  .kv { display: grid; grid-template-columns: 74px 1fr; gap: 2px 10px; font-size: 13px; }
+  .kv b { color: var(--muted); font-weight: 600; }
+  .diff { margin: 6px 0 0; font-size: 12.5px; }
+  .diff table { border-collapse: collapse; } .diff td { padding: 1px 10px 1px 0; vertical-align: top; }
+  .diff td:first-child { color: var(--muted); } .diff .old { color: var(--muted); text-decoration: line-through; }
+  .study { margin-top: 6px; padding: 6px 8px; border-radius: 8px; background: rgba(120,130,150,.09); font-size: 13px; }
+  .study.nt { background: rgba(245,165,36,.16); }
+  .tag { display: inline-block; padding: 0 6px; border-radius: 6px; font-size: 11px; background: rgba(120,130,150,.18); margin-right: 6px; }
+  .hit { outline: 2px solid #f5a524; }
+  .bar { position: sticky; top: 0; z-index: 3; background: var(--bg); padding: 10px 0; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .bar input[type=search] { flex: 1 1 320px; min-width: 220px; }
+  details > summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
+</style></head>
+<body>
+<header class="top"><h1>Strategy tree <span class="muted">v2</span></h1>
+  <a class="toplink" href="./">← Strategy Lab</a><a class="toplink" href="explorer.html">Chart explorer</a> <a class="toplink" href="charts.html">Charts</a></header>
+<main>
+  <div class="card">
+    <h3>Which strategy came from which, what changed, and what else was tried</h3>
+    <p class="muted small" id="l-intro">Each box is a strategy; a box inside another was derived from it. "Changed" is the one idea that makes it a new strategy; "Settings that differ" is every setting that is different from its parent, read from the two strategy files. "Also tried" lists variations that were measured on it without becoming a strategy, and things that were asked about and not tried.</p>
+    <div class="bar">
+      <input id="l-q" type="search" placeholder="search everything: 1R, target, trail, sweep, SMA, not tried, ST3 …">
+      <label class="small"><input type="checkbox" id="l-diff"> show settings that differ</label>
+      <label class="small"><input type="checkbox" id="l-st" checked> show "also tried"</label>
+      <span id="l-count" class="muted small"></span>
+    </div>
+    <div id="l-tree"></div>
+  </div>
+</main>
+<script type="module" src="js/lineage.js"></script>
+</body></html>

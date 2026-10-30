@@ -1,0 +1,15 @@
+{
+  "_about": "Charge schedules referenced by strategy types. Percentages are of turnover (price x quantity). Verify current rates.",
+  "ZERODHA_NFO_FUT": {
+    "segment": "NSE F&O futures", "effective_from": "2024-10-01",
+    "brokerage_pct": 0.03, "brokerage_cap": 20.0, "brokerage_flat": 0,
+    "stt_buy_pct": 0.0, "stt_sell_pct": 0.02, "exchange_pct": 0.00173, "sebi_pct": 0.0001, "stamp_buy_pct": 0.002, "gst_pct": 18.0,
+    "notes": "brokerage 0.03% or Rs20/order (lower); STT 0.02% sell; NSE txn 0.00173%; SEBI Rs10/crore; stamp 0.002% buy; GST 18% on brokerage+txn+SEBI."
+  },
+  "ZERODHA_NFO_OPT": {
+    "segment": "NSE F&O options", "effective_from": "2024-10-01",
+    "brokerage_pct": 0, "brokerage_cap": 0, "brokerage_flat": 20.0,
+    "stt_buy_pct": 0.0, "stt_sell_pct": 0.1, "exchange_pct": 0.03503, "sebi_pct": 0.0001, "stamp_buy_pct": 0.003, "gst_pct": 18.0,
+    "notes": "brokerage flat Rs20/order; STT 0.1% of sell premium; NSE txn 0.03503% of premium; SEBI Rs10/crore; stamp 0.003% buy; GST 18% on brokerage+txn+SEBI."
+  }
+}

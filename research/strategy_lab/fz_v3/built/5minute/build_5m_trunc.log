@@ -1,0 +1,215 @@
+TRUNCATED at 2025-06-30 12:00:00: 67192 bars -> C:\Users\Admin\AppData\Local\Temp\claude\D--office-stocks-workspace-money-maker\f477107e-5dd8-4bd5-8444-6fb6c59c6ba7\scratchpad\fz_v3\5minute\trunc_20250630_120000
+bars 67192, sessions 900, first 2021-10-01 09:15:00, last 2025-06-30 12:00:00, front_month==0 bars 0, zero-volume bars 2, fm_na bars 2
+[    3.52s] load
+[   32.40s] engine.run
+swings 20163, events 5973 (CHoCH 1071, BOS 4902), setups 718, trades 718, engine-skipped 0
+[   32.47s] price trades
+[   38.10s] fz.run
+[   38.18s] fz build_trades
+fz: zones 3523, ledger 718, watches 331, positions 284 (TAKE 200, REENTER 84)
+[   49.20s] features
+  wrote bars: 67192 rows x 19 cols
+  wrote sessions: 900 rows x 7 cols
+  wrote swings: 20163 rows x 8 cols
+  wrote events: 5973 rows x 14 cols
+  wrote setups: 718 rows x 6 cols
+  wrote skipped: 0 rows x 0 cols
+  wrote trades: 718 rows x 30 cols
+  wrote fz_trades: 284 rows x 33 cols
+  wrote fz_card: 67192 rows x 31 cols
+  wrote fz_ledger: 718 rows x 42 cols
+  wrote fz_zones: 3523 rows x 14 cols
+  wrote fz_visits: 10761 rows x 13 cols
+  wrote fz_watches: 331 rows x 12 cols
+  wrote features: 718 rows x 186 cols
+[   66.00s] write
+{
+ "IS": {
+  "sessions": 900,
+  "bars": 67192,
+  "setups": 718,
+  "engine_skipped": 0,
+  "foundation": {
+   "n": 718,
+   "net_inr": -82547.12,
+   "mean_net_inr": -114.97,
+   "wins": 159,
+   "pts": 10182.95,
+   "open_at_end": 1,
+   "exit_reasons": {
+    "next_choch": 342,
+    "stop_loss": 375,
+    "open": 1
+   },
+   "median_cost_inr": 1027.6950000000002
+  },
+  "gate_at_setup": {
+   "TAKE": 200,
+   "WATCH": 331,
+   "BLOCK": 186,
+   "REENTER": 1
+  },
+  "outcome_gate": {
+   "TAKE": 200,
+   "WATCH": 248,
+   "BLOCK": 186,
+   "REENTER": 84
+  },
+  "fz_positions": {
+   "TAKE": 200,
+   "REENTER": 84,
+   "book": {
+    "n": 284,
+    "net_inr": -78818.44,
+    "mean_net_inr": -277.53,
+    "wins": 57,
+    "pts": 3323.05,
+    "open_at_end": 0,
+    "exit_reasons": {
+     "next_choch": 119,
+     "stop_loss": 138,
+     "open": 0
+    },
+    "median_cost_inr": 1027.9850000000001
+   }
+  },
+  "block_reasons": {
+   "new": 137,
+   "open_pierce": 25,
+   "clock": 11,
+   "hunt_fade": 13
+  },
+  "reads": {
+   "LEAVE": 406,
+   "THIN": 41,
+   "NEW": 73,
+   "PENDING": 168,
+   "FIRST_PRINT": 6,
+   "REJECT": 6,
+   "RECYCLE": 11,
+   "ACCEPTED": 3,
+   "HUNT": 4
+  }
+ },
+ "OOS": {
+  "sessions": 0,
+  "bars": 0,
+  "setups": 0,
+  "engine_skipped": 0,
+  "foundation": {
+   "n": 0,
+   "net_inr": 0,
+   "mean_net_inr": null,
+   "wins": 0,
+   "pts": 0,
+   "open_at_end": 0,
+   "exit_reasons": {
+    "next_choch": 0,
+    "stop_loss": 0,
+    "open": 0
+   },
+   "median_cost_inr": null
+  },
+  "gate_at_setup": {
+   "TAKE": 0,
+   "WATCH": 0,
+   "BLOCK": 0,
+   "REENTER": 0
+  },
+  "outcome_gate": {
+   "TAKE": 0,
+   "WATCH": 0,
+   "BLOCK": 0,
+   "REENTER": 0
+  },
+  "fz_positions": {
+   "TAKE": 0,
+   "REENTER": 0,
+   "book": {
+    "n": 0,
+    "net_inr": 0,
+    "mean_net_inr": null,
+    "wins": 0,
+    "pts": 0,
+    "open_at_end": 0,
+    "exit_reasons": {
+     "next_choch": 0,
+     "stop_loss": 0,
+     "open": 0
+    },
+    "median_cost_inr": null
+   }
+  },
+  "block_reasons": {},
+  "reads": {}
+ },
+ "ALL": {
+  "sessions": 900,
+  "bars": 67192,
+  "setups": 718,
+  "engine_skipped": 0,
+  "foundation": {
+   "n": 718,
+   "net_inr": -82547.12,
+   "mean_net_inr": -114.97,
+   "wins": 159,
+   "pts": 10182.95,
+   "open_at_end": 1,
+   "exit_reasons": {
+    "next_choch": 342,
+    "stop_loss": 375,
+    "open": 1
+   },
+   "median_cost_inr": 1027.6950000000002
+  },
+  "gate_at_setup": {
+   "TAKE": 200,
+   "WATCH": 331,
+   "BLOCK": 186,
+   "REENTER": 1
+  },
+  "outcome_gate": {
+   "TAKE": 200,
+   "WATCH": 248,
+   "BLOCK": 186,
+   "REENTER": 84
+  },
+  "fz_positions": {
+   "TAKE": 200,
+   "REENTER": 84,
+   "book": {
+    "n": 284,
+    "net_inr": -78818.44,
+    "mean_net_inr": -277.53,
+    "wins": 57,
+    "pts": 3323.05,
+    "open_at_end": 0,
+    "exit_reasons": {
+     "next_choch": 119,
+     "stop_loss": 138,
+     "open": 0
+    },
+    "median_cost_inr": 1027.9850000000001
+   }
+  },
+  "block_reasons": {
+   "new": 137,
+   "open_pierce": 25,
+   "clock": 11,
+   "hunt_fade": 13
+  },
+  "reads": {
+   "LEAVE": 406,
+   "THIN": 41,
+   "NEW": 73,
+   "PENDING": 168,
+   "FIRST_PRINT": 6,
+   "REJECT": 6,
+   "RECYCLE": 11,
+   "ACCEPTED": 3,
+   "HUNT": 4
+  }
+ }
+}
+columns: ['setup_i', 'time', 'date', 'session_idx', 'session_bar', 'hhmm', 'hour', 'minute_of_session', 'dow', 'dir', 'choch_i', 'choch_time', 'bars_since_choch', 'choch_flip', 'choch_trend_before', 'choch_same_session', 'open', 'high', 'low', 'close', 'contract', 'days_to_expiry', 'split', 'in_warmup', 'sl', 'sl_dist_pts', 'sl_dist_atr', 'engine_skipped', 'atr14', 'range12_pts', 'range12_atr', 'range36_pts', 'range36_atr', 'bar_range_pts', 'bar_body_pts', 'bar_range_atr', 'close_pos_in_bar', 'sess_open', 'close_vs_sess_open_pts', 'sess_range_sofar_pts', 'sess_range_sofar_atr', 'close_pos_in_sess_range', 'gap_pts', 'prev_close', 'ret_6_pts', 'ret_12_pts', 'ret_36_pts', 'n_events_asof', 'n_choch_since_bos', 'n_bos_since_choch', 'n_flip_choch_since_bos', 'bars_since_bos', 'last_bos_dir', 'last_bos_same_session', 'bars_since_prev_choch', 'last_choch_dir', 'alternations_last6', 'last6_kinds', 'choch_run', 'n_events_last_36', 'n_choch_last_36', 'n_events_today', 'n_choch_today', 'n_bos_today', 'vol', 'vol_med20', 'vol_med60', 'vol_ratio20', 'vol_ratio60', 'vol_na', 'hv3_bars_since', 'hv3_dir', 'hv3_dir_agree', 'hv3_ratio', 'hv3_high_held', 'hv3_low_held', 'sess_vol_vs_prev_sess', 'prot_lvl', 'dist_prot_pts', 'dist_prot_atr', 'last_sh_px', 'last_sl_px', 'dist_sh_pts', 'dist_sl_pts', 'last_sh_bars_ago', 'last_sl_bars_ago', 'choch_lvl', 'dist_choch_lvl_pts', 'dist_choch_lvl_atr', 'n_swings_last_36', 'choch_bar_range', 'choch_bar_range_atr', 'move_since_choch_pts', 'today_n_closed_asof', 'today_net_asof', 'today_n_stops_asof', 'today_n_setups_before', 'last_closed_net_asof', 'last_closed_reason_asof', 'card_out_run', 'card_out_side', 'card_wick_depth', 'card_cluster_sit', 'card_prev_bars', 'card_prev_vol', 'card_last_leave_failed', 'card_touches', 'card_last_hunt_at', 'card_last_hunt_dir', 'card_last_reject_at', 'card_last_reject_dir', 'card_leave_side', 'card_first_clock_lived', 'fz_zone_id', 'fz_zone_kind', 'fz_band_lo', 'fz_band_hi', 'fz_visit_n', 'fz_this_bars', 'fz_this_vol', 'fz_first_bars', 'fz_first_vol', 'fz_vol_na', 'fz_first_vol_na', 'fz_read', 'fz_left_id', 'fz_in_id', 'fz_level_in_band', 'fz_gate', 'fz_block_reason', 'fz_branch', 'fz_take_why', 'fz_entered_zone_id', 'fz_entered_visit_n', 'fz_entered_read', 'fz_leave_vol_ok', 'fz_leave_kind', 'fz_watch_kind', 'fz_watch_band_id', 'fzpost_outcome_gate', 'fzpost_refused', 'fzpost_watch_outcome', 'fzpost_reenter_reason', 'fzpost_fill_used', 'fzpost_fill_bar', 'fzpost_fill_delay_bars', 'fzpost_edge_dist_pts', 'fzpost_armed_bars', 'fzpost_rearmed_bars', 'fzpost_sl_bar', 'fz_band_width', 'fz_pos_in_band', 'fz_dist_band_edge_ahead', 'fz_dist_band_edge_behind', 'fwd_ret_5_pts', 'fwd_ret_5_dir_pts', 'fwd_ret_15_pts', 'fwd_ret_15_dir_pts', 'fwd_ret_30_pts', 'fwd_ret_30_dir_pts', 'fnd_traded', 'fnd_exit_i', 'fnd_exit_time', 'fnd_exit_px', 'fnd_exit_reason', 'fnd_open', 'fnd_pts', 'fnd_gross_inr', 'fnd_charges_inr', 'fnd_slip_inr', 'fnd_cost_inr', 'fnd_net_inr', 'fnd_win', 'fnd_bars_held', 'fnd_sessions_held', 'fnd_crosses_roll', 'fnd_mfe_pts', 'fnd_mae_pts', 'fzpos_kind', 'fzpos_entry_i', 'fzpos_entry_time', 'fzpos_exit_i', 'fzpos_exit_time', 'fzpos_exit_reason', 'fzpos_pts', 'fzpos_net_inr']
+done {'load': 3.52, 'engine.run': 32.4, 'price trades': 32.47, 'fz.run': 38.1, 'fz build_trades': 38.18, 'features': 49.2, 'write': 66.0, 'total': 66.19}

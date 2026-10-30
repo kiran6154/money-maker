@@ -1,0 +1,351 @@
+{
+ "code": "ST30",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-10T15:36:02",
+   "key": "838a76af94b4",
+   "code": "feda8f168076",
+   "definition": {
+    "code": "ST30",
+    "timeframe": "5minute",
+    "underlying": "FUT",
+    "warmup_days": 2,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "rainbow_v1",
+     "exit_rule": "next_choch"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 3,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "position",
+     "stop": {
+      "futures_pts": 50,
+      "option_pct": 5
+     },
+     "trail": {
+      "start_r": 3,
+      "lag_r": 2
+     },
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM1",
+      "OTM1"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14
+    },
+    "rainbow": {
+     "notes": "Picked 2026-09-30 by the pre-registered grid (corrected after review) in studies/rainbow_grid.py (S53): 48 variants, in sample Jan 5 - Jun 30 2026, out of sample Jul 1 - Sep 25 2026; rule = highest in-sample net among variants with >= 30 positions and PF > 1, which none met: the highest in-sample net was taken. Every number here is the grid's; the exit block is the lab's position handling.",
+     "kind": "widner",
+     "levels": 10,
+     "period": 2,
+     "trigger": "pullback",
+     "fan": "full",
+     "osc_min": 25,
+     "lookback": 10,
+     "pullback_bars": 5,
+     "entry_from": "09:20",
+     "entry_until": "14:30",
+     "exit": "none"
+    }
+   },
+   "changes": [],
+   "results": {
+    "this-month_5m": {
+     "FUT": {
+      "-": {
+       "trades": 8,
+       "wins": 4,
+       "pts": 353.9,
+       "net_inr": 59338.56,
+       "pf": 2.15,
+       "max_dd_inr": -34178.85,
+       "t_stat": 0.94
+      }
+     }
+    },
+    "all-data_5m": {
+     "FUT": {
+      "-": {
+       "trades": 2899,
+       "wins": 1035,
+       "pts": -14319.4,
+       "net_inr": -5558551.34,
+       "pf": 0.72,
+       "max_dd_inr": -5631682.95,
+       "t_stat": -7.15
+      }
+     }
+    }
+   }
+  },
+  {
+   "version": 2,
+   "at": "2026-10-11T00:10:31",
+   "key": "0e5cea3bd686",
+   "code": "008da76e3ad7",
+   "definition": {
+    "code": "ST30",
+    "timeframe": "5minute",
+    "underlying": "FUT",
+    "warmup_days": 2,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "rainbow_v1",
+     "exit_rule": "next_choch"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 3,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "position",
+     "stop": {
+      "futures_pts": 50,
+      "option_pct": 5
+     },
+     "trail": {
+      "start_r": 3,
+      "lag_r": 2
+     },
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM1",
+      "OTM1"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14
+    },
+    "rainbow": {
+     "notes": "Picked 2026-09-30 by the pre-registered grid (corrected after review) in studies/rainbow_grid.py (S53): 48 variants, in sample Jan 5 - Jun 30 2026, out of sample Jul 1 - Sep 25 2026; rule = highest in-sample net among variants with >= 30 positions and PF > 1, which none met: the highest in-sample net was taken. Every number here is the grid's; the exit block is the lab's position handling.",
+     "kind": "widner",
+     "levels": 10,
+     "period": 2,
+     "trigger": "pullback",
+     "fan": "full",
+     "osc_min": 25,
+     "lookback": 10,
+     "pullback_bars": 5,
+     "entry_from": "09:20",
+     "entry_until": "14:30",
+     "exit": "none"
+    }
+   },
+   "changes": [
+    "code changed (core.py, the strategy file or its family module)"
+   ],
+   "results": {
+    "this-month_5m": {
+     "FUT": {
+      "-": {
+       "trades": 8,
+       "wins": 4,
+       "pts": 353.9,
+       "net_inr": 59338.56,
+       "pf": 2.15,
+       "max_dd_inr": -34178.85,
+       "t_stat": 0.94
+      }
+     }
+    },
+    "all-data_5m": {
+     "FUT": {
+      "-": {
+       "trades": 2899,
+       "wins": 1035,
+       "pts": -14319.4,
+       "net_inr": -5558551.34,
+       "pf": 0.72,
+       "max_dd_inr": -5631682.95,
+       "t_stat": -7.15
+      }
+     }
+    }
+   }
+  },
+  {
+   "version": 3,
+   "at": "2026-10-11T14:43:48",
+   "key": "05c4e2e45a8a",
+   "code": "ed8b3e1e0541",
+   "definition": {
+    "code": "ST30",
+    "timeframe": "5minute",
+    "underlying": "FUT",
+    "warmup_days": 2,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "rainbow_v1",
+     "exit_rule": "next_choch"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 3,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "position",
+     "stop": {
+      "futures_pts": 50,
+      "option_pct": 5
+     },
+     "trail": {
+      "start_r": 3,
+      "lag_r": 2
+     },
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM1",
+      "OTM1"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14
+    },
+    "rainbow": {
+     "notes": "Picked 2026-09-30 by the pre-registered grid (corrected after review) in studies/rainbow_grid.py (S53): 48 variants, in sample Jan 5 - Jun 30 2026, out of sample Jul 1 - Sep 25 2026; rule = highest in-sample net among variants with >= 30 positions and PF > 1, which none met: the highest in-sample net was taken. Every number here is the grid's; the exit block is the lab's position handling.",
+     "kind": "widner",
+     "levels": 10,
+     "period": 2,
+     "trigger": "pullback",
+     "fan": "full",
+     "osc_min": 25,
+     "lookback": 10,
+     "pullback_bars": 5,
+     "entry_from": "09:20",
+     "entry_until": "14:30",
+     "exit": "none"
+    }
+   },
+   "changes": [
+    "code changed (core.py, the strategy file or its family module)"
+   ],
+   "results": {
+    "this-month_5m": {
+     "FUT": {
+      "-": {
+       "trades": 8,
+       "wins": 4,
+       "pts": 323.4,
+       "net_inr": 53391.92,
+       "pf": 2.03,
+       "max_dd_inr": -37083.71,
+       "t_stat": 0.87
+      }
+     }
+    },
+    "all-data_5m": {
+     "FUT": {
+      "-": {
+       "trades": 2899,
+       "wins": 1035,
+       "pts": -14659.9,
+       "net_inr": -5624945.7,
+       "pf": 0.72,
+       "max_dd_inr": -5690162.07,
+       "t_stat": -7.26
+      }
+     }
+    }
+   }
+  }
+ ]
+}

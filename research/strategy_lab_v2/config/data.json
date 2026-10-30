@@ -1,0 +1,32 @@
+{
+  "_about": "Input candle files shared by every strategy (read only; v2 caches them as numpy files under cache/). Other timeframes are built from the 1-minute files. Index and futures come from the Breeze Parquet store (D:/nifty_data) through tools/build_from_store.py, which writes cache/store/ (re-run it to pick up newly downloaded data). config/data.v1.json is the previous set (the files v1 reads); tests/test_parity.py uses it.",
+  "history_from": null,
+  "_history_from": "sessions before this date are ignored (All data = from here); null = the whole files",
+  "fz_memory_from": "2026-01-01",
+  "_fz_memory_from": "the FZ strategies (5-8) remember bands from this session on and resolve their backtests against the sessions from it (v1: its history_from); every FZ window is a date slice of one run from here",
+  "futures": {
+    "minute": "cache/store/niftyfut_nearmonth_minute.csv",
+    "5minute": "cache/store/niftyfut_nearmonth_5minute.csv"
+  },
+  "spot": {
+    "minute": "cache/store/nifty50_minute.csv",
+    "5minute": "cache/store/nifty50_5minute.csv"
+  },
+  "options": {
+    "weekly_dir": "D:/nifty/data",
+    "kite_dir": "D:/nifty/options/NIFTY_2026-09-29",
+    "kite_expiry": "2026-09-29",
+    "kite_prefix": "NIFTY26SEP",
+    "extra_dirs": [
+      "cache/store/options"
+    ],
+    "_extra_dirs": "more option folders in the weekly_dir layout; an expiry found in several is read from the first one with a full chain (the store's expiries are exported only once their whole window is downloaded)"
+  },
+  "intraday_close": [
+    {
+      "from": "2026-06-01",
+      "time": "15:14"
+    }
+  ],
+  "_intraday_close": "from that session on every intraday position is squared off at this time when it is earlier than the strategy's own square-off (an entry at or after it is not taken); positional runs are not affected. Set by the user 2026-10-11. Not in data.v1.json, so the v1 parity test still squares off as v1 does"
+}

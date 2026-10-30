@@ -1,0 +1,193 @@
+{
+ "code": "ST104",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-25T23:44:02",
+   "key": "9a98929f8b0a",
+   "code": "c56e74d23c7f",
+   "definition": {
+    "code": "ST104",
+    "timeframe": "5minute",
+    "underlying": "FUT",
+    "warmup_days": 8,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "schmitt_v1",
+     "exit_rule": "reverse"
+    },
+    "schmitt": {
+     "fast": 2,
+     "slow": 30,
+     "nt_max": 60,
+     "nt_min": 2,
+     "macro_len": 200,
+     "floor": 0.5,
+     "median_cap": 200,
+     "median_mult": 4,
+     "sigmoid_k": 4.0,
+     "mult_base": 1.618,
+     "mult_range": 2.0,
+     "fill": "close",
+     "notes": "the script's constants, named; fill: 'close' = the signal candle's close (Pine: the next open)"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": null,
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM2",
+      "ITM1",
+      "OTM1",
+      "OTM2",
+      "OTM3",
+      "OTM4"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14,
+     "native_scan": {
+      "choices": [
+       "ATR2",
+       "ATM",
+       "ITM1",
+       "OTM1"
+      ],
+      "every_minutes": 5,
+      "one_per_side": true
+     }
+    }
+   },
+   "changes": [],
+   "results": {
+    "all-data_5m": {
+     "FUT": {
+      "-": {
+       "trades": 1417,
+       "wins": 533,
+       "pts": 11670.85,
+       "net_inr": 270349.7,
+       "pf": 1.05,
+       "max_dd_inr": -475739.51,
+       "t_stat": 0.56
+      }
+     }
+    },
+    "all-data_5m_intra": {
+     "FUT": {
+      "-": {
+       "trades": 1410,
+       "wins": 588,
+       "pts": -2944.9,
+       "net_inr": -677476.99,
+       "pf": 0.8,
+       "max_dd_inr": -703030.95,
+       "t_stat": -2.91
+      }
+     }
+    },
+    "all-data_1m": {
+     "FUT": {
+      "-": {
+       "trades": 6290,
+       "wins": 1993,
+       "pts": -42502.8,
+       "net_inr": -4905183.22,
+       "pf": 0.68,
+       "max_dd_inr": -4989868.26,
+       "t_stat": -10.11
+      }
+     }
+    },
+    "all-data_15m": {
+     "FUT": {
+      "-": {
+       "trades": 582,
+       "wins": 217,
+       "pts": -7277.05,
+       "net_inr": -673447.7,
+       "pf": 0.84,
+       "max_dd_inr": -940915.84,
+       "t_stat": -1.42
+      }
+     }
+    },
+    "first-half_5m": {
+     "FUT": {
+      "-": {
+       "trades": 713,
+       "wins": 265,
+       "pts": 3331.8,
+       "net_inr": 26180.35,
+       "pf": 1.01,
+       "max_dd_inr": -284987.64,
+       "t_stat": 0.08
+      }
+     }
+    },
+    "second-half_5m": {
+     "FUT": {
+      "-": {
+       "trades": 700,
+       "wins": 268,
+       "pts": 8610.25,
+       "net_inr": 262714.18,
+       "pf": 1.08,
+       "max_dd_inr": -421446.84,
+       "t_stat": 0.72
+      }
+     }
+    },
+    "1y_5m": {
+     "FUT": {
+      "-": {
+       "trades": 146,
+       "wins": 65,
+       "pts": 6066.1,
+       "net_inr": 326062.17,
+       "pf": 1.52,
+       "max_dd_inr": -143374.39,
+       "t_stat": 1.68
+      }
+     }
+    }
+   }
+  }
+ ]
+}

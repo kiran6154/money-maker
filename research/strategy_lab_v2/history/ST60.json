@@ -1,0 +1,127 @@
+{
+ "code": "ST60",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-11T15:33:38",
+   "key": "18573284fd8b",
+   "code": "78c060741e33",
+   "definition": {
+    "code": "ST60",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 2,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "close",
+     "avwap_weight": "volume",
+     "sl_rule": "prev_swing",
+     "entry_rule": "straddle_v1",
+     "exit_rule": "next_choch"
+    },
+    "straddle": {
+     "mode": "both_sides",
+     "lookback": 5,
+     "target_pts": 20,
+     "notes": "the day-open ATM pair and its candles: strategies/atm_straddle.py"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATM"
+     ],
+     "strike_default": "ATM",
+     "atr_period": 14
+    }
+   },
+   "changes": [],
+   "results": {
+    "all-data_1m": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 352,
+       "wins": 154,
+       "pts": -604.1,
+       "net_inr": -62196.72,
+       "pf": 0.62,
+       "max_dd_inr": -65704.06,
+       "t_stat": -3.36
+      }
+     }
+    },
+    "first-half_1m": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 209,
+       "wins": 96,
+       "pts": -283.9,
+       "net_inr": -32156.41,
+       "pf": 0.67,
+       "max_dd_inr": -34483.84,
+       "t_stat": -2.27
+      }
+     }
+    },
+    "second-half_1m": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 143,
+       "wins": 58,
+       "pts": -320.2,
+       "net_inr": -30040.31,
+       "pf": 0.56,
+       "max_dd_inr": -32386.5,
+       "t_stat": -2.51
+      }
+     }
+    },
+    "1m_1m": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 82,
+       "wins": 38,
+       "pts": -143.05,
+       "net_inr": -14742.33,
+       "pf": 0.63,
+       "max_dd_inr": -17088.53,
+       "t_stat": -1.56
+      }
+     }
+    }
+   }
+  }
+ ]
+}

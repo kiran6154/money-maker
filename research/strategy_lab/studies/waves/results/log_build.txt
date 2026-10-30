@@ -1,0 +1,15 @@
+2025 1 1220054
+Traceback (most recent call last):
+numpy._core._exceptions._ArrayMemoryError: Unable to allocate 1.40 MiB for an array with shape (2, 91449) and data type datetime64[ms]
+2025 5 244089
+Traceback (most recent call last):
+numpy._core._exceptions._ArrayMemoryError: Unable to allocate 552. KiB for an array with shape (70651,) and data type float64
+Traceback (most recent call last):
+numpy._core._exceptions._ArrayMemoryError: Unable to allocate 21.7 MiB for an array with shape (1, 2840581) and data type int64
+Traceback (most recent call last):
+numpy._core._exceptions._ArrayMemoryError: Unable to allocate 21.7 MiB for an array with shape (1, 2840581) and data type object
+Traceback (most recent call last):
+numpy._core._exceptions._ArrayMemoryError: Unable to allocate 21.7 MiB for an array with shape (2840581, 1) and data type int64
+2026 10 91175
+2026 15 59984
+BUILD_END

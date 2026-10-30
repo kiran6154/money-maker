@@ -1,0 +1,289 @@
+{
+ "code": "ST102",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-25T19:27:21",
+   "key": "fea9db04666a",
+   "code": "eed08918b3a3",
+   "definition": {
+    "code": "ST102",
+    "timeframe": "5minute",
+    "underlying": "FUT",
+    "warmup_days": 3,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "choch_candle",
+     "entry_rule": "vred_v1",
+     "exit_rule": "own"
+    },
+    "vred": {
+     "setup": "major_sr",
+     "sides": "both",
+     "sma_fast": 20,
+     "sma_slow": 50,
+     "atr": 14,
+     "pivot_k": 3,
+     "major_k": 10,
+     "run_min": 3,
+     "run_max": 5,
+     "retrace_max": 0.6,
+     "support_band": [
+      0.4,
+      0.6
+     ],
+     "near_atr": 0.5,
+     "zone_tol_atr": 0.25,
+     "base_min": 6,
+     "base_max": 20,
+     "base_atr": 1.5,
+     "buffer_atr": 0.1,
+     "wide_atr": 1.5,
+     "body_pct": 0.6,
+     "stall_pct": 0.3,
+     "stall_max": 3,
+     "rally_atr": 3.0,
+     "cons_min": 2,
+     "cons_max": 10,
+     "cons_pct": 0.1,
+     "climax_run": 5,
+     "ext_atr": 2.0,
+     "retrace_target": 0.5,
+     "time_stop": 3,
+     "lookback": 300,
+     "trigger_within": 3,
+     "trail_pct": 0.75,
+     "trail_after": 1,
+     "notes": "every number the page leaves open; strategies/vred.py PARAMS says which words each stands for"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM2",
+      "ITM1",
+      "OTM1",
+      "OTM2",
+      "OTM3",
+      "OTM4"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14,
+     "native_scan": {
+      "choices": [
+       "ATR2",
+       "ATM",
+       "ITM1",
+       "OTM1"
+      ],
+      "every_minutes": 5,
+      "one_per_side": true
+     }
+    }
+   },
+   "changes": [],
+   "results": {
+    "all-data_5m": {
+     "FUT": {
+      "-": {
+       "trades": 740,
+       "wins": 210,
+       "pts": -5959.0,
+       "net_inr": -641412.27,
+       "pf": 0.46,
+       "max_dd_inr": -656263.04,
+       "t_stat": -8.61
+      }
+     }
+    },
+    "first-half_5m": {},
+    "second-half_5m": {
+     "FUT": {
+      "-": {
+       "trades": 363,
+       "wins": 100,
+       "pts": -3424.0,
+       "net_inr": -377877.62,
+       "pf": 0.41,
+       "max_dd_inr": -382278.99,
+       "t_stat": -7.02
+      }
+     }
+    }
+   }
+  },
+  {
+   "version": 2,
+   "at": "2026-10-25T19:29:28",
+   "key": "99350110e535",
+   "code": "2df7be95063d",
+   "definition": {
+    "code": "ST102",
+    "timeframe": "5minute",
+    "underlying": "FUT",
+    "warmup_days": 3,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "choch_candle",
+     "entry_rule": "vred_v1",
+     "exit_rule": "own"
+    },
+    "vred": {
+     "setup": "major_sr",
+     "sides": "both",
+     "sma_fast": 20,
+     "sma_slow": 50,
+     "atr": 14,
+     "pivot_k": 3,
+     "major_k": 10,
+     "run_min": 3,
+     "run_max": 5,
+     "retrace_max": 0.6,
+     "support_band": [
+      0.4,
+      0.6
+     ],
+     "near_atr": 0.5,
+     "zone_tol_atr": 0.25,
+     "base_min": 6,
+     "base_max": 20,
+     "base_atr": 1.5,
+     "buffer_atr": 0.1,
+     "wide_atr": 1.5,
+     "body_pct": 0.6,
+     "stall_pct": 0.3,
+     "stall_max": 3,
+     "rally_atr": 3.0,
+     "cons_min": 2,
+     "cons_max": 10,
+     "cons_pct": 0.1,
+     "climax_run": 5,
+     "ext_atr": 2.0,
+     "retrace_target": 0.5,
+     "time_stop": 3,
+     "lookback": 300,
+     "trigger_within": 3,
+     "trail_pct": 0.75,
+     "trail_after": 1,
+     "notes": "every number the page leaves open; strategies/vred.py PARAMS says which words each stands for"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM2",
+      "ITM1",
+      "OTM1",
+      "OTM2",
+      "OTM3",
+      "OTM4"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14,
+     "native_scan": {
+      "choices": [
+       "ATR2",
+       "ATM",
+       "ITM1",
+       "OTM1"
+      ],
+      "every_minutes": 5,
+      "one_per_side": true
+     }
+    }
+   },
+   "changes": [
+    "code changed (core.py, the strategy file or its family module)"
+   ],
+   "results": {
+    "first-half_5m": {
+     "FUT": {
+      "-": {
+       "trades": 377,
+       "wins": 110,
+       "pts": -2535.0,
+       "net_inr": -263534.65,
+       "pf": 0.51,
+       "max_dd_inr": -278968.79,
+       "t_stat": -5.14
+      }
+     }
+    }
+   }
+  }
+ ]
+}

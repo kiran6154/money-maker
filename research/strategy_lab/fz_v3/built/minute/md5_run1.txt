@@ -1,0 +1,7 @@
+fb8ddb5dddc41c6d9b40e3ed3dceefcd *card.csv
+143f4ec03117a587b154b8a67463912f *ledger.csv
+c36cc0422bd6e5c424770f4f202c2021 *zones.csv
+d57ee3bb427bb54dedb71520f1552a4a *visits.csv
+bce71c9d63f3c261b7fbb264b020e3b1 *watches.csv
+065e13ede024351d5cf1ae0c13cba008 *decisions.csv
+8f9ad80d8d0f6e002c9e6402f6fa4b39 *fz_trades.csv

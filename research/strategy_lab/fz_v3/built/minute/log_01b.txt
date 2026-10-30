@@ -1,0 +1,63 @@
+{
+ "load_s": 17.0,
+ "rss_after_load_mb": 532.3,
+ "peak_after_load_mb": 571.4,
+ "engine_run_s": 958.0,
+ "rss_after_engine_mb": 143.2,
+ "bars": 443826,
+ "sessions": 1188,
+ "swings": 130843,
+ "events": 39608,
+ "choch": 8054,
+ "bos": 31554,
+ "setups": 5326,
+ "trades": 5326,
+ "skipped": 0,
+ "front_month_mixed_days": [],
+ "sessions_not_front_month": [],
+ "fm_na_bars": 4,
+ "by_split": {
+  "IS": {
+   "n": 4502,
+   "net": -4150085.95,
+   "wins": 684,
+   "pts": 8719.05,
+   "charges": 1790524.2,
+   "stop_loss": 1421,
+   "next_choch": 3081,
+   "open": 0,
+   "mean_net": -921.83,
+   "win_rate": 0.1519,
+   "mean_cost_inr": 1047.72
+  },
+  "OOS": {
+   "n": 824,
+   "net": -741841.63,
+   "wins": 128,
+   "pts": 2740.3,
+   "charges": 384361.13,
+   "stop_loss": 290,
+   "next_choch": 533,
+   "open": 1,
+   "mean_net": -900.29,
+   "win_rate": 0.1553,
+   "mean_cost_inr": 1116.46
+  }
+ },
+ "is_sessions": 1026,
+ "oos_sessions": 162,
+ "lot": 65,
+ "slippage_pts_per_side": 5.0,
+ "rules": {
+  "break_mode": "touch",
+  "choch_mode": "touch",
+  "avwap_weight": "volume",
+  "sl_rule": "prev_swing",
+  "entry_rule": "setup_v1",
+  "exit_rule": "next_choch"
+ },
+ "date_from": "2021-10-01",
+ "date_to": "2026-09-25",
+ "is_end": "2025-12-31",
+ "note": "run times and RSS copied from 01_engine.py's console log; its in-script summary crashed (string cells) after all data files were written, fixed in the script afterwards; counts here are re-read from the files"
+}

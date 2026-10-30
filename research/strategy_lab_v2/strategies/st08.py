@@ -1,0 +1,209 @@
+"""ST8 - Strategy 8: Living indicator on rooms: a room is a band the market sat in (cluster of closes), retired after N sessions without a visit; Strategy 2 SETUPs (5-minute) gated by the room card TAKE / WATCH / BLOCK, re-entry only after a held leave of the room. Fills, stop and exits as Strategy 2; REENTER adds a band-reclaim exit.
+
+Ported from v1 strategies/strategy_8.json; the gate is strategies/foundation_zone.py (with v1's FZ modules in
+strategies/fz_lib/), shared by ST5-ST8; v2 reproduces v1's trades and FZ payload (tests/test_parity.py).
+"""
+import core
+
+fzg = core.family("foundation_zone")
+ENTRY_RULES, FIRST_SESSION = fzg.ENTRY_RULES, fzg.FIRST_SESSION
+refuse, signals, gate, payload = fzg.refuse, fzg.signals, fzg.gate, fzg.payload
+
+SPEC = {'code': 'ST8',
+ 'name': 'FZ gate · rooms · 5m',
+ 'description': 'Living indicator on rooms: a room is a band the market sat in (cluster of closes), retired after N '
+                'sessions without a visit; Strategy 2 SETUPs (5-minute) gated by the room card TAKE / WATCH / BLOCK, '
+                're-entry only after a held leave of the room. Fills, stop and exits as Strategy 2; REENTER adds a '
+                'band-reclaim exit.',
+ 'timeframe': '5minute',
+ 'warmup_days': 5,
+ 'rules': {'break_mode': 'touch',
+           'choch_mode': 'touch',
+           'avwap_weight': 'volume',
+           'sl_rule': 'choch_candle',
+           'entry_rule': 'fz_v2',
+           'exit_rule': 'next_choch'},
+ 'lot_size': 65,
+ 'capital': {'futures_margin': 120000, 'short_option_margin': 150000},
+ 'position': {'lots': 1, 'lock': 'strike', 'scale_out': []},
+ 'types': {'FUT': {'charge_code': 'ZERODHA_NFO_FUT', 'slippage_pts': 5.0},
+           'OPT_FUT_SIGNAL': {'charge_code': 'ZERODHA_NFO_OPT', 'slippage_pts': 0.5},
+           'OPT_NATIVE': {'charge_code': 'ZERODHA_NFO_OPT', 'slippage_pts': 0.5}},
+ 'options': {'expiry_types': ['WEEKLY', 'MONTHLY'],
+             'expiry_min_days': 1,
+             'strike_step': 50,
+             'strike_choices': ['ATR2', 'ATM', 'ITM2', 'ITM1', 'OTM1', 'OTM2', 'OTM3', 'OTM4'],
+             'strike_default': 'ATR2',
+             'atr_period': 14},
+ 'backtests': [{'label': 'All data',
+                'kind': 'all',
+                'default': True,
+                'notes': 'every session with data, after the warm-up'},
+               {'label': 'Design period',
+                'kind': 'named',
+                'from': '2026-08-26',
+                'to': '2026-09-25',
+                'notes': 'the rules were built on this window'},
+               {'label': 'Unseen test',
+                'kind': 'named',
+                'from': '2026-07-08',
+                'to': '2026-08-25',
+                'notes': 'unseen for Foundation rules; used for FZ threshold selection and gate-state design, so not '
+                         'out of sample for FZ (volume-blind: not the front month)'},
+               {'label': '1M', 'kind': 'preset', 'preset': '1M'},
+               {'label': '3M', 'kind': 'preset', 'preset': '3M'}],
+ 'fz': {'5minute': {'band_half_width': {'value': 10, 'source': 'decision:1-2', 'statistic': ''},
+                    'birth_a_source': {'value': 'none',
+                                       'source': 'evaluation:v2',
+                                       'statistic': '',
+                                       'note': 'rooms are born from sits only; protected_level / every_swing stay '
+                                               'available as diagnostics'},
+                    'birth_b': {'value': 'band', 'source': 'decision:1', 'statistic': ''},
+                    'cluster_bars': {'value': 4,
+                                     'source': 'user brief',
+                                     'statistic': '',
+                                     'note': 'the 20-minute sit the user bound (6 was a guess)'},
+                    'cluster_width': {'value': 20, 'source': 'decision:1', 'statistic': ''},
+                    'merge_overlap': {'value': 0.5,
+                                      'source': 'decision:1',
+                                      'statistic': '',
+                                      'note': 'rooms: a sit overlapping a live room by at least half the width is a '
+                                              "visit of that room; otherwise a new room, clipped at live rooms' edges"},
+                    'zone_max_age_sessions': {'value': None,
+                                              'source': 'evaluation:D06',
+                                              'statistic': '',
+                                              'note': 'band model chart view only; rooms retire through '
+                                                      'room_max_age_sessions'},
+                    'room_model': {'value': 'rooms',
+                                   'source': 'evaluation:v2 (user brief)',
+                                   'statistic': '',
+                                   'note': 'a room is a band the market sat in; see FZ.md v2'},
+                    'drift_birth': {'value': False,
+                                    'source': 'evaluation:v2',
+                                    'statistic': '',
+                                    'note': 'no drift births: a room is born only on the transition into a sit'},
+                    'room_overlap': {'value': 'supersede',
+                                     'source': 'user decision 2026-09-27 call 2 (vs rooms not visited this session)',
+                                     'statistic': 'same rule as Strategy 7 (the clip reading was rejected on the 1m '
+                                                  'tape)',
+                                     'note': 'a sit overlapping live rooms by less than merge_overlap is a new '
+                                             "full-width room and retires them; alternative 'clip' (edges stop at the "
+                                             "neighbours')"},
+                    'room_max_age_sessions': {'value': 3,
+                                              'source': 'evaluation:v2',
+                                              'statistic': '',
+                                              'note': '"yesterday\'s shelf, not a two-month hash" (user brief)'},
+                    'visit_min_bars': {'value': 1,
+                                       'source': 'evaluation:v2',
+                                       'statistic': '',
+                                       'note': 'one 5-minute close inside is a visit'},
+                    'accept_bars': {'value': 2, 'source': 'spec:s2', 'statistic': ''},
+                    'accept_vol_ratio': {'value': 0.8, 'source': 'spec:s2', 'statistic': ''},
+                    'thin_ratio': {'value': 0.5, 'source': 'spec:s2', 'statistic': ''},
+                    'first_print_min_bars': {'value': 3, 'source': 'decision:7', 'statistic': ''},
+                    'hunt_form': {'value': 'wick',
+                                  'source': 'evaluation:M13',
+                                  'statistic': "the spec's 'fewer than 1 five-minute bar' is zero closes outside, so "
+                                               'the 5m HUNT is a wick pierce with the previous close inside'},
+                    'hunt_max_bars': {'value': 1, 'source': 'user brief', 'statistic': ''},
+                    'hunt_min_depth_atr': {'value': 0.5,
+                                           'source': 'evaluation:M13',
+                                           'statistic': '5m wick pierce >= 0.5 x ATR14; ATR14 Wilder on the futures '
+                                                        'bars as lab.atr_series (median ATR14 19.9, design window)'},
+                    'hunt_burst': {'value': 1.5,
+                                   'source': 'evaluation:M13',
+                                   'statistic': 'no tape statistic; skipped when volume NA'},
+                    'reject_tol': {'value': 2,
+                                   'source': 'evaluation:M15',
+                                   'statistic': 'wick within eps of an edge, not beyond: 3.5/13/23/48% of inside bars '
+                                                'at 0/1/2/5 pts (5m, live protected-level band, all data)'},
+                    'leave_closes': {'value': 2, 'source': 'user brief', 'statistic': ''},
+                    'leave_ttl_bars': {'value': 3,
+                                       'source': 'evaluation:M11',
+                                       'statistic': "the spec's 15-minute window by analogy"},
+                    'leave_far_side': {'value': 'block_list',
+                                       'source': 'evaluation:D02/C02',
+                                       'statistic': '',
+                                       'note': "S35 unchanged: user decision pending; alternatives 'any', 'no_band'"},
+                    'fade_block_bars': {'value': 3, 'source': 'decision:6', 'statistic': ''},
+                    'fade_scope': {'value': 'ref_band', 'source': 'evaluation:C03', 'statistic': ''},
+                    'defend_window_bars': {'value': 3,
+                                           'source': 'evaluation:M18',
+                                           'statistic': "the spec's 15-minute window by analogy"},
+                    'open_bars': {'value': 2, 'source': 'spec:s3', 'statistic': '', 'note': 'first 10 minutes'},
+                    'open_quiet_bars': {'value': 2,
+                                        'source': 'evaluation:M25',
+                                        'statistic': "the spec's first 10 minutes"},
+                    'open_sit_closes': {'value': 3,
+                                        'source': 'evaluation:M25',
+                                        'statistic': '',
+                                        'note': 'open guard: the pierced band has fewer than this many closes inside '
+                                                "today ('no sit')"},
+                    'open_window_until': {'value': '09:25', 'source': 'spec:s3', 'statistic': ''},
+                    'no_entry_from': {'value': '15:20', 'source': 'spec:s3, decision:10', 'statistic': ''},
+                    'cancel_inside_bars': {'value': 1,
+                                           'source': 'spec:s4',
+                                           'statistic': '',
+                                           'note': '5 minutes; a hair-trigger on 5m, reported rather than tuned '
+                                                   '(evaluation M23)'},
+                    'edge_watch': {'value': 'ref_band',
+                                   'source': 'evaluation:D03',
+                                   'statistic': '',
+                                   'note': "alternative 'containing_band'"},
+                    'volume_base': {'value': 'first',
+                                    'source': 'spec:s2, decision:4',
+                                    'statistic': '',
+                                    'note': "C01: 'previous' is a later variant"},
+                    'reenter_fill': {'value': 'confirm_bar', 'source': 'evaluation:M20', 'statistic': ''},
+                    'control_draws': {'value': 2000, 'source': 'evaluation:M43', 'statistic': ''},
+                    'control_seed': {'value': 'fz', 'source': 'evaluation:M43', 'statistic': ''},
+                    'same_session_overlap': {'value': 'keep_older',
+                                             'source': 'user decision 2026-09-27 call 2',
+                                             'statistic': '',
+                                             'note': 'a sit overlapping a live room already visited this session is a '
+                                                     'visit of it, never a birth; the older room keeps its edges'},
+                    'session_visit_rule': {'value': 'sit',
+                                           'source': 'user decision 2026-09-28',
+                                           'statistic': '',
+                                           'note': "'visited this session' = a real sit today (at least cluster_bars "
+                                                   'consecutive same-session closes inside the room), not any close; '
+                                                   "alternative 'any_close'"},
+                    'adjacent_birth': {'value': 'block_half_width',
+                                       'source': 'user decision 2026-09-28',
+                                       'statistic': '',
+                                       'note': 'a sit whose band edge is within band_half_width of a live room sat in '
+                                               'this session (overlapping or not) is not a birth and not a visit '
+                                               "(sits_near_room); alternative 'allow'"},
+                    'defend_half': {'value': 'away_half',
+                                    'source': 'user decision 2026-09-28',
+                                    'statistic': '',
+                                    'note': 'a defend TAKE also needs the SETUP close in the half of the room away '
+                                            'from the defended edge (above the mid for a long, below for a short); '
+                                            "otherwise WATCH, take_why defend_wrong_half; alternative 'off'"},
+                    'room_edges': {'value': 'sit_range',
+                                   'source': 'user decision 2026-09-28b',
+                                   'statistic': '',
+                                   'note': "a room's lo / hi are the min / max close of the sit that bore it (the "
+                                           'cluster_bars window), frozen at birth; mid = (lo + hi) / 2; alternative '
+                                           "'half_width' (mid +- band_half_width)"},
+                    'absorb_rule': {'value': 'mid_inside',
+                                    'source': 'user decision 2026-09-28b',
+                                    'statistic': '',
+                                    'note': 'a sit is a visit of a live room only when its mid lies inside that room; '
+                                            'otherwise it is a birth candidate for same_session_overlap / '
+                                            "adjacent_birth / room_overlap; alternative 'overlap' (merge_overlap x the "
+                                            "sit's width)"},
+                    'defend_direction': {'value': 'one_per_visit',
+                                         'source': 'user decision 2026-09-28b',
+                                         'statistic': '',
+                                         'note': 'after a defend TAKE one way in a visit, a defend the other way in '
+                                                 'the same visit is WATCH, take_why defend_opposite_in_visit; '
+                                                 "alternative 'any'"},
+                    'same_day_replace': {'value': 'replace_unaccepted',
+                                         'source': 'user decision 2026-09-28d',
+                                         'statistic': '',
+                                         'note': 'a sit not absorbed by mid_inside whose close range overlaps or '
+                                                 'touches a live room born earlier the same session retires that room '
+                                                 '(retired_by same_day_replace) and is born in its place; rooms from '
+                                                 'earlier days keep keep_older / adjacent_birth protection; '
+                                                 "alternative 'off'"}}}}

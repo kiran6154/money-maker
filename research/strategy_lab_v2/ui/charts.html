@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Charts</title>
+<link rel="stylesheet" href="css/app.css">
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+<header class="top">
+  <h1>Charts <span class="muted">v2</span></h1>
+  <a class="toplink" href="./">← Strategy Lab</a>
+  <a class="toplink" href="explorer.html">Chart explorer</a>
+</header>
+<main>
+  <div class="card xcard">
+    <div class="xhead">
+      <div>
+        <b>Plain charts with your own indicators</b>
+        <div class="muted small">Straight from the download store (<span id="c-src">D:/nifty_data</span>), with open interest: the index, the near-month futures or any option contract — no strategy. New downloads show up on the next load. Add indicators below; they are computed on the candles shown (plus a warm-up before them) and remembered in this browser.</div>
+        <div class="muted small" id="c-cov"></div>
+      </div>
+      <button id="c-go" class="primary">Refresh</button>
+    </div>
+    <div class="xgroups">
+      <fieldset class="xg">
+        <legend>Instrument</legend>
+        <div class="xfield"><span class="xl">Chart</span>
+          <span class="seg" id="c-inst"><button data-i="INDEX">Index</button><button data-i="FUT">Futures</button><button data-i="OPT">Option</button><button data-i="STACK" title="futures, CE | PE at 15 / 5 / 1 min, OI by premium, OI, CE + PE">Stack</button></span></div>
+        <label class="c-opt">Year <select id="c-year"></select></label>
+        <label class="c-opt">Expiry <select id="c-exp"></select></label>
+        <div class="xfield c-opt" id="c-right-f"><span class="xl">Right</span>
+          <span class="seg" id="c-right"><button data-r="CE">CE</button><button data-r="PE">PE</button></span></div>
+        <label class="c-opt">Strike <select id="c-strike"></select></label>
+        <div class="muted small c-opt" id="c-life"></div>
+      </fieldset>
+      <fieldset class="xg">
+        <legend>Range</legend>
+        <label>Candles <select id="c-tf">
+          <option value="minute">1 minute</option><option value="3minute">3 minutes</option><option value="5minute">5 minutes</option>
+          <option value="15minute">15 minutes</option><option value="30minute">30 minutes</option><option value="60minute">1 hour</option></select></label>
+        <div class="xfield"><span class="xl">Day</span>
+          <span style="display:flex;gap:6px;align-items:center"><button id="c-prev" title="previous day">‹</button><input type="date" id="c-date"><button id="c-next" title="next day">›</button></span></div>
+        <label id="c-start-l">Show from <select id="c-start">
+          <option value="days">sessions up to the day</option>
+          <option value="listing" class="o-opt">the contract's first candle</option>
+          <option value="prev_expiry" class="o-opt">the previous expiry</option></select></label>
+        <label id="c-days-l">Sessions shown <select id="c-days"><option>1</option><option>2</option><option>3</option><option>5</option><option>10</option><option>20</option><option>40</option></select></label>
+        <label class="c-opt" id="c-end-l">Show to <select id="c-end"><option value="date">the day</option><option value="expiry">expiry (its last candle)</option></select></label>
+      </fieldset>
+      <fieldset class="xg" id="c-inds-g">
+        <legend>Indicators</legend>
+        <div class="xfield"><span class="xl">Add</span>
+          <span style="display:flex;gap:6px"><select id="c-add"></select><button id="c-add-go">+ Add</button></span></div>
+        <div id="c-inds" class="c-inds"></div>
+        <label class="small" id="c-oi-l"><input type="checkbox" id="c-oi" checked> open interest pane (futures and options)</label>
+      </fieldset>
+    </div>
+  </div>
+  <div class="card">
+    <div id="c-title" class="small"></div>
+    <div id="c-legend" class="muted small mono" style="min-height:1.4em"></div>
+    <div id="c-main" class="c-main"></div>
+    <div id="c-panes"></div>
+  </div>
+</main>
+<script type="module" src="js/charts.js"></script>
+</body>
+</html>

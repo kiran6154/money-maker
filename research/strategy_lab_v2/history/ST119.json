@@ -1,0 +1,425 @@
+{
+ "code": "ST119",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-25T21:03:21",
+   "key": "4dfd9de7bd6a",
+   "code": "a96ba35fa9db",
+   "definition": {
+    "code": "ST119",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 1,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "jilly_orb_noise_opt_v1",
+     "exit_rule": "next_choch"
+    },
+    "jilly": {
+     "filter": false,
+     "band_k": 1.25,
+     "sigma_lb": 20,
+     "rank_lb": 250,
+     "rank_min": 120,
+     "rank_cut": 0.2,
+     "or_keys": 15,
+     "atr_n": 9,
+     "atr_buf": 0.3,
+     "ck_first": 30,
+     "ck_last": 285,
+     "ck_step": 15,
+     "flatten": "15:20",
+     "opt_from": "2020-02-01",
+     "sides": "both",
+     "stop": "atr",
+     "stop_atr": 10,
+     "target_r": 1
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "15:20",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 0.5
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY"
+     ],
+     "expiry_min_days": 0,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATM"
+     ],
+     "strike_default": "ATM",
+     "atr_period": 14
+    }
+   },
+   "changes": [],
+   "results": {
+    "all-data_1m": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 1225,
+       "wins": 728,
+       "pts": 5.75,
+       "net_inr": -72076.55,
+       "pf": 0.96,
+       "max_dd_inr": -190195.85,
+       "t_stat": -0.54
+      }
+     }
+    }
+   }
+  },
+  {
+   "version": 2,
+   "at": "2026-10-25T23:32:07",
+   "key": "bcfe529f8f9c",
+   "code": "176f1a67456e",
+   "definition": {
+    "code": "ST119",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 1,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "jilly_orb_noise_opt_v1",
+     "exit_rule": "next_choch"
+    },
+    "jilly": {
+     "filter": false,
+     "band_k": 1.25,
+     "sigma_lb": 20,
+     "rank_lb": 250,
+     "rank_min": 120,
+     "rank_cut": 0.2,
+     "or_keys": 15,
+     "atr_n": 9,
+     "atr_buf": 0.3,
+     "ck_first": 30,
+     "ck_last": 285,
+     "ck_step": 15,
+     "flatten": "15:20",
+     "opt_from": "2020-02-01",
+     "sides": "both",
+     "stop": "atr",
+     "stop_atr": 10,
+     "target_r": 1
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "15:20",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 0.5
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY"
+     ],
+     "expiry_min_days": 0,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATM"
+     ],
+     "strike_default": "ATM",
+     "atr_period": 14
+    }
+   },
+   "changes": [
+    "code changed (core.py, the strategy file or its family module)"
+   ],
+   "results": {
+    "all-data_1m": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 1507,
+       "wins": 899,
+       "pts": 2017.96,
+       "net_inr": 41907.39,
+       "pf": 1.02,
+       "max_dd_inr": -140054.72,
+       "t_stat": 0.28
+      }
+     }
+    }
+   }
+  },
+  {
+   "version": 3,
+   "at": "2026-10-26T03:39:33",
+   "key": "d7d1227df0da",
+   "code": "1cb09210d394",
+   "definition": {
+    "code": "ST119",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 1,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "jilly_orb_noise_opt_v1",
+     "exit_rule": "next_choch"
+    },
+    "jilly": {
+     "filter": false,
+     "band_k": 1.25,
+     "sigma_lb": 20,
+     "rank_lb": 250,
+     "rank_min": 120,
+     "rank_cut": 0.2,
+     "or_keys": 15,
+     "atr_n": 9,
+     "atr_buf": 0.3,
+     "ck_first": 30,
+     "ck_last": 285,
+     "ck_step": 15,
+     "flatten": "15:20",
+     "opt_from": "2020-02-01",
+     "sides": "both",
+     "stop": "atr",
+     "stop_atr": 10,
+     "target_r": 1
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "15:20",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 0.5
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY"
+     ],
+     "expiry_min_days": 0,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATM"
+     ],
+     "strike_default": "ATM",
+     "atr_period": 14
+    }
+   },
+   "changes": [
+    "code changed (core.py, the strategy file or its family module)"
+   ],
+   "results": {
+    "all-data_1m": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 1507,
+       "wins": 899,
+       "pts": 2017.96,
+       "net_inr": 41907.39,
+       "pf": 1.02,
+       "max_dd_inr": -140054.72,
+       "t_stat": 0.28
+      }
+     }
+    },
+    "2018-22_1m": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 640,
+       "wins": 390,
+       "pts": 2547.25,
+       "net_inr": 128447.67,
+       "pf": 1.17,
+       "max_dd_inr": -47680.97,
+       "t_stat": 1.41
+      }
+     }
+    },
+    "2023-26_1m": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 867,
+       "wins": 509,
+       "pts": -529.29,
+       "net_inr": -86540.28,
+       "pf": 0.93,
+       "max_dd_inr": -140054.72,
+       "t_stat": -0.71
+      }
+     }
+    }
+   }
+  },
+  {
+   "version": 4,
+   "at": "2026-10-30T12:50:44",
+   "key": "81191a1ce186",
+   "code": "73c476a03906",
+   "definition": {
+    "code": "ST119",
+    "timeframe": "minute",
+    "underlying": "FUT",
+    "warmup_days": 1,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "jilly_orb_noise_opt_v1",
+     "exit_rule": "next_choch"
+    },
+    "jilly": {
+     "filter": false,
+     "band_k": 1.25,
+     "sigma_lb": 20,
+     "rank_lb": 250,
+     "rank_min": 120,
+     "rank_cut": 0.2,
+     "or_keys": 15,
+     "atr_n": 9,
+     "atr_buf": 0.3,
+     "ck_first": 30,
+     "ck_last": 285,
+     "ck_step": 15,
+     "flatten": "15:20",
+     "opt_from": "2020-02-01",
+     "sides": "both",
+     "stop": "atr",
+     "stop_atr": 10,
+     "target_r": 1
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "15:20",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 0.5
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY"
+     ],
+     "expiry_min_days": 0,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATM"
+     ],
+     "strike_default": "ATM",
+     "atr_period": 14
+    }
+   },
+   "changes": [
+    "code changed (core.py, the strategy file or its family module)"
+   ],
+   "results": {
+    "all-data_1m": {
+     "OPT_FUT_SIGNAL": {
+      "W-ATM": {
+       "trades": 1507,
+       "wins": 899,
+       "pts": 2017.96,
+       "net_inr": 41907.39,
+       "pf": 1.02,
+       "max_dd_inr": -140054.72,
+       "t_stat": 0.28
+      }
+     }
+    }
+   }
+  }
+ ]
+}

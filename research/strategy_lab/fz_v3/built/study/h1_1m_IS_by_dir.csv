@@ -1,0 +1,3 @@
+dir,n,kept,kept_share,net,mean_net,win_rate,pts,mean_pts,winners,big,huge,kept_net,skipped_net,kept_mean,skipped_mean,kept_win_rate,skipped_win_rate,big_skipped
+down,2234,393,0.1759,-2337948.9,-1046.53,0.1428,27.6,0.01,319,133,69,-474665.96,-1863282.94,-1207.8,-1012.1,0.1578,0.1396,115
+up,2268,352,0.1552,-1812137.05,-799.0,0.1609,8691.45,3.83,365,161,77,-292597.82,-1519539.23,-831.24,-793.08,0.1705,0.1592,135

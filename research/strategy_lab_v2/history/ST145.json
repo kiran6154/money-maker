@@ -1,0 +1,112 @@
+{
+ "code": "ST145",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-26T16:01:39",
+   "key": "8fb7c0e8fdd4",
+   "code": "871e24fd6246",
+   "definition": {
+    "code": "ST145",
+    "timeframe": "minute",
+    "underlying": "INDEX",
+    "warmup_days": 1,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "none",
+     "entry_rule": "optsell15_v1",
+     "exit_rule": "next_choch"
+    },
+    "rb": {
+     "scaled": true,
+     "wide": false
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "none",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 0.5
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 1.0
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 1.0
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY"
+     ],
+     "expiry_min_days": 0,
+     "strike_step": 50,
+     "strike_choices": [
+      "OTM"
+     ],
+     "strike_default": "OTM",
+     "atr_period": 14
+    }
+   },
+   "changes": [],
+   "results": {
+    "all-data_1m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "W-OTM": {
+       "trades": 158,
+       "wins": 138,
+       "pts": 7421.6,
+       "net_inr": 456716.11,
+       "pf": 1.95,
+       "max_dd_inr": -134345.92,
+       "t_stat": 2.49
+      }
+     }
+    },
+    "2018-23_1m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "W-OTM": {
+       "trades": 86,
+       "wins": 72,
+       "pts": 2039.35,
+       "net_inr": 118962.41,
+       "pf": 1.41,
+       "max_dd_inr": -52714.57,
+       "t_stat": 1.1
+      }
+     }
+    },
+    "2024-26_1m_idx": {
+     "OPT_FUT_SIGNAL": {
+      "W-OTM": {
+       "trades": 72,
+       "wins": 66,
+       "pts": 5382.25,
+       "net_inr": 337753.7,
+       "pf": 2.76,
+       "max_dd_inr": -134345.92,
+       "t_stat": 2.3
+      }
+     }
+    }
+   }
+  }
+ ]
+}
