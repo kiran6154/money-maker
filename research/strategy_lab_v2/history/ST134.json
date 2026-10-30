@@ -1,0 +1,116 @@
+{
+ "code": "ST134",
+ "versions": [
+  {
+   "version": 1,
+   "at": "2026-10-26T01:17:44",
+   "key": "cb097ce2b6db",
+   "code": "589b1eaa9ccc",
+   "definition": {
+    "code": "ST134",
+    "timeframe": "5minute",
+    "underlying": "FUT",
+    "warmup_days": 5,
+    "rules": {
+     "break_mode": "touch",
+     "choch_mode": "touch",
+     "avwap_weight": "volume",
+     "sl_rule": "choch_candle",
+     "entry_rule": "iif_v1",
+     "exit_rule": "own"
+    },
+    "iif": {
+     "signal": "break"
+    },
+    "lot_size": 65,
+    "capital": {
+     "futures_margin": 120000,
+     "short_option_margin": 150000
+    },
+    "position": {
+     "lots": 1,
+     "lock": "strike",
+     "scale_out": [],
+     "exit": "strategy",
+     "stop": null,
+     "trail": null,
+     "square_off": "15:25",
+     "reverse": null
+    },
+    "types": {
+     "FUT": {
+      "charge_code": "ZERODHA_NFO_FUT",
+      "slippage_pts": 5.0
+     },
+     "OPT_FUT_SIGNAL": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     },
+     "OPT_NATIVE": {
+      "charge_code": "ZERODHA_NFO_OPT",
+      "slippage_pts": 0.5
+     }
+    },
+    "options": {
+     "expiry_types": [
+      "WEEKLY",
+      "MONTHLY"
+     ],
+     "expiry_min_days": 1,
+     "strike_step": 50,
+     "strike_choices": [
+      "ATR2",
+      "ATM",
+      "ITM2",
+      "ITM1",
+      "OTM1",
+      "OTM2",
+      "OTM3",
+      "OTM4"
+     ],
+     "strike_default": "ATR2",
+     "atr_period": 14,
+     "native_scan": {
+      "choices": [
+       "ATR2",
+       "ATM",
+       "ITM1",
+       "OTM1"
+      ],
+      "every_minutes": 5,
+      "one_per_side": true
+     }
+    }
+   },
+   "changes": [],
+   "results": {
+    "2018-01-08-to-2022-06-30_5m": {
+     "FUT": {
+      "-": {
+       "trades": 290,
+       "wins": 130,
+       "pts": 1524.85,
+       "net_inr": 21984.58,
+       "pf": 1.05,
+       "max_dd_inr": -91939.79,
+       "t_stat": 0.27
+      }
+     }
+    },
+    "2022-07-01-to-2026-10-09_5m": {
+     "FUT": {
+      "-": {
+       "trades": 258,
+       "wins": 108,
+       "pts": -519.1,
+       "net_inr": -142148.35,
+       "pf": 0.78,
+       "max_dd_inr": -175009.05,
+       "t_stat": -1.42
+      }
+     }
+    }
+   }
+  }
+ ]
+}
