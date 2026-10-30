@@ -475,7 +475,7 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | ST(10,3) CHoCH + BOS | 4,755, 1.13, +6.35 L | **1,955, 1.28 (1.24 / 1.31), +5.70 L, 9/9 years** | 1,044, 1.20 | 1,753, 0.90 |
 | ST(4,3) CHoCH + BOS | 4,986, 1.13, +6.38 L | **2,034, 1.29 (1.29 / 1.29), +6.07 L, t 3.02, 9/9 years** | 1,074, 1.14 | 1,874, 0.93 |
 
-At ₹1 slippage a side (net - trades x ₹135): ST(10,3) BOS all +4.04 L, with regime +3.89 L; ST(4,3) CHoCH + BOS with regime +3.32 L; ST(4,3) CHoCH with regime +2.54 L; the unfiltered CHoCH books about -2.1 L .. -2.1 L (4,080 - 4,276 trades x ₹135 against +3.5 - 3.7 L).
+At ₹1 slippage a side (net - trades x ₹135): ST(10,3) BOS all +4.04 L, with regime +3.89 L; ST(4,3) CHoCH + BOS with regime +3.32 L; ST(4,3) CHoCH with regime +2.54 L; the unfiltered CHoCH books -2.0 L (ST(10,3)) and -2.1 L (ST(4,3)).
 
 **Reading.** On 1-minute bars the CHoCH buy is mostly noise on its own and the dOI regime is what separates it: the against-regime CHoCH buys lose in 8 of 9 years, the with-regime ones make money in both halves - the clearest effect of the regime so far, and it is the same sign as on G4 (S176). The 1-minute BOS buy already carries its own edge (a continuation in the segment's direction) and the regime adds to it only for ST(10,3) and only after 2022. Every 1-minute book here trades 2,000 - 5,000 times, so fills decide it more than on 15 minutes. Open (Impact Unquantified): the 1-minute CHoCH + BOS with-regime book on a pre-registered fresh window or paper; real fills on the ₹100+ contract at 1-minute signal times; the regime's margin and expiry sensitivity (S176).
 
