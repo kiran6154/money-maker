@@ -92,6 +92,8 @@ LINEAGE = {
     "ST84": ("ST83", "The reclaim only arms the setup; the entry waits for the first BOS / CHoCH that way on the 1-minute structure (instead of the blind entry)."),
     "ST85": ("ST83", "The same signals traded on options: a long signal sells the PE at the day's low, a short signal sells the CE at the day's high; out when the index closes back through the strike, else 15:15; both sides, one position per side."),
     "ST94": ("ST1", "Strategy 1's rules on the day-open ATM option's own candles: a bullish SETUP buys the option, out at the previous swing's stop or the next CHoCH; each trade tagged inside / above / below the option's previous-session range."),
+    "ST160": ("ST152", "G2's construction read on the option's 1-minute chart, Supertrend(4,3), CHoCH and BOS buys, taken only when the session's cumulative ATM dOI regime agrees at the signal (S178 / S179)."),
+    "ST161": ("ST160", "Supertrend(10,3) and BOS buys only."),
     "ST150": ("ST28", "The same rules on the download store's option prices and OI, 2018 on."),
     "ST149": ("ST27", "The same rules on the download store's option prices and OI, 2018 on."),
     "ST148": ("ST26", "The same rules on the download store's option prices and OI, 2018 on."),

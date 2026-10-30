@@ -457,6 +457,32 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S179. A Supertrend BUY on the option's 1-minute chart held until the Supertrend turns, and the dOI regime over that stretch (the user, 2026-10-30: "when there is a supertrend buy signal, from that time till supertrend change, check the regime"); also S178's with-regime books made strategies ST160 / ST161 ("create previous as strategy"). Measured 2018-01 - 2026-10: the plain flip-to-flip buy loses in every year (PF 0.84 - 0.88, -11.5 L .. -14.6 L, about 19,000 - 20,000 trades, median hold 25 minutes). The regime at the signal separates it (against 0.73 - 0.75, neutral 0.83 - 0.86, with 0.95 - 1.02) but even the with-regime flips only break even positional (PF 1.02, t 0.4) and lose intraday. Waiting inside the segment for the regime to agree is worse (0.93 - 0.98); exiting when the regime turns against hardly ever fires (under 1 % of trades). Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; ST160 / ST161 are new dashboard strategies, no existing strategy changed |
+| Code | `research/strategy_lab_v2/tools/st_segment_regime.py` (trades in `results/nifty_bt/oi_regime/seg_trades.parquet`, `seg_books.csv`, `seg_regime_desc.csv`, git-ignored); `tools/oi_regime_book.py` writes `results/nifty_bt/books/1m_ST4-3_CHoCH_BOS_with_regime.csv` and `1m_ST10-3_BOS_with_regime.csv` for `strategies/st160.py` / `st161.py` (the handoff family) |
+
+**Strategies ST160 / ST161.** In S178 every candidate was sequenced first (one open trade per leg) and the with-regime trades picked afterwards, so an against-regime trade that was never taken still blocked its leg. As a strategy the regime is the entry rule: candidates are filtered, then sequenced. ST160 (1m ST(4,3) CHoCH + BOS, with the regime): 2,518 trades, PF 1.25 (1.23 / 1.27), +6.63 L, t 2.93, 9/9 years (S178's 2,034, 1.29). ST161 (1m ST(10,3) BOS, with the regime): 1,467 trades, PF 1.37 (1.26 / 1.48), +5.56 L, t 2.99, 8/9 years (S178's 1,307, 1.43). The lab's own runs (`backtest.py ST160 --defined`, to 2026-10-09) agree: 2,511 trades +6.48 L; 1,463 trades +5.47 L.
+
+**Rules (the segment study).** G2's contracts and window (p100 option of the next expiry, watched days, signals 09:20 - 15:00), Supertrend(4,3) and (10,3) on the premium's 1-minute candles. A flip to up = BUY at the next 1-minute open; out at the open after the bar where it turns down (positional, capped at the expiry's 15:15), or also at 15:25 the same day (intraday); no other stop. The regime is S176's, the value known at each bar's close; with = bullish for a CE, bearish for a PE. One open trade per leg; nifty_bt charges, ₹0.10 a side. Variants: A every flip; B with the regime at the signal; C the first bar of the up-segment at which the regime is with; D = B plus out once the regime turns against; E = C with D's exit.
+
+| 1m Supertrend, mode | A every flip | B with at signal | C wait for with | D B + regime exit |
+|---|---|---|---|---|
+| ST(4,3) positional | 19,967, PF 0.87, -12.4 L, 0/9 | 7,057, 1.02 (1.00 / 1.05), +0.76 L, t 0.45 | 9,822, 0.98 | 7,057, 1.03, +0.99 L, 6/9 |
+| ST(10,3) positional | 19,291, 0.88, -11.5 L, 0/9 | 6,866, 1.02 (1.04 / 0.99), +0.62 L, t 0.38 | 9,638, 0.97 | 6,867, 1.02, +0.72 L |
+| ST(4,3) intraday | 19,991, 0.84, -14.6 L | 7,064, 0.95, -1.80 L | 9,836, 0.93 | 7,064, 0.95 |
+| ST(10,3) intraday | 19,313, 0.86, -12.8 L | 6,875, 0.96, -1.43 L | 9,654, 0.93 | 6,875, 0.96 |
+
+A by the regime at the signal (positional): against 8,950 / 8,552 trades PF 0.73 / 0.74; neutral 0.86; with 1.02 (ST(4,3) / ST(10,3)) - the same order in both halves.
+
+**Hindsight split (not tradable).** A's trades by the share of their held minutes with the regime: under 25 % PF 0.28 - 0.33 (10,300 - 10,850 trades), over 75 % 1.21 - 1.24, and 25 - 75 % 4 - 7 (about 650 - 720 trades each). The middle buckets are the long trades: a segment that lasts hours or days lives through a regime change, the 25-minute ones do not, so their PF is the trade's length, not something knowable at entry. Likewise the with-at-signal trades that later saw the regime turn against (62 - 64, PF 22 - 48) are long positional winners.
+
+**Reading.** The regime does read the flip's direction (against-regime flips are the worst group in every cut), but a bare 1-minute Supertrend flip held to the next flip has no edge to filter: half the trades are 25-minute whipsaws and costs eat the rest. The money in S178 / ST160 comes from the segment-swing structure (CHoCH / BOS with a swing stop and the trail + lock50), not from the Supertrend direction itself. Open (Impact Unquantified): the regime as an exit for ST160 / ST161 (a regime that turns against during a CHoCH / BOS trade); ST160 / ST161 on a fresh window or paper; fills at 1-minute signal times.
+
+---
+
 ### S178. S177 on the option's 1-minute chart: Supertrend-segment BOS / CHoCH buys from 1-minute bars, with and without the cumulative ATM dOI regime (the user, 2026-10-30: "is that checked with 1min" -> "check that"). Measured 2018-01 - 2026-10-19 with G2's construction (₹100+ contract, positional, trail + lock50, one trade per leg): the 1-minute BOS buys are positive on their own (ST(10,3) 2,114 trades PF 1.33, t 3.26, 9/9 years; ST(4,3) 2,135, PF 1.28, t 2.80) and the regime lifts ST(10,3) to 1.43 (2023-26 only: 1.41 -> 1.64, 2018-22 1.26 -> 1.23) but not ST(4,3) (1.25). On 1-minute CHoCH buys the regime is the whole result: unfiltered PF 1.09, with the regime 1.23 - 1.29 (both halves), against it 0.87 (1 of 9 years positive). With ₹1 slippage a side (about ₹135 a trade more) the 1-minute books keep +2.5 L .. +4.0 L. Nothing adopted
 
 | | |
