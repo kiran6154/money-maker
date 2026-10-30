@@ -457,6 +457,30 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S175. EDA: at a touch of a daily floor pivot, is the ATM PE priced above the CE, and does it tell what NIFTY does next (the user, 2026-10-30: "check below if ATM PE price is more than CE near pivot, what is the behaviour, do EDA; take care of price as pivot might not be in multiples of 50"). Measured on 3,229 pivot touches 2018-01 - 2026-10-19: PE vs CE near a pivot is put-call parity - PE - CE ~= strike - spot - carry - so "PE > CE" mostly says where the index sits against the strike (74 % of touches with spot 10 - 30 points below the ATM strike, 5 % with it 10 - 30 above) and how far the expiry is (the option-implied forward sits 0 points above spot on expiry day, 4 / 8 / 12 / 17 above at 1-2 / 3-4 / 5-7 / 8+ days). After the touch NIFTY bounces or breaks about evenly whatever the PE / CE reading: 30-minute bounce 47.5 - 53.9 % in every split, average moves within ±4 points, and the small differences do not repeat across 2018-22 and 2023-26. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/pivot_pcp.py` (outputs `results/nifty_bt/pivot_pcp/`, git-ignored) |
+
+**Rules, fixed before the run.** Levels from the previous session's NIFTY index H / L / C: P = (H+L+C)/3, R1 = 2P - L, S1 = 2P - H, R2 = P + (H - L), S2 = P - (H - L) (not multiples of 50). Touch = the first 1-min index bar whose range holds the level after the index was >= 20 points away from it, 09:30 - 14:45; one per level per day; side = the side it came from. Options: nearest expiry on or after the day (expiry day included), 1-min closes at the touch minute (printed within the last 5 minutes): `raw` = ATM (nearest 50) PE - CE; `piv` = PE - CE interpolated to the pivot price between the two strikes around it; `resid` = option-implied forward (K_atm + CE - PE) - the near-month futures (monthly, so it also carries the weekly-vs-monthly carry gap: median -13 points). Outcome: index move over 15 / 30 / 60 minutes, + = back to the side it came from (bounce).
+
+| Split | Group | Touches | Bounce 15 / 30 / 60 min | Avg move 30 min (pts) |
+|---|---|---|---|---|
+| level | P / R1 / S1 / R2 / S2 | 971 / 774 / 724 / 384 / 376 | 50-55 / 43-52 / 44-52 % | -4.0 .. -0.2 (R2 -4.0) |
+| from above | ATM PE > CE / CE >= PE | 662 / 1,093 | 51.7 / 51.4 / 49.1 vs 52.7 / 51.3 / 50.6 | -0.4 vs -0.8 |
+| from above | PE > CE at pivot / CE >= PE | 631 / 1,124 | 53.9 / 50.7 / 51.0 vs 51.4 / 51.7 / 49.4 | +0.8 vs -1.5 |
+| from below | ATM PE > CE / CE >= PE | 564 / 910 | 49.3 / 48.9 / 48.6 vs 49.0 / 49.0 / 48.7 | -0.9 vs -1.5 |
+| from below | PE > CE at pivot / CE >= PE | 560 / 914 | 47.5 / 48.2 / 49.2 vs 50.1 / 49.5 / 48.3 | -1.5 vs -1.1 |
+| expiry day | PE > CE at pivot / CE >= PE | 323 / 300 | 51.7 / 47.1 / 49.7 vs 46.3 / 44.7 / 43.0 | -0.9 vs -3.8 |
+
+30-minute bounce by half (from above / from below; PE > CE at pivot vs CE >= PE): 2018-22 52.3 / 48.1 vs 52.9 / 49.3; 2023-26 48.1 / 48.4 vs 50.2 / 49.5. Parity residual terciles: no consistent ordering (from above the middle tercile bounces most, 55.6 %; from below the lowest, 51.5 %).
+
+**Reading.** Comparing the ATM PE with the CE near a pivot measures position, not sentiment: at the nearest-50 strike it is the index's distance from that strike, and at the exact pivot price it is the pivot's distance from the forward (spot + carry). Neither, nor the part parity leaves over, moves the bounce / break odds at a floor-pivot touch away from a coin flip. The one gap worth a look - expiry-day touches with the CE at or above the PE at the pivot bounce less (43 % at 60 minutes, -6.5 points) - is one cell of ~40 and was not pre-registered. Open (Impact Unquantified): the parity residual measured against a same-expiry synthetic or the weekly forward instead of the monthly future; the expiry-day cell on fresh data.
+
+---
+
 ### S174. Re-run of Jilly ORB on the option's own chart, standalone (Strategies 112, 113, 119 - 123) on the current lab data (the user, 2026-10-30: "run jilly orb for options (standalone)"). Measured 2020-02 - 2026-10-09 (the lab's sessions end 10-09; S127 / S128 ran to 10-23): the picture of S127 / S128 holds, a little weaker - the best three are ST123 (PF 1.18, ₹+1.67 L), ST122 (1.11, ₹+2.89 L) and ST121 (1.10, ₹+1.83 L); only those three stay at or above PF 1 without their top 10 trades (1.00 - 1.03); every version is stronger in 2020-22 than 2023-26, and 2023 and 2025 lose in all seven except ST123's 2023 (1.01). Nothing adopted
 
 | | |
