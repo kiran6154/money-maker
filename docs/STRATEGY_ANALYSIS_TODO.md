@@ -457,6 +457,30 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S177. S176's cumulative ATM dOI regime on BOS buys (the user, 2026-10-30: "try same with BOS"). Measured 2018-01 - 2026-10-19 on five BUY books entered on a BOS (₹100+ contract, positional, trail + lock50, one trade per leg): taking only the with-regime buys raises the PF of the four books with 400+ trades - 5m ST(4,3) BOS 1.37 -> 1.44, 5m ST(10,3) BOS 1.25 -> 1.36, 15m pivot CHoCH -> ST BOS 1.72 -> 1.85, 15m ST(4,3) CHoCH + BOS 1.55 -> 1.57 - and the against-regime buys are the weak ones (PF 0.53 - 1.28); but the gain sits in 2023-26 (e.g. 1.64 -> 1.83, 1.46 -> 1.61, 1.96 -> 2.28) while 2018-22 moves by -0.07 .. +0.15. G2's exact BOS twin (15m ST(4,3), BOS only) has 86 trades and gets worse with the filter (1.55 -> 1.39). Weaker than S176's effect on CHoCH-led G4. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/oi_regime_bos.py` (reads `tools/oi_regime.py`'s regime and nifty_bt's candidate cache; outputs `results/nifty_bt/oi_regime/bos_books.csv`, git-ignored) |
+
+**Rules.** Regime, "with / neutral / against" and the summary exactly as S176 (cumulative 1-min dOI of the then-ATM CE / PE, current weekly, 10 % margin; read at the signal minute). Books from nifty_bt's Supertrend-segment candidates (`cand_swing.parquet`) on the p100 pick, BUY, positional, trail + lock50, sequenced one open trade per leg (`engine.sequence`): A 15m ST(4,3) BOS (G2's rules with BOS), B 15m ST(4,3) CHoCH + BOS, C 5m ST(4,3) BOS, D 5m ST(10,3) BOS; E = the S12.4 book's BOS buys (15m pivot CHoCH / BOS -> ST(10,3) confirm).
+
+| Book | All (trades, PF, net) | With regime | Neutral | Against regime |
+|---|---|---|---|---|
+| A 15m ST(4,3) BOS | 86, 1.55 (1.96 / 1.14), +1.19 L | 77, 1.39 (1.77 / 0.98), +78k | 7, 2.49 | 2 |
+| B 15m ST(4,3) CHoCH + BOS | 453, 1.55 (1.51 / 1.61), +6.01 L | **405, 1.57 (1.66 / 1.45), +5.45 L** | 37, 1.50 | 11, 1.28 |
+| C 5m ST(4,3) BOS | 410, 1.37 (1.15 / 1.64), +2.93 L | **312, 1.44 (1.09 / 1.83), +2.54 L** | 75, 1.29 | 23, 0.89 |
+| D 5m ST(10,3) BOS | 415, 1.25 (1.06 / 1.46), +2.06 L | **301, 1.36 (1.12 / 1.61), +2.11 L** | 87, 1.14 | 27, 0.53 |
+| E 15m pivot CHoCH -> ST, BOS buys | 410, 1.72 (1.51 / 1.96), +3.89 L | **302, 1.85 (1.48 / 2.28), +3.39 L** | 71, 1.43 | 37, 1.16 |
+| (ref) G2 15m ST(4,3) CHoCH | 413, 1.68, +6.59 L | 369, 1.72, +6.05 L | 34, 1.48 | 10, 1.29 |
+
+(PF in brackets: 2018-22 / 2023-26.) Pooled BOS books A, C, D, E by price direction since 09:15: price with the trade - with regime 926 trades PF 1.48, neutral 217 PF 1.32, against 65 PF 1.17; price against the trade - with regime 66 PF 1.84, neutral 23 PF 1.07, against 24 PF 0.32.
+
+**Reading.** On BOS entries the regime works as on CHoCH ones - the against-regime buys are the weakest, and inside the same price direction "with regime" still ranks first - but the lift is smaller than on G4 and it comes from 2023-26 only; the neutral-regime BOS buys are not losers (PF 1.14 - 1.50), so the filter mostly trims profit along with the weak trades. A BOS buy is already a continuation in the regime's direction, which leaves the regime less to add. Open (Impact Unquantified): as S176 (margin and expiry sensitivity, SELL legs, a paper test).
+
+---
+
 ### S176. A session regime from the cumulative 1-minute change in open interest of the ATM CE and PE (following the ATM as it moves), and the Supertrend / CHoCH-BOS BUY books taken only with it (the user, 2026-10-30: "find dOI of both ATM legs at the candle close, cumulate this throughout the day as and when ATM changes ... mark the regime ... trade based on the regime and previous ruleset"; answers: the Supertrend / CHoCH-BOS buy books, 1-minute candles). Measured 2018-01 - 2026-10-19, 2,140 sessions: taking a bought CE only when put writing leads and a bought PE only when call writing leads lifts every BUY book's PF in both halves - G4 (ST154 / ST158 BUY) 1.37 -> 1.57 with 34 % fewer trades and slightly more profit (+9.33 L -> +9.71 L; 1.33 -> 1.50 / 1.41 -> 1.66), G2 (ST152 / ST159 BUY) 1.68 -> 1.72, G7 (ST157) 1.33 -> 1.38. The regime is mostly the day's price direction (bullish minutes have NIFTY above its open 81 % of the time, bearish below it 85 %) but not only: among BUY trades whose price direction since the open already agrees, "with regime" is PF 1.47 vs 0.86 neutral. Not pre-registered beyond the rule below; nothing adopted
 
 | | |
