@@ -457,6 +457,27 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S174. Re-run of Jilly ORB on the option's own chart, standalone (Strategies 112, 113, 119 - 123) on the current lab data (the user, 2026-10-30: "run jilly orb for options (standalone)"). Measured 2020-02 - 2026-10-09 (the lab's sessions end 10-09; S127 / S128 ran to 10-23): the picture of S127 / S128 holds, a little weaker - the best three are ST123 (PF 1.18, ₹+1.67 L), ST122 (1.11, ₹+2.89 L) and ST121 (1.10, ₹+1.83 L); only those three stay at or above PF 1 without their top 10 trades (1.00 - 1.03); every version is stronger in 2020-22 than 2023-26, and 2023 and 2025 lose in all seven except ST123's 2023 (1.01). Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/strategies/jilly_opt.py` via `python backtest.py ST112` .. `ST123` (default "All data" backtest, Options type) |
+
+| Strategy | Leg | Trades | Net ₹ | PF | 2020-22 / 2023-26 | w/o top 10 | t | PF by year 2020 .. 2026 |
+|---|---|---|---|---|---|---|---|---|
+| 112 buy only, defaults | ATM (ITM1) | 681 (730) | -25,333 (+61,201) | 0.98 (1.04) | 1.06 / 0.93 | 0.87 | -0.19 | 0.77 1.24 1.20 0.86 1.02 0.78 1.13 |
+| 113 buy only, spec | ATM (ITM1) | 518 (562) | +66,402 (+35,605) | 1.07 (1.03) | 1.09 / 1.06 | 0.87 | 0.57 | 0.95 1.38 0.95 0.91 1.59 0.66 1.20 |
+| 119 both sides, defaults | ATM | 1,507 | +41,907 | 1.02 | 1.17 / 0.93 | 0.95 | 0.28 | 0.90 1.33 1.29 0.73 1.11 0.86 0.96 |
+| 120 both sides, spec | ATM | 1,116 | +89,926 | 1.06 | 1.19 / 0.99 | 0.94 | 0.71 | 1.11 1.52 0.98 0.78 1.44 0.76 0.88 |
+| 121 = 120 on the 100 - 250 premium leg | PREM | 1,316 | +1,83,205 | 1.10 | 1.29 / 0.97 | 1.00 | 1.23 | 1.19 1.64 1.10 0.74 1.23 0.98 0.74 |
+| 122 = 119 on the 100 - 250 premium leg | PREM | 1,649 | +2,89,314 | 1.11 | 1.40 / 0.96 | 1.03 | 1.51 | 1.32 1.55 1.36 0.75 1.11 0.93 1.01 |
+| 123 settings chosen on 2020-23 | ATM | 793 | +1,66,838 | 1.18 | 1.27 / 1.13 | 1.02 | 1.64 | 0.98 1.88 1.06 1.01 1.55 0.76 1.23 |
+
+**Reading.** Same as S127 / S128: the option-chart Jilly is thin - t-stats 1.2 - 1.6 at best, the premium-leg versions carried by 2020-22, ST123's in-sample choice the only one above 1 in 2023-26 and partly luck (S128). The futures-read Strategy 111 stays the stronger Jilly. Open (as S128): paper trading on new data before any is trusted.
+
+---
+
 ### S173. The S168 short ladder re-centred every minute, and every interval split into expiry day / the day before expiry / earlier days (the user, 2026-10-30: "ladder do check that every 1min and validate. give separate result for expiry and previous day"). Measured 2018-01 - 2026-10-19: re-centring every minute is the worst interval - 59 rolls a day; intraday -34.5 L (PF 0.70, 1/9 years), positional +27.7 L (15 min +85.0 L, hourly +91.5 L). Split by day, the ladder's money is on the last two days of each weekly: on expiry day every interval and mode is positive (PF 1.9 - 3.0, 8 - 9/9 years) and the day before expiry is nearly as good from 15 min up (intraday PF 1.86 - 1.87, positional 2.96 - 3.27), while earlier days are flat or losing intraday (PF 0.48 - 1.02) and only modestly positive positional at 15 / 60 min (1.32 / 1.38). The faster simulator was checked against the S168 code: identical equity on every variant of 6 whole expiries at 15 and 1 minute. Nothing adopted
 
 | | |
