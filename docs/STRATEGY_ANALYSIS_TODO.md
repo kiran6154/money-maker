@@ -457,6 +457,40 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S173. The S168 short ladder re-centred every minute, and every interval split into expiry day / the day before expiry / earlier days (the user, 2026-10-30: "ladder do check that every 1min and validate. give separate result for expiry and previous day"). Measured 2018-01 - 2026-10-19: re-centring every minute is the worst interval - 59 rolls a day; intraday -34.5 L (PF 0.70, 1/9 years), positional +27.7 L (15 min +85.0 L, hourly +91.5 L). Split by day, the ladder's money is on the last two days of each weekly: on expiry day every interval and mode is positive (PF 1.9 - 3.0, 8 - 9/9 years) and the day before expiry is nearly as good from 15 min up (intraday PF 1.86 - 1.87, positional 2.96 - 3.27), while earlier days are flat or losing intraday (PF 0.48 - 1.02) and only modestly positive positional at 15 / 60 min (1.32 / 1.38). The faster simulator was checked against the S168 code: identical equity on every variant of 6 whole expiries at 15 and 1 minute. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/ladder_stop.py` (`LADDER_STEP=1`; numpy form of the S168 loop; `by_day.csv`); outputs `results/nifty_bt/ladder_stop_1m/`, the three-interval split in `results/nifty_bt/ladder_split_all.csv` (git-ignored) |
+
+**Rules.** Exactly S168 / S169 with re-centring at every minute (at 1 minute every minute is a roll time, so the roll-time stop equals the every-minute stop and is not run separately). Day place: expiry day = the expiry's own session; day before = the session before it in the same weekly cycle; earlier = the rest. Daily P&L = change in equity (positional days include the overnight move of the carried book). Validation: the numpy simulator gives identical daily equity to the S168 pandas code on every variant of 2019-09-26, 2020-03-26, 2024-06-06, 2025-04-09 at 15 minutes and 2024-06-06, 2026-05-26 at 1 minute (max difference ₹0), 30 - 100x faster.
+
+**Whole book by interval** (no stop; ₹ net, PF on days, worst day; Rs0.50 a side):
+
+| Re-centre | Rolls / day | Intraday | Positional |
+|---|---|---|---|
+| 1 min | 59 - 61 | -34.5 L, 0.70, -2.97 L (Rs0.50: -1.35 Cr) | +27.7 L, 1.24, -3.68 L (Rs0.50: -55 L) |
+| 15 min | 15 - 17 | +21.2 L, 1.23, -1.96 L | +85.0 L, 1.83, -2.79 L |
+| 60 min | 6 - 9 | +31.4 L, 1.31, -1.65 L | +91.5 L, 1.79, -3.09 L |
+
+**Split by day** (no stop; days, net ₹, avg day, PF all / 2018-22 / 2023-26, years positive, net at Rs0.50 a side):
+
+| Re-centre | Mode | Expiry day (413) | Day before expiry (413) | Earlier days (1,309) |
+|---|---|---|---|---|
+| 1 min | intraday | +12.3 L, +2,968, 2.07 / 2.21 / 2.00, 8/9, -7.1 L | -2.0 L, -478, 0.89 / 1.18 / 0.72, 2/9 | -44.8 L, -3,423, 0.48, 0/9 |
+| 1 min | positional | +25.7 L, +6,224, 2.80 / 2.73 / 2.85, 9/9, +5.6 L | +16.8 L, +4,059, 2.11 / 3.90 / 1.38, 7/9, +1.2 L | -14.7 L, -1,125, 0.83, 2/9 |
+| 15 min | intraday | +17.4 L, +4,207, 2.34 / 3.38 / 2.02, 9/9, +8.7 L | +10.7 L, +2,602, 1.86 / 2.00 / 1.76, 7/9, +2.1 L | -6.9 L, -529, 0.90, 4/9 |
+| 15 min | positional | +31.9 L, +7,716, 3.00 / 3.22 / 2.86, 9/9, +22.5 L | +29.4 L, +7,116, 3.27 / 5.17 / 2.35, 8/9, +25.0 L | +23.8 L, +1,817, 1.32 / 1.61 / 1.11, 8/9, +10.6 L |
+| 60 min | intraday | +17.7 L, +4,287, 2.08 / 2.06 / 2.08, 9/9, +11.1 L | +12.6 L, +3,048, 1.87 / 1.87 / 1.87, 6/9, +6.1 L | +1.1 L, +84, 1.02, 4/9 |
+| 60 min | positional | +29.9 L, +7,239, 2.46 / 2.40 / 2.50, 9/9, +22.5 L | +31.0 L, +7,518, 2.96 / 4.46 / 2.23, 8/9, +28.8 L | +30.6 L, +2,336, 1.38 / 1.47 / 1.31, 8/9, +23.9 L |
+
+The Rs50k every-minute stop lowers every cell except a few worst days (1 min intraday worst day -2.97 L -> -83k; positional expiry-day worst gets worse, -96k -> -2.68 L).
+
+**Reading.** Each roll locks in the intraday swing that triggered it and pays two legs' charges; at one minute that happens ~60 times a day and swamps the decay. The ladder is an expiry-week time-decay trade: the last two sessions of each weekly collect most of it at every interval, with the day before expiry close to expiry day once rolls are 15 minutes or slower; earlier in the week the intraday book is flat or worse and only the carried (positional) book makes money - with the overnight gap risk and margin that S168 left open. Open (Impact Unquantified): an expiry-day + day-before-only book (selected after this split, so it needs fresh data or a pre-registered out-of-sample window); margin; fills on far-OTM legs.
+
+---
+
 ### S172. S171 with the CE basket going down from the ATM - CE ATM, ATM-50 .. ATM-450, i.e. the ATM and nine in-the-money calls (the user, 2026-10-30: "10 CE basket should be ATM, ATM-50 so on"). Measured 2018-01 - 2026-10-19, 1,779 sessions with all 10 strikes printing: the ITM basket's structure differs a little more from the ATM CE's than the OTM basket did (83 - 86 % of events coincide within 3 minutes, vs ~90 %), but it is no better: on sideways days ~27 CHoCH + BOS a day, 48.7 % go their way over the next 15 minutes, 35.5 % are reversed within 15 minutes (ATM CE 46.8 % / 33.4 %). On trend days basket BOS 54.2 % vs ATM CE 53.9 %. Nothing adopted
 
 | | |
