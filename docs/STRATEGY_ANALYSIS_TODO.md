@@ -457,6 +457,29 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S176. A session regime from the cumulative 1-minute change in open interest of the ATM CE and PE (following the ATM as it moves), and the Supertrend / CHoCH-BOS BUY books taken only with it (the user, 2026-10-30: "find dOI of both ATM legs at the candle close, cumulate this throughout the day as and when ATM changes ... mark the regime ... trade based on the regime and previous ruleset"; answers: the Supertrend / CHoCH-BOS buy books, 1-minute candles). Measured 2018-01 - 2026-10-19, 2,140 sessions: taking a bought CE only when put writing leads and a bought PE only when call writing leads lifts every BUY book's PF in both halves - G4 (ST154 / ST158 BUY) 1.37 -> 1.57 with 34 % fewer trades and slightly more profit (+9.33 L -> +9.71 L; 1.33 -> 1.50 / 1.41 -> 1.66), G2 (ST152 / ST159 BUY) 1.68 -> 1.72, G7 (ST157) 1.33 -> 1.38. The regime is mostly the day's price direction (bullish minutes have NIFTY above its open 81 % of the time, bearish below it 85 %) but not only: among BUY trades whose price direction since the open already agrees, "with regime" is PF 1.47 vs 0.86 neutral. Not pre-registered beyond the rule below; nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/oi_regime.py` (outputs `results/nifty_bt/oi_regime/` - per-minute cum CE / PE dOI and regime for every session, git-ignored) |
+
+**Rules, fixed before the run.** Each 1-min close t: ATM(t) = NIFTY index close rounded to 50; dOI = OI(ATM(t), t) - OI(ATM(t), t - 1) for the CE and the PE of the nearest expiry on or after the day (expiry day included) - the strike that is ATM at t, so a move of the ATM never counts the gap between two strikes' OI; OI 0 / missing carries the strike's last print of the day (the store's OI changes on ~1 minute in 3); first minute of the day 0. cumCE / cumPE = running sums from 09:15. Bullish = cumPE - cumCE > 10 % of (|cumCE| + |cumPE|); bearish the mirror; else neutral. Trades = the books' own BUY trades (nifty_bt golden G2, G4, G7), regime read at the last 1-min close at or before the signal; "with" = CE bought in a bullish regime or PE in a bearish one. Exits unchanged.
+
+| Book | All | With regime | Neutral | Against regime |
+|---|---|---|---|---|
+| G2 (ST152, ST159 BUY) | 413, PF 1.68, +6.59 L | **369, 1.72 (1.78 / 1.64), +6.05 L** | 34, 1.48, +46k | 10, 1.29, +8k |
+| G4 (ST154, ST158 BUY) | 1,330, PF 1.37, +9.33 L | **882, 1.57 (1.50 / 1.66), +9.71 L, t 3.26** | 231, 0.82, -85k | 217, 1.13, +47k |
+| G7 (ST157) | 483, PF 1.33, +2.05 L | **439, 1.38 (1.56 / 1.23), +2.06 L** | 30, 0.84, -9k | 14, 1.53, +8k |
+| all three, CE bought | | 823, 1.73, +10.24 L | 131, 0.97 | 103, 1.15 |
+| all three, PE bought | | 867, 1.45, +7.58 L | 164, 0.89 | 138, 1.16 |
+
+(PF in brackets: 2018-22 / 2023-26.) Regime share of minutes: bullish 39 - 47 %, bearish 31 - 40 %, neutral 30 % in the first hour falling to 13 % by 15:00. NIFTY over the next 30 minutes from every 15th minute: bullish +0.72 points (53.1 % up), bearish -1.51 (49.1 %), neutral -0.03 (51.1 %) - the same in both halves; a small drift, not a tradeable forecast on its own. Price direction since 09:15 x regime, all BUY trades: price with the trade - with regime 1,590 trades PF 1.47, neutral 231 PF 0.86, against 117 PF 1.27; price against the trade - with regime 100 PF 3.28 (+4.0 L), neutral 64 PF 1.15, against 124 PF 1.04.
+
+**Reading.** The cumulative ATM dOI regime is largely a reading of the day's direction - writers add puts on rising days and calls on falling ones - so most BUY signals, which already need structure and Supertrend on their side, are "with" it. Its value is in the trades it removes: neutral-regime buys lose in G4 and G7, and the filter keeps G4's profit with a third fewer trades. The part beyond price direction (PF 1.47 vs 0.86 inside the same price direction; 3.28 when the regime agrees but price since the open does not, on 100 trades) is the interesting piece and was not part of the rule set in advance. Open (Impact Unquantified): the margin (10 %) and the next-expiry (the books' own contract) instead of the front expiry, as sensitivity, not a pick; the regime on the SELL legs; a forward / paper test of G4 with the filter.
+
+---
+
 ### S175. EDA: at a touch of a daily floor pivot, is the ATM PE priced above the CE, and does it tell what NIFTY does next (the user, 2026-10-30: "check below if ATM PE price is more than CE near pivot, what is the behaviour, do EDA; take care of price as pivot might not be in multiples of 50"). Measured on 3,229 pivot touches 2018-01 - 2026-10-19: PE vs CE near a pivot is put-call parity - PE - CE ~= strike - spot - carry - so "PE > CE" mostly says where the index sits against the strike (74 % of touches with spot 10 - 30 points below the ATM strike, 5 % with it 10 - 30 above) and how far the expiry is (the option-implied forward sits 0 points above spot on expiry day, 4 / 8 / 12 / 17 above at 1-2 / 3-4 / 5-7 / 8+ days). After the touch NIFTY bounces or breaks about evenly whatever the PE / CE reading: 30-minute bounce 47.5 - 53.9 % in every split, average moves within ±4 points, and the small differences do not repeat across 2018-22 and 2023-26. Nothing adopted
 
 | | |
