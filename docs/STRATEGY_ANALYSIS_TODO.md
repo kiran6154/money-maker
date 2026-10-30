@@ -457,6 +457,30 @@ Ids are `S<n>` so they never collide with `GAPS.md` numbering.
 | Priority | _Open — filed 2026-09-29. Study in progress._ |
 
 ---
+### S178. S177 on the option's 1-minute chart: Supertrend-segment BOS / CHoCH buys from 1-minute bars, with and without the cumulative ATM dOI regime (the user, 2026-10-30: "is that checked with 1min" -> "check that"). Measured 2018-01 - 2026-10-19 with G2's construction (₹100+ contract, positional, trail + lock50, one trade per leg): the 1-minute BOS buys are positive on their own (ST(10,3) 2,114 trades PF 1.33, t 3.26, 9/9 years; ST(4,3) 2,135, PF 1.28, t 2.80) and the regime lifts ST(10,3) to 1.43 (2023-26 only: 1.41 -> 1.64, 2018-22 1.26 -> 1.23) but not ST(4,3) (1.25). On 1-minute CHoCH buys the regime is the whole result: unfiltered PF 1.09, with the regime 1.23 - 1.29 (both halves), against it 0.87 (1 of 9 years positive). With ₹1 slippage a side (about ₹135 a trade more) the 1-minute books keep +2.5 L .. +4.0 L. Nothing adopted
+
+| | |
+|---|---|
+| Impact | Measured (below). Research only; no strategy changed |
+| Code | `research/strategy_lab_v2/tools/oi_regime_bos1m.py` (candidates cached in `results/nifty_bt/oi_regime/cand_1m.parquet`, books in `bos_1m_books.csv`, git-ignored) |
+
+**Rules.** nifty_bt's G2 construction unchanged (`golden.option_books`: the p100 contracts of the next expiry, signals only on watched days 09:20 - 15:00, entry at the next 1-min open, stop at the segment swing, positional, trail + lock50, `engine.sequence`) with `engine.stswing(C, 1, p, m)` - the Supertrend segments, swings and CHoCH / BOS read on 1-minute bars - for ST(4,3) and ST(10,3), BUY side. Regime and with / neutral / against exactly as S176. Costs: nifty_bt charges, ₹0.10 a side.
+
+| Book (1-min) | All (trades, PF 2018-22 / 2023-26, net) | With regime | Neutral | Against regime |
+|---|---|---|---|---|
+| ST(10,3) BOS | 2,114, 1.33 (1.26 / 1.41), +6.89 L, t 3.26 | **1,307, 1.43 (1.23 / 1.64), +5.65 L** | 400, 1.18 | 406, 1.15 (1.40 / 0.69) |
+| ST(4,3) BOS | 2,135, 1.28 (1.25 / 1.33), +5.85 L, t 2.80 | 1,304, 1.25 (1.13 / 1.38), +3.27 L | 427, 1.39 | 403, 1.26 |
+| ST(10,3) CHoCH | 4,080, 1.09 (1.08 / 1.10), +3.52 L | **1,511, 1.23 (1.21 / 1.24), +3.66 L** | 908, 1.18 | 1,658, 0.87, -1.82 L, 1/9 years |
+| ST(4,3) CHoCH | 4,276, 1.09 (1.09 / 1.09), +3.71 L | **1,559, 1.29 (1.34 / 1.24), +4.64 L** | 940, 1.12 | 1,773, 0.87, -1.96 L, 1/9 years |
+| ST(10,3) CHoCH + BOS | 4,755, 1.13, +6.35 L | **1,955, 1.28 (1.24 / 1.31), +5.70 L, 9/9 years** | 1,044, 1.20 | 1,753, 0.90 |
+| ST(4,3) CHoCH + BOS | 4,986, 1.13, +6.38 L | **2,034, 1.29 (1.29 / 1.29), +6.07 L, t 3.02, 9/9 years** | 1,074, 1.14 | 1,874, 0.93 |
+
+At ₹1 slippage a side (net - trades x ₹135): ST(10,3) BOS all +4.04 L, with regime +3.89 L; ST(4,3) CHoCH + BOS with regime +3.32 L; ST(4,3) CHoCH with regime +2.54 L; the unfiltered CHoCH books about -2.1 L .. -2.1 L (4,080 - 4,276 trades x ₹135 against +3.5 - 3.7 L).
+
+**Reading.** On 1-minute bars the CHoCH buy is mostly noise on its own and the dOI regime is what separates it: the against-regime CHoCH buys lose in 8 of 9 years, the with-regime ones make money in both halves - the clearest effect of the regime so far, and it is the same sign as on G4 (S176). The 1-minute BOS buy already carries its own edge (a continuation in the segment's direction) and the regime adds to it only for ST(10,3) and only after 2022. Every 1-minute book here trades 2,000 - 5,000 times, so fills decide it more than on 15 minutes. Open (Impact Unquantified): the 1-minute CHoCH + BOS with-regime book on a pre-registered fresh window or paper; real fills on the ₹100+ contract at 1-minute signal times; the regime's margin and expiry sensitivity (S176).
+
+---
+
 ### S177. S176's cumulative ATM dOI regime on BOS buys (the user, 2026-10-30: "try same with BOS"). Measured 2018-01 - 2026-10-19 on five BUY books entered on a BOS (₹100+ contract, positional, trail + lock50, one trade per leg): taking only the with-regime buys raises the PF of the four books with 400+ trades - 5m ST(4,3) BOS 1.37 -> 1.44, 5m ST(10,3) BOS 1.25 -> 1.36, 15m pivot CHoCH -> ST BOS 1.72 -> 1.85, 15m ST(4,3) CHoCH + BOS 1.55 -> 1.57 - and the against-regime buys are the weak ones (PF 0.53 - 1.28); but the gain sits in 2023-26 (e.g. 1.64 -> 1.83, 1.46 -> 1.61, 1.96 -> 2.28) while 2018-22 moves by -0.07 .. +0.15. G2's exact BOS twin (15m ST(4,3), BOS only) has 86 trades and gets worse with the filter (1.55 -> 1.39). Weaker than S176's effect on CHoCH-led G4. Nothing adopted
 
 | | |
